@@ -1,0 +1,134 @@
+# Quick Reference Card - ArchitectAI v1.0.0
+
+## 🚀 Installation
+
+```bash
+npm install -g architect-ai
+```
+
+## 🔑 Setup (Choose One)
+
+### Gemini (Free)
+
+```bash
+export GEMINI_API_KEY=your_key
+```
+
+### OpenAI
+
+```bash
+export AI_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+```
+
+### Claude
+
+```bash
+export AI_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+## 📝 Common Commands
+
+```bash
+# Basic audit
+architect-ai
+
+# Local review
+architect-ai --local
+
+# Review last 5 commits
+architect-ai -l -n 5
+
+# Specific files
+architect-ai src/file1.ts src/file2.ts
+
+# Custom concurrency
+architect-ai --concurrency 10
+
+# Verbose output
+architect-ai --verbose
+```
+
+## 🎯 Model Selection
+
+| Need          | Provider | Model               |
+| ------------- | -------- | ------------------- |
+| Fast & Free   | Gemini   | `gemini-2.5-flash`  |
+| Best Accuracy | OpenAI   | `gpt-4.1`           |
+| Long Tasks    | Claude   | `claude-opus-4`     |
+| Balanced      | Claude   | `claude-sonnet-4.5` |
+
+## 🔧 Environment Variables
+
+```bash
+AI_PROVIDER=gemini|openai|anthropic
+AI_MODEL=model_name
+AI_TEMPERATURE=0.2
+AI_MAX_TOKENS=8192
+```
+
+## 📊 Cost Comparison (per 1M tokens)
+
+- Gemini: $0.075
+- OpenAI: $2.50
+- Claude: $3.00
+
+## 🐛 Troubleshooting
+
+```bash
+# Check config
+cat .env
+
+# Load env vars
+export $(cat .env | xargs)
+
+# Verify provider
+echo $AI_PROVIDER
+
+# Test with verbose
+architect-ai --verbose
+```
+
+## 📚 Documentation
+
+- [Full README](./README.md)
+- [Quick Start](./docs/QUICK_START.md)
+- [Migration Guide](./MIGRATION.md)
+- [Provider Comparison](./docs/PROVIDER_COMPARISON.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+
+## 🔗 Get API Keys
+
+- Gemini: https://aistudio.google.com/
+- OpenAI: https://platform.openai.com/api-keys
+- Claude: https://console.anthropic.com/
+
+## 💡 Pro Tips
+
+1. Start with Gemini's free tier
+2. Use GPT-4.1 for complex refactoring
+3. Use Claude Opus for autonomous tasks
+4. Set concurrency based on API limits
+5. Use `.architectrc.json` for custom rules
+
+## 🎨 Example Config
+
+```json
+{
+  "techStack": "React 19, TypeScript",
+  "rules": ["CRITICAL: No 'any' types", "STYLE: Use arrow functions"],
+  "maxConcurrency": 5
+}
+```
+
+## 🚦 Exit Codes
+
+- `0` - All checks passed
+- `1` - Critical issues found
+
+## 📦 Package Info
+
+- Version: 1.0.0
+- License: MIT
+- Node: >=18.0.0

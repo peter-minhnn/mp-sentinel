@@ -1,0 +1,50 @@
+image: node:20
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+    - node_modules/
+
+stages:
+  - audit
+
+code_audit:
+  stage: audit
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+  script:
+    - echo "🔍 Starting AI Code Audit v1.2.0 with Anthropic Claude..."
+    - npm run build
+    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - npx architect-ai --target-branch $TARGET_BRANCH
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+  allow_failure: true
+  variables:
+    # Anthropic Configuration
+    AI_PROVIDER: anthropic
+    AI_MODEL: claude-sonnet-4.5  # Best for coding and agents
+    # AI_MODEL: claude-opus-4  # Most capable, for complex tasks
+    # AI_MODEL: claude-3-5-sonnet  # Previous generation
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+    
+    # Optional: Fine-tune behavior
+    AI_TEMPERATURE: "0.2"
+    AI_MAX_TOKENS: "8192"
+    
+    # GitLab integration
+    # GITLAB_TOKEN: $GITLAB_TOKEN  # Optional PAT
+
+# Setup Instructions:
+# 1. Get Anthropic API key: https://console.anthropic.com/
+# 2. Add to GitLab CI/CD Variables: Settings → CI/CD → Variables → Add variable
+#    Key: ANTHROPIC_API_KEY
+#    Value: sk-ant-...
+#    Flags: [x] Protect variable, [x] Mask variable
+# 3. Rename this file to: .gitlab-ci.yml
+# 4. Commit and push

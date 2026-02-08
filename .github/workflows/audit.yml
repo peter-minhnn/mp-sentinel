@@ -1,0 +1,53 @@
+name: ArchitectAI Code Guard
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node & Cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci 
+
+      - name: Build
+        run: npm run build
+
+      - name: Run Audit
+        env:
+          # AI Provider Configuration (choose one)
+          # Option 1: Google Gemini (default, free tier available)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          
+          # Option 2: OpenAI GPT (uncomment to use)
+          # AI_PROVIDER: openai
+          # AI_MODEL: gpt-4o  # or gpt-4.1, gpt-4-turbo
+          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          
+          # Option 3: Anthropic Claude (uncomment to use)
+          # AI_PROVIDER: anthropic
+          # AI_MODEL: claude-sonnet-4.5  # or claude-opus-4
+          # ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # Optional: Fine-tune AI behavior
+          # AI_TEMPERATURE: 0.2
+          # AI_MAX_TOKENS: 8192
+          
+          # GitHub integration
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: origin/${{ github.base_ref }}
+        run: npx architect-ai --target-branch $TARGET_BRANCH

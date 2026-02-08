@@ -1,0 +1,51 @@
+image: node:20
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+    - node_modules/
+
+stages:
+  - audit
+
+code_audit:
+  stage: audit
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+  script:
+    - echo "🔍 Starting AI Code Audit v1.2.0..."
+    - npm run build
+    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - npx architect-ai --target-branch $TARGET_BRANCH
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+  allow_failure: true
+  variables:
+    # AI Provider Configuration (choose one)
+    # Option 1: Google Gemini (default, free tier available)
+    GEMINI_API_KEY: $GEMINI_API_KEY
+    
+    # Option 2: OpenAI GPT (uncomment to use)
+    # AI_PROVIDER: openai
+    # AI_MODEL: gpt-4o  # or gpt-4.1, gpt-4-turbo
+    # OPENAI_API_KEY: $OPENAI_API_KEY
+    
+    # Option 3: Anthropic Claude (uncomment to use)
+    # AI_PROVIDER: anthropic
+    # AI_MODEL: claude-sonnet-4.5  # or claude-opus-4
+    # ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+    
+    # Optional: Fine-tune AI behavior
+    # AI_TEMPERATURE: "0.2"
+    # AI_MAX_TOKENS: "8192"
+    
+    # GitLab integration
+    # Optional: Set GITLAB_TOKEN in CI/CD settings if you want to use a Personal Access Token (PAT)
+    # consistently across projects or need permissions beyond what CI_JOB_TOKEN provides.
+    # GITLAB_TOKEN: $GITLAB_TOKEN 
+    # CI_JOB_TOKEN is automatically available.

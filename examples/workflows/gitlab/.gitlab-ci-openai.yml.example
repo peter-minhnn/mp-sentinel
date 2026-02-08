@@ -1,0 +1,50 @@
+image: node:20
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+    - node_modules/
+
+stages:
+  - audit
+
+code_audit:
+  stage: audit
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+  script:
+    - echo "🔍 Starting AI Code Audit v1.2.0 with OpenAI GPT-4..."
+    - npm run build
+    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - npx architect-ai --target-branch $TARGET_BRANCH
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+  allow_failure: true
+  variables:
+    # OpenAI Configuration
+    AI_PROVIDER: openai
+    AI_MODEL: gpt-4o  # Best balance of speed and accuracy
+    # AI_MODEL: gpt-4.1  # Best for complex coding tasks
+    # AI_MODEL: gpt-4-turbo  # Alternative option
+    OPENAI_API_KEY: $OPENAI_API_KEY
+    
+    # Optional: Fine-tune behavior
+    AI_TEMPERATURE: "0.2"
+    AI_MAX_TOKENS: "8192"
+    
+    # GitLab integration
+    # GITLAB_TOKEN: $GITLAB_TOKEN  # Optional PAT
+
+# Setup Instructions:
+# 1. Get OpenAI API key: https://platform.openai.com/api-keys
+# 2. Add to GitLab CI/CD Variables: Settings → CI/CD → Variables → Add variable
+#    Key: OPENAI_API_KEY
+#    Value: sk-...
+#    Flags: [x] Protect variable, [x] Mask variable
+# 3. Rename this file to: .gitlab-ci.yml
+# 4. Commit and push

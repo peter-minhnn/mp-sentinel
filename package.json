@@ -1,0 +1,68 @@
+{
+  "name": "architect-ai",
+  "version": "1.0.0",
+  "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
+  "type": "module",
+  "main": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
+    },
+    "./cli": "./dist/index.js"
+  },
+  "bin": {
+    "architect-ai": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "demo": "node --loader ts-node/esm examples/multi-provider-demo.ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "code-review",
+    "ai",
+    "gemini",
+    "gpt-4",
+    "claude",
+    "openai",
+    "anthropic",
+    "multi-provider",
+    "clean-code",
+    "audit",
+    "cli",
+    "linter",
+    "conventional-commits",
+    "local-review",
+    "commit-patterns"
+  ],
+  "author": "Nguyen Nhat Minh",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/peter-minhnn/architect-ai.git"
+  }
+}
