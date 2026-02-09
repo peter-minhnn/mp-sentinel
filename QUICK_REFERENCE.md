@@ -1,4 +1,4 @@
-# Quick Reference Card - MP Sentinel v1.0.0
+# Quick Reference Card - MP Sentinel v1.0.1
 
 ## 🚀 Installation
 
@@ -139,6 +139,6 @@ mp-sentinel --verbose
 
 ## 📦 Package Info
 
-- Version: 1.0.0
+- Version: 1.0.1
 - License: MIT
 - Node: >=18.0.0

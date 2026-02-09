@@ -3,7 +3,7 @@
 > **Welcome, Contributor!**  
 > Thank you for your interest in making MP Sentinel even better. This guide provides comprehensive best practices, clean code standards, and network efficiency guidelines for contributors.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.1.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.0.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue?style=flat-square)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat-square)](https://nodejs.org/)
 

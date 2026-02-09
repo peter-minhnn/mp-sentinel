@@ -2,7 +2,7 @@
 
 ## System Design
 
-MP Sentinel v1.0.0 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns.
+MP Sentinel v1.0.1 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns.
 
 ## Directory Structure
 
