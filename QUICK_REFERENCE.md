@@ -40,6 +40,10 @@ mp-sentinel --local
 # Review last 5 commits
 mp-sentinel -l -n 5
 
+# Branch diff mode
+mp-sentinel -l -d
+mp-sentinel -l -d --compare-branch develop
+
 # Specific files
 mp-sentinel src/file1.ts src/file2.ts
 
@@ -118,7 +122,13 @@ mp-sentinel --verbose
 {
   "techStack": "React 19, TypeScript",
   "rules": ["CRITICAL: No 'any' types", "STYLE: Use arrow functions"],
-  "maxConcurrency": 5
+  "maxConcurrency": 5,
+  "localReview": {
+    "enabled": true,
+    "branchDiffMode": true,
+    "compareBranch": "origin/main",
+    "filterByPattern": true
+  }
 }
 ```
 

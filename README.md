@@ -68,10 +68,15 @@ Run code reviews directly on your current branch without GitHub Actions or GitLa
 # Review last commit on current branch
 npx mp-sentinel --local
 
-# Review last 5 commits
-npx mp-sentinel --local --commits 5
+# Review last 10 commits on current branch
+npx mp-sentinel --local --commits 10
 # Or short form
-npx mp-sentinel -l -n 5
+npx mp-sentinel -l -n 10
+
+# Review all commits since branching (Branch Diff Mode)
+npx mp-sentinel --local --branch-diff
+# Compare against a specific branch
+npx mp-sentinel -l -d --compare-branch origin/develop
 
 # Verbose local review
 npx mp-sentinel --local --verbose
@@ -93,6 +98,8 @@ npx mp-sentinel --local --skip-commit
 | `--verbose`       | -         | Enable verbose logging                   | `false`       |
 | `--local`         | `-l`      | Enable local review mode                 | `false`       |
 | `--commits`       | `-n`      | Number of commits to review (local mode) | `1`           |
+| `--branch-diff`   | `-d`      | Review all commits since branching       | `false`       |
+| `--compare-branch`| -         | Branch to compare against (local mode)   | `origin/main` |
 
 ---
 
@@ -125,6 +132,8 @@ Create a `.sentinelrc.json` in your project root to customize rules and performa
   "bypassKeyword": "skip:",
   "localReview": {
     "enabled": true,
+    "branchDiffMode": true,
+    "compareBranch": "origin/main",
     "commitCount": 3,
     "commitPatterns": [
       {
@@ -136,14 +145,11 @@ Create a `.sentinelrc.json` in your project root to customize rules and performa
         "type": "fix",
         "pattern": "^fix(\\(.+\\))?:",
         "description": "Bug fix commits"
-      },
-      {
-        "type": "refactor",
-        "pattern": "^refactor(\\(.+\\))?:",
-        "description": "Refactoring"
       }
     ],
-    "filterByPattern": false,
+    "filterByPattern": true,
+    "patternMatchMode": "any",
+    "verbosePatternMatching": false,
     "skipPatterns": ["skip:", "wip:", "draft:"],
     "includeMergeCommits": false
   }
@@ -154,12 +160,16 @@ Create a `.sentinelrc.json` in your project root to customize rules and performa
 
 | Option                | Type    | Description                           | Default |
 | --------------------- | ------- | ------------------------------------- | ------- |
-| `enabled`             | boolean | Enable local review by default        | `false` |
-| `commitCount`         | number  | Default number of commits to review   | `1`     |
-| `commitPatterns`      | array   | Valid commit message patterns         | `[]`    |
-| `filterByPattern`     | boolean | Only review commits matching patterns | `false` |
-| `skipPatterns`        | array   | Skip commits with these prefixes      | `[]`    |
-| `includeMergeCommits` | boolean | Include merge commits                 | `false` |
+| `enabled`             | boolean | Enable local review by default           | `false`       |
+| `branchDiffMode`      | boolean | Scan all commits since branching         | `false`       |
+| `compareBranch`       | string  | Branch to compare against                | `origin/main` |
+| `commitCount`         | number  | Default number of commits to review      | `1`           |
+| `commitPatterns`      | array   | Valid commit message patterns            | `[]`          |
+| `filterByPattern`     | boolean | Only review commits matching patterns    | `false`       |
+| `patternMatchMode`    | string  | Match mode (`any` or `all`)             | `any`         |
+| `verbosePatternMatching`| boolean| Show detailed pattern matching info     | `false`       |
+| `skipPatterns`        | array   | Skip commits with these prefixes         | `[]`          |
+| `includeMergeCommits` | boolean | Include merge commits                    | `false`       |
 
 ### 🔑 Environment Variables
 

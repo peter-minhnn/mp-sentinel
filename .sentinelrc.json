@@ -1,0 +1,58 @@
+{
+  "techStack": "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)",
+  "rules": [
+    "CRITICAL: All internal imports MUST use the '.js' extension for ESM compatibility (as per CONTRIBUTING.md).",
+    "CRITICAL: Node.js built-in modules MUST use the 'node:' prefix (e.g., 'import { readFile } from \"node:fs/promises\"').",
+    "CRITICAL: AI providers MUST follow the Singleton/Strategy patterns to reuse connections and maintain modularity (see docs/ARCHITECTURE.md).",
+    "CRITICAL: All public functions and methods MUST have explicit return types. No implicit 'any'.",
+    "PERFORMANCE: Independent tasks (file reads, API requests) MUST use 'Promise.all' for parallel execution to ensure network efficiency.",
+    "PERFORMANCE: Network calls (fetch/API) MUST be preceded by validation checks to 'Fail Fast' and avoid redundant traffic (see docs/NETWORK_EFFICIENCY.md).",
+    "PERFORMANCE: Batch processing MUST implement configurable concurrency control (default: 5) to respect API rate limits.",
+    "CLEAN CODE: Use 'camelCase' for functions, 'SCREAMING_SNAKE_CASE' for constants, and 'PascalCase' for types/interfaces.",
+    "CLEAN CODE: Interfaces implemented as a Strategy (like AI providers) should use the 'I' prefix (e.g., 'IAIProvider').",
+    "CLEAN CODE: Error handling MUST use type guards (e.g., 'error instanceof Error') instead of casting to 'any'.",
+    "STYLE: Constants (like MAX_FILE_SIZE or prompts) MUST be extracted from logic blocks into named constants.",
+    "ARCHITECTURE: Public API exports MUST be kept in 'src/lib.ts' and separate from the CLI runner in 'src/index.ts'."
+  ],
+  "commitFormat": "<type>(<scope>): <subject>",
+  "bypassKeyword": "skip:",
+  "maxConcurrency": 5,
+  "localReview": {
+    "enabled": true,
+    "commitCount": 3,
+    "commitPatterns": [
+      {
+        "type": "feat",
+        "pattern": "^feat(\\(.+\\))?:",
+        "description": "New features matching conventional commits"
+      },
+      {
+        "type": "fix",
+        "pattern": "^fix(\\(.+\\))?:",
+        "description": "Bug fixes matching conventional commits"
+      },
+      {
+        "type": "perf",
+        "pattern": "^perf(\\(.+\\))?:",
+        "description": "Performance improvements (very important for this project)"
+      },
+      {
+        "type": "refactor",
+        "pattern": "^refactor(\\(.+\\))?:",
+        "description": "Code refactoring"
+      },
+      {
+        "type": "docs",
+        "pattern": "^docs(\\(.+\\))?:",
+        "description": "Documentation changes"
+      }
+    ],
+    "filterByPattern": false,
+    "skipPatterns": [
+      "skip:",
+      "wip:",
+      "draft:"
+    ],
+    "includeMergeCommits": false
+  }
+}

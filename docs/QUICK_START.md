@@ -45,6 +45,10 @@ mp-sentinel --local
 
 # Review last 5 commits
 mp-sentinel -l -n 5
+
+# Branch diff mode (Analyze all commits since branching)
+mp-sentinel -l -d
+mp-sentinel -l -d --compare-branch origin/develop
 ```
 
 ### CI/CD Pipeline
@@ -93,7 +97,9 @@ mp-sentinel [options] [files...]
 Options:
   -l, --local              Local review mode
   -n, --commits <number>   Number of commits to review
-  -b, --target-branch      Target branch for diff
+  -d, --branch-diff        Enable branch diff mode
+  --compare-branch <br>    Branch to compare against
+  -b, --target-branch      Target branch for diff in CI/CD mode
   -c, --concurrency        Max concurrent audits
   --skip-commit            Skip commit validation
   --verbose                Detailed logging

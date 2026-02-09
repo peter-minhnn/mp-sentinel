@@ -47,6 +47,10 @@ interface CLIValues {
   local: boolean;
   /** Number of recent commits to review in local mode (default: from config or 1) */
   commits: string;
+  /** Enable branch diff mode - get all commits that differ from compare-branch */
+  "branch-diff": boolean;
+  /** Target branch to compare against for branch-diff mode (default: origin/main) */
+  "compare-branch"?: string;
 }
 
 // CLI argument parsing
@@ -65,6 +69,9 @@ const parseCliArgs = (): { values: CLIValues; positionals: string[] } => {
         // Local review mode options
         local: { type: "boolean", short: "l", default: false },
         commits: { type: "string", short: "n", default: "1" },
+        // Branch diff mode options
+        "branch-diff": { type: "boolean", short: "d", default: false },
+        "compare-branch": { type: "string" },
       },
     });
     return { values: values as CLIValues, positionals };
@@ -79,6 +86,7 @@ const parseCliArgs = (): { values: CLIValues; positionals: string[] } => {
         verbose: false,
         local: false,
         commits: "1",
+        "branch-diff": false,
       },
       positionals: [],
     };
@@ -99,17 +107,19 @@ Local Review Mode:
   Configure via .sentinelrc.json for commit patterns.
 
 Options:
-  -h, --help           Show this help message
-  -v, --version        Show version number
-  --skip-commit        Skip commit message validation
-  --skip-files         Skip file auditing
-  -b, --target-branch  Target branch for diff (default: origin/main)
-  -c, --concurrency    Max concurrent file audits (default: 5)
-  --verbose            Enable verbose output
+  -h, --help             Show this help message
+  -v, --version          Show version number
+  --skip-commit          Skip commit message validation
+  --skip-files           Skip file auditing
+  -b, --target-branch    Target branch for diff (default: origin/main)
+  -c, --concurrency      Max concurrent file audits (default: 5)
+  --verbose              Enable verbose output
 
 Local Review Options:
-  -l, --local          Enable local review mode (review commits directly)
-  -n, --commits <N>    Number of recent commits to review (default: 1)
+  -l, --local            Enable local review mode (review commits directly)
+  -n, --commits <N>      Number of recent commits to review (default: 1)
+  -d, --branch-diff      Enable branch diff mode (get all commits since branching)
+  --compare-branch <BR>  Target branch to compare (default: origin/main)
 
 Examples:
   # CI/CD Mode (default)
@@ -123,16 +133,24 @@ Examples:
   npx mp-sentinel -l -n 5              # Review last 5 commits
   npx mp-sentinel --local --verbose    # Verbose local review
 
+  # Branch Diff Mode (compare against target branch)
+  npx mp-sentinel -l -d                # Review all commits since branching from origin/main
+  npx mp-sentinel -l -d --compare-branch origin/develop  # Compare against develop
+
 Configuration (.sentinelrc.json):
   {
     "localReview": {
       "enabled": true,
-      "commitCount": 3,
+      "commitCount": 10,
+      "branchDiffMode": true,
+      "compareBranch": "origin/main",
       "commitPatterns": [
-        { "type": "feat", "pattern": "^feat(\\\\(.+\\\\))?:" },
-        { "type": "fix", "pattern": "^fix(\\\\(.+\\\\))?:" }
+        { "type": "feat", "pattern": "^TICKET-\\\\d+", "description": "Feature commits" },
+        { "type": "fix", "pattern": "^fix/TICKET-\\\\d+", "description": "Fix commits" }
       ],
-      "skipPatterns": ["skip:", "wip:"]
+      "filterByPattern": true,
+      "patternMatchMode": "any",
+      "skipPatterns": ["skip:", "wip:", "draft:"]
     }
   }
 `);
@@ -238,6 +256,12 @@ const run = async () => {
   const isLocalMode = values.local || config.localReview?.enabled;
   const commitCount =
     parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
+  
+  // Branch diff mode settings (CLI override config)
+  const isBranchDiffMode = values["branch-diff"] || config.localReview?.branchDiffMode || false;
+  const compareBranch = values["compare-branch"] || config.localReview?.compareBranch || "origin/main";
+  const patternMatchMode = config.localReview?.patternMatchMode || "any";
+  const verbosePatternMatching = config.localReview?.verbosePatternMatching || values.verbose;
 
   if (values.verbose) {
     log.info(`Current branch: ${currentBranch}`);
@@ -245,7 +269,12 @@ const run = async () => {
     log.info(`Max concurrency: ${maxConcurrency}`);
     if (isLocalMode) {
       log.info(`Mode: Local Review`);
-      log.info(`Commits to review: ${commitCount}`);
+      if (isBranchDiffMode) {
+        log.info(`Branch Diff Mode: ON (comparing with ${compareBranch})`);
+      } else {
+        log.info(`Commits to review: ${commitCount}`);
+      }
+      log.info(`Pattern Match Mode: ${patternMatchMode}`);
     } else {
       log.info(`Mode: CI/CD (Git Diff)`);
     }
@@ -269,21 +298,37 @@ const run = async () => {
   // ============================================
   if (isLocalMode) {
     log.header("🔍 Local Review Mode");
-    log.info(
-      `Reviewing ${commitCount} recent commit(s) on branch: ${currentBranch}`,
-    );
+    
+    if (isBranchDiffMode) {
+      log.info(
+        `Comparing branch '${currentBranch}' against '${compareBranch}'`,
+      );
+    } else {
+      log.info(
+        `Reviewing ${commitCount} recent commit(s) on branch: ${currentBranch}`,
+      );
+    }
 
-    // Get recent commits
+    // Get recent commits (with branch diff mode support)
     const recentCommits = await getRecentCommits({
       count: commitCount,
       includeMergeCommits: config.localReview?.includeMergeCommits ?? false,
+      branchDiffMode: isBranchDiffMode,
+      compareBranch: compareBranch,
     });
 
     if (recentCommits.length === 0) {
-      log.warning("No commits found to review.");
+      if (isBranchDiffMode) {
+        log.success(`No commits differ from '${compareBranch}'.`);
+      } else {
+        log.warning("No commits found to review.");
+      }
       process.exitCode = 0;
       return;
     }
+
+    log.info(`Found ${recentCommits.length} commit(s) to analyze`);
+
 
     // Filter commits based on patterns if configured
     let commitsToReview: CommitInfo[] = recentCommits;
@@ -295,7 +340,7 @@ const run = async () => {
     if (skipPatterns.length > 0) {
       commitsToReview = commitsToReview.filter((commit) => {
         const shouldSkip = shouldSkipCommit(commit.message, skipPatterns);
-        if (shouldSkip && values.verbose) {
+        if (shouldSkip && verbosePatternMatching) {
           log.skip(
             `Skipping commit: ${commit.hash.slice(0, 7)} - "${commit.message}"`,
           );
@@ -306,27 +351,42 @@ const run = async () => {
 
     // Filter by commit patterns if enabled
     if (filterByPattern && commitPatterns.length > 0) {
+      if (verbosePatternMatching) {
+        log.info(`Filtering commits by pattern (mode: ${patternMatchMode})`);
+        log.info(`Available patterns: ${commitPatterns.map(p => p.type || p.pattern).join(", ")}`);
+      }
+      
       commitsToReview = commitsToReview.filter((commit) => {
-        const { matched, pattern } = matchCommitPattern(
+        const result = matchCommitPattern(
           commit.message,
           commitPatterns,
+          { mode: patternMatchMode }
         );
-        if (!matched && values.verbose) {
+        
+        if (!result.matched && verbosePatternMatching) {
           log.warning(
-            `Commit does not match any pattern: ${commit.hash.slice(0, 7)} - "${commit.message}"`,
+            `❌ No match: ${commit.hash.slice(0, 7)} - "${commit.message}"`,
+          );
+          if (result.unmatchedRequiredPatterns.length > 0) {
+            log.file(`   Missing required patterns: ${result.unmatchedRequiredPatterns.map(p => p.type).join(", ")}`);
+          }
+        }
+        if (result.matched && verbosePatternMatching) {
+          const matchedTypes = result.matchedPatterns.map(p => p.type || p.description || p.pattern).join(", ");
+          log.success(
+            `✓ Matched [${matchedTypes}]: ${commit.hash.slice(0, 7)}`,
           );
         }
-        if (matched && values.verbose) {
-          log.info(
-            `Commit matches pattern [${pattern?.type}]: ${commit.hash.slice(0, 7)}`,
-          );
-        }
-        return matched;
+        return result.matched;
       });
     }
 
     if (commitsToReview.length === 0) {
       log.success("No commits match the review criteria.");
+      if (values.verbose && filterByPattern) {
+        log.info(`Total commits scanned: ${recentCommits.length}`);
+        log.info(`Patterns configured: ${commitPatterns.length}`);
+      }
       process.exitCode = 0;
       return;
     }

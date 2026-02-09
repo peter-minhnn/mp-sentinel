@@ -34,6 +34,26 @@ export interface LocalReviewConfig {
   skipPatterns?: string[];
   /** Include merge commits in review */
   includeMergeCommits?: boolean;
+  /** 
+   * Enable branch diff mode - get commits that differ from target branch
+   * When enabled, ignores commitCount and gets all commits since branching from compareBranch
+   */
+  branchDiffMode?: boolean;
+  /** 
+   * Target branch to compare against (default: 'origin/main')
+   * Used when branchDiffMode is enabled
+   */
+  compareBranch?: string;
+  /**
+   * Match mode for patterns: 
+   * - 'any': Match if any pattern matches (default)
+   * - 'all': Match only if all required patterns match
+   */
+  patternMatchMode?: 'any' | 'all';
+  /**
+   * Show detailed pattern matching info in output
+   */
+  verbosePatternMatching?: boolean;
 }
 
 /**
@@ -104,5 +124,9 @@ export const DEFAULT_CONFIG: Required<Omit<ProjectConfig, 'gitProvider' | 'repoU
     filterByPattern: false,
     skipPatterns: [],
     includeMergeCommits: false,
+    branchDiffMode: false,
+    compareBranch: 'origin/main',
+    patternMatchMode: 'any',
+    verbosePatternMatching: false,
   },
 };

@@ -19,6 +19,10 @@ export interface GetRecentCommitsOptions {
   count?: number;
   includeMergeCommits?: boolean;
   extensions?: RegExp;
+  /** Enable branch diff mode - get commits that differ from compareBranch */
+  branchDiffMode?: boolean;
+  /** Target branch to compare against (default: 'origin/main') */
+  compareBranch?: string;
 }
 
 /**
@@ -36,19 +40,49 @@ export const getLastCommitMessage = async (): Promise<string> => {
 /**
  * Get recent commits with their details for local review mode
  * This allows reviewing multiple commits without CI/CD
+ * 
+ * Supports two modes:
+ * 1. Count mode (default): Get last N commits
+ * 2. Branch diff mode: Get all commits that differ from compareBranch
  */
 export const getRecentCommits = async (options: GetRecentCommitsOptions = {}): Promise<CommitInfo[]> => {
   const { 
     count = 1, 
     includeMergeCommits = false,
-    extensions = SUPPORTED_EXTENSIONS 
+    extensions = SUPPORTED_EXTENSIONS,
+    branchDiffMode = false,
+    compareBranch = 'origin/main'
   } = options;
 
   try {
-    // Get commit hashes with message, author, and date
     const noMergesFlag = includeMergeCommits ? '' : '--no-merges';
     const format = '%H|%s|%an|%ai';
-    const command = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
+    
+    let command: string;
+    
+    if (branchDiffMode) {
+      // Branch diff mode: get all commits since branching from compareBranch
+      // First, try to find the merge-base (common ancestor)
+      try {
+        const { stdout: mergeBase } = await execAsync(`git merge-base ${compareBranch} HEAD`);
+        const baseCommit = mergeBase.trim();
+        
+        if (baseCommit) {
+          // Get all commits from merge-base to HEAD
+          command = `git log ${baseCommit}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+        } else {
+          // Fallback to direct comparison
+          command = `git log ${compareBranch}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+        }
+      } catch {
+        // If merge-base fails, try direct comparison
+        command = `git log ${compareBranch}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+      }
+    } else {
+      // Count mode: get last N commits
+      command = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
+    }
+    
     const { stdout } = await execAsync(command);
     
     if (!stdout.trim()) {
@@ -98,24 +132,76 @@ export const getFilesInCommit = async (
 };
 
 /**
- * Check if a commit message matches any of the specified patterns
+ * Pattern match result with detailed matching info
+ */
+export interface PatternMatchResult {
+  matched: boolean;
+  pattern: CommitPattern | undefined;
+  matchedPatterns: CommitPattern[];
+  unmatchedRequiredPatterns: CommitPattern[];
+}
+
+/**
+ * Options for pattern matching
+ */
+export interface PatternMatchOptions {
+  /** Match mode: 'any' (default) - match if any pattern matches, 'all' - require all required patterns */
+  mode?: 'any' | 'all';
+}
+
+/**
+ * Check if a commit message matches the specified patterns
+ * 
+ * Supports two modes:
+ * - 'any' (default): Returns true if ANY pattern matches
+ * - 'all': Returns true only if ALL patterns marked as 'required' match
  */
 export const matchCommitPattern = (
   message: string, 
-  patterns: CommitPattern[]
-): { matched: boolean; pattern?: CommitPattern } => {
+  patterns: CommitPattern[],
+  options: PatternMatchOptions = {}
+): PatternMatchResult => {
+  const { mode = 'any' } = options;
+  
+  const matchedPatterns: CommitPattern[] = [];
+  const unmatchedRequiredPatterns: CommitPattern[] = [];
+  
   for (const p of patterns) {
     try {
       const regex = new RegExp(p.pattern, 'i');
       if (regex.test(message)) {
-        return { matched: true, pattern: p };
+        matchedPatterns.push(p);
+      } else if (p.required) {
+        unmatchedRequiredPatterns.push(p);
       }
     } catch {
       // Invalid regex, skip this pattern
       continue;
     }
   }
-  return { matched: false };
+  
+  if (mode === 'all') {
+    // In 'all' mode, all required patterns must match
+    const requiredPatterns = patterns.filter(p => p.required);
+    const allRequiredMatched = requiredPatterns.every(rp => 
+      matchedPatterns.some(mp => mp.pattern === rp.pattern)
+    );
+    
+    return {
+      matched: allRequiredMatched && matchedPatterns.length > 0,
+      pattern: matchedPatterns[0],
+      matchedPatterns,
+      unmatchedRequiredPatterns
+    };
+  }
+  
+  // In 'any' mode, just need one match
+  return {
+    matched: matchedPatterns.length > 0,
+    pattern: matchedPatterns[0],
+    matchedPatterns,
+    unmatchedRequiredPatterns
+  };
 };
 
 /**
