@@ -3,7 +3,12 @@
  * Demonstrates how to use different AI providers with MP Sentinel
  */
 
+import * as dotenv from 'dotenv';
 import { AIConfig, AIProviderFactory } from '../src/services/ai/index.js';
+
+// Load environment variables
+dotenv.config();
+
 
 async function demonstrateProviders() {
   console.log('🤖 MP Sentinel Multi-Provider Demo\n');
