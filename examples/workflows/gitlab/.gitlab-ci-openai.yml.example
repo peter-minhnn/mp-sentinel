@@ -20,7 +20,7 @@ code_audit:
     - echo "🔍 Starting AI Code Audit v1.2.0 with OpenAI GPT-4..."
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH == 'main'

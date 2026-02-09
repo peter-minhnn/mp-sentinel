@@ -1,5 +1,5 @@
 /**
- * Type definitions for architect-ai CLI
+ * Type definitions for mp-sentinel CLI
  */
 
 /**

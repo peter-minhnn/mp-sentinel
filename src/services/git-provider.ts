@@ -36,7 +36,7 @@ class GitHubProvider implements GitProvider {
         return;
     }
 
-    const body = `**Architect AI Audit Issue**\n\nSeverity: ${issue.severity}\nMessage: ${issue.message}\nSuggestion: ${issue.suggestion || 'None'}`;
+    const body = `**MP Sentinel Audit Issue**\n\nSeverity: ${issue.severity}\nMessage: ${issue.message}\nSuggestion: ${issue.suggestion || 'None'}`;
     
     try {
       const commitId = process.env.GITHUB_SHA;
@@ -48,7 +48,7 @@ class GitHubProvider implements GitProvider {
           'Authorization': `Bearer ${this.token}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json',
-          'User-Agent': 'architect-ai'
+          'User-Agent': 'mp-sentinel'
         },
         body: JSON.stringify({
             body,
@@ -99,7 +99,7 @@ class GitLabProvider implements GitProvider {
         return;
     }
 
-    const body = `**Architect AI Audit Issue**\n\nSeverity: ${issue.severity}\nMessage: ${issue.message}\nSuggestion: ${issue.suggestion || 'None'}`;
+    const body = `**MP Sentinel Audit Issue**\n\nSeverity: ${issue.severity}\nMessage: ${issue.message}\nSuggestion: ${issue.suggestion || 'None'}`;
     
     try {
         const url = `${this.serverUrl}/api/v4/projects/${this.projectId}/merge_requests/${this.mrIid}/discussions`;

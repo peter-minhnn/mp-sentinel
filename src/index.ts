@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Architect AI - CLI Entry Point
+ * MP Sentinel - CLI Entry Point
  * High-performance CLI for AI-powered code auditing
  *
  * Supports two modes:
  * 1. CI/CD Mode: Runs through GitHub Actions or GitLab CI/CD
- * 2. Local Review Mode: Runs directly on a branch checking commits via npx architect-ai
+ * 2. Local Review Mode: Runs directly on a branch checking commits via npx mp-sentinel
  */
 
 import * as dotenv from "dotenv";
@@ -87,16 +87,16 @@ const parseCliArgs = (): { values: CLIValues; positionals: string[] } => {
 
 const showHelp = () => {
   console.log(`
-🏗️  Architect AI - AI-powered Code Guardian
+🏗️  MP Sentinel - AI-powered Code Guardian
 
-Usage: architect-ai [options] [files...]
+Usage: mp-sentinel [options] [files...]
 
 CI/CD Mode (Default):
   Runs in CI/CD pipelines (GitHub Actions, GitLab CI) using git diff.
 
 Local Review Mode:
   Run directly on your branch using commit-based review.
-  Configure via .architectrc.json for commit patterns.
+  Configure via .sentinelrc.json for commit patterns.
 
 Options:
   -h, --help           Show this help message
@@ -113,17 +113,17 @@ Local Review Options:
 
 Examples:
   # CI/CD Mode (default)
-  architect-ai                          # Audit commit + changed files
-  architect-ai --skip-commit            # Audit only changed files
-  architect-ai src/file.ts              # Audit specific file(s)
-  architect-ai -b develop               # Diff against 'develop' branch
+  mp-sentinel                          # Audit commit + changed files
+  mp-sentinel --skip-commit            # Audit only changed files
+  mp-sentinel src/file.ts              # Audit specific file(s)
+  mp-sentinel -b develop               # Diff against 'develop' branch
 
   # Local Review Mode
-  npx architect-ai --local              # Review last commit on current branch
-  npx architect-ai -l -n 5              # Review last 5 commits
-  npx architect-ai --local --verbose    # Verbose local review
+  npx mp-sentinel --local              # Review last commit on current branch
+  npx mp-sentinel -l -n 5              # Review last 5 commits
+  npx mp-sentinel --local --verbose    # Verbose local review
 
-Configuration (.architectrc.json):
+Configuration (.sentinelrc.json):
   {
     "localReview": {
       "enabled": true,
@@ -222,7 +222,7 @@ const run = async () => {
     return;
   }
 
-  log.header("Architect AI - Code Audit");
+  log.header("MP Sentinel - Code Audit");
 
   // Load configuration
   const config: ProjectConfig = await loadProjectConfig();
@@ -439,7 +439,7 @@ const run = async () => {
     if (positionals[0] === "review") {
       log.warning("The 'review' argument is being treated as a file path.");
       log.file(
-        "Note: 'architect-ai review' is not a valid subcommand. Using default behavior.",
+        "Note: 'mp-sentinel review' is not a valid subcommand. Using default behavior.",
       );
     }
 

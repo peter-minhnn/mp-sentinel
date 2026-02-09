@@ -1,20 +1,20 @@
-# 🛡️ ArchitectAI: The AI-Powered Code Guardian
+# 🛡️ MP Sentinel: The AI-Powered Code Guardian
 
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.0.0-blue?style=flat-square)](https://www.npmjs.com/package/architect-ai)
-[![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/architect-ai)
-[![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/architect-ai)
+[![NPM Version](https://img.shields.io/badge/npm-v1.0.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
+[![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
 
 ---
 
-## 🚀 Why ArchitectAI?
+## 🚀 Why MP Sentinel?
 
 Traditional tools like **ESLint** or **Prettier** are great for syntax and formatting, but they miss the bigger picture. They can't tell you if your logic is flawed or if you're breaking the project's architecture.
 
-**ArchitectAI fills that gap.** v1.0.0 introduces multi-provider AI support with high-performance concurrent auditing.
+**MP Sentinel fills that gap.** v1.0.0 introduces multi-provider AI support with high-performance concurrent auditing.
 
 - 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, or Claude for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
@@ -28,15 +28,15 @@ Traditional tools like **ESLint** or **Prettier** are great for syntax and forma
 
 ```bash
 # Run once without installing
-npx architect-ai
+npx mp-sentinel
 
 # Or install globally
-npm install -g architect-ai
+npm install -g mp-sentinel
 
 # Or add as dev dependency (recommended)
-npm install -D architect-ai
-# pnpm add -D architect-ai
-# yarn add -D architect-ai
+npm install -D mp-sentinel
+# pnpm add -D mp-sentinel
+# yarn add -D mp-sentinel
 ```
 
 ## 🛠️ CLI Usage
@@ -45,19 +45,19 @@ npm install -D architect-ai
 
 ```bash
 # Default: Audit commit message + changed files
-architect-ai
+mp-sentinel
 
 # Audit only changed files (skip commit check)
-architect-ai --skip-commit
+mp-sentinel --skip-commit
 
 # Audit specific files
-architect-ai src/main.ts src/utils.ts
+mp-sentinel src/main.ts src/utils.ts
 
 # Set max concurrency (default: 5)
-architect-ai --concurrency 10
+mp-sentinel --concurrency 10
 
 # Diff against a specific branch
-architect-ai --target-branch develop
+mp-sentinel --target-branch develop
 ```
 
 ### 🔄 Local Review Mode
@@ -66,18 +66,18 @@ Run code reviews directly on your current branch without GitHub Actions or GitLa
 
 ```bash
 # Review last commit on current branch
-npx architect-ai --local
+npx mp-sentinel --local
 
 # Review last 5 commits
-npx architect-ai --local --commits 5
+npx mp-sentinel --local --commits 5
 # Or short form
-npx architect-ai -l -n 5
+npx mp-sentinel -l -n 5
 
 # Verbose local review
-npx architect-ai --local --verbose
+npx mp-sentinel --local --verbose
 
 # Skip commit message validation, only audit files
-npx architect-ai --local --skip-commit
+npx mp-sentinel --local --skip-commit
 ```
 
 ### Options Reference
@@ -96,9 +96,9 @@ npx architect-ai --local --skip-commit
 
 ---
 
-## ⚙️ Configuration (`.architectrc.json`)
+## ⚙️ Configuration (`.sentinelrc.json`)
 
-Create a `.architectrc.json` in your project root to customize rules and performance.
+Create a `.sentinelrc.json` in your project root to customize rules and performance.
 
 ### Basic Configuration
 
@@ -165,7 +165,7 @@ Create a `.architectrc.json` in your project root to customize rules and perform
 
 #### AI Provider Configuration
 
-ArchitectAI now supports multiple AI providers! Choose the one that fits your needs:
+MP Sentinel now supports multiple AI providers! Choose the one that fits your needs:
 
 ```bash
 # Choose your AI provider (default: gemini)
@@ -206,10 +206,10 @@ TARGET_BRANCH=origin/main
 
 ## 📚 Programmatic API
 
-ArchitectAI can be used as a library in your own Node.js scripts.
+MP Sentinel can be used as a library in your own Node.js scripts.
 
 ```typescript
-import { auditFilesWithConcurrency, loadProjectConfig } from "architect-ai";
+import { auditFilesWithConcurrency, loadProjectConfig } from "mp-sentinel";
 
 const config = await loadProjectConfig();
 const results = await auditFilesWithConcurrency(
@@ -222,7 +222,7 @@ const results = await auditFilesWithConcurrency(
 
 ## 🤖 CI/CD Integration
 
-ArchitectAI v1.0.0 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
+MP Sentinel v1.0.0 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
 
 ### Quick Setup
 
@@ -243,7 +243,7 @@ ArchitectAI v1.0.0 supports multiple AI providers in CI/CD pipelines. Choose the
 3. Create `.github/workflows/audit.yml`:
 
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -264,12 +264,12 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Run ArchitectAI
+      - name: Run MP Sentinel
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 </details>
@@ -284,7 +284,7 @@ jobs:
 3. Create `.github/workflows/audit.yml`:
 
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -305,14 +305,14 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Run ArchitectAI
+      - name: Run MP Sentinel
         env:
           AI_PROVIDER: openai
           AI_MODEL: gpt-4o # or gpt-4.1 for best coding
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 </details>
@@ -327,7 +327,7 @@ jobs:
 3. Create `.github/workflows/audit.yml`:
 
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -348,14 +348,14 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
-      - name: Run ArchitectAI
+      - name: Run MP Sentinel
         env:
           AI_PROVIDER: anthropic
           AI_MODEL: claude-sonnet-4.5 # or claude-opus-4
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 </details>
@@ -385,7 +385,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     GEMINI_API_KEY: $GEMINI_API_KEY
   rules:
@@ -417,7 +417,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
     AI_MODEL: gpt-4o
@@ -451,7 +451,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: anthropic
     AI_MODEL: claude-sonnet-4.5

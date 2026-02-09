@@ -1,9 +1,9 @@
-# Quick Reference Card - ArchitectAI v1.0.0
+# Quick Reference Card - MP Sentinel v1.0.0
 
 ## 🚀 Installation
 
 ```bash
-npm install -g architect-ai
+npm install -g mp-sentinel
 ```
 
 ## 🔑 Setup (Choose One)
@@ -32,22 +32,22 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ```bash
 # Basic audit
-architect-ai
+mp-sentinel
 
 # Local review
-architect-ai --local
+mp-sentinel --local
 
 # Review last 5 commits
-architect-ai -l -n 5
+mp-sentinel -l -n 5
 
 # Specific files
-architect-ai src/file1.ts src/file2.ts
+mp-sentinel src/file1.ts src/file2.ts
 
 # Custom concurrency
-architect-ai --concurrency 10
+mp-sentinel --concurrency 10
 
 # Verbose output
-architect-ai --verbose
+mp-sentinel --verbose
 ```
 
 ## 🎯 Model Selection
@@ -87,7 +87,7 @@ export $(cat .env | xargs)
 echo $AI_PROVIDER
 
 # Test with verbose
-architect-ai --verbose
+mp-sentinel --verbose
 ```
 
 ## 📚 Documentation
@@ -110,7 +110,7 @@ architect-ai --verbose
 2. Use GPT-4.1 for complex refactoring
 3. Use Claude Opus for autonomous tasks
 4. Set concurrency based on API limits
-5. Use `.architectrc.json` for custom rules
+5. Use `.sentinelrc.json` for custom rules
 
 ## 🎨 Example Config
 

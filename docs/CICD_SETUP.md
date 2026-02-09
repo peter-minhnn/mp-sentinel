@@ -1,6 +1,6 @@
 # CI/CD Setup Guide - Multi-Provider Support
 
-Complete guide for setting up ArchitectAI in your CI/CD pipeline with any AI provider.
+Complete guide for setting up MP Sentinel in your CI/CD pipeline with any AI provider.
 
 ## Quick Start
 
@@ -46,7 +46,7 @@ Complete guide for setting up ArchitectAI in your CI/CD pipeline with any AI pro
 
 **Workflow file** (`.github/workflows/audit.yml`):
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -72,7 +72,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 #### GitLab CI Setup
@@ -97,7 +97,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     GEMINI_API_KEY: $GEMINI_API_KEY
   rules:
@@ -113,7 +113,7 @@ code_audit:
 #### Get API Key
 1. Visit: https://platform.openai.com/api-keys
 2. Click "Create new secret key"
-3. Name it (e.g., "ArchitectAI")
+3. Name it (e.g., "MP Sentinel")
 4. Copy your API key (starts with `sk-`)
 
 #### GitHub Actions Setup
@@ -124,7 +124,7 @@ code_audit:
 
 **Workflow file** (`.github/workflows/audit.yml`):
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -152,7 +152,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 #### GitLab CI Setup
@@ -177,7 +177,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
     AI_MODEL: gpt-4o
@@ -195,7 +195,7 @@ code_audit:
 #### Get API Key
 1. Visit: https://console.anthropic.com/
 2. Click "API Keys" → "Create Key"
-3. Name it (e.g., "ArchitectAI")
+3. Name it (e.g., "MP Sentinel")
 4. Copy your API key (starts with `sk-ant-`)
 
 #### GitHub Actions Setup
@@ -206,7 +206,7 @@ code_audit:
 
 **Workflow file** (`.github/workflows/audit.yml`):
 ```yaml
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -234,7 +234,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 ```
 
 #### GitLab CI Setup
@@ -259,7 +259,7 @@ code_audit:
   script:
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx architect-ai --target-branch $TARGET_BRANCH
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: anthropic
     AI_MODEL: claude-sonnet-4.5
@@ -287,7 +287,7 @@ env:
 Control how many files are audited in parallel:
 
 ```yaml
-run: npx architect-ai --target-branch $TARGET_BRANCH --concurrency 10
+run: npx mp-sentinel --target-branch $TARGET_BRANCH --concurrency 10
 ```
 
 ### Multiple Providers (Hybrid Approach)
@@ -300,7 +300,7 @@ jobs:
     # Fast review with Gemini
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    run: npx architect-ai
+    run: npx mp-sentinel
   
   deep-audit:
     # Detailed review with GPT-4.1 (only on main branch)
@@ -309,7 +309,7 @@ jobs:
       AI_PROVIDER: openai
       AI_MODEL: gpt-4.1
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    run: npx architect-ai
+    run: npx mp-sentinel
 ```
 
 ---
@@ -372,7 +372,7 @@ jobs:
 
 **Solution:** Reduce concurrency
 ```yaml
-run: npx architect-ai --concurrency 3
+run: npx mp-sentinel --concurrency 3
 ```
 
 ### "Model not found"
@@ -448,4 +448,4 @@ We provide ready-to-use example files:
 - 📖 [Full Documentation](../README.md)
 - 🔧 [Provider Comparison](./PROVIDER_COMPARISON.md)
 - 🚀 [Quick Start](./QUICK_START.md)
-- 🐛 [Report Issues](https://github.com/peter-minhnn/architect-ai/issues)
+- 🐛 [Report Issues](https://github.com/peter-minhnn/mp-sentinel/issues)

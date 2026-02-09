@@ -21,7 +21,7 @@ export default defineConfig({
   },
   esbuildOptions(options) {
     options.banner = {
-      js: '// Architect AI - CLI\n',
+      js: '// MP Sentinel - CLI\n',
     };
   },
   onSuccess: async () => {

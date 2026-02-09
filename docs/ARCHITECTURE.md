@@ -2,12 +2,12 @@
 
 ## System Design
 
-ArchitectAI v1.0.0 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns.
+MP Sentinel v1.0.0 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns.
 
 ## Directory Structure
 
 ```
-architect-ai/
+mp-sentinel/
 ├── src/
 │   ├── services/
 │   │   ├── ai/                    # Multi-provider AI service

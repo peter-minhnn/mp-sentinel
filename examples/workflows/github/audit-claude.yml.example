@@ -1,4 +1,4 @@
-name: ArchitectAI Code Guard (Anthropic Claude)
+name: MP Sentinel Code Guard (Anthropic Claude)
 on:
   pull_request:
     types: [opened, synchronize]
@@ -43,7 +43,7 @@ jobs:
           # GitHub integration
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
 
 # Setup Instructions:
 # 1. Get Anthropic API key: https://console.anthropic.com/

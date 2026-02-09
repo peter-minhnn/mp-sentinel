@@ -1,12 +1,12 @@
 /**
  * Multi-Provider Demo
- * Demonstrates how to use different AI providers with ArchitectAI
+ * Demonstrates how to use different AI providers with MP Sentinel
  */
 
 import { AIConfig, AIProviderFactory } from '../src/services/ai/index.js';
 
 async function demonstrateProviders() {
-  console.log('🤖 ArchitectAI Multi-Provider Demo\n');
+  console.log('🤖 MP Sentinel Multi-Provider Demo\n');
 
   // Show current configuration
   try {

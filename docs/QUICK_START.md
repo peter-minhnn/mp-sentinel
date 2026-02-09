@@ -4,9 +4,9 @@
 
 ### Step 1: Install
 ```bash
-npm install -g architect-ai
+npm install -g mp-sentinel
 # or
-npm install -D architect-ai
+npm install -D mp-sentinel
 ```
 
 ### Step 2: Choose Your AI Provider
@@ -33,7 +33,7 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
 
 ### Step 3: Run
 ```bash
-architect-ai
+mp-sentinel
 ```
 
 ## 🎯 Common Use Cases
@@ -41,10 +41,10 @@ architect-ai
 ### Local Development
 ```bash
 # Review last commit
-architect-ai --local
+mp-sentinel --local
 
 # Review last 5 commits
-architect-ai -l -n 5
+mp-sentinel -l -n 5
 ```
 
 ### CI/CD Pipeline
@@ -53,12 +53,12 @@ architect-ai -l -n 5
 - name: Code Review
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  run: npx architect-ai
+  run: npx mp-sentinel
 ```
 
 ### Custom Rules
 ```json
-// .architectrc.json
+// .sentinelrc.json
 {
   "techStack": "React 19, TypeScript",
   "rules": [
@@ -88,7 +88,7 @@ architect-ai -l -n 5
 
 ### CLI Flags
 ```bash
-architect-ai [options] [files...]
+mp-sentinel [options] [files...]
 
 Options:
   -l, --local              Local review mode
@@ -123,13 +123,13 @@ export $(cat .env | xargs)
 ### "Rate limit exceeded"
 ```bash
 # Reduce concurrency
-architect-ai --concurrency 3
+mp-sentinel --concurrency 3
 ```
 
 ### "Model not found"
 ```bash
 # Check available models
-AI_PROVIDER=openai architect-ai --help
+AI_PROVIDER=openai mp-sentinel --help
 
 # Use default model
 unset AI_MODEL

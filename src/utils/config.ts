@@ -18,7 +18,7 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
     return cachedConfig;
   }
 
-  const configPath = resolve(cwd, '.architectrc.json');
+  const configPath = resolve(cwd, '.sentinelrc.json');
   
   if (!existsSync(configPath)) {
     cachedConfig = { ...DEFAULT_CONFIG };
@@ -35,10 +35,10 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
       ...userConfig,
     };
     
-    console.log('⚙️  Loaded project-specific rules from .architectrc.json');
+    console.log('⚙️  Loaded project-specific rules from .sentinelrc.json');
     return cachedConfig;
   } catch (error) {
-    console.warn('⚠️  Found .architectrc.json but failed to parse it.');
+    console.warn('⚠️  Found .sentinelrc.json but failed to parse it.');
     cachedConfig = { ...DEFAULT_CONFIG };
     return cachedConfig;
   }

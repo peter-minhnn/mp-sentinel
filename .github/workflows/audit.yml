@@ -1,4 +1,4 @@
-name: ArchitectAI Code Guard
+name: MP Sentinel Code Guard
 on:
   pull_request:
     types: [opened, synchronize]
@@ -50,4 +50,4 @@ jobs:
           # GitHub integration
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx architect-ai --target-branch $TARGET_BRANCH
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
