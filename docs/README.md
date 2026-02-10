@@ -486,6 +486,53 @@ Simply copy, rename (remove `.example`), and configure your API key!
 
 ---
 
+## 🎯 Skills.sh Integration
+
+MP Sentinel integrates with [skills.sh](https://skills.sh/) to automatically enhance code review prompts based on your project's technology stack.
+
+### How It Works
+
+1. **Parse TechStack**: Extracts technologies from your `.sentinelrc.json`
+2. **Fetch Skills**: Retrieves relevant best practices from skills.sh API
+3. **Enhance Prompts**: Integrates skills into AI review prompts
+4. **Fail Gracefully**: If skills.sh is unavailable, continues with default prompts (no retry)
+
+### Configuration
+
+```json
+{
+  "techStack": "TypeScript 5.7, Node.js 18, React 18, PostgreSQL 15",
+  "enableSkillsFetch": true,
+  "skillsFetchTimeout": 3000
+}
+```
+
+### Features
+
+- ✅ **Automatic Technology Detection**: Parses techStack string intelligently
+- ✅ **Smart Caching**: 1-hour in-memory cache to minimize API calls
+- ✅ **Fail-Fast Pattern**: 3-second timeout, no retries
+- ✅ **Zero Downtime**: Never fails your CI/CD if skills.sh is down
+- ✅ **Parallel Processing**: Fetches skills while reading files
+
+### Example Output
+
+```
+### TECHNOLOGY-SPECIFIC BEST PRACTICES (from skills.sh)
+
+#### TYPESCRIPT
+- **Type Safety**: Always use explicit types, avoid 'any'
+- **Strict Mode**: Enable strict mode in tsconfig.json
+
+#### NODEJS
+- **Error Handling**: Use try-catch for async operations
+- **Performance**: Use streams for large file operations
+```
+
+For detailed documentation, see [Skills Integration Guide](./SKILLS_INTEGRATION.md).
+
+---
+
 ## 🛡️ Security & Data Privacy
 
 Security is the top priority in MP Sentinel. We implement 3 layers of protection to ensure your sensitive data never leaves your machine.

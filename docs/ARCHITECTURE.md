@@ -2,40 +2,75 @@
 
 ## System Design
 
-MP Sentinel v1.0.1 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns.
+MP Sentinel v1.1.0 implements a **multi-provider AI architecture** following clean code principles and SOLID design patterns. The codebase is structured for maximum modularity — no source file exceeds 350 lines.
 
 ## Directory Structure
 
 ```
 mp-sentinel/
 ├── src/
+│   ├── cli/                         # CLI layer (split for maintainability)
+│   │   ├── args.ts                  # Argument parsing & validation
+│   │   ├── help.ts                  # Help & version display
+│   │   ├── summary.ts              # Audit results formatting
+│   │   ├── local-review.ts         # Local review mode logic
+│   │   └── cicd-review.ts          # CI/CD review mode logic
 │   ├── services/
-│   │   ├── ai/                    # Multi-provider AI service
-│   │   ├── ai.ts                 # Legacy exports (backward compat)
-│   │   ├── file.ts               # File operations
-│   │   ├── file-handler.ts       # Smart file filtering (Layer 1)
-│   │   ├── security.service.ts   # Secret scrubbing & transparency (Layer 2 & 3)
-│   │   └── git-provider.ts       # Git integration
+│   │   ├── ai/                      # Multi-provider AI service
+│   │   │   ├── index.ts             # Core AI audit orchestration
+│   │   │   ├── config.ts            # AI provider configuration
+│   │   │   ├── factory.ts           # Provider factory (Strategy pattern)
+│   │   │   ├── types.ts             # AI provider interfaces
+│   │   │   ├── README.md            # AI service documentation
+│   │   │   └── providers/
+│   │   │       ├── gemini.provider.ts
+│   │   │       ├── openai.provider.ts
+│   │   │       └── anthropic.provider.ts
+│   │   ├── security/                # Security service (split)
+│   │   │   ├── index.ts             # SecurityService class (Layer 2 & 3)
+│   │   │   └── patterns.ts          # Secret patterns & types
+│   │   ├── file-handler/            # File filtering service (split)
+│   │   │   ├── index.ts             # FileHandler class (Layer 1)
+│   │   │   └── constants.ts         # Extensions, blocked patterns
+│   │   ├── ai.ts                    # Legacy AI re-exports
+│   │   ├── file.ts                  # File read operations
+│   │   ├── file-handler.ts          # Legacy file-handler re-exports
+│   │   ├── security.service.ts      # Legacy security re-exports
+│   │   ├── git-provider.ts          # GitHub/GitLab integration
+│   │   └── skills-fetcher.ts        # skills.sh API integration
 │   ├── config/
-│   │   └── prompts.ts            # AI prompt templates
+│   │   └── prompts.ts               # AI prompt templates
 │   ├── utils/
-│   │   ├── config.ts             # Project configuration
-│   │   ├── git.ts                # Git utilities
-│   │   ├── logger.ts             # Logging
-│   │   └── parser.ts             # Response parsing
+│   │   ├── config.ts                # Project configuration loader
+│   │   ├── git.ts                   # Git utilities
+│   │   ├── logger.ts                # Console output & formatting
+│   │   └── parser.ts                # AI response parsing
 │   ├── types/
-│   │   └── index.ts              # Type definitions
-│   ├── index.ts                  # CLI entry point
-│   └── lib.ts                    # Public API
-├── docs/
-│   ├── QUICK_START.md            # Quick start guide
-│   └── ARCHITECTURE.md           # This file
+│   │   └── index.ts                 # Type definitions
+│   ├── index.ts                     # CLI entry point (thin orchestrator)
+│   └── lib.ts                       # Public API barrel
+├── docs/                            # Documentation
+│   ├── ARCHITECTURE.md              # This file
+│   ├── CHANGELOG.md                 # Version history
+│   ├── CICD_SETUP.md                # CI/CD pipeline setup
+│   ├── CODE_STYLE.md                # Code style guide
+│   ├── CONTRIBUTING.md              # Contributing guidelines
+│   ├── MIGRATION_1.1.0.md           # v1.1.0 migration guide
+│   ├── NETWORK_EFFICIENCY.md        # Network optimization details
+│   ├── PROVIDER_COMPARISON.md       # AI provider comparison
+│   ├── QUICK_REFERENCE.md           # Quick reference card
+│   ├── QUICK_START.md               # Getting started guide
+│   ├── README.md                    # Main documentation
+│   ├── SKILLS_INTEGRATION.md        # skills.sh integration guide
+│   └── SKILLS_QUICK_START.md        # skills.sh quick start
 ├── examples/
-│   └── multi-provider-demo.ts    # Usage examples
-├── .env.example                  # Environment template
-├── MIGRATION.md                  # Upgrade guide
-├── CHANGELOG.md                  # Version history
-└── README.md                     # Main documentation
+│   ├── multi-provider-demo.ts       # Multi-provider usage
+│   ├── security-demo.ts             # Security features demo
+│   ├── skills-demo.ts               # skills.sh demo
+│   └── workflows/                   # CI/CD workflow examples
+├── .sentinelrc.example.json         # Example configuration
+├── .env.example                     # Environment template
+└── README.md                        # Root documentation index
 ```
 
 ## Design Patterns
@@ -67,23 +102,16 @@ let providerInstance: IAIProvider | null = null;
 
 const getProvider = (): IAIProvider => {
   if (providerInstance) return providerInstance;
-  // Initialize once
   providerInstance = AIProviderFactory.createProvider(config);
   return providerInstance;
 };
 ```
 
-**Benefits:**
-
-- Efficient resource usage
-- Consistent configuration
-- Easy to clear for testing
-
 ### 3. Strategy Pattern
 
 **Location:** `src/services/ai/providers/`
 
-Different AI providers implement same interface:
+Different AI providers implement the same interface:
 
 ```typescript
 interface IAIProvider {
@@ -92,47 +120,45 @@ interface IAIProvider {
 }
 ```
 
-**Benefits:**
+### 4. Modular CLI Architecture
 
-- Interchangeable providers
-- Consistent API
-- Easy testing with mocks
+**Location:** `src/cli/`
 
-### 4. Dependency Injection
+The CLI entry point (`index.ts`) is a thin ~130-line orchestrator that delegates to focused modules:
 
-**Location:** Throughout codebase
-
-Configuration injected via environment:
-
-```typescript
-const config = AIConfig.fromEnvironment();
-const provider = AIProviderFactory.createProvider(config);
-```
-
-**Benefits:**
-
-- Testable code
-- Flexible configuration
-- No hard dependencies
+| Module            | Responsibility                 |
+| ----------------- | ------------------------------ |
+| `args.ts`         | Parse & validate CLI arguments |
+| `help.ts`         | Display help text & version    |
+| `summary.ts`      | Format & print audit results   |
+| `local-review.ts` | Local branch review mode       |
+| `cicd-review.ts`  | CI/CD pipeline review mode     |
 
 ## Data Flow
 
 ```
 ┌─────────────┐
-│   CLI       │
+│   CLI       │   ← Thin orchestrator (src/index.ts)
 │  (index.ts) │
 └──────┬──────┘
        │
-       ▼
+       ├──────────────────┐
+       ▼                  ▼
+┌──────────────┐  ┌──────────────┐
+│ Local Review │  │ CI/CD Review │
+│ (cli/)       │  │ (cli/)       │
+└──────┬───────┘  └──────┬───────┘
+       │                 │
+       ▼                 ▼
 ┌─────────────────┐
 │  File Handler   │ ◄── Layer 1: Filtering
-│ (file-handler)  │
+│ (file-handler/) │
 └──────┬──────────┘
        │
        ▼
 ┌─────────────────┐
 │ Security Service│ ◄── Layer 2: Redaction
-│ (security.ts)   │
+│ (security/)     │
 └──────┬──────────┘
        │
        ▼
@@ -141,11 +167,7 @@ const provider = AIProviderFactory.createProvider(config);
 │  (ai/index.ts)  │
 └──────┬──────────┘
        │
-       ▼
-┌─────────────────┐
-│  AI Config      │
-│  (ai/config.ts) │
-└──────┬──────────┘
+       ├── Skills Fetcher (skills.sh integration)
        │
        ▼
 ┌─────────────────┐
@@ -172,217 +194,113 @@ const provider = AIProviderFactory.createProvider(config);
 
 ## Component Responsibilities
 
+### CLI Layer (`src/cli/`)
+
+- **Purpose:** User interface and mode orchestration
+- **Responsibilities:**
+  - Parse CLI arguments and validate options
+  - Display help, version, and audit summaries
+  - Orchestrate local review vs CI/CD review flows
+  - Handle commit filtering and pattern matching
+
 ### AI Service (`src/services/ai/`)
 
 - **Purpose:** Unified interface for code auditing
 - **Responsibilities:**
-  - Manage provider lifecycle
-  - Handle concurrent file auditing
-  - Parse AI responses
-  - Error handling and fallbacks
+  - Manage provider lifecycle (singleton)
+  - Handle concurrent file auditing with batching
+  - Parse AI responses into structured results
+  - Error handling and graceful fallbacks
 
-### AI Config (`src/services/ai/config.ts`)
+### Skills Fetcher (`src/services/skills-fetcher.ts`)
 
-- **Purpose:** Configuration management
+- **Purpose:** Technology-specific best practices integration
 - **Responsibilities:**
-  - Read environment variables
-  - Validate configuration
-  - Provide defaults
-  - Map provider to API keys
+  - Parse techStack configuration
+  - Fetch skills from skills.sh API (fail-fast, 3s timeout)
+  - Cache results (1-hour TTL)
+  - Build prompt sections from fetched skills
 
-### AI Factory (`src/services/ai/factory.ts`)
-
-- **Purpose:** Provider instantiation
-- **Responsibilities:**
-  - Create provider instances
-  - Provide default models
-  - List recommended models
-  - Validate provider types
-
-### Providers (`src/services/ai/providers/`)
-
-- **Purpose:** AI API integration
-- **Responsibilities:**
-  - Implement IAIProvider interface
-  - Handle API-specific requests
-  - Format prompts correctly
-  - Parse responses
-
-### File Handler (`src/services/file-handler.ts`)
+### File Handler (`src/services/file-handler/`)
 
 - **Purpose:** Smart source code filtering (Layer 1)
 - **Responsibilities:**
-  - Traverse project tree effectively
+  - Traverse project tree with fast-glob
   - Respect `.gitignore` and `.archignore` rules
-  - Apply extension allowlist
-  - Block sensitive files (.env, keys)
+  - Apply extension allowlist (~50 extensions)
+  - Block sensitive files (.env, keys, locks)
 
-### Security Service (`src/services/security.service.ts`)
+### Security Service (`src/services/security/`)
 
 - **Purpose:** Content sanitization & Transparency (Layer 2 & 3)
 - **Responsibilities:**
-  - Redact secrets via multi-pattern Regex
+  - Redact secrets via 18+ multi-pattern regex rules
   - Detect suspicious keywords
   - Generate payload summary for dry-runs
+  - Singleton pattern for efficient reuse
+
+### Git Provider (`src/services/git-provider.ts`)
+
+- **Purpose:** Post review comments to GitHub/GitLab
+- **Responsibilities:**
+  - Detect CI/CD environment (Actions/GitLab CI)
+  - Post inline PR/MR comments for issues
 
 ## SOLID Principles Applied
 
-### Single Responsibility Principle (SRP)
-
-- Each provider handles only its own API
-- Config class only manages configuration
-- Factory only creates providers
-
-### Open/Closed Principle (OCP)
-
-- Open for extension (add new providers)
-- Closed for modification (existing code unchanged)
-
-### Liskov Substitution Principle (LSP)
-
-- All providers implement IAIProvider
-- Can substitute any provider without breaking code
-
-### Interface Segregation Principle (ISP)
-
-- IAIProvider has minimal interface
-- Providers only implement what they need
-
-### Dependency Inversion Principle (DIP)
-
-- Depend on IAIProvider interface, not concrete classes
-- High-level modules don't depend on low-level modules
-
-## Testing Strategy
-
-### Unit Tests
-
-```typescript
-// Mock provider for testing
-class MockProvider implements IAIProvider {
-  async generateContent() {
-    return '{"status":"PASS"}';
-  }
-  isAvailable() {
-    return true;
-  }
-}
-
-// Test with mock
-const provider = new MockProvider();
-const result = await auditFile(path, content, prompt);
-```
-
-### Integration Tests
-
-```typescript
-// Test with real provider
-process.env.AI_PROVIDER = "gemini";
-process.env.GEMINI_API_KEY = "test-key";
-
-const config = AIConfig.fromEnvironment();
-const provider = AIProviderFactory.createProvider(config);
-```
+| Principle | Implementation                                                    |
+| --------- | ----------------------------------------------------------------- |
+| **SRP**   | Each file has a single responsibility (args, help, summary, etc.) |
+| **OCP**   | New AI providers added without modifying existing code            |
+| **LSP**   | All providers implement `IAIProvider` interchangeably             |
+| **ISP**   | `IAIProvider` has minimal 2-method interface                      |
+| **DIP**   | Depends on `IAIProvider` interface, not concrete classes          |
 
 ## Performance Considerations
 
 ### Concurrency Control
 
 ```typescript
-// Process files in batches
+// Process files in batches with Promise.allSettled
 for (let i = 0; i < files.length; i += maxConcurrency) {
   const batch = files.slice(i, i + maxConcurrency);
-  const results = await Promise.all(batch.map(auditFile));
+  const results = await Promise.allSettled(batch.map(auditFile));
 }
 ```
 
-### Singleton Pattern
+### Key Optimizations
 
-- Single provider instance reduces initialization overhead
-- Reuses HTTP connections
+- **Singleton AI provider** — reduces initialization overhead
+- **Promise.allSettled** — parallel file processing, no blocking on errors
+- **In-memory skills cache** — 1-hour TTL avoids repeated API calls
+- **Fail-fast skills fetch** — 3s timeout prevents pipeline hanging
+- **Lazy git provider loading** — only imported when needed in CI/CD
 
-### Streaming (Future Enhancement)
+## Security Layers
 
-- Support streaming responses for large files
-- Real-time feedback during auditing
-
-## Security Considerations
-
-1. **API Key Management**
-   - Never commit API keys
-   - Use environment variables
-   - Validate keys before use
-
-2. **Input Validation & Filtering**
-   - **Layer 1:** Use `FileHandler` to filter out non-code files and sensitive manifests.
-   - **Layer 2:** Use `SecurityService` to redact secrets (AWS, GCP, tokens) from code before transmission.
-   - **Layer 3:** Generate a **Payload Summary** for user verification (Transparency).
-   - Validate file paths and limit file sizes.
-
-3. **Error Handling**
-   - Don't expose API keys in errors
-   - Graceful degradation
-   - Proper logging
+| Layer       | Module            | Purpose                                 |
+| ----------- | ----------------- | --------------------------------------- |
+| **Layer 1** | `FileHandler`     | Filter out non-code and sensitive files |
+| **Layer 2** | `SecurityService` | Redact secrets from code content        |
+| **Layer 3** | `SecurityService` | Payload transparency summary            |
 
 ## Extensibility
 
-### Adding a New Provider
+### Adding a New AI Provider
 
-1. Create provider class:
+1. Create provider: `src/services/ai/providers/newai.provider.ts`
+2. Update types: Add to `AIProvider` union in `types.ts`
+3. Register in factory: Add case in `factory.ts`
+4. Update config: Add API key mapping in `config.ts`
 
-```typescript
-// src/services/ai/providers/newai.provider.ts
-export class NewAIProvider implements IAIProvider {
-  async generateContent(system: string, user: string): Promise<string> {
-    // Implementation
-  }
-  isAvailable(): boolean {
-    return !!this.apiKey;
-  }
-}
-```
+### Adding New Secret Patterns
 
-2. Update types:
+Add to `DEFAULT_SECRET_PATTERNS` in `src/services/security/patterns.ts`, or pass custom patterns to the `SecurityService` constructor.
 
-```typescript
-// src/services/ai/types.ts
-export type AIProvider = "gemini" | "openai" | "anthropic" | "newai";
-```
+## Code Quality Standards
 
-3. Register in factory:
-
-```typescript
-// src/services/ai/factory.ts
-case 'newai':
-  return new NewAIProvider(config);
-```
-
-4. Update config:
-
-```typescript
-// src/services/ai/config.ts
-case 'newai':
-  return process.env.NEWAI_API_KEY;
-```
-
-## Future Enhancements
-
-1. **Caching Layer**
-   - Cache AI responses for identical code
-   - Reduce API costs
-
-2. **Streaming Support**
-   - Real-time feedback
-   - Better UX for large files
-
-3. **Custom Providers**
-   - Allow users to add custom providers
-   - Plugin system
-
-4. **Model Fine-tuning**
-   - Project-specific model training
-   - Improved accuracy
-
-5. **Multi-model Consensus**
-   - Query multiple providers
-   - Aggregate results for higher confidence
+- **Max file length:** 350 lines (enforced by refactoring)
+- **Console output:** All output through `log` utility (no raw `console.log`)
+- **Error handling:** Graceful degradation, never crash the pipeline
+- **TypeScript:** Strict mode with `noUncheckedIndexedAccess`
+- **Imports:** ESM with `.js` extensions, `node:` prefix for built-ins

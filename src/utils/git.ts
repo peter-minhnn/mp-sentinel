@@ -2,13 +2,15 @@
  * Git utilities with async support and better error handling
  */
 
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import type { CommitInfo, CommitPattern } from '../types/index.js';
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import type { CommitInfo, CommitPattern } from "../types/index.js";
+import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
 
-const SUPPORTED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|go|java|rs|kt|swift)$/;
+const SUPPORTED_EXTENSIONS =
+  /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|go|java|rs|kt|swift)$/;
 
 export interface GitDiffOptions {
   targetBranch?: string;
@@ -30,43 +32,47 @@ export interface GetRecentCommitsOptions {
  */
 export const getLastCommitMessage = async (): Promise<string> => {
   try {
-    const { stdout } = await execAsync('git log -1 --pretty=%B');
+    const { stdout } = await execAsync("git log -1 --pretty=%B");
     return stdout.trim();
   } catch {
-    return '';
+    return "";
   }
 };
 
 /**
  * Get recent commits with their details for local review mode
  * This allows reviewing multiple commits without CI/CD
- * 
+ *
  * Supports two modes:
  * 1. Count mode (default): Get last N commits
  * 2. Branch diff mode: Get all commits that differ from compareBranch
  */
-export const getRecentCommits = async (options: GetRecentCommitsOptions = {}): Promise<CommitInfo[]> => {
-  const { 
-    count = 1, 
+export const getRecentCommits = async (
+  options: GetRecentCommitsOptions = {},
+): Promise<CommitInfo[]> => {
+  const {
+    count = 1,
     includeMergeCommits = false,
     extensions = SUPPORTED_EXTENSIONS,
     branchDiffMode = false,
-    compareBranch = 'origin/main'
+    compareBranch = "origin/main",
   } = options;
 
   try {
-    const noMergesFlag = includeMergeCommits ? '' : '--no-merges';
-    const format = '%H|%s|%an|%ai';
-    
+    const noMergesFlag = includeMergeCommits ? "" : "--no-merges";
+    const format = "%H|%s|%an|%ai";
+
     let command: string;
-    
+
     if (branchDiffMode) {
       // Branch diff mode: get all commits since branching from compareBranch
       // First, try to find the merge-base (common ancestor)
       try {
-        const { stdout: mergeBase } = await execAsync(`git merge-base ${compareBranch} HEAD`);
+        const { stdout: mergeBase } = await execAsync(
+          `git merge-base ${compareBranch} HEAD`,
+        );
         const baseCommit = mergeBase.trim();
-        
+
         if (baseCommit) {
           // Get all commits from merge-base to HEAD
           command = `git log ${baseCommit}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
@@ -82,35 +88,35 @@ export const getRecentCommits = async (options: GetRecentCommitsOptions = {}): P
       // Count mode: get last N commits
       command = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
     }
-    
+
     const { stdout } = await execAsync(command);
-    
+
     if (!stdout.trim()) {
       return [];
     }
 
-    const commitLines = stdout.trim().split('\n');
+    const commitLines = stdout.trim().split("\n");
     const commits: CommitInfo[] = [];
 
     for (const line of commitLines) {
-      const [hash, message, author, date] = line.split('|');
+      const [hash, message, author, date] = line.split("|");
       if (!hash) continue;
 
       // Get files changed in this commit
       const files = await getFilesInCommit(hash, extensions);
-      
+
       commits.push({
         hash: hash.trim(),
-        message: message?.trim() || '',
-        author: author?.trim() || '',
-        date: date?.trim() || '',
+        message: message?.trim() || "",
+        author: author?.trim() || "",
+        date: date?.trim() || "",
         files,
       });
     }
 
     return commits;
   } catch {
-    console.warn('⚠️  Failed to get recent commits.');
+    log.warning("Failed to get recent commits.");
     return [];
   }
 };
@@ -119,8 +125,8 @@ export const getRecentCommits = async (options: GetRecentCommitsOptions = {}): P
  * Get list of files changed in a specific commit
  */
 export const getFilesInCommit = async (
-  commitHash: string, 
-  extensions: RegExp = SUPPORTED_EXTENSIONS
+  commitHash: string,
+  extensions: RegExp = SUPPORTED_EXTENSIONS,
 ): Promise<string[]> => {
   try {
     const command = `git diff-tree --no-commit-id --name-only -r ${commitHash}`;
@@ -146,29 +152,29 @@ export interface PatternMatchResult {
  */
 export interface PatternMatchOptions {
   /** Match mode: 'any' (default) - match if any pattern matches, 'all' - require all required patterns */
-  mode?: 'any' | 'all';
+  mode?: "any" | "all";
 }
 
 /**
  * Check if a commit message matches the specified patterns
- * 
+ *
  * Supports two modes:
  * - 'any' (default): Returns true if ANY pattern matches
  * - 'all': Returns true only if ALL patterns marked as 'required' match
  */
 export const matchCommitPattern = (
-  message: string, 
+  message: string,
   patterns: CommitPattern[],
-  options: PatternMatchOptions = {}
+  options: PatternMatchOptions = {},
 ): PatternMatchResult => {
-  const { mode = 'any' } = options;
-  
+  const { mode = "any" } = options;
+
   const matchedPatterns: CommitPattern[] = [];
   const unmatchedRequiredPatterns: CommitPattern[] = [];
-  
+
   for (const p of patterns) {
     try {
-      const regex = new RegExp(p.pattern, 'i');
+      const regex = new RegExp(p.pattern, "i");
       if (regex.test(message)) {
         matchedPatterns.push(p);
       } else if (p.required) {
@@ -179,28 +185,28 @@ export const matchCommitPattern = (
       continue;
     }
   }
-  
-  if (mode === 'all') {
+
+  if (mode === "all") {
     // In 'all' mode, all required patterns must match
-    const requiredPatterns = patterns.filter(p => p.required);
-    const allRequiredMatched = requiredPatterns.every(rp => 
-      matchedPatterns.some(mp => mp.pattern === rp.pattern)
+    const requiredPatterns = patterns.filter((p) => p.required);
+    const allRequiredMatched = requiredPatterns.every((rp) =>
+      matchedPatterns.some((mp) => mp.pattern === rp.pattern),
     );
-    
+
     return {
       matched: allRequiredMatched && matchedPatterns.length > 0,
       pattern: matchedPatterns[0],
       matchedPatterns,
-      unmatchedRequiredPatterns
+      unmatchedRequiredPatterns,
     };
   }
-  
+
   // In 'any' mode, just need one match
   return {
     matched: matchedPatterns.length > 0,
     pattern: matchedPatterns[0],
     matchedPatterns,
-    unmatchedRequiredPatterns
+    unmatchedRequiredPatterns,
   };
 };
 
@@ -208,12 +214,12 @@ export const matchCommitPattern = (
  * Check if a commit message should be skipped based on skip patterns
  */
 export const shouldSkipCommit = (
-  message: string, 
-  skipPatterns: string[]
+  message: string,
+  skipPatterns: string[],
 ): boolean => {
   const lowerMessage = message.toLowerCase();
-  return skipPatterns.some(pattern => 
-    lowerMessage.includes(pattern.toLowerCase())
+  return skipPatterns.some((pattern) =>
+    lowerMessage.includes(pattern.toLowerCase()),
   );
 };
 
@@ -233,14 +239,17 @@ export const getFilesFromCommits = (commits: CommitInfo[]): string[] => {
 /**
  * Get changed files against target branch with parallel execution
  */
-export const getChangedFiles = async (options: GitDiffOptions = {}): Promise<string[]> => {
-  const { targetBranch = 'origin/main', extensions = SUPPORTED_EXTENSIONS } = options;
+export const getChangedFiles = async (
+  options: GitDiffOptions = {},
+): Promise<string[]> => {
+  const { targetBranch = "origin/main", extensions = SUPPORTED_EXTENSIONS } =
+    options;
 
   try {
     // Try three-dot diff first (for PR/MR scenarios)
     const command = `git diff --name-only --diff-filter=ACMR ${targetBranch}...HEAD`;
     const { stdout } = await execAsync(command);
-    
+
     return parseAndFilterFiles(stdout, extensions);
   } catch {
     try {
@@ -249,7 +258,7 @@ export const getChangedFiles = async (options: GitDiffOptions = {}): Promise<str
       const { stdout } = await execAsync(command);
       return parseAndFilterFiles(stdout, extensions);
     } catch {
-      console.warn('⚠️  Git diff failed. No files to audit.');
+      log.warning("Git diff failed. No files to audit.");
       return [];
     }
   }
@@ -260,7 +269,7 @@ export const getChangedFiles = async (options: GitDiffOptions = {}): Promise<str
  */
 export const isGitRepository = async (): Promise<boolean> => {
   try {
-    await execAsync('git rev-parse --is-inside-work-tree');
+    await execAsync("git rev-parse --is-inside-work-tree");
     return true;
   } catch {
     return false;
@@ -272,18 +281,17 @@ export const isGitRepository = async (): Promise<boolean> => {
  */
 export const getCurrentBranch = async (): Promise<string> => {
   try {
-    const { stdout } = await execAsync('git branch --show-current');
+    const { stdout } = await execAsync("git branch --show-current");
     return stdout.trim();
   } catch {
-    return 'unknown';
+    return "unknown";
   }
 };
 
 const parseAndFilterFiles = (output: string, extensions: RegExp): string[] => {
   return output
-    .split('\n')
-    .map(file => file.trim())
-    .filter(file => file.length > 0)
-    .filter(file => extensions.test(file));
+    .split("\n")
+    .map((file) => file.trim())
+    .filter((file) => file.length > 0)
+    .filter((file) => extensions.test(file));
 };
-

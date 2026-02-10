@@ -79,6 +79,10 @@ export interface ProjectConfig {
   projectId?: string; // For GitLab
   /** Local review mode configuration */
   localReview?: LocalReviewConfig;
+  /** Enable skills.sh integration for enhanced prompts */
+  enableSkillsFetch?: boolean;
+  /** Timeout for skills.sh API calls in milliseconds (default: 3000) */
+  skillsFetchTimeout?: number;
 }
 
 export interface AuditIssue {
@@ -110,13 +114,15 @@ export interface CLIOptions {
   targetBranch?: string;
 }
 
-export const DEFAULT_CONFIG: Required<Omit<ProjectConfig, 'gitProvider' | 'repoUrl' | 'projectId' | 'localReview'>> & { localReview: LocalReviewConfig } = {
+export const DEFAULT_CONFIG: Required<Omit<ProjectConfig, 'gitProvider' | 'repoUrl' | 'projectId' | 'localReview' | 'enableSkillsFetch' | 'skillsFetchTimeout'>> & { localReview: LocalReviewConfig; enableSkillsFetch: boolean; skillsFetchTimeout: number } = {
   techStack: '',
   rules: [],
   bypassKeyword: 'skip:',
   commitFormat: '',
   maxConcurrency: 5,
   cacheEnabled: true,
+  enableSkillsFetch: true,
+  skillsFetchTimeout: 3000,
   localReview: {
     enabled: false,
     commitCount: 1,

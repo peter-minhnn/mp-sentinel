@@ -3,6 +3,7 @@
  */
 
 import type { ProjectConfig } from '../types/index.js';
+import { fetchSkillsForTechStack, buildSkillsPromptSection } from '../services/skills-fetcher.js';
 
 export const DEFAULT_COMMIT_PROMPT = `
 ### ROLE
@@ -25,11 +26,30 @@ You are an Elite Software Architect. Your goal is to enforce "Clean Code", "SOLI
 4. **Error Handling:** Ensure proper boundary checks.
 `;
 
-export const buildSystemPrompt = (config: ProjectConfig): string => {
+/**
+ * Build system prompt with optional skills.sh integration
+ * CRITICAL: This function is async now to support skills fetching
+ * If skills fetch fails, it continues with default prompts (no retry)
+ */
+export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> => {
   const parts: string[] = [BASE_AUDIT_PROMPT];
 
   if (config.techStack) {
     parts.push(`\n### TECH STACK CONTEXT\nThe code is written in: ${config.techStack}\n`);
+    
+    // Fetch skills from skills.sh if enabled (fail-fast, no retry)
+    if (config.enableSkillsFetch !== false) {
+      const timeout = config.skillsFetchTimeout || 3000;
+      const skillsResult = await fetchSkillsForTechStack(config.techStack, timeout);
+      
+      if (skillsResult.success && skillsResult.skills.length > 0) {
+        const skillsSection = buildSkillsPromptSection(skillsResult.skills);
+        if (skillsSection) {
+          parts.push(skillsSection);
+        }
+      }
+    }
+    // If fetch fails or disabled, we simply continue without skills (no error thrown)
   }
 
   if (config.rules && config.rules.length > 0) {

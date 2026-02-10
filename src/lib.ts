@@ -20,12 +20,7 @@ export {
   isGitRepository,
   getCurrentBranch,
 } from "./utils/git.js";
-export {
-  cleanJSON,
-  parseAuditResponse,
-  formatBytes,
-  formatDuration as formatDurationParser,
-} from "./utils/parser.js";
+export { cleanJSON, parseAuditResponse, formatBytes } from "./utils/parser.js";
 export { log, formatDuration } from "./utils/logger.js";
 
 // Service exports

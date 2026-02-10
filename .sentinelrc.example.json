@@ -1,0 +1,49 @@
+{
+  "techStack": "TypeScript 5.7, Node.js 18 (ESM), React 18, PostgreSQL 15",
+  "enableSkillsFetch": true,
+  "skillsFetchTimeout": 3000,
+  "rules": [
+    "CRITICAL: All internal imports MUST use the '.js' extension for ESM compatibility.",
+    "CRITICAL: Node.js built-in modules MUST use the 'node:' prefix.",
+    "CRITICAL: All public functions and methods MUST have explicit return types.",
+    "PERFORMANCE: Independent tasks MUST use 'Promise.all' for parallel execution.",
+    "PERFORMANCE: Network calls MUST be preceded by validation checks to 'Fail Fast'.",
+    "CLEAN CODE: Use 'camelCase' for functions, 'SCREAMING_SNAKE_CASE' for constants.",
+    "CLEAN CODE: Error handling MUST use type guards instead of casting to 'any'."
+  ],
+  "commitFormat": "<type>(<scope>): <subject>",
+  "bypassKeyword": "skip:",
+  "maxConcurrency": 5,
+  "localReview": {
+    "enabled": true,
+    "commitCount": 10,
+    "branchDiffMode": false,
+    "compareBranch": "origin/main",
+    "commitPatterns": [
+      {
+        "type": "feat",
+        "pattern": "^feat(\\(.+\\))?:",
+        "description": "New features"
+      },
+      {
+        "type": "fix",
+        "pattern": "^fix(\\(.+\\))?:",
+        "description": "Bug fixes"
+      },
+      {
+        "type": "perf",
+        "pattern": "^perf(\\(.+\\))?:",
+        "description": "Performance improvements"
+      }
+    ],
+    "filterByPattern": false,
+    "patternMatchMode": "any",
+    "skipPatterns": [
+      "skip:",
+      "wip:",
+      "draft:"
+    ],
+    "includeMergeCommits": false,
+    "verbosePatternMatching": false
+  }
+}

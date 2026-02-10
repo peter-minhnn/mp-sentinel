@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-10
+
+### Added
+- **Skills.sh Integration**: Automatic enhancement of code review prompts based on technology stack
+  - Fetches relevant best practices from [skills.sh](https://skills.sh/) API
+  - Smart technology parsing from `techStack` configuration
+  - 1-hour in-memory caching to minimize API calls
+  - Configurable timeout (default: 3 seconds)
+  - Fail-fast pattern: never blocks CI/CD if skills.sh is unavailable
+- **Enhanced Parallel Processing**: 
+  - File reading now uses `Promise.allSettled` for true parallel processing
+  - File auditing uses `Promise.allSettled` to ensure all files are processed
+  - Failed files are tracked and reported at the end (don't stop the process)
+- **Configuration Options**:
+  - `enableSkillsFetch`: Enable/disable skills.sh integration (default: `true`)
+  - `skillsFetchTimeout`: Timeout for skills.sh API calls in milliseconds (default: `3000`)
+- **Documentation**:
+  - New comprehensive guide: `docs/SKILLS_INTEGRATION.md`
+  - Example configuration: `.sentinelrc.example.json`
+  - Skills demo script: `examples/skills-demo.ts`
+
+### Improved
+- **Error Handling**: All file operations now gracefully handle errors without stopping the entire process
+- **Performance**: True parallel processing for both file reading and auditing
+- **Logging**: Enhanced error reporting with clear indication of which files failed and why
+- **Type Safety**: Improved TypeScript types for async prompt building
+
+### Changed
+- `buildSystemPrompt()` is now async to support skills fetching
+- File audit results now include detailed error information for failed files
+
 ## [1.0.1] - 2026-02-09
 
 ### Added

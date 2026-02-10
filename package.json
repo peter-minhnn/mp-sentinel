@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -24,6 +24,7 @@
     "dev": "tsup --watch",
     "start": "node dist/index.js",
     "demo": "tsx examples/multi-provider-demo.ts",
+    "demo:skills": "tsx examples/skills-demo.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

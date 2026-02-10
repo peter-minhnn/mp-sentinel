@@ -1,5 +1,8 @@
 {
+  "author": "mp-sentinel-admin",
   "techStack": "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)",
+  "enableSkillsFetch": true,
+  "skillsFetchTimeout": 3000,
   "rules": [
     "CRITICAL: All internal imports MUST use the '.js' extension for ESM compatibility (as per CONTRIBUTING.md).",
     "CRITICAL: Node.js built-in modules MUST use the 'node:' prefix (e.g., 'import { readFile } from \"node:fs/promises\"').",

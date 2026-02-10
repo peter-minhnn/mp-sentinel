@@ -38,6 +38,8 @@ export interface FileReadResult {
 
 /**
  * Read multiple files efficiently with size limits
+ * PERFORMANCE: Uses Promise.allSettled for true parallel processing
+ * ERROR HANDLING: Failed files don't stop the entire process
  */
 export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadResult> => {
   const result: FileReadResult = {
@@ -83,25 +85,33 @@ export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadRe
     }
   });
 
-  const results = await Promise.all(readPromises);
+  // Use Promise.allSettled to ensure all files are processed
+  const settledResults = await Promise.allSettled(readPromises);
 
-  for (const item of results) {
-    if (item.skipped) {
-      result.skipped.push({ path: item.path, reason: item.reason });
+  for (const promiseResult of settledResults) {
+    if (promiseResult.status === 'fulfilled') {
+      const item = promiseResult.value;
+      
+      if (item.skipped) {
+        result.skipped.push({ path: item.path, reason: item.reason });
+      } else {
+        result.success.push({
+          path: item.path,
+          content: item.content,
+          size: item.size,
+        });
+      }
     } else {
-      result.success.push({
-        path: item.path,
-        content: item.content,
-        size: item.size,
-      });
+      // Promise rejected unexpectedly
+      log.error(`Unexpected file read error: ${promiseResult.reason}`);
     }
   }
 
   // Log skipped files
   if (result.skipped.length > 0) {
-    log.warning(`Skipped ${result.skipped.length} file(s):`);
+    log.warning(`⚠️  Skipped ${result.skipped.length} file(s):`);
     for (const { path, reason } of result.skipped) {
-      log.file(`${path}: ${reason}`);
+      log.file(`   ❌ ${path}: ${reason}`);
     }
   }
 
