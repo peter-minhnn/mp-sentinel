@@ -11,17 +11,10 @@ mp-sentinel/
 ├── src/
 │   ├── services/
 │   │   ├── ai/                    # Multi-provider AI service
-│   │   │   ├── index.ts          # Main service entry
-│   │   │   ├── types.ts          # Type definitions
-│   │   │   ├── config.ts         # Configuration management
-│   │   │   ├── factory.ts        # Provider factory
-│   │   │   ├── providers/        # Provider implementations
-│   │   │   │   ├── gemini.provider.ts
-│   │   │   │   ├── openai.provider.ts
-│   │   │   │   └── anthropic.provider.ts
-│   │   │   └── README.md         # Provider documentation
 │   │   ├── ai.ts                 # Legacy exports (backward compat)
 │   │   ├── file.ts               # File operations
+│   │   ├── file-handler.ts       # Smart file filtering (Layer 1)
+│   │   ├── security.service.ts   # Secret scrubbing & transparency (Layer 2 & 3)
 │   │   └── git-provider.ts       # Git integration
 │   ├── config/
 │   │   └── prompts.ts            # AI prompt templates
@@ -132,6 +125,18 @@ const provider = AIProviderFactory.createProvider(config);
        │
        ▼
 ┌─────────────────┐
+│  File Handler   │ ◄── Layer 1: Filtering
+│ (file-handler)  │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
+│ Security Service│ ◄── Layer 2: Redaction
+│ (security.ts)   │
+└──────┬──────────┘
+       │
+       ▼
+┌─────────────────┐
 │  AI Service     │
 │  (ai/index.ts)  │
 └──────┬──────────┘
@@ -202,6 +207,23 @@ const provider = AIProviderFactory.createProvider(config);
   - Handle API-specific requests
   - Format prompts correctly
   - Parse responses
+
+### File Handler (`src/services/file-handler.ts`)
+
+- **Purpose:** Smart source code filtering (Layer 1)
+- **Responsibilities:**
+  - Traverse project tree effectively
+  - Respect `.gitignore` and `.archignore` rules
+  - Apply extension allowlist
+  - Block sensitive files (.env, keys)
+
+### Security Service (`src/services/security.service.ts`)
+
+- **Purpose:** Content sanitization & Transparency (Layer 2 & 3)
+- **Responsibilities:**
+  - Redact secrets via multi-pattern Regex
+  - Detect suspicious keywords
+  - Generate payload summary for dry-runs
 
 ## SOLID Principles Applied
 
@@ -291,10 +313,11 @@ for (let i = 0; i < files.length; i += maxConcurrency) {
    - Use environment variables
    - Validate keys before use
 
-2. **Input Validation**
-   - Validate file paths
-   - Sanitize code content
-   - Limit file sizes
+2. **Input Validation & Filtering**
+   - **Layer 1:** Use `FileHandler` to filter out non-code files and sensitive manifests.
+   - **Layer 2:** Use `SecurityService` to redact secrets (AWS, GCP, tokens) from code before transmission.
+   - **Layer 3:** Generate a **Payload Summary** for user verification (Transparency).
+   - Validate file paths and limit file sizes.
 
 3. **Error Handling**
    - Don't expose API keys in errors

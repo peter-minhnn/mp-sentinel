@@ -51,9 +51,12 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.5"
   },
   "devDependencies": {
+    "@types/glob": "^8.1.0",
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.3.5",
