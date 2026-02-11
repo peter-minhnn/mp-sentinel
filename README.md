@@ -20,6 +20,7 @@ All documentation has been moved to the `docs/` directory:
 - [Skills.sh Integration](./docs/SKILLS_INTEGRATION.md)
 - [Skills.sh Quick Start](./docs/SKILLS_QUICK_START.md)
 - [Migration Guide (v1.1.0)](./docs/MIGRATION_1.1.0.md)
+- [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Changelog](./docs/CHANGELOG.md)
 
@@ -32,6 +33,8 @@ npx mp-sentinel
 ```
 
 For detailed usage and configuration, please refer to the [Full Documentation](./docs/README.md).
+
+> 💡 **Having trouble with `npm install`?** Check our [Version & Installation Guide](./docs/VERSION_GUIDE.md) for troubleshooting and manual download options.
 
 ---
 

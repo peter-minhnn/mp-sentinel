@@ -40,6 +40,8 @@ npm install -D mp-sentinel
 # yarn add -D mp-sentinel
 ```
 
+> 💡 **Installation Issues?** If you encounter errors like timeouts or connection issues during `npm install`, or if you need to downgrade/upgrade to a specific version, please refer to our **[Version Guide & Installation Troubleshooting](./VERSION_GUIDE.md)**.
+
 ## 🛠️ CLI Usage
 
 ### CI/CD Mode (Default)

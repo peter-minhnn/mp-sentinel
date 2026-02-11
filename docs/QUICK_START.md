@@ -10,6 +10,8 @@ npm install -g mp-sentinel
 npm install -D mp-sentinel
 ```
 
+> 💡 **npm install lỗi?** Xem [Hướng dẫn khắc phục & Chọn phiên bản](./VERSION_GUIDE.md).
+
 ### Step 2: Choose Your AI Provider
 
 #### Option A: Google Gemini (Free Tier Available)
