@@ -1,5 +1,4 @@
 {
-  "author": "mp-sentinel-admin",
   "techStack": "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,
