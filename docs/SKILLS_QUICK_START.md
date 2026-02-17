@@ -17,7 +17,7 @@ Add to your `.sentinelrc.json`:
 ### Step 2: Run Review
 
 ```bash
-npx mp-sentinel --local
+npx mp-sentinel review --range origin/main..HEAD
 ```
 
 That's it! Skills will be automatically fetched and integrated.
@@ -71,7 +71,7 @@ That's it! Skills will be automatically fetched and integrated.
 Run with verbose flag:
 
 ```bash
-npx mp-sentinel --local --verbose
+npx mp-sentinel review --range origin/main..HEAD --verbose
 ```
 
 Look for these log messages:
@@ -115,7 +115,7 @@ If you don't want skills.sh integration:
 Use verbose mode:
 
 ```bash
-npx mp-sentinel --local --verbose
+npx mp-sentinel review --range origin/main..HEAD --verbose
 ```
 
 ## 📚 Learn More

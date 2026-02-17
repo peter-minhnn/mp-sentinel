@@ -170,7 +170,7 @@ npm run build
 npm run dev
 
 # Run CLI
-npm start -- --local
+npm start -- review --staged
 ```
 
 ---

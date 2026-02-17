@@ -17,6 +17,7 @@ export const printResultsSummary = (
 ): boolean => {
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
+  const errored = results.filter((r) => r.result.status === "ERROR");
   const criticalFiles = results.filter((r) =>
     r.result.issues?.some((i) => i.severity === "CRITICAL"),
   );
@@ -27,6 +28,7 @@ export const printResultsSummary = (
   console.log(`   Total files:    ${results.length}`);
   console.log(`   ✅ Passed:       ${passed.length}`);
   console.log(`   ❌ Failed:       ${failed.length}`);
+  console.log(`   💥 Errors:       ${errored.length}`);
   console.log(`   🚨 Critical:     ${criticalFiles.length}`);
   console.log(`   ⏱️  Duration:     ${formatDuration(totalDuration)}`);
   console.log();
@@ -34,12 +36,12 @@ export const printResultsSummary = (
   // Check for system errors (failed status but no issues logged)
   const systemErrors = results.filter(
     (r) =>
-      r.result.status === "FAIL" &&
+      (r.result.status === "FAIL" || r.result.status === "ERROR") &&
       (!r.result.issues || r.result.issues.length === 0),
   );
 
   // Print detailed issues
-  for (const result of failed) {
+  for (const result of [...failed, ...errored]) {
     console.log(`❌ ${result.filePath}:`);
 
     if (result.result.issues && result.result.issues.length > 0) {

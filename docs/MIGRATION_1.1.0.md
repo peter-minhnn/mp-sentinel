@@ -92,7 +92,7 @@ Add skills.sh config to `.sentinelrc.json`:
 
 ```bash
 # Test with verbose output
-npx mp-sentinel --local --verbose
+npx mp-sentinel review --range origin/main..HEAD --verbose
 
 # Look for skills.sh logs
 # ✅ Fetched X skills from skills.sh

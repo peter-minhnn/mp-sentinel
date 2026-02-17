@@ -203,11 +203,11 @@ clearSkillsCache();
 
 ```bash
 # Test with skills.sh enabled
-npx mp-sentinel --local --verbose
+npx mp-sentinel review --range origin/main..HEAD --verbose
 
 # Test with skills.sh disabled
 # Edit .sentinelrc.json: "enableSkillsFetch": false
-npx mp-sentinel --local --verbose
+npx mp-sentinel review --range origin/main..HEAD --verbose
 ```
 
 ## Best Practices

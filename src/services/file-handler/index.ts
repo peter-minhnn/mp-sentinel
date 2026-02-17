@@ -95,12 +95,24 @@ export class FileHandler {
   /**
    * Filter a pre-existing list of file paths (e.g. from `git diff`) through
    * the same security pipeline.
+   *
+   * NOTE: This sync variant does not initialize ignore files.
+   * Use `filterPathsWithIgnores` in runtime paths.
    */
   filterPaths(paths: string[]): FileFilterResult {
     const filePaths = paths.map((p) =>
       relative(this.cwd, resolve(this.cwd, p)),
     );
     return this.classifyFiles(filePaths);
+  }
+
+  /**
+   * Filter a pre-existing list of file paths with `.gitignore`/`.archignore`
+   * initialization included.
+   */
+  async filterPathsWithIgnores(paths: string[]): Promise<FileFilterResult> {
+    await this.initIgnoreFilter();
+    return this.filterPaths(paths);
   }
 
   /**

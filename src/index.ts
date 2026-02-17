@@ -13,15 +13,15 @@ import * as dotenv from "dotenv";
 import type { ProjectConfig } from "./types/index.js";
 import { loadProjectConfig } from "./utils/config.js";
 import {
-  getLastCommitMessage,
   isGitRepository,
   getCurrentBranch,
 } from "./utils/git.js";
-import { log } from "./utils/logger.js";
+import { log, setLogQuietMode } from "./utils/logger.js";
 import { parseCliArgs } from "./cli/args.js";
 import { showHelp, showVersion } from "./cli/help.js";
 import { runLocalReview } from "./cli/local-review.js";
-import { runCICDReview } from "./cli/cicd-review.js";
+import { runReview } from "./cli/review.js";
+import { isTypedError, SystemError, UserError } from "./utils/errors.js";
 
 // Load environment variables
 dotenv.config();
@@ -31,7 +31,11 @@ dotenv.config();
  */
 const run = async (): Promise<void> => {
   const startTime = performance.now();
-  const { values, positionals } = parseCliArgs();
+  const { command, values, positionals, commandPositionals } = parseCliArgs();
+  const requestedFormat = values.format ?? process.env.MP_SENTINEL_FORMAT;
+  const quietLogs =
+    requestedFormat === "json" || requestedFormat === "markdown";
+  setLogQuietMode(quietLogs);
 
   // Handle --help and --version
   if (values.help) {
@@ -48,25 +52,23 @@ const run = async (): Promise<void> => {
 
   // Check if in git repository
   if (!(await isGitRepository())) {
-    log.error("Not a git repository. Please run from a git project root.");
-    process.exitCode = 1;
-    return;
+    throw new SystemError("Not a git repository. Please run from a git project root.");
   }
-
-  log.header("MP Sentinel - Code Audit");
 
   // Load configuration
   const config: ProjectConfig = await loadProjectConfig();
-  const maxConcurrency = parseInt(values.concurrency, 10) || 5;
+  const maxConcurrency =
+    parseInt(
+      values.concurrency ??
+        process.env.MP_SENTINEL_CONCURRENCY ??
+        String(config.maxConcurrency ?? 5),
+      10,
+    ) || 5;
   const targetBranch =
     values["target-branch"] ?? process.env.TARGET_BRANCH ?? "origin/main";
 
-  // Get commit message and current branch
-  const commitMsg = await getLastCommitMessage();
   const currentBranch = await getCurrentBranch();
-
-  // Check if local review mode is enabled (via CLI flag or config)
-  const isLocalMode = values.local || config.localReview?.enabled;
+  const isLocalMode = values.local;
 
   if (values.verbose) {
     logVerboseInfo(
@@ -79,16 +81,7 @@ const run = async (): Promise<void> => {
     );
   }
 
-  // Check bypass
-  const bypassKey = config.bypassKeyword ?? "skip:";
-  if (commitMsg.toLowerCase().includes(bypassKey.toLowerCase())) {
-    log.skip(`BYPASS DETECTED in commit message: "${commitMsg}"`);
-    log.skip("Skipping Audit Checks as requested.");
-    process.exitCode = 0;
-    return;
-  }
-
-  // Execute appropriate mode
+  // Execute mode
   if (isLocalMode) {
     process.exitCode = await runLocalReview({
       values,
@@ -98,11 +91,10 @@ const run = async (): Promise<void> => {
       startTime,
     });
   } else {
-    process.exitCode = await runCICDReview({
+    process.exitCode = await runReview({
       values,
-      positionals,
+      commandPositionals: command === "review" ? commandPositionals : positionals,
       config,
-      commitMsg,
       targetBranch,
       maxConcurrency,
       startTime,
@@ -150,8 +142,16 @@ const logVerboseInfo = (
 
 // Execute
 run().catch((error: unknown) => {
-  log.critical(
-    `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exitCode = 1;
+  if (isTypedError(error)) {
+    if (error instanceof UserError) {
+      log.error(error.message);
+    } else {
+      log.critical(error.message);
+    }
+  } else {
+    log.critical(
+      `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  process.exitCode = 2;
 });

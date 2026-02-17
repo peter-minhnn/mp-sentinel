@@ -4,7 +4,15 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { CommitInfo, CommitPattern } from "../types/index.js";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import type {
+  CommitInfo,
+  CommitPattern,
+  ReviewInputFile,
+  ReviewSkippedItem,
+  ReviewTarget,
+} from "../types/index.js";
 import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -15,6 +23,21 @@ const SUPPORTED_EXTENSIONS =
 export interface GitDiffOptions {
   targetBranch?: string;
   extensions?: RegExp;
+}
+
+export interface CollectReviewInputOptions {
+  target: ReviewTarget;
+  maxFiles: number;
+  maxDiffLines: number;
+  maxCharsPerFile: number;
+  contextLines?: number;
+  filePaths?: string[];
+}
+
+export interface CollectReviewInputResult {
+  files: ReviewInputFile[];
+  skipped: ReviewSkippedItem[];
+  totalChangedLines: number;
 }
 
 export interface GetRecentCommitsOptions {
@@ -294,4 +317,214 @@ const parseAndFilterFiles = (output: string, extensions: RegExp): string[] => {
     .map((file) => file.trim())
     .filter((file) => file.length > 0)
     .filter((file) => extensions.test(file));
+};
+
+const shellEscape = (value: string): string =>
+  `'${value.replace(/'/g, `'\\''`)}'`;
+
+const countPatchChanges = (
+  patch: string,
+): { additions: number; deletions: number; changedLines: number } => {
+  const lines = patch.split("\n");
+  let additions = 0;
+  let deletions = 0;
+
+  for (const line of lines) {
+    if (line.startsWith("+++ ") || line.startsWith("--- ")) {
+      continue;
+    }
+    if (line.startsWith("+")) {
+      additions++;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      deletions++;
+    }
+  }
+
+  return {
+    additions,
+    deletions,
+    changedLines: additions + deletions,
+  };
+};
+
+const buildSyntheticDiff = async (filePath: string): Promise<string> => {
+  const content = await readFile(resolve(filePath), "utf-8");
+  const lines = content.split("\n").slice(0, 400);
+  const contentPatch = lines.map((line) => `+${line}`).join("\n");
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    `--- a/${filePath}`,
+    `+++ b/${filePath}`,
+    `@@ -0,0 +1,${lines.length} @@`,
+    contentPatch,
+  ].join("\n");
+};
+
+export const listFilesForTarget = async (
+  target: ReviewTarget,
+): Promise<string[]> => {
+  if (target.mode === "files") {
+    return target.files ?? [];
+  }
+
+  try {
+    let command = "";
+    switch (target.mode) {
+      case "staged":
+        command = "git diff --cached --name-only --diff-filter=ACMR";
+        break;
+      case "commit":
+        command = `git show --pretty=format: --name-only --diff-filter=ACMR ${shellEscape(target.value ?? "")}`;
+        break;
+      case "range":
+        command = `git diff --name-only --diff-filter=ACMR ${shellEscape(target.value ?? "")}`;
+        break;
+      default:
+        return [];
+    }
+
+    const { stdout } = await execAsync(command);
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const getPatchForFile = async (
+  target: ReviewTarget,
+  filePath: string,
+  contextLines: number,
+): Promise<string> => {
+  const escapedPath = shellEscape(filePath);
+
+  try {
+    switch (target.mode) {
+      case "staged": {
+        const { stdout } = await execAsync(
+          `git diff --cached --no-color --unified=${contextLines} -- ${escapedPath}`,
+        );
+        return stdout;
+      }
+      case "commit": {
+        const { stdout } = await execAsync(
+          `git show --no-color --unified=${contextLines} --pretty=format: ${shellEscape(target.value ?? "")} -- ${escapedPath}`,
+        );
+        return stdout;
+      }
+      case "range": {
+        const { stdout } = await execAsync(
+          `git diff --no-color --unified=${contextLines} ${shellEscape(target.value ?? "")} -- ${escapedPath}`,
+        );
+        return stdout;
+      }
+      case "files": {
+        const { stdout } = await execAsync(
+          `git diff --no-color --unified=${contextLines} HEAD -- ${escapedPath}`,
+        );
+        if (stdout.trim().length > 0) {
+          return stdout;
+        }
+        return buildSyntheticDiff(filePath);
+      }
+      default:
+        return "";
+    }
+  } catch {
+    if (target.mode === "files") {
+      try {
+        return await buildSyntheticDiff(filePath);
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  }
+};
+
+export const collectReviewInput = async (
+  options: CollectReviewInputOptions,
+): Promise<CollectReviewInputResult> => {
+  const {
+    target,
+    maxFiles,
+    maxDiffLines,
+    maxCharsPerFile,
+    contextLines = 2,
+    filePaths,
+  } = options;
+
+  const skipped: ReviewSkippedItem[] = [];
+  const accepted: ReviewInputFile[] = [];
+  const fileCandidates = filePaths ?? (await listFilesForTarget(target));
+  const uniqueFiles = Array.from(new Set(fileCandidates)).sort((a, b) =>
+    a.localeCompare(b),
+  );
+
+  let totalChangedLines = 0;
+
+  if (uniqueFiles.length > maxFiles) {
+    for (const filePath of uniqueFiles.slice(maxFiles)) {
+      skipped.push({
+        path: filePath,
+        reason: `Skipped by maxFiles guardrail (${maxFiles})`,
+      });
+    }
+  }
+
+  for (const filePath of uniqueFiles.slice(0, maxFiles)) {
+    const patch = await getPatchForFile(target, filePath, contextLines);
+    if (!patch.trim()) {
+      skipped.push({ path: filePath, reason: "No textual diff content" });
+      continue;
+    }
+
+    if (patch.includes("Binary files ") || patch.includes("GIT binary patch")) {
+      skipped.push({ path: filePath, reason: "Binary diff skipped" });
+      continue;
+    }
+
+    const stats = countPatchChanges(patch);
+    if (stats.changedLines === 0) {
+      skipped.push({ path: filePath, reason: "No changed lines in patch" });
+      continue;
+    }
+
+    if (totalChangedLines + stats.changedLines > maxDiffLines) {
+      skipped.push({
+        path: filePath,
+        reason: `Skipped by maxDiffLines guardrail (${maxDiffLines})`,
+      });
+      continue;
+    }
+
+    let finalPatch = patch;
+    let truncated = false;
+    if (finalPatch.length > maxCharsPerFile) {
+      finalPatch =
+        finalPatch.slice(0, maxCharsPerFile) +
+        "\n\n# [truncated by mp-sentinel maxCharsPerFile]";
+      truncated = true;
+    }
+
+    totalChangedLines += stats.changedLines;
+    accepted.push({
+      path: filePath,
+      patch: finalPatch,
+      additions: stats.additions,
+      deletions: stats.deletions,
+      changedLines: stats.changedLines,
+      truncated,
+    });
+  }
+
+  return {
+    files: accepted,
+    skipped,
+    totalChangedLines,
+  };
 };

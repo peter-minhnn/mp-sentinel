@@ -2,6 +2,54 @@
  * Type definitions for mp-sentinel CLI
  */
 
+export type ReviewMode = "commit" | "range" | "staged" | "files";
+export type ReviewFormat = "console" | "json" | "markdown";
+
+export interface ReviewTarget {
+  mode: ReviewMode;
+  value?: string;
+  files?: string[];
+}
+
+export interface ReviewInputFile {
+  path: string;
+  patch: string;
+  additions: number;
+  deletions: number;
+  changedLines: number;
+  truncated?: boolean;
+}
+
+export interface ReviewSkippedItem {
+  path: string;
+  reason: string;
+}
+
+export interface ReviewSummary {
+  totalFiles: number;
+  auditedFiles: number;
+  passedFiles: number;
+  failedFiles: number;
+  criticalIssues: number;
+  warningIssues: number;
+  infoIssues: number;
+  durationMs: number;
+  totalChangedLines: number;
+}
+
+export interface ReviewReport {
+  schemaVersion: "1.0";
+  status: "PASS" | "FAIL" | "ERROR";
+  target: ReviewTarget;
+  aiEnabled: boolean;
+  promptVersion: string;
+  summary: ReviewSummary;
+  results: FileAuditResult[];
+  skipped: ReviewSkippedItem[];
+  errors: string[];
+  generatedAt: string;
+}
+
 /**
  * Commit pattern configuration for local review mode
  * Allows defining valid commit message patterns that will be reviewed
@@ -83,17 +131,18 @@ export interface ProjectConfig {
   enableSkillsFetch?: boolean;
   /** Timeout for skills.sh API calls in milliseconds (default: 3000) */
   skillsFetchTimeout?: number;
+  ai?: AIReviewConfig;
 }
 
 export interface AuditIssue {
   line: number;
-  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  severity: "CRITICAL" | "WARNING" | "INFO";
   message: string;
-  suggestion: string;
+  suggestion?: string;
 }
 
 export interface AuditResult {
-  status: 'PASS' | 'FAIL';
+  status: "PASS" | "FAIL" | "ERROR";
   issues?: AuditIssue[];
   message?: string;
   suggestion?: string;
@@ -103,6 +152,7 @@ export interface FileAuditResult {
   filePath: string;
   result: AuditResult;
   duration: number;
+  cached?: boolean;
 }
 
 export interface CLIOptions {
@@ -114,15 +164,45 @@ export interface CLIOptions {
   targetBranch?: string;
 }
 
-export const DEFAULT_CONFIG: Required<Omit<ProjectConfig, 'gitProvider' | 'repoUrl' | 'projectId' | 'localReview' | 'enableSkillsFetch' | 'skillsFetchTimeout'>> & { localReview: LocalReviewConfig; enableSkillsFetch: boolean; skillsFetchTimeout: number } = {
-  techStack: '',
+export interface AIReviewConfig {
+  enabled?: boolean;
+  maxFiles?: number;
+  maxDiffLines?: number;
+  maxCharsPerFile?: number;
+  promptVersion?: string;
+}
+
+export const DEFAULT_CONFIG: Required<
+  Omit<
+    ProjectConfig,
+    | "gitProvider"
+    | "repoUrl"
+    | "projectId"
+    | "localReview"
+    | "enableSkillsFetch"
+    | "skillsFetchTimeout"
+    | "ai"
+  >
+> & {
+  localReview: LocalReviewConfig;
+  enableSkillsFetch: boolean;
+  skillsFetchTimeout: number;
+  ai: AIReviewConfig;
+} = {
+  techStack: "",
   rules: [],
-  bypassKeyword: 'skip:',
-  commitFormat: '',
+  bypassKeyword: "skip:",
+  commitFormat: "",
   maxConcurrency: 5,
   cacheEnabled: true,
   enableSkillsFetch: true,
   skillsFetchTimeout: 3000,
+  ai: {
+    maxFiles: 15,
+    maxDiffLines: 1200,
+    maxCharsPerFile: 12000,
+    promptVersion: "2026-02-16",
+  },
   localReview: {
     enabled: false,
     commitCount: 1,
@@ -131,8 +211,8 @@ export const DEFAULT_CONFIG: Required<Omit<ProjectConfig, 'gitProvider' | 'repoU
     skipPatterns: [],
     includeMergeCommits: false,
     branchDiffMode: false,
-    compareBranch: 'origin/main',
-    patternMatchMode: 'any',
+    compareBranch: "origin/main",
+    patternMatchMode: "any",
     verbosePatternMatching: false,
   },
 };

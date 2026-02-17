@@ -14,6 +14,12 @@
   "commitFormat": "<type>(<scope>): <subject>",
   "bypassKeyword": "skip:",
   "maxConcurrency": 5,
+  "ai": {
+    "maxFiles": 15,
+    "maxDiffLines": 1200,
+    "maxCharsPerFile": 12000,
+    "promptVersion": "2026-02-16"
+  },
   "localReview": {
     "enabled": true,
     "commitCount": 10,

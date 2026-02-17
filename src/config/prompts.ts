@@ -5,6 +5,8 @@
 import type { ProjectConfig } from '../types/index.js';
 import { fetchSkillsForTechStack, buildSkillsPromptSection } from '../services/skills-fetcher.js';
 
+export const DEFAULT_PROMPT_VERSION = "2026-02-16";
+
 export const DEFAULT_COMMIT_PROMPT = `
 ### ROLE
 You are a Strict Release Manager. You enforce "Conventional Commits" standards.
@@ -18,12 +20,14 @@ You are a Strict Release Manager. You enforce "Conventional Commits" standards.
 
 export const BASE_AUDIT_PROMPT = `
 ### ROLE & OBJECTIVE
-You are an Elite Software Architect. Your goal is to enforce "Clean Code", "SOLID Principles", and "Maintainability".
+You are an Elite Software Architect reviewing git diff hunks.
+Focus on changed lines and nearby context only.
 ### GLOBAL STANDARDS
 1. **Clean Code:** Variable/Function names must be semantic. No magic numbers.
 2. **Split Code:** Suggest splitting complex functions/components.
 3. **Performance:** Identify obvious bottlenecks.
 4. **Error Handling:** Ensure proper boundary checks.
+5. **Signal Quality:** Do not report style-only noise unless high-impact.
 `;
 
 /**
@@ -33,6 +37,8 @@ You are an Elite Software Architect. Your goal is to enforce "Clean Code", "SOLI
  */
 export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> => {
   const parts: string[] = [BASE_AUDIT_PROMPT];
+  const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
+  parts.push(`\n### PROMPT VERSION\n${promptVersion}\n`);
 
   if (config.techStack) {
     parts.push(`\n### TECH STACK CONTEXT\nThe code is written in: ${config.techStack}\n`);
@@ -54,12 +60,12 @@ export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> 
 
   if (config.rules && config.rules.length > 0) {
     parts.push(`\n### PROJECT SPECIFIC RULES (HIGHEST PRIORITY)\n`);
-    config.rules.forEach((rule, index) => {
+    config.rules.slice(0, 20).forEach((rule, index) => {
       parts.push(`${index + 1}. ${rule}\n`);
     });
   }
 
-  parts.push(`\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING", "message": "string", "suggestion": "string" }] }`);
+  parts.push(`\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion": "string" }] }`);
   
   return parts.join('');
 };

@@ -22,6 +22,8 @@ export interface SkillsFetchResult {
 const SKILLS_API_BASE = "https://skills.sh/api";
 const FETCH_TIMEOUT = 3000; // 3 seconds - fail fast
 const CACHE_TTL = 3600000; // 1 hour cache
+const MAX_SKILLS_IN_PROMPT = 8;
+const MAX_SKILL_PROMPT_LENGTH = 280;
 
 // In-memory cache to avoid repeated API calls
 const skillsCache = new Map<string, { data: SkillPrompt[]; timestamp: number }>();
@@ -185,6 +187,10 @@ export const buildSkillsPromptSection = (skills: SkillPrompt[]): string => {
     return "";
   }
 
+  const limitedSkills = [...skills]
+    .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
+    .slice(0, MAX_SKILLS_IN_PROMPT);
+
   const sections: string[] = [
     "\n### TECHNOLOGY-SPECIFIC BEST PRACTICES (from skills.sh)",
   ];
@@ -192,7 +198,7 @@ export const buildSkillsPromptSection = (skills: SkillPrompt[]): string => {
   // Group by category
   const byCategory = new Map<string, SkillPrompt[]>();
 
-  for (const skill of skills) {
+  for (const skill of limitedSkills) {
     const category = skill.category || "general";
     if (!byCategory.has(category)) {
       byCategory.set(category, []);
@@ -206,7 +212,8 @@ export const buildSkillsPromptSection = (skills: SkillPrompt[]): string => {
 
     for (const skill of categorySkills) {
       if (skill.prompt && skill.prompt.trim().length > 0) {
-        sections.push(`- **${skill.skill}**: ${skill.prompt}`);
+        const compactPrompt = skill.prompt.trim().slice(0, MAX_SKILL_PROMPT_LENGTH);
+        sections.push(`- **${skill.skill}**: ${compactPrompt}`);
       }
     }
   }

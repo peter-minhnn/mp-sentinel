@@ -15,7 +15,7 @@ export class GeminiProvider implements IAIProvider {
       model: config.model,
       generationConfig: {
         temperature: config.temperature ?? 0.2,
-        maxOutputTokens: config.maxTokens ?? 8192,
+        maxOutputTokens: config.maxTokens ?? 2048,
       },
     });
   }

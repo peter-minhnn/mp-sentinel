@@ -28,7 +28,7 @@ export class AIConfig {
       model,
       apiKey,
       temperature: parseFloat(process.env.AI_TEMPERATURE || '0.2'),
-      maxTokens: parseInt(process.env.AI_MAX_TOKENS || '8192', 10),
+      maxTokens: parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
     };
   }
 

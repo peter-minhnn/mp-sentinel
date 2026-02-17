@@ -24,13 +24,15 @@ export class OpenAIProvider implements IAIProvider {
   private model: string;
   private temperature: number;
   private maxTokens: number;
+  private timeoutMs: number;
   private baseURL = 'https://api.openai.com/v1/chat/completions';
 
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
     this.model = config.model;
     this.temperature = config.temperature ?? 0.2;
-    this.maxTokens = config.maxTokens ?? 8192;
+    this.maxTokens = config.maxTokens ?? 2048;
+    this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -39,8 +41,11 @@ export class OpenAIProvider implements IAIProvider {
       { role: 'user', content: userPrompt },
     ];
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const response = await fetch(this.baseURL, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
@@ -51,10 +56,13 @@ export class OpenAIProvider implements IAIProvider {
         temperature: this.temperature,
         max_tokens: this.maxTokens,
       }),
-    });
+    }).finally(() => clearTimeout(timeoutId));
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new Error(
+        `OpenAI API error: ${response.status} ${response.statusText} ${errorBody}`,
+      );
     }
 
     const data = await response.json() as OpenAIResponse;

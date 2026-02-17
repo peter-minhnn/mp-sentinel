@@ -1,162 +1,92 @@
-# Quick Start Guide - Multi-Provider AI
+# Quick Start Guide - MP Sentinel v1.1.0
 
-## 🚀 5-Minute Setup
-
-### Step 1: Install
+## 1) Install
 
 ```bash
-npm install -g mp-sentinel
-# or
 npm install -D mp-sentinel
+# or
+npm install -g mp-sentinel
 ```
 
-> 💡 **npm install lỗi?** Xem [Hướng dẫn khắc phục & Chọn phiên bản](./VERSION_GUIDE.md).
-
-### Step 2: Choose Your AI Provider
-
-#### Option A: Google Gemini (Free Tier Available)
+## 2) Configure AI Provider
 
 ```bash
-# Get key: https://aistudio.google.com/
-echo "GEMINI_API_KEY=your_key_here" > .env
+# .env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_key_here
+
+# optional tuning
+AI_MODEL=gemini-2.5-flash
+AI_TEMPERATURE=0.2
+AI_MAX_TOKENS=2048
+AI_TIMEOUT_MS=30000
 ```
 
-#### Option B: OpenAI GPT-4
+## 3) Run Reviews
 
 ```bash
-# Get key: https://platform.openai.com/api-keys
-echo "AI_PROVIDER=openai" > .env
-echo "OPENAI_API_KEY=sk-..." >> .env
+# Default review target: origin/main...HEAD
+mp-sentinel review
+
+# Staged changes (AI defaults OFF unless --ai or MP_SENTINEL_AI=1)
+mp-sentinel review --staged
+mp-sentinel review --staged --ai
+
+# Explicit target modes
+mp-sentinel review --commit 9f31a4c
+mp-sentinel review --range origin/main..HEAD
+mp-sentinel review --files src/index.ts src/utils/git.ts
+
+# Output formats
+mp-sentinel review --format console
+mp-sentinel review --format json
+mp-sentinel review --format markdown
 ```
 
-#### Option C: Anthropic Claude
+Shortcut:
 
 ```bash
-# Get key: https://console.anthropic.com/
-echo "AI_PROVIDER=anthropic" > .env
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
-```
-
-### Step 3: Run
-
-```bash
+# Equivalent to "mp-sentinel review"
 mp-sentinel
 ```
 
-## 🎯 Common Use Cases
+## 4) Guardrails (Less Tokens, Better Signal)
 
-### Local Development
-
-```bash
-# Review last commit
-mp-sentinel --local
-
-# Review last 5 commits
-mp-sentinel -l -n 5
-
-# Branch diff mode (Analyze all commits since branching)
-mp-sentinel -l -d
-mp-sentinel -l -d --compare-branch origin/develop
-```
-
-### CI/CD Pipeline
-
-```yaml
-# .github/workflows/audit.yml
-- name: Code Review
-  env:
-    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  run: npx mp-sentinel
-```
-
-### Custom Rules
+Create `.mp-sentinelrc.json` (preferred) or `.sentinelrc.json`:
 
 ```json
-// .sentinelrc.json
 {
-  "techStack": "React 19, TypeScript",
-  "rules": [
-    "CRITICAL: No 'any' types allowed",
-    "STYLE: Use arrow functions for components"
-  ]
+  "maxConcurrency": 5,
+  "ai": {
+    "maxFiles": 15,
+    "maxDiffLines": 1200,
+    "maxCharsPerFile": 12000,
+    "promptVersion": "2026-02-16"
+  }
 }
 ```
 
-## 🔧 Configuration Cheat Sheet
-
-### Environment Variables
-
-| Variable         | Values                    | Default          |
-| ---------------- | ------------------------- | ---------------- |
-| `AI_PROVIDER`    | gemini, openai, anthropic | gemini           |
-| `AI_MODEL`       | See model list below      | Provider default |
-| `AI_TEMPERATURE` | 0.0 - 1.0                 | 0.2              |
-| `AI_MAX_TOKENS`  | Number                    | 8192             |
-
-### Recommended Models by Use Case
-
-| Use Case      | Provider  | Model               |
-| ------------- | --------- | ------------------- |
-| Fast & Cheap  | Gemini    | `gemini-2.5-flash`  |
-| Best Accuracy | OpenAI    | `gpt-4.1`           |
-| Long Tasks    | Anthropic | `claude-opus-4`     |
-| Balanced      | Anthropic | `claude-sonnet-4.5` |
-
-### CLI Flags
+## 5) Useful Env Vars
 
 ```bash
-mp-sentinel [options] [files...]
-
-Options:
-  -l, --local              Local review mode
-  -n, --commits <number>   Number of commits to review
-  -d, --branch-diff        Enable branch diff mode
-  --compare-branch <br>    Branch to compare against
-  -b, --target-branch      Target branch for diff in CI/CD mode
-  -c, --concurrency        Max concurrent audits
-  --skip-commit            Skip commit validation
-  --verbose                Detailed logging
+TARGET_BRANCH=origin/main
+MP_SENTINEL_AI=1
+MP_SENTINEL_FORMAT=console
+MP_SENTINEL_CONCURRENCY=5
 ```
 
-## 💡 Pro Tips
+## 6) Exit Codes
 
-1. **Start with Gemini**: Free tier is generous, great for testing
-2. **Use GPT-4.1 for complex refactoring**: Best coding benchmark scores
-3. **Use Claude Opus for autonomous tasks**: Can work for hours independently
-4. **Set concurrency based on API limits**:
-   - Gemini: 5-10
-   - OpenAI: 3-5
-   - Claude: 3-5
+- `0`: no blocking issues
+- `1`: findings detected
+- `2`: runtime/system/provider error
 
-5. **Security First**: MP Sentinel uses a 3-layer security system. Source code is filtered, secrets are redacted locally, and a dry-run summary is available to verify the payload before sending.
+## Legacy Local Mode
 
-## 🐛 Troubleshooting
-
-### "API key not found"
+Legacy local review mode is still available:
 
 ```bash
-# Check your .env file
-cat .env
-
-# Make sure it's loaded
-export $(cat .env | xargs)
-```
-
-### "Rate limit exceeded"
-
-```bash
-# Reduce concurrency
-mp-sentinel --concurrency 3
-```
-
-### "Model not found"
-
-```bash
-# Check available models
-AI_PROVIDER=openai mp-sentinel --help
-
-- [Full Documentation](./README.md)
-- [Architecture Overview](./ARCHITECTURE.md)
-- [Security Guide](./README.md#🛡️-security--data-privacy)
-- [Changelog](./CHANGELOG.md)
+mp-sentinel --local
+mp-sentinel -l -n 5
+mp-sentinel -l -d --compare-branch origin/develop
 ```

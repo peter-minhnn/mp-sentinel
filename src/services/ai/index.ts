@@ -8,14 +8,35 @@ import type {
   ProjectConfig,
   FileAuditResult,
 } from "../../types/index.js";
-import { buildSystemPrompt, buildCommitPrompt } from "../../config/prompts.js";
+import {
+  buildSystemPrompt,
+  buildCommitPrompt,
+  DEFAULT_PROMPT_VERSION,
+} from "../../config/prompts.js";
 import { parseAuditResponse } from "../../utils/parser.js";
 import { log } from "../../utils/logger.js";
 import type { IAIProvider } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { AIConfig } from "./config.js";
+import {
+  buildAuditCacheKey,
+  readCachedAuditResult,
+  writeCachedAuditResult,
+} from "./cache.js";
 
 let providerInstance: IAIProvider | null = null;
+let providerConfigCache: ReturnType<typeof AIConfig.fromEnvironment> | null =
+  null;
+
+const TOOL_VERSION = process.env.npm_package_version || "1.1.0";
+
+const getProviderConfig = (): ReturnType<typeof AIConfig.fromEnvironment> => {
+  if (providerConfigCache) {
+    return providerConfigCache;
+  }
+  providerConfigCache = AIConfig.fromEnvironment();
+  return providerConfigCache;
+};
 
 /**
  * Initialize AI provider (singleton pattern)
@@ -25,7 +46,7 @@ const getProvider = (): IAIProvider => {
     return providerInstance;
   }
 
-  const config = AIConfig.fromEnvironment();
+  const config = getProviderConfig();
   AIConfig.validate(config);
 
   providerInstance = AIProviderFactory.createProvider(config);
@@ -80,7 +101,7 @@ export const auditFile = async (
     log.warning(`Failed to audit ${filePath}: ${errorMsg}`);
     
     return {
-      status: "FAIL",
+      status: "ERROR",
       message: `Error auditing file: ${errorMsg}`,
       issues: [],
     };
@@ -99,6 +120,9 @@ export const auditFilesWithConcurrency = async (
 ): Promise<FileAuditResult[]> => {
   // Build system prompt once (with skills.sh integration)
   const systemPrompt = await buildSystemPrompt(config);
+  const providerConfig = getProviderConfig();
+  const cacheEnabled = config.cacheEnabled !== false;
+  const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   
   const results: FileAuditResult[] = [];
   const failedFiles: Array<{ path: string; error: string }> = [];
@@ -112,8 +136,38 @@ export const auditFilesWithConcurrency = async (
       log.audit(`Auditing: ${file.path}`);
 
       try {
+        const cacheKey = buildAuditCacheKey({
+          provider: providerConfig.provider,
+          model: providerConfig.model,
+          promptVersion,
+          systemPrompt,
+          filePath: file.path,
+          payload: file.content,
+          toolVersion: TOOL_VERSION,
+        });
+
+        if (cacheEnabled) {
+          const cached = await readCachedAuditResult(cacheKey);
+          if (cached) {
+            const duration = performance.now() - startTime;
+            return {
+              success: true as const,
+              data: {
+                filePath: file.path,
+                result: cached,
+                duration,
+                cached: true,
+              },
+            };
+          }
+        }
+
         const result = await auditFile(file.path, file.content, systemPrompt);
         const duration = performance.now() - startTime;
+
+        if (cacheEnabled && result.status !== "ERROR") {
+          await writeCachedAuditResult(cacheKey, result);
+        }
 
         return {
           success: true as const,
@@ -121,6 +175,7 @@ export const auditFilesWithConcurrency = async (
             filePath: file.path,
             result,
             duration,
+            cached: false,
           },
         };
       } catch (error) {
@@ -184,6 +239,7 @@ export const auditFilesWithConcurrency = async (
  */
 export const clearProviderCache = (): void => {
   providerInstance = null;
+  providerConfigCache = null;
 };
 
 // Export types and utilities

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Stable `review` command contract with explicit targets:
+  - `--staged`
+  - `--commit <sha>`
+  - `--range <base>..<head>`
+  - `--files <path...>`
+- Multi-format output support: `console`, `json`, `markdown`.
+- Exit-code contract: `0` (pass), `1` (findings), `2` (runtime/system/provider error).
+- Diff-hunk review input pipeline and AI guardrails:
+  - `ai.maxFiles`
+  - `ai.maxDiffLines`
+  - `ai.maxCharsPerFile`
+- Persistent AI result cache in `.mp-sentinel-cache`.
+
+### Changed
+- Staged mode AI policy now defaults to off unless `--ai` or `MP_SENTINEL_AI=1`.
+- Default `AI_MAX_TOKENS` lowered to `2048`.
+- OpenAI and Anthropic providers now use request timeout (`AI_TIMEOUT_MS`).
+- Security/file filtering layers are now used in the main review pipeline.
+
 ## [1.1.0] - 2026-02-10
 
 ### Added

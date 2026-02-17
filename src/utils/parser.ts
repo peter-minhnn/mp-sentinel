@@ -4,6 +4,47 @@
 
 import type { AuditResult } from "../types/index.js";
 
+const normalizeAuditResult = (value: AuditResult): AuditResult => {
+  const status = value.status;
+  if (!status || !["PASS", "FAIL", "ERROR"].includes(status)) {
+    return {
+      status: "ERROR",
+      message: "Invalid AI response format",
+      issues: [],
+    };
+  }
+
+  if (!value.issues || !Array.isArray(value.issues)) {
+    return { ...value, issues: [] };
+  }
+
+  const normalizedIssues = value.issues
+    .filter((issue) => issue && typeof issue.message === "string")
+    .map((issue) => {
+      const normalizedIssue = {
+        line: typeof issue.line === "number" && issue.line > 0 ? issue.line : 1,
+        severity:
+          issue.severity === "CRITICAL" ||
+          issue.severity === "WARNING" ||
+          issue.severity === "INFO"
+            ? issue.severity
+            : "WARNING",
+        message: issue.message,
+      };
+
+      if (typeof issue.suggestion === "string" && issue.suggestion.length > 0) {
+        return {
+          ...normalizedIssue,
+          suggestion: issue.suggestion,
+        };
+      }
+
+      return normalizedIssue;
+    });
+
+  return { ...value, issues: normalizedIssues };
+};
+
 /**
  * Clean JSON from markdown code blocks
  */
@@ -22,30 +63,21 @@ export const parseAuditResponse = (responseText: string): AuditResult => {
 
   try {
     const parsed = JSON.parse(cleaned) as AuditResult;
-
-    // Validate required fields
-    if (!parsed.status || !["PASS", "FAIL"].includes(parsed.status)) {
-      return {
-        status: "FAIL",
-        message: "Invalid AI response format",
-        issues: [],
-      };
-    }
-
-    return parsed;
+    return normalizeAuditResult(parsed);
   } catch {
     // Try to extract JSON from the response
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
-        return JSON.parse(jsonMatch[0]) as AuditResult;
+        const parsed = JSON.parse(jsonMatch[0]) as AuditResult;
+        return normalizeAuditResult(parsed);
       } catch {
         // Fall through to error response
       }
     }
 
     return {
-      status: "FAIL",
+      status: "ERROR",
       message: "Failed to parse AI response",
       issues: [],
     };

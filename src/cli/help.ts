@@ -12,48 +12,56 @@ export const showHelp = (): void => {
   console.log(`
 🏗️  MP Sentinel - AI-powered Code Guardian
 
-Usage: mp-sentinel [options] [files...]
+Usage:
+  mp-sentinel review [target] [options]
+  mp-sentinel [options]                      # shortcut for review
 
-CI/CD Mode (Default):
-  Runs in CI/CD pipelines (GitHub Actions, GitLab CI) using git diff.
+Targets (choose one):
+  --staged                    Review staged changes (git diff --cached)
+  --commit <sha>              Review a single commit (git show <sha>)
+  --range <base>..<head>      Review a commit range (git diff base..head)
+  --files <path...>           Review explicit file list (power-user mode)
 
-Local Review Mode:
-  Run directly on your branch using commit-based review.
-  Configure via .sentinelrc.json for commit patterns.
+Default target when omitted:
+  <target-branch>...HEAD      (target branch default: origin/main)
 
 Options:
   -h, --help             Show this help message
   -v, --version          Show version number
+  --format <type>        Output format: console | json | markdown (default: console)
+  --ai                   Force-enable AI review (useful for --staged)
+  -b, --target-branch    Target branch for default range mode (default: origin/main)
+  -c, --concurrency      Max concurrent file audits (default: 5, or config)
+  --verbose              Enable verbose output and detailed skip reasons
+
+Legacy options (still supported):
   --skip-commit          Skip commit message validation
   --skip-files           Skip file auditing
-  -b, --target-branch    Target branch for diff (default: origin/main)
-  -c, --concurrency      Max concurrent file audits (default: 5)
-  --verbose              Enable verbose output
-
-Local Review Options:
   -l, --local            Enable local review mode (review commits directly)
   -n, --commits <N>      Number of recent commits to review (default: 1)
-  -d, --branch-diff      Enable branch diff mode (get all commits since branching)
+  -d, --branch-diff      Enable branch diff mode (legacy local mode)
   --compare-branch <BR>  Target branch to compare (default: origin/main)
 
 Examples:
-  # CI/CD Mode (default)
-  mp-sentinel                          # Audit commit + changed files
-  mp-sentinel --skip-commit            # Audit only changed files
-  mp-sentinel src/file.ts              # Audit specific file(s)
-  mp-sentinel -b develop               # Diff against 'develop' branch
+  mp-sentinel review --staged
+  mp-sentinel review --commit 9f31a4c
+  mp-sentinel review --range origin/main..HEAD --format markdown
+  mp-sentinel review --files src/index.ts src/utils/git.ts --ai
+  mp-sentinel review --format json
 
-  # Local Review Mode
-  npx mp-sentinel --local              # Review last commit on current branch
-  npx mp-sentinel -l -n 5              # Review last 5 commits
-  npx mp-sentinel --local --verbose    # Verbose local review
+  # AI policy:
+  # - staged mode defaults to AI OFF unless --ai or MP_SENTINEL_AI=1
+  # - other modes default to AI ON
 
-  # Branch Diff Mode (compare against target branch)
-  npx mp-sentinel -l -d                # Review all commits since branching from origin/main
-  npx mp-sentinel -l -d --compare-branch origin/develop  # Compare against develop
-
-Configuration (.sentinelrc.json):
+Configuration (.mp-sentinelrc.json or .sentinelrc.json):
   {
+    "ai": {
+      "enabled": true,
+      "maxFiles": 15,
+      "maxDiffLines": 1200,
+      "maxCharsPerFile": 12000,
+      "promptVersion": "2026-02-16"
+    },
     "localReview": {
       "enabled": true,
       "commitCount": 10,

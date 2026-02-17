@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.0.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.1.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -14,7 +14,7 @@
 
 Traditional tools like **ESLint** or **Prettier** are great for syntax and formatting, but they miss the bigger picture. They can't tell you if your logic is flawed or if you're breaking the project's architecture.
 
-**MP Sentinel fills that gap.** v1.0.1 introduces multi-provider AI support with high-performance concurrent auditing.
+**MP Sentinel fills that gap.** v1.1.0 introduces a stable `review` command contract, diff-hunk auditing, token guardrails, and persistent caching.
 
 - 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, or Claude for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
@@ -44,71 +44,67 @@ npm install -D mp-sentinel
 
 ## 🛠️ CLI Usage
 
-### CI/CD Mode (Default)
+### Stable Review Command
 
 ```bash
-# Default: Audit commit message + changed files
-mp-sentinel
+# Default target: <target-branch>...HEAD
+mp-sentinel review
 
-# Audit only changed files (skip commit check)
-mp-sentinel --skip-commit
+# Staged changes (AI defaults OFF unless --ai or MP_SENTINEL_AI=1)
+mp-sentinel review --staged
 
-# Audit specific files
-mp-sentinel src/main.ts src/utils.ts
+# Single commit or commit range
+mp-sentinel review --commit 9f31a4c
+mp-sentinel review --range origin/main..HEAD
 
-# Set max concurrency (default: 5)
-mp-sentinel --concurrency 10
+# Explicit files (power-user mode)
+mp-sentinel review --files src/index.ts src/utils/git.ts
 
-# Diff against a specific branch
-mp-sentinel --target-branch develop
+# Output formats
+mp-sentinel review --format console
+mp-sentinel review --format json
+mp-sentinel review --format markdown
 ```
 
-### 🔄 Local Review Mode
-
-Run code reviews directly on your current branch without GitHub Actions or GitLab CI/CD:
+### Shortcut Mode
 
 ```bash
-# Review last commit on current branch
-npx mp-sentinel --local
-
-# Review last 10 commits on current branch
-npx mp-sentinel --local --commits 10
-# Or short form
-npx mp-sentinel -l -n 10
-
-# Review all commits since branching (Branch Diff Mode)
-npx mp-sentinel --local --branch-diff
-# Compare against a specific branch
-npx mp-sentinel -l -d --compare-branch origin/develop
-
-# Verbose local review
-npx mp-sentinel --local --verbose
-
-# Skip commit message validation, only audit files
-npx mp-sentinel --local --skip-commit
+# Equivalent to "mp-sentinel review"
+mp-sentinel
 ```
 
 ### Options Reference
 
-| Option             | Shorthand | Description                              | Default       |
-| ------------------ | --------- | ---------------------------------------- | ------------- |
-| `--help`           | `-h`      | Show help message                        | -             |
-| `--version`        | `-v`      | Show version number                      | -             |
-| `--skip-commit`    | -         | Skip commit message validation           | `false`       |
-| `--skip-files`     | -         | Skip file auditing                       | `false`       |
-| `--target-branch`  | `-b`      | Target branch for git diff               | `origin/main` |
-| `--concurrency`    | `-c`      | Max concurrent file audits               | `5`           |
-| `--verbose`        | -         | Enable verbose logging                   | `false`       |
-| `--local`          | `-l`      | Enable local review mode                 | `false`       |
-| `--commits`        | `-n`      | Number of commits to review (local mode) | `1`           |
-| `--branch-diff`    | `-d`      | Review all commits since branching       | `false`       |
-| `--compare-branch` | -         | Branch to compare against (local mode)   | `origin/main` |
+| Option             | Shorthand | Description                                            | Default         |
+| ------------------ | --------- | ------------------------------------------------------ | --------------- |
+| `--help`           | `-h`      | Show help message                                      | -               |
+| `--version`        | `-v`      | Show version number                                    | -               |
+| `--staged`         | -         | Review staged changes (`git diff --cached`)            | `false`         |
+| `--commit`         | -         | Review one commit (`git show <sha>`)                   | -               |
+| `--range`          | -         | Review commit range (`git diff base..head`)            | -               |
+| `--files`          | -         | Review explicit files                                  | `[]`            |
+| `--format`         | -         | Output format (`console`, `json`, `markdown`)          | `console`       |
+| `--ai`             | -         | Force-enable AI review (mainly for staged mode)        | target-dependent |
+| `--target-branch`  | `-b`      | Target branch for default range mode                   | `origin/main`   |
+| `--concurrency`    | `-c`      | Max concurrent file audits                             | `5`             |
+| `--verbose`        | -         | Enable verbose logging                                 | `false`         |
+| `--local`          | `-l`      | Legacy local-review mode (still supported)             | `false`         |
+| `--commits`        | `-n`      | Legacy: number of commits in local mode                | `1`             |
+| `--branch-diff`    | `-d`      | Legacy: review all commits since branching             | `false`         |
+| `--compare-branch` | -         | Legacy: comparison branch for local mode               | `origin/main`   |
+
+### Exit Codes
+
+- `0`: no blocking issues
+- `1`: review findings detected
+- `2`: runtime/system/provider error
 
 ---
 
-## ⚙️ Configuration (`.sentinelrc.json`)
+## ⚙️ Configuration (`.mp-sentinelrc.json` or `.sentinelrc.json`)
 
-Create a `.sentinelrc.json` in your project root to customize rules and performance.
+Create a config file in your project root to customize rules and performance.
+Config file precedence: `.mp-sentinelrc.json` first, then `.sentinelrc.json`.
 
 ### Basic Configuration
 
@@ -122,11 +118,26 @@ Create a `.sentinelrc.json` in your project root to customize rules and performa
     "ARCHITECTURE: Business logic must stay in Services, not Controllers."
   ],
   "bypassKeyword": "skip:",
-  "maxConcurrency": 5
+  "maxConcurrency": 5,
+  "ai": {
+    "maxFiles": 15,
+    "maxDiffLines": 1200,
+    "maxCharsPerFile": 12000,
+    "promptVersion": "2026-02-16"
+  }
 }
 ```
 
-### Local Review Configuration
+### AI Guardrails
+
+| Option            | Type    | Description                                 | Default       |
+| ----------------- | ------- | ------------------------------------------- | ------------- |
+| `maxFiles`        | number  | Maximum files sent to AI per run            | `15`          |
+| `maxDiffLines`    | number  | Maximum changed diff lines sent to AI       | `1200`        |
+| `maxCharsPerFile` | number  | Maximum patch chars per file before truncate | `12000`      |
+| `promptVersion`   | string  | Prompt version used for caching and tracing | `2026-02-16`  |
+
+### Legacy Local Review Configuration
 
 ```json
 {
@@ -159,7 +170,7 @@ Create a `.sentinelrc.json` in your project root to customize rules and performa
 }
 ```
 
-#### Local Review Options
+#### Legacy Local Review Options
 
 | Option                   | Type    | Description                           | Default       |
 | ------------------------ | ------- | ------------------------------------- | ------------- |
@@ -194,7 +205,13 @@ GEMINI_API_KEY=your_key_here      # For Gemini
 
 # Optional: Fine-tune AI behavior
 AI_TEMPERATURE=0.2
-AI_MAX_TOKENS=8192
+AI_MAX_TOKENS=2048
+AI_TIMEOUT_MS=30000
+
+# Optional: AI behavior policy for CLI
+MP_SENTINEL_AI=1
+MP_SENTINEL_FORMAT=console|json|markdown
+MP_SENTINEL_CONCURRENCY=5
 
 # Optional: Set default target branch
 TARGET_BRANCH=origin/main
@@ -235,14 +252,14 @@ const results = await auditFilesWithConcurrency(
 
 ## 🤖 CI/CD Integration
 
-MP Sentinel v1.0.0 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
+MP Sentinel v1.1.0 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
 
 ### Quick Setup
 
 **GitHub Actions:** Add API key to repository secrets, create workflow file
 **GitLab CI:** Add API key to CI/CD variables, create `.gitlab-ci.yml`
 
-📖 **[Complete CI/CD Setup Guide](./docs/CICD_SETUP.md)** - Detailed instructions for all providers
+📖 **[Complete CI/CD Setup Guide](./CICD_SETUP.md)** - Detailed instructions for all providers
 
 ### GitHub Actions Examples
 
