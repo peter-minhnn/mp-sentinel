@@ -16,11 +16,7 @@ export type {
 export { DEFAULT_CONFIG } from "./types/index.js";
 
 // Utility exports
-export {
-  loadProjectConfig,
-  clearConfigCache,
-  validateConfig,
-} from "./utils/config.js";
+export { loadProjectConfig, clearConfigCache, validateConfig } from "./utils/config.js";
 export {
   getLastCommitMessage,
   getChangedFiles,
@@ -40,11 +36,7 @@ export {
   auditFilesWithConcurrency,
   clearModelCache,
 } from "./services/ai.js";
-export {
-  readFilesForAudit,
-  getFileExtension,
-  isCodeFile,
-} from "./services/file.js";
+export { readFilesForAudit, getFileExtension, isCodeFile } from "./services/file.js";
 export type { FileContent, FileReadResult } from "./services/file.js";
 
 // Prompt exports
@@ -71,10 +63,7 @@ export type {
 
 // File handler exports
 export { FileHandler } from "./services/file-handler.js";
-export type {
-  FileHandlerOptions,
-  FileFilterResult,
-} from "./services/file-handler.js";
+export type { FileHandlerOptions, FileFilterResult } from "./services/file-handler.js";
 
 // Review command export (programmatic)
 export { runReview } from "./cli/review.js";

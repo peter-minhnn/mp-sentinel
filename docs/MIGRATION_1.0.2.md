@@ -1,8 +1,8 @@
-# Migration Guide: v1.0.x → v1.1.0
+# Migration Guide: v1.0.x → v1.0.2
 
 ## 🎯 Overview
 
-Version 1.1.0 introduces Skills.sh integration and enhanced parallel processing. This guide helps you upgrade smoothly.
+Version 1.0.2 introduces Skills.sh integration and enhanced parallel processing. This guide helps you upgrade smoothly.
 
 ## 🔄 Breaking Changes
 
@@ -13,7 +13,7 @@ Version 1.1.0 introduces Skills.sh integration and enhanced parallel processing.
 const prompt = buildSystemPrompt(config);
 ```
 
-**After (v1.1.0):**
+**After (v1.0.2):**
 ```typescript
 const prompt = await buildSystemPrompt(config);
 ```
@@ -209,7 +209,7 @@ If you encounter issues:
 
 ## ✅ Checklist
 
-- [ ] Update to v1.1.0
+- [ ] Update to v1.0.2
 - [ ] Add `techStack` to config (if not already)
 - [ ] Test with `--verbose` flag
 - [ ] Verify skills.sh is working (optional)
@@ -217,6 +217,6 @@ If you encounter issues:
 
 ---
 
-**Version**: 1.1.0  
+**Version**: 1.0.2  
 **Release Date**: 2026-02-10  
 **Migration Difficulty**: Easy (5 minutes)

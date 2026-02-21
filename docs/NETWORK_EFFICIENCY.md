@@ -1,6 +1,6 @@
 # Network Efficiency Guidelines
 
-This document describes the current v1.1.0 strategy for fast, low-token reviews.
+This document describes the current v1.0.2 strategy for fast, low-token reviews.
 
 ## Core Principles
 

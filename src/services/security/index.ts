@@ -13,11 +13,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { log } from "../../utils/logger.js";
 import { formatBytes } from "../../utils/parser.js";
-import {
-  REDACTION_MARKER,
-  DEFAULT_SECRET_PATTERNS,
-  SUSPICIOUS_KEYWORDS,
-} from "./patterns.js";
+import { REDACTION_MARKER, DEFAULT_SECRET_PATTERNS, SUSPICIOUS_KEYWORDS } from "./patterns.js";
 import type {
   SecretPattern,
   SanitizationResult,
@@ -189,9 +185,7 @@ export class SecurityService {
         estimatedTokens: tokens,
       });
       totalCharacters += chars;
-      allWarnings.push(
-        ...this.detectSuspiciousKeywords(file.content, file.path),
-      );
+      allWarnings.push(...this.detectSuspiciousKeywords(file.content, file.path));
     }
 
     return this.buildSummary(fileSummaries, totalCharacters, allWarnings);
@@ -204,12 +198,8 @@ export class SecurityService {
     log.header("📦 Payload Summary (Dry-Run)");
 
     console.log(`  Files:            ${summary.fileCount}`);
-    console.log(
-      `  Total Characters: ${summary.totalCharacters.toLocaleString()}`,
-    );
-    console.log(
-      `  Est. Tokens:      ~${summary.totalEstimatedTokens.toLocaleString()}`,
-    );
+    console.log(`  Total Characters: ${summary.totalCharacters.toLocaleString()}`);
+    console.log(`  Est. Tokens:      ~${summary.totalEstimatedTokens.toLocaleString()}`);
     console.log(`  Payload Size:     ${summary.formattedSize}`);
 
     log.divider();
@@ -241,10 +231,7 @@ export class SecurityService {
   /**
    * Scan content line-by-line for suspicious keywords.
    */
-  private detectSuspiciousKeywords(
-    content: string,
-    filePath: string,
-  ): SuspiciousKeyword[] {
+  private detectSuspiciousKeywords(content: string, filePath: string): SuspiciousKeyword[] {
     const warnings: SuspiciousKeyword[] = [];
     const lines = content.split("\n");
 

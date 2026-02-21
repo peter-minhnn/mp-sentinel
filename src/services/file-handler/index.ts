@@ -68,12 +68,7 @@ export class FileHandler {
     // Pre-compile blocked patterns into RegExp objects once (performance fix H-04)
     this.blockedRegexes = this.blockedPatterns.map(
       (p) =>
-        new RegExp(
-          "^" +
-            p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
-            "$",
-          "i",
-        ),
+        new RegExp("^" + p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i"),
     );
   }
 
@@ -113,9 +108,7 @@ export class FileHandler {
    * Use `filterPathsWithIgnores` in runtime paths.
    */
   filterPaths(paths: string[]): FileFilterResult {
-    const filePaths = paths.map((p) =>
-      relative(this.cwd, resolve(this.cwd, p)),
-    );
+    const filePaths = paths.map((p) => relative(this.cwd, resolve(this.cwd, p)));
     return this.classifyFiles(filePaths);
   }
 
@@ -237,9 +230,7 @@ export class FileHandler {
     let hasRules = false;
 
     if (!this.disableGitIgnore) {
-      const gitRules = await this.readIgnoreFile(
-        resolve(this.cwd, ".gitignore"),
-      );
+      const gitRules = await this.readIgnoreFile(resolve(this.cwd, ".gitignore"));
       if (gitRules) {
         ig.add(gitRules);
         hasRules = true;
@@ -247,9 +238,7 @@ export class FileHandler {
     }
 
     if (!this.disableArchIgnore) {
-      const archRules = await this.readIgnoreFile(
-        resolve(this.cwd, ".archignore"),
-      );
+      const archRules = await this.readIgnoreFile(resolve(this.cwd, ".archignore"));
       if (archRules) {
         ig.add(archRules);
         hasRules = true;

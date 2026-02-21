@@ -12,19 +12,23 @@ import * as dotenv from "dotenv";
 
 import type { ProjectConfig } from "./types/index.js";
 import { loadProjectConfig } from "./utils/config.js";
-import {
-  isGitRepository,
-  getCurrentBranch,
-} from "./utils/git.js";
+import { isGitRepository, getCurrentBranch } from "./utils/git.js";
 import { log, setLogQuietMode } from "./utils/logger.js";
 import { parseCliArgs } from "./cli/args.js";
-import { showHelp, showVersion } from "./cli/help.js";
 import { runLocalReview } from "./cli/local-review.js";
 import { runReview } from "./cli/review.js";
 import { isTypedError, SystemError, UserError } from "./utils/errors.js";
 
 // Load environment variables
 dotenv.config();
+
+// ── SIGINT handler — clean up progress bar on Ctrl+C ─────────────────────────
+process.on("SIGINT", () => {
+  // Move to a new line so the progress bar doesn't leave artefacts
+  process.stdout.write("\n");
+  log.warning("Interrupted by user (SIGINT). Exiting.");
+  process.exit(130); // 128 + SIGINT(2)
+});
 
 /**
  * Main CLI execution
@@ -33,22 +37,8 @@ const run = async (): Promise<void> => {
   const startTime = performance.now();
   const { command, values, positionals, commandPositionals } = parseCliArgs();
   const requestedFormat = values.format ?? process.env.MP_SENTINEL_FORMAT;
-  const quietLogs =
-    requestedFormat === "json" || requestedFormat === "markdown";
+  const quietLogs = values.quiet || requestedFormat === "json" || requestedFormat === "markdown";
   setLogQuietMode(quietLogs);
-
-  // Handle --help and --version
-  if (values.help) {
-    showHelp();
-    process.exitCode = 0;
-    return;
-  }
-
-  if (values.version) {
-    showVersion();
-    process.exitCode = 0;
-    return;
-  }
 
   // Check if in git repository
   if (!(await isGitRepository())) {
@@ -57,31 +47,24 @@ const run = async (): Promise<void> => {
 
   // Load configuration
   const config: ProjectConfig = await loadProjectConfig();
+
+  // CLI flag overrides
+  if (values["no-skills-fetch"]) {
+    config.enableSkillsFetch = false;
+  }
   const _parsedConcurrency = parseInt(
-    values.concurrency ??
-      process.env.MP_SENTINEL_CONCURRENCY ??
-      String(config.maxConcurrency ?? 5),
+    values.concurrency ?? process.env.MP_SENTINEL_CONCURRENCY ?? String(config.maxConcurrency ?? 5),
     10,
   );
   const maxConcurrency =
-    Number.isFinite(_parsedConcurrency) && _parsedConcurrency > 0
-      ? _parsedConcurrency
-      : 5;
-  const targetBranch =
-    values["target-branch"] ?? process.env.TARGET_BRANCH ?? "origin/main";
+    Number.isFinite(_parsedConcurrency) && _parsedConcurrency > 0 ? _parsedConcurrency : 5;
+  const targetBranch = values["target-branch"] ?? process.env.TARGET_BRANCH ?? "origin/main";
 
   const currentBranch = await getCurrentBranch();
   const isLocalMode = values.local;
 
   if (values.verbose) {
-    logVerboseInfo(
-      values,
-      config,
-      currentBranch,
-      targetBranch,
-      maxConcurrency,
-      isLocalMode,
-    );
+    logVerboseInfo(values, config, currentBranch, targetBranch, maxConcurrency, isLocalMode);
   }
 
   // Execute mode
@@ -101,6 +84,7 @@ const run = async (): Promise<void> => {
       targetBranch,
       maxConcurrency,
       startTime,
+      dryRun: values["dry-run"],
     });
   }
 };
@@ -121,20 +105,16 @@ const logVerboseInfo = (
   log.info(`Max concurrency: ${maxConcurrency}`);
 
   if (isLocalMode) {
-    const isBranchDiffMode =
-      values["branch-diff"] || config.localReview?.branchDiffMode || false;
+    const isBranchDiffMode = values["branch-diff"] || config.localReview?.branchDiffMode || false;
     const compareBranch =
-      values["compare-branch"] ||
-      config.localReview?.compareBranch ||
-      "origin/main";
+      values["compare-branch"] || config.localReview?.compareBranch || "origin/main";
     const patternMatchMode = config.localReview?.patternMatchMode || "any";
 
     log.info(`Mode: Local Review`);
     if (isBranchDiffMode) {
       log.info(`Branch Diff Mode: ON (comparing with ${compareBranch})`);
     } else {
-      const commitCount =
-        parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
+      const commitCount = parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
       log.info(`Commits to review: ${commitCount}`);
     }
     log.info(`Pattern Match Mode: ${patternMatchMode}`);
@@ -152,9 +132,7 @@ run().catch((error: unknown) => {
       log.critical(error.message);
     }
   } else {
-    log.critical(
-      `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    log.critical(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
   }
   process.exitCode = 2;
 });

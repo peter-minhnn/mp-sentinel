@@ -17,8 +17,7 @@ import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
 
-const SUPPORTED_EXTENSIONS =
-  /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|go|java|rs|kt|swift)$/;
+const SUPPORTED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|go|java|rs|kt|swift)$/;
 
 export interface GitDiffOptions {
   targetBranch?: string;
@@ -85,27 +84,63 @@ export const getRecentCommits = async (
     const noMergesFlag = includeMergeCommits ? "" : "--no-merges";
     const format = "%H|%s|%an|%ai";
 
-    let command: string;
+    // Default to count mode; overridden below for branchDiffMode
+    let command: string = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
 
     if (branchDiffMode) {
       // Branch diff mode: get all commits since branching from compareBranch
-      // First, try to find the merge-base (common ancestor)
+      // Strategy:
+      //   1. Try git merge-base (most accurate)
+      //   2. Fall back to direct range comparison (compareBranch..HEAD)
+      //   3. Last resort: fall back to count mode (last N commits)
+      let branchDiffResolved = false;
+
       try {
-        const { stdout: mergeBase } = await execAsync(
-          `git merge-base ${compareBranch} HEAD`,
-        );
+        const { stdout: mergeBase } = await execAsync(`git merge-base ${compareBranch} HEAD`);
         const baseCommit = mergeBase.trim();
 
         if (baseCommit) {
-          // Get all commits from merge-base to HEAD
+          // Strategy 1: merge-base succeeded
           command = `git log ${baseCommit}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+          branchDiffResolved = true;
         } else {
-          // Fallback to direct comparison
-          command = `git log ${compareBranch}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+          // merge-base returned empty — try direct range
+          log.warning(
+            `git merge-base returned empty result for '${compareBranch}'. ` +
+              `Falling back to direct range comparison. ` +
+              `Ensure '${compareBranch}' is fetched: git fetch origin.`,
+          );
         }
-      } catch {
-        // If merge-base fails, try direct comparison
-        command = `git log ${compareBranch}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+      } catch (err) {
+        // merge-base command failed — try direct range
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warning(
+          `Could not find common ancestor with '${compareBranch}': ${msg}. ` +
+            `Falling back to direct range comparison. ` +
+            `Ensure '${compareBranch}' is fetched: git fetch origin.`,
+        );
+      }
+
+      if (!branchDiffResolved) {
+        // Strategy 2: direct range comparison
+        try {
+          command = `git log ${compareBranch}..HEAD ${noMergesFlag} --pretty=format:"${format}"`;
+          // Validate the command will work by checking if compareBranch exists
+          await execAsync(`git rev-parse --verify ${compareBranch}`);
+          branchDiffResolved = true;
+        } catch {
+          // compareBranch doesn't exist locally — fall back to count mode
+          log.warning(
+            `Branch '${compareBranch}' not found locally. ` +
+              `Falling back to last ${count} commit(s). ` +
+              `Run 'git fetch origin' to resolve this.`,
+          );
+        }
+      }
+
+      if (!branchDiffResolved) {
+        // Strategy 3: last resort — use count mode
+        command = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
       }
     } else {
       // Count mode: get last N commits
@@ -210,14 +245,28 @@ export const matchCommitPattern = (
   }
 
   if (mode === "all") {
-    // In 'all' mode, all required patterns must match
+    // In 'all' mode, all required patterns must match.
+    // If no patterns are marked required, warn and fall back to "any" semantics
+    // to avoid silently including all commits.
     const requiredPatterns = patterns.filter((p) => p.required);
+    if (requiredPatterns.length === 0) {
+      log.warning(
+        `patternMatchMode is "all" but no patterns have required: true. ` +
+          `Falling back to "any" mode. Set required: true on at least one pattern.`,
+      );
+      return {
+        matched: matchedPatterns.length > 0,
+        pattern: matchedPatterns[0],
+        matchedPatterns,
+        unmatchedRequiredPatterns: [],
+      };
+    }
     const allRequiredMatched = requiredPatterns.every((rp) =>
       matchedPatterns.some((mp) => mp.pattern === rp.pattern),
     );
 
     return {
-      matched: allRequiredMatched && matchedPatterns.length > 0,
+      matched: allRequiredMatched,
       pattern: matchedPatterns[0],
       matchedPatterns,
       unmatchedRequiredPatterns,
@@ -236,14 +285,9 @@ export const matchCommitPattern = (
 /**
  * Check if a commit message should be skipped based on skip patterns
  */
-export const shouldSkipCommit = (
-  message: string,
-  skipPatterns: string[],
-): boolean => {
+export const shouldSkipCommit = (message: string, skipPatterns: string[]): boolean => {
   const lowerMessage = message.toLowerCase();
-  return skipPatterns.some((pattern) =>
-    lowerMessage.includes(pattern.toLowerCase()),
-  );
+  return skipPatterns.some((pattern) => lowerMessage.includes(pattern.toLowerCase()));
 };
 
 /**
@@ -262,11 +306,8 @@ export const getFilesFromCommits = (commits: CommitInfo[]): string[] => {
 /**
  * Get changed files against target branch with parallel execution
  */
-export const getChangedFiles = async (
-  options: GitDiffOptions = {},
-): Promise<string[]> => {
-  const { targetBranch = "origin/main", extensions = SUPPORTED_EXTENSIONS } =
-    options;
+export const getChangedFiles = async (options: GitDiffOptions = {}): Promise<string[]> => {
+  const { targetBranch = "origin/main", extensions = SUPPORTED_EXTENSIONS } = options;
 
   try {
     // Try three-dot diff first (for PR/MR scenarios)
@@ -319,8 +360,7 @@ const parseAndFilterFiles = (output: string, extensions: RegExp): string[] => {
     .filter((file) => extensions.test(file));
 };
 
-const shellEscape = (value: string): string =>
-  `'${value.replace(/'/g, `'\\''`)}'`;
+const shellEscape = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
 
 const countPatchChanges = (
   patch: string,
@@ -362,9 +402,7 @@ const buildSyntheticDiff = async (filePath: string): Promise<string> => {
   ].join("\n");
 };
 
-export const listFilesForTarget = async (
-  target: ReviewTarget,
-): Promise<string[]> => {
+export const listFilesForTarget = async (target: ReviewTarget): Promise<string[]> => {
   if (target.mode === "files") {
     return target.files ?? [];
   }
@@ -449,21 +487,12 @@ const getPatchForFile = async (
 export const collectReviewInput = async (
   options: CollectReviewInputOptions,
 ): Promise<CollectReviewInputResult> => {
-  const {
-    target,
-    maxFiles,
-    maxDiffLines,
-    maxCharsPerFile,
-    contextLines = 2,
-    filePaths,
-  } = options;
+  const { target, maxFiles, maxDiffLines, maxCharsPerFile, contextLines = 2, filePaths } = options;
 
   const skipped: ReviewSkippedItem[] = [];
   const accepted: ReviewInputFile[] = [];
   const fileCandidates = filePaths ?? (await listFilesForTarget(target));
-  const uniqueFiles = Array.from(new Set(fileCandidates)).sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const uniqueFiles = Array.from(new Set(fileCandidates)).sort((a, b) => a.localeCompare(b));
 
   let totalChangedLines = 0;
 
@@ -506,8 +535,7 @@ export const collectReviewInput = async (
     let truncated = false;
     if (finalPatch.length > maxCharsPerFile) {
       finalPatch =
-        finalPatch.slice(0, maxCharsPerFile) +
-        "\n\n# [truncated by mp-sentinel maxCharsPerFile]";
+        finalPatch.slice(0, maxCharsPerFile) + "\n\n# [truncated by mp-sentinel maxCharsPerFile]";
       truncated = true;
     }
 

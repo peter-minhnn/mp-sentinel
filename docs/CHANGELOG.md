@@ -27,7 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAI and Anthropic providers now use request timeout (`AI_TIMEOUT_MS`).
 - Security/file filtering layers are now used in the main review pipeline.
 
-## [1.1.0] - 2026-02-10
+## [1.0.3] - 2026-02-22
+
+### Fixed
+- Internal improvements for build process.
+- Synchronized version across all files.
+
+## [1.0.2] - 2026-02-10
 
 ### Added
 - **Skills.sh Integration**: Automatic enhancement of code review prompts based on technology stack

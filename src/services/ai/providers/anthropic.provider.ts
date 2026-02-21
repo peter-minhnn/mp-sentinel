@@ -4,10 +4,10 @@
  * Reference: https://docs.anthropic.com/en/docs/about-claude/models
  */
 
-import type { IAIProvider, AIModelConfig } from '../types.js';
+import type { IAIProvider, AIModelConfig } from "../types.js";
 
 interface AnthropicMessage {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -24,8 +24,8 @@ export class AnthropicProvider implements IAIProvider {
   private temperature: number;
   private maxTokens: number;
   private timeoutMs: number;
-  private baseURL = 'https://api.anthropic.com/v1/messages';
-  private apiVersion = '2023-06-01';
+  private baseURL = "https://api.anthropic.com/v1/messages";
+  private apiVersion = "2023-06-01";
 
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
@@ -36,19 +36,17 @@ export class AnthropicProvider implements IAIProvider {
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
-    const messages: AnthropicMessage[] = [
-      { role: 'user', content: userPrompt },
-    ];
+    const messages: AnthropicMessage[] = [{ role: "user", content: userPrompt }];
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const response = await fetch(this.baseURL, {
-      method: 'POST',
+      method: "POST",
       signal: controller.signal,
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': this.apiVersion,
+        "Content-Type": "application/json",
+        "x-api-key": this.apiKey,
+        "anthropic-version": this.apiVersion,
       },
       body: JSON.stringify({
         model: this.model,
@@ -66,8 +64,8 @@ export class AnthropicProvider implements IAIProvider {
       );
     }
 
-    const data = await response.json() as AnthropicResponse;
-    return data.content[0]?.text || '';
+    const data = (await response.json()) as AnthropicResponse;
+    return data.content[0]?.text || "";
   }
 
   isAvailable(): boolean {

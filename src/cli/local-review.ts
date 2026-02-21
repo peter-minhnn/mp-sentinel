@@ -29,30 +29,21 @@ export interface LocalReviewOptions {
  * Execute local review mode
  * Returns process exit code (0 = success, 1 = failure)
  */
-export const runLocalReview = async (
-  options: LocalReviewOptions,
-): Promise<number> => {
+export const runLocalReview = async (options: LocalReviewOptions): Promise<number> => {
   const { values, config, currentBranch, maxConcurrency, startTime } = options;
 
-  const commitCount =
-    parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
-  const isBranchDiffMode =
-    values["branch-diff"] || config.localReview?.branchDiffMode || false;
+  const commitCount = parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
+  const isBranchDiffMode = values["branch-diff"] || config.localReview?.branchDiffMode || false;
   const compareBranch =
-    values["compare-branch"] ||
-    config.localReview?.compareBranch ||
-    "origin/main";
-  const verbosePatternMatching =
-    config.localReview?.verbosePatternMatching || values.verbose;
+    values["compare-branch"] || config.localReview?.compareBranch || "origin/main";
+  const verbosePatternMatching = config.localReview?.verbosePatternMatching || values.verbose;
 
   log.header("🔍 Local Review Mode");
 
   if (isBranchDiffMode) {
     log.info(`Comparing branch '${currentBranch}' against '${compareBranch}'`);
   } else {
-    log.info(
-      `Reviewing ${commitCount} recent commit(s) on branch: ${currentBranch}`,
-    );
+    log.info(`Reviewing ${commitCount} recent commit(s) on branch: ${currentBranch}`);
   }
 
   // Get recent commits (with branch diff mode support)
@@ -84,11 +75,13 @@ export const runLocalReview = async (
 
   if (commitsToReview.length === 0) {
     log.success("No commits match the review criteria.");
+    log.info(`${recentCommits.length} commit(s) scanned, 0 matched.`);
+    // Always show a few example skipped commits so users can diagnose filter issues
+    for (const c of recentCommits.slice(0, 3)) {
+      log.file(`  ↳ ${c.hash.slice(0, 7)}: "${c.message}"`);
+    }
     if (values.verbose && (config.localReview?.filterByPattern ?? false)) {
-      log.info(`Total commits scanned: ${recentCommits.length}`);
-      log.info(
-        `Patterns configured: ${(config.localReview?.commitPatterns ?? []).length}`,
-      );
+      log.info(`Patterns configured: ${(config.localReview?.commitPatterns ?? []).length}`);
     }
     return 0;
   }
@@ -152,7 +145,30 @@ export const runLocalReview = async (
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Filter commits based on skip patterns and commit patterns from config
+ * Check if a commit message matches any of the given exclude regex patterns.
+ * Invalid regex patterns are skipped with a warning.
+ */
+const matchesExcludePattern = (
+  message: string,
+  excludePatterns: string[],
+  verbose: boolean,
+): boolean => {
+  for (const raw of excludePatterns) {
+    try {
+      if (new RegExp(raw, "i").test(message)) {
+        return true;
+      }
+    } catch {
+      if (verbose) {
+        log.warning(`Invalid excludePattern regex: "${raw}" — skipping.`);
+      }
+    }
+  }
+  return false;
+};
+
+/**
+ * Filter commits based on skip patterns, exclude patterns, and commit patterns from config
  */
 const filterCommits = (
   commits: CommitInfo[],
@@ -162,20 +178,32 @@ const filterCommits = (
 ): CommitInfo[] => {
   let filtered: CommitInfo[] = commits;
   const skipPatterns = config.localReview?.skipPatterns ?? [];
+  const excludePatterns = config.localReview?.excludePatterns ?? [];
   const commitPatterns = config.localReview?.commitPatterns ?? [];
   const filterByPattern = config.localReview?.filterByPattern ?? false;
   const patternMatchMode = config.localReview?.patternMatchMode || "any";
 
-  // Filter out skipped commits
+  // Filter out skipped commits (simple prefix/substring match)
   if (skipPatterns.length > 0) {
     filtered = filtered.filter((commit) => {
       const shouldSkip = shouldSkipCommit(commit.message, skipPatterns);
       if (shouldSkip && verbosePatternMatching) {
-        log.skip(
-          `Skipping commit: ${commit.hash.slice(0, 7)} - "${commit.message}"`,
-        );
+        log.skip(`Skipping commit: ${commit.hash.slice(0, 7)} - "${commit.message}"`);
       }
       return !shouldSkip;
+    });
+  }
+
+  // Filter out excluded commits (advanced regex match)
+  if (excludePatterns.length > 0) {
+    filtered = filtered.filter((commit) => {
+      const excluded = matchesExcludePattern(commit.message, excludePatterns, verbose);
+      if (excluded && verbosePatternMatching) {
+        log.skip(
+          `Excluding commit (excludePattern): ${commit.hash.slice(0, 7)} - "${commit.message}"`,
+        );
+      }
+      return !excluded;
     });
   }
 
@@ -183,9 +211,7 @@ const filterCommits = (
   if (filterByPattern && commitPatterns.length > 0) {
     if (verbosePatternMatching) {
       log.info(`Filtering commits by pattern (mode: ${patternMatchMode})`);
-      log.info(
-        `Available patterns: ${commitPatterns.map((p) => p.type || p.pattern).join(", ")}`,
-      );
+      log.info(`Available patterns: ${commitPatterns.map((p) => p.type || p.pattern).join(", ")}`);
     }
 
     filtered = filtered.filter((commit) => {
@@ -194,9 +220,7 @@ const filterCommits = (
       });
 
       if (!result.matched && verbosePatternMatching) {
-        log.warning(
-          `❌ No match: ${commit.hash.slice(0, 7)} - "${commit.message}"`,
-        );
+        log.warning(`❌ No match: ${commit.hash.slice(0, 7)} - "${commit.message}"`);
         if (result.unmatchedRequiredPatterns.length > 0) {
           log.file(
             `   Missing required patterns: ${result.unmatchedRequiredPatterns.map((p) => p.type).join(", ")}`,
@@ -223,9 +247,7 @@ const printCommitList = (commits: CommitInfo[]): void => {
   console.log();
   log.info(`📋 Commits to review (${commits.length}):`);
   for (const commit of commits) {
-    console.log(
-      `   ${commit.hash.slice(0, 7)} | ${commit.author} | ${commit.message}`,
-    );
+    console.log(`   ${commit.hash.slice(0, 7)} | ${commit.author} | ${commit.message}`);
   }
   console.log();
 };
@@ -246,9 +268,7 @@ const auditCommitMessages = async (
     if (commitResult.status === "PASS") {
       log.success(`✓ ${commit.hash.slice(0, 7)}: OK`);
     } else {
-      log.error(
-        `✗ ${commit.hash.slice(0, 7)}: ${commitResult.message ?? "Invalid format"}`,
-      );
+      log.error(`✗ ${commit.hash.slice(0, 7)}: ${commitResult.message ?? "Invalid format"}`);
       if (commitResult.suggestion) {
         log.file(`  💡 ${commitResult.suggestion}`);
       }

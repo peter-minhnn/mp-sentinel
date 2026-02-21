@@ -24,9 +24,7 @@ const normalizeAuditResult = (value: AuditResult): AuditResult => {
       const normalizedIssue = {
         line: typeof issue.line === "number" && issue.line > 0 ? issue.line : 1,
         severity:
-          issue.severity === "CRITICAL" ||
-          issue.severity === "WARNING" ||
-          issue.severity === "INFO"
+          issue.severity === "CRITICAL" || issue.severity === "WARNING" || issue.severity === "INFO"
             ? issue.severity
             : "WARNING",
         message: issue.message,

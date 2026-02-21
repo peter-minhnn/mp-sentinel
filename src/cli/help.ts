@@ -3,7 +3,7 @@
  * Handles --help and --version output for mp-sentinel
  */
 
-const VERSION = process.env["npm_package_version"] ?? "1.1.0";
+const VERSION = process.env["npm_package_version"] ?? "1.0.3";
 
 /**
  * Show CLI help message with all available options and examples

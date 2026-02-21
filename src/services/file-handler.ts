@@ -5,7 +5,4 @@
 
 export { FileHandler } from "./file-handler/index.js";
 
-export type {
-  FileHandlerOptions,
-  FileFilterResult,
-} from "./file-handler/index.js";
+export type { FileHandlerOptions, FileFilterResult } from "./file-handler/index.js";

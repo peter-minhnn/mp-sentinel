@@ -3,11 +3,7 @@
  * @deprecated Import from './security/index.js' instead
  */
 
-export {
-  SecurityService,
-  getSecurityService,
-  resetSecurityService,
-} from "./security/index.js";
+export { SecurityService, getSecurityService, resetSecurityService } from "./security/index.js";
 
 export type {
   SecretPattern,

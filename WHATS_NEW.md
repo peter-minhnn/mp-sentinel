@@ -1,4 +1,4 @@
-# 🎉 What's New in v1.1.0
+# 🎉 What's New in v1.0.3
 
 ## 🚀 Major Features
 
@@ -169,7 +169,7 @@ New guides available:
 
 - [Skills.sh Quick Start](./docs/SKILLS_QUICK_START.md) - 5-minute setup
 - [Skills.sh Full Guide](./docs/SKILLS_INTEGRATION.md) - Comprehensive guide
-- [Migration Guide](./docs/MIGRATION_1.1.0.md) - Upgrade instructions
+- [Migration Guide](./docs/MIGRATION_1.0.2.md) - Upgrade instructions
 
 ## 🎯 Examples
 
@@ -227,7 +227,7 @@ Need help?
 
 ## ✨ Summary
 
-**Version**: 1.1.0  
+**Version**: 1.0.3  
 **Release Date**: 2026-02-10  
 **Status**: Production Ready
 

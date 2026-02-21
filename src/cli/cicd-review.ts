@@ -26,18 +26,9 @@ export interface CICDReviewOptions {
  * Execute CI/CD review mode
  * Returns process exit code (0 = success, 1 = failure)
  */
-export const runCICDReview = async (
-  options: CICDReviewOptions,
-): Promise<number> => {
-  const {
-    values,
-    positionals,
-    config,
-    commitMsg,
-    targetBranch,
-    maxConcurrency,
-    startTime,
-  } = options;
+export const runCICDReview = async (options: CICDReviewOptions): Promise<number> => {
+  const { values, positionals, config, commitMsg, targetBranch, maxConcurrency, startTime } =
+    options;
 
   let hasErrors = false;
 
@@ -48,9 +39,7 @@ export const runCICDReview = async (
     if (commitResult.status === "PASS") {
       log.success("Commit Message: OK");
     } else {
-      log.error(
-        `Commit Message Invalid: ${commitResult.message ?? "Unknown error"}`,
-      );
+      log.error(`Commit Message Invalid: ${commitResult.message ?? "Unknown error"}`);
       if (commitResult.suggestion) {
         log.file(`💡 Suggestion: ${commitResult.suggestion}`);
       }
@@ -59,11 +48,7 @@ export const runCICDReview = async (
   }
 
   // Get files to audit
-  const filesToAudit = await resolveFilesToAudit(
-    positionals,
-    values["skip-files"],
-    targetBranch,
-  );
+  const filesToAudit = await resolveFilesToAudit(positionals, values["skip-files"], targetBranch);
 
   if (filesToAudit === null) {
     // No files and no errors from skip-files
@@ -72,12 +57,7 @@ export const runCICDReview = async (
 
   // Audit files
   if (filesToAudit.length > 0) {
-    const auditExitCode = await auditFileList(
-      filesToAudit,
-      config,
-      maxConcurrency,
-      startTime,
-    );
+    const auditExitCode = await auditFileList(filesToAudit, config, maxConcurrency, startTime);
     if (auditExitCode !== 0) {
       hasErrors = true;
     }
@@ -110,9 +90,7 @@ const resolveFilesToAudit = async (
     // Check if the user accidentally used 'review' as a command
     if (positionals[0] === "review") {
       log.warning("The 'review' argument is being treated as a file path.");
-      log.file(
-        "Note: 'mp-sentinel review' is not a valid subcommand. Using default behavior.",
-      );
+      log.file("Note: 'mp-sentinel review' is not a valid subcommand. Using default behavior.");
     }
 
     log.info(`Using ${positionals.length} specified file(s)`);
@@ -175,19 +153,14 @@ const postGitProviderComments = async (
   auditResults: import("../types/index.js").FileAuditResult[],
 ): Promise<void> => {
   try {
-    const gitProvider = await import("../services/git-provider.js").then((m) =>
-      m.getGitProvider(),
-    );
+    const gitProvider = await import("../services/git-provider.js").then((m) => m.getGitProvider());
 
     if (!gitProvider) return;
 
     log.info("Git Provider detected. Posting comments for issues...");
 
     const failedAudits = auditResults.filter(
-      (r) =>
-        r.result.status === "FAIL" &&
-        r.result.issues &&
-        r.result.issues.length > 0,
+      (r) => r.result.status === "FAIL" && r.result.issues && r.result.issues.length > 0,
     );
 
     for (const audit of failedAudits) {

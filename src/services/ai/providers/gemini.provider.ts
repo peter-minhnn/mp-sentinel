@@ -3,8 +3,8 @@
  * Best models for code: gemini-2.0-flash-exp, gemini-2.5-flash
  */
 
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai';
-import type { IAIProvider, AIModelConfig } from '../types.js';
+import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
+import type { IAIProvider, AIModelConfig } from "../types.js";
 
 export class GeminiProvider implements IAIProvider {
   private readonly model: GenerativeModel;
@@ -30,10 +30,9 @@ export class GeminiProvider implements IAIProvider {
     try {
       // The @google/generative-ai SDK accepts a RequestOptions object as the
       // second argument to generateContent, which forwards the signal.
-      const result = await this.model.generateContent(
-        [systemPrompt, userPrompt],
-        { signal: controller.signal } as Parameters<GenerativeModel["generateContent"]>[1],
-      );
+      const result = await this.model.generateContent([systemPrompt, userPrompt], {
+        signal: controller.signal,
+      } as Parameters<GenerativeModel["generateContent"]>[1]);
       return result.response.text();
     } finally {
       clearTimeout(timeoutId);

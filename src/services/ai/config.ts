@@ -3,9 +3,9 @@
  * Handles environment variables and provider selection
  */
 
-import type { AIModelConfig, AIProvider } from './types.js';
-import { AIProviderFactory } from './factory.js';
-import { ProviderError } from '../../utils/errors.js';
+import type { AIModelConfig, AIProvider } from "./types.js";
+import { AIProviderFactory } from "./factory.js";
+import { ProviderError } from "../../utils/errors.js";
 
 export class AIConfig {
   /**
@@ -13,14 +13,14 @@ export class AIConfig {
    * Priority: AI_PROVIDER > GEMINI_API_KEY (backward compatibility)
    */
   static fromEnvironment(): AIModelConfig {
-    const provider = (process.env.AI_PROVIDER?.toLowerCase() as AIProvider) || 'gemini';
+    const provider = (process.env.AI_PROVIDER?.toLowerCase() as AIProvider) || "gemini";
     const model = process.env.AI_MODEL || AIProviderFactory.getDefaultModel(provider);
-    
+
     const apiKey = this.getApiKey(provider);
     if (!apiKey) {
       throw new ProviderError(
         `API key not found for provider: ${provider}. ` +
-        `Set ${this.getApiKeyEnvName(provider)} environment variable.`
+          `Set ${this.getApiKeyEnvName(provider)} environment variable.`,
       );
     }
 
@@ -28,8 +28,30 @@ export class AIConfig {
       provider,
       model,
       apiKey,
-      temperature: parseFloat(process.env.AI_TEMPERATURE || '0.2'),
-      maxTokens: parseInt(process.env.AI_MAX_TOKENS || '2048', 10),
+      temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
+      maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
+    };
+  }
+
+  /**
+   * Get AI configuration for a specific provider (used for fallback chains).
+   * Throws ProviderError if the API key for that provider is not set.
+   */
+  static fromEnvironmentForProvider(provider: AIProvider): AIModelConfig {
+    const model = AIProviderFactory.getDefaultModel(provider);
+    const apiKey = this.getApiKey(provider);
+    if (!apiKey) {
+      throw new ProviderError(
+        `Fallback provider "${provider}" has no API key. ` +
+          `Set ${this.getApiKeyEnvName(provider)} environment variable.`,
+      );
+    }
+    return {
+      provider,
+      model,
+      apiKey,
+      temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
+      maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
     };
   }
 
@@ -38,11 +60,11 @@ export class AIConfig {
    */
   private static getApiKey(provider: AIProvider): string | undefined {
     switch (provider) {
-      case 'gemini':
+      case "gemini":
         return process.env.GEMINI_API_KEY;
-      case 'openai':
+      case "openai":
         return process.env.OPENAI_API_KEY;
-      case 'anthropic':
+      case "anthropic":
         return process.env.ANTHROPIC_API_KEY;
       default:
         return undefined;
@@ -54,9 +76,9 @@ export class AIConfig {
    */
   private static getApiKeyEnvName(provider: AIProvider): string {
     const names: Record<AIProvider, string> = {
-      gemini: 'GEMINI_API_KEY',
-      openai: 'OPENAI_API_KEY',
-      anthropic: 'ANTHROPIC_API_KEY',
+      gemini: "GEMINI_API_KEY",
+      openai: "OPENAI_API_KEY",
+      anthropic: "ANTHROPIC_API_KEY",
     };
     return names[provider];
   }

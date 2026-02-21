@@ -2,7 +2,7 @@
 
 ## System Design
 
-MP Sentinel v1.1.0 centers on a stable `review` command contract with diff-first auditing:
+MP Sentinel v1.0.2 centers on a stable `review` command contract with diff-first auditing:
 
 - `review --staged`
 - `review --commit <sha>`

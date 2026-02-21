@@ -15,7 +15,9 @@ export const printConsoleReport = (report: ReviewReport): void => {
   log.divider();
   console.log(`📊 Review Summary`);
   console.log(`   Status:         ${statusIcon(report.status)} ${report.status}`);
-  console.log(`   Target:         ${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`);
+  console.log(
+    `   Target:         ${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`,
+  );
   console.log(`   AI Enabled:     ${report.aiEnabled ? "yes" : "no"}`);
   console.log(`   Total files:    ${report.summary.totalFiles}`);
   console.log(`   Audited files:  ${report.summary.auditedFiles}`);
@@ -24,9 +26,7 @@ export const printConsoleReport = (report: ReviewReport): void => {
   console.log(`   🚨 Critical:     ${report.summary.criticalIssues}`);
   console.log(`   ⚠️  Warning:      ${report.summary.warningIssues}`);
   console.log(`   ℹ️  Info:         ${report.summary.infoIssues}`);
-  console.log(
-    `   ⏱️  Duration:     ${formatDuration(report.summary.durationMs)}`,
-  );
+  console.log(`   ⏱️  Duration:     ${formatDuration(report.summary.durationMs)}`);
   console.log(`   🔢 Diff lines:   ${report.summary.totalChangedLines}`);
 
   if (report.skipped.length > 0) {
@@ -74,7 +74,9 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
   lines.push(`# MP Sentinel Review Report`);
   lines.push("");
   lines.push(`- Status: **${report.status}**`);
-  lines.push(`- Target: \`${report.target.mode}${report.target.value ? `:${report.target.value}` : ""}\``);
+  lines.push(
+    `- Target: \`${report.target.mode}${report.target.value ? `:${report.target.value}` : ""}\``,
+  );
   lines.push(`- AI Enabled: \`${report.aiEnabled}\``);
   lines.push(`- Generated At: \`${report.generatedAt}\``);
   lines.push("");

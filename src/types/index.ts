@@ -80,24 +80,30 @@ export interface LocalReviewConfig {
   filterByPattern?: boolean;
   /** Skip review for these commit message prefixes */
   skipPatterns?: string[];
+  /**
+   * Exclude patterns — commits whose messages match ANY of these regex strings
+   * are excluded from review even if they match commitPatterns.
+   * Example: ["^Merge", "^Revert", "^chore\\(release\\)"]
+   */
+  excludePatterns?: string[];
   /** Include merge commits in review */
   includeMergeCommits?: boolean;
-  /** 
+  /**
    * Enable branch diff mode - get commits that differ from target branch
    * When enabled, ignores commitCount and gets all commits since branching from compareBranch
    */
   branchDiffMode?: boolean;
-  /** 
+  /**
    * Target branch to compare against (default: 'origin/main')
    * Used when branchDiffMode is enabled
    */
   compareBranch?: string;
   /**
-   * Match mode for patterns: 
+   * Match mode for patterns:
    * - 'any': Match if any pattern matches (default)
    * - 'all': Match only if all required patterns match
    */
-  patternMatchMode?: 'any' | 'all';
+  patternMatchMode?: "any" | "all";
   /**
    * Show detailed pattern matching info in output
    */
@@ -122,7 +128,7 @@ export interface ProjectConfig {
   commitFormat?: string;
   maxConcurrency?: number;
   cacheEnabled?: boolean;
-  gitProvider?: 'github' | 'gitlab';
+  gitProvider?: "github" | "gitlab";
   repoUrl?: string; // Optional
   projectId?: string; // For GitLab
   /** Local review mode configuration */
@@ -170,6 +176,16 @@ export interface AIReviewConfig {
   maxDiffLines?: number;
   maxCharsPerFile?: number;
   promptVersion?: string;
+  /**
+   * Comma-separated list of provider names to try in order when the primary fails.
+   * Example: "gemini,openai" — tries Gemini first, falls back to OpenAI.
+   */
+  fallbackProvider?: string;
+  /**
+   * Provider-specific context-window token limit override.
+   * Defaults are: gemini=1_000_000, openai=128_000, anthropic=200_000.
+   */
+  tokenLimit?: number;
 }
 
 export const DEFAULT_CONFIG: Required<

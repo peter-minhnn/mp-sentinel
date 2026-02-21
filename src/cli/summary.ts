@@ -11,10 +11,7 @@ import { log, formatDuration } from "../utils/logger.js";
  *
  * @returns `true` if no critical issues or system errors were found
  */
-export const printResultsSummary = (
-  results: FileAuditResult[],
-  totalDuration: number,
-): boolean => {
+export const printResultsSummary = (results: FileAuditResult[], totalDuration: number): boolean => {
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
   const errored = results.filter((r) => r.result.status === "ERROR");

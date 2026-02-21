@@ -10,8 +10,9 @@ Bạn có thể cài đặt một phiên bản cụ thể bằng cách thêm `@v
 
 | Phiên bản | Trạng thái | Ghi chú                                                      | Lệnh cài đặt                       |
 | :-------- | :--------- | :----------------------------------------------------------- | :--------------------------------- |
-| **1.1.0** | `Latest`   | Tích hợp Skills.sh, xử lý song song cải tiến, bảo mật 3 lớp. | `npm install -g mp-sentinel@1.1.0` |
-| **1.0.1** | `Stable`   | Thêm Branch Diff Mode, cải thiện khớp mẫu commit.            | `npm install -g mp-sentinel@1.0.1` |
+| **1.0.3** | `Latest`   | Đồng bộ phiên bản, cải tiến build và Prettier. | `npm install -g mp-sentinel@1.0.3` |
+| **1.0.2** | `Stable`   | Tích hợp Skills.sh, xử lý song song cải tiến, bảo mật 3 lớp. | `npm install -g mp-sentinel@1.0.2` |
+| **1.0.1** | `Legacy`   | Thêm Branch Diff Mode, cải thiện khớp mẫu commit.            | `npm install -g mp-sentinel@1.0.1` |
 | **1.0.0** | `Legacy`   | Phiên bản khởi đầu với hỗ trợ đa nhà cung cấp AI.            | `npm install -g mp-sentinel@1.0.0` |
 
 ---

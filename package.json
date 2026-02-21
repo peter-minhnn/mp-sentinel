@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -26,7 +26,11 @@
     "demo": "tsx examples/multi-provider-demo.ts",
     "demo:skills": "tsx examples/skills-demo.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "keywords": [
     "code-review",
@@ -51,18 +55,57 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "dotenv": "^16.4.5",
-    "fast-glob": "^3.3.3",
-    "ignore": "^7.0.5"
+    "@google/generative-ai": "0.21.0",
+    "commander": "14.0.3",
+    "dotenv": "16.6.1",
+    "fast-glob": "3.3.3",
+    "ignore": "7.0.5",
+    "tiktoken": "1.0.22",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
-    "@types/node": "^22.0.0",
-    "ts-node": "^10.9.2",
-    "tsup": "^8.3.5",
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.0"
+    "@jest/globals": "30.2.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.58.0",
+    "@types/glob": "8.1.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "22.19.9",
+    "jest": "30.2.0",
+    "prettier": "3.8.1",
+    "ts-jest": "29.4.6",
+    "ts-node": "10.9.2",
+    "tsup": "8.5.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  },
+  "jest": {
+    "preset": "ts-jest/presets/default-esm",
+    "testEnvironment": "node",
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "useESM": true,
+          "tsconfig": {
+            "module": "ESNext",
+            "moduleResolution": "bundler"
+          }
+        }
+      ]
+    },
+    "testMatch": [
+      "**/__tests__/**/*.test.ts",
+      "**/*.test.ts"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts"
+    ]
   },
   "publishConfig": {
     "access": "public"

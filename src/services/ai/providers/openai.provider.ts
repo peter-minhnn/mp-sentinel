@@ -4,10 +4,10 @@
  * Reference: https://openai.com/index/gpt-4-1/
  */
 
-import type { IAIProvider, AIModelConfig } from '../types.js';
+import type { IAIProvider, AIModelConfig } from "../types.js";
 
 interface OpenAIMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
@@ -25,7 +25,7 @@ export class OpenAIProvider implements IAIProvider {
   private temperature: number;
   private maxTokens: number;
   private timeoutMs: number;
-  private baseURL = 'https://api.openai.com/v1/chat/completions';
+  private baseURL = "https://api.openai.com/v1/chat/completions";
 
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
@@ -37,18 +37,18 @@ export class OpenAIProvider implements IAIProvider {
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
     const messages: OpenAIMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ];
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const response = await fetch(this.baseURL, {
-      method: 'POST',
+      method: "POST",
       signal: controller.signal,
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
@@ -60,13 +60,11 @@ export class OpenAIProvider implements IAIProvider {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(
-        `OpenAI API error: ${response.status} ${response.statusText} ${errorBody}`,
-      );
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} ${errorBody}`);
     }
 
-    const data = await response.json() as OpenAIResponse;
-    return data.choices[0]?.message?.content || '';
+    const data = (await response.json()) as OpenAIResponse;
+    return data.choices[0]?.message?.content || "";
   }
 
   isAvailable(): boolean {

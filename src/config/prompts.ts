@@ -2,8 +2,8 @@
  * Prompt templates for AI-powered code auditing
  */
 
-import type { ProjectConfig } from '../types/index.js';
-import { fetchSkillsForTechStack, buildSkillsPromptSection } from '../services/skills-fetcher.js';
+import type { ProjectConfig } from "../types/index.js";
+import { fetchSkillsForTechStack, buildSkillsPromptSection } from "../services/skills-fetcher.js";
 
 export const DEFAULT_PROMPT_VERSION = "2026-02-16";
 
@@ -42,12 +42,12 @@ export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> 
 
   if (config.techStack) {
     parts.push(`\n### TECH STACK CONTEXT\nThe code is written in: ${config.techStack}\n`);
-    
+
     // Fetch skills from skills.sh if enabled (fail-fast, no retry)
     if (config.enableSkillsFetch !== false) {
       const timeout = config.skillsFetchTimeout || 3000;
       const skillsResult = await fetchSkillsForTechStack(config.techStack, timeout);
-      
+
       if (skillsResult.success && skillsResult.skills.length > 0) {
         const skillsSection = buildSkillsPromptSection(skillsResult.skills);
         if (skillsSection) {
@@ -65,14 +65,16 @@ export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> 
     });
   }
 
-  parts.push(`\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion": "string" }] }`);
-  
-  return parts.join('');
+  parts.push(
+    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion": "string" }] }`,
+  );
+
+  return parts.join("");
 };
 
 export const buildCommitPrompt = (customFormat?: string): string => {
   const parts: string[] = [];
-  
+
   if (customFormat) {
     parts.push(`
 ### ROLE
@@ -86,8 +88,10 @@ Any commit message NOT following this pattern must be REJECTED.
   } else {
     parts.push(DEFAULT_COMMIT_PROMPT);
   }
-  
-  parts.push(`\n### OUTPUT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "message": "Reason for failure", "suggestion": "Corrected example" }`);
-  
-  return parts.join('');
+
+  parts.push(
+    `\n### OUTPUT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "message": "Reason for failure", "suggestion": "Corrected example" }`,
+  );
+
+  return parts.join("");
 };

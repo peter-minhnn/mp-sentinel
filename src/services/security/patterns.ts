@@ -91,8 +91,7 @@ export const DEFAULT_SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: "Google OAuth Client Secret",
-    pattern:
-      /(?:client_secret|GOOGLE_CLIENT_SECRET)\s*[=:]\s*["']?([A-Za-z0-9_-]{24,})["']?/gi,
+    pattern: /(?:client_secret|GOOGLE_CLIENT_SECRET)\s*[=:]\s*["']?([A-Za-z0-9_-]{24,})["']?/gi,
   },
 
   // ── Private Key Blocks ────────────────────────────────────────────────
@@ -103,8 +102,7 @@ export const DEFAULT_SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: "PEM Certificate (private)",
-    pattern:
-      /-----BEGIN\sEC\sPRIVATE\sKEY-----[\s\S]*?-----END\sEC\sPRIVATE\sKEY-----/g,
+    pattern: /-----BEGIN\sEC\sPRIVATE\sKEY-----[\s\S]*?-----END\sEC\sPRIVATE\sKEY-----/g,
   },
 
   // ── Database connection strings ────────────────────────────────────────
@@ -133,8 +131,7 @@ export const DEFAULT_SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: "Generic Secret env variable",
-    pattern:
-      /(?:SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH)[A-Z_]*\s*[=:]\s*["']([^"']{8,})["']/gi,
+    pattern: /(?:SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH)[A-Z_]*\s*[=:]\s*["']([^"']{8,})["']/gi,
   },
 
   // ── JWT ────────────────────────────────────────────────────────────────

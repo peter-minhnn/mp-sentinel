@@ -2,11 +2,11 @@
  * File service with streaming support and memory optimization
  */
 
-import { readFile, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { log } from '../utils/logger.js';
-import { formatBytes } from '../utils/parser.js';
+import { readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { log } from "../utils/logger.js";
+import { formatBytes } from "../utils/parser.js";
 
 const MAX_FILE_SIZE = 500 * 1024; // 500KB limit per file
 
@@ -49,27 +49,27 @@ export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadRe
 
   const readPromises = filePaths.map(async (filePath): Promise<FileReadItem> => {
     const absolutePath = resolve(filePath);
-    
+
     // Check existence
     if (!existsSync(absolutePath)) {
-      return { path: filePath, skipped: true, reason: 'File not found' };
+      return { path: filePath, skipped: true, reason: "File not found" };
     }
 
     try {
       // Check file size first
       const stats = await stat(absolutePath);
-      
+
       if (stats.size > MAX_FILE_SIZE) {
-        return { 
-          path: filePath, 
-          skipped: true, 
-          reason: `File too large (${formatBytes(stats.size)})` 
+        return {
+          path: filePath,
+          skipped: true,
+          reason: `File too large (${formatBytes(stats.size)})`,
         };
       }
 
       // Read file content
-      const content = await readFile(absolutePath, 'utf-8');
-      
+      const content = await readFile(absolutePath, "utf-8");
+
       return {
         path: filePath,
         content,
@@ -77,10 +77,10 @@ export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadRe
         skipped: false,
       };
     } catch (error) {
-      return { 
-        path: filePath, 
-        skipped: true, 
-        reason: error instanceof Error ? error.message : 'Read error' 
+      return {
+        path: filePath,
+        skipped: true,
+        reason: error instanceof Error ? error.message : "Read error",
       };
     }
   });
@@ -89,9 +89,9 @@ export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadRe
   const settledResults = await Promise.allSettled(readPromises);
 
   for (const promiseResult of settledResults) {
-    if (promiseResult.status === 'fulfilled') {
+    if (promiseResult.status === "fulfilled") {
       const item = promiseResult.value;
-      
+
       if (item.skipped) {
         result.skipped.push({ path: item.path, reason: item.reason });
       } else {
@@ -123,7 +123,7 @@ export const readFilesForAudit = async (filePaths: string[]): Promise<FileReadRe
  */
 export const getFileExtension = (filePath: string): string => {
   const match = filePath.match(/\.([^.]+)$/);
-  return match?.[1] ?? '';
+  return match?.[1] ?? "";
 };
 
 /**
@@ -131,9 +131,25 @@ export const getFileExtension = (filePath: string): string => {
  */
 export const isCodeFile = (filePath: string): boolean => {
   const codeExtensions = new Set([
-    'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
-    'py', 'cs', 'go', 'java', 'rs', 'kt', 'swift',
-    'cpp', 'c', 'h', 'hpp', 'rb', 'php'
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "py",
+    "cs",
+    "go",
+    "java",
+    "rs",
+    "kt",
+    "swift",
+    "cpp",
+    "c",
+    "h",
+    "hpp",
+    "rb",
+    "php",
   ]);
   return codeExtensions.has(getFileExtension(filePath));
 };

@@ -10,6 +10,6 @@ export {
   clearProviderCache as clearModelCache,
   AIProviderFactory,
   AIConfig,
-} from './ai/index.js';
+} from "./ai/index.js";
 
-export type { AIProvider, AIModelConfig, IAIProvider } from './ai/types.js';
+export type { AIProvider, AIModelConfig, IAIProvider } from "./ai/types.js";

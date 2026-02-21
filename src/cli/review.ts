@@ -12,18 +12,15 @@ import type {
 import type { CLIValues } from "./args.js";
 import { log } from "../utils/logger.js";
 import { UserError } from "../utils/errors.js";
-import {
-  collectReviewInput,
-  listFilesForTarget,
-} from "../utils/git.js";
+import { collectReviewInput, listFilesForTarget } from "../utils/git.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import { getSecurityService } from "../services/security/index.js";
 import { auditFilesWithConcurrency } from "../services/ai/index.js";
-import {
-  formatMarkdownReport,
-  printConsoleReport,
-} from "../formatters/report.js";
+import { formatMarkdownReport, printConsoleReport } from "../formatters/report.js";
 import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
+import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
+import { buildSystemPrompt } from "../config/prompts.js";
+import { AIConfig } from "../services/ai/index.js";
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -32,6 +29,8 @@ export interface ReviewRunOptions {
   targetBranch: string;
   maxConcurrency: number;
   startTime: number;
+  /** When true, run security scan only — skip AI calls and print a preview */
+  dryRun?: boolean;
 }
 
 const parseBooleanEnv = (value: string | undefined): boolean | undefined => {
@@ -46,9 +45,7 @@ const resolveFormat = (raw: string): ReviewFormat => {
   if (raw === "console" || raw === "json" || raw === "markdown") {
     return raw;
   }
-  throw new UserError(
-    `Unsupported format "${raw}". Expected one of: console, json, markdown.`,
-  );
+  throw new UserError(`Unsupported format "${raw}". Expected one of: console, json, markdown.`);
 };
 
 const resolveTarget = (
@@ -65,9 +62,7 @@ const resolveTarget = (
   ].filter((v): v is "staged" | "commit" | "range" | "files" => !!v);
 
   if (modes.length > 1) {
-    throw new UserError(
-      "Use only one target selector among --staged, --commit, --range, --files.",
-    );
+    throw new UserError("Use only one target selector among --staged, --commit, --range, --files.");
   }
 
   if (values.staged) {
@@ -106,9 +101,7 @@ const createSecurityOnlyResults = (
     matchedPatterns: string[];
   }>,
 ): FileAuditResult[] => {
-  const redactedMap = new Map(
-    redactionReport.map((entry) => [entry.path, entry]),
-  );
+  const redactedMap = new Map(redactionReport.map((entry) => [entry.path, entry]));
 
   return files.map((file) => {
     const redaction = redactedMap.get(file.path);
@@ -156,39 +149,28 @@ const buildReport = (
 ): ReviewReport => {
   const criticalIssues = results.reduce(
     (acc, result) =>
-      acc +
-      (result.result.issues?.filter((issue) => issue.severity === "CRITICAL")
-        .length ?? 0),
+      acc + (result.result.issues?.filter((issue) => issue.severity === "CRITICAL").length ?? 0),
     0,
   );
   const warningIssues = results.reduce(
     (acc, result) =>
-      acc +
-      (result.result.issues?.filter((issue) => issue.severity === "WARNING")
-        .length ?? 0),
+      acc + (result.result.issues?.filter((issue) => issue.severity === "WARNING").length ?? 0),
     0,
   );
   const infoIssues = results.reduce(
     (acc, result) =>
-      acc +
-      (result.result.issues?.filter((issue) => issue.severity === "INFO")
-        .length ?? 0),
+      acc + (result.result.issues?.filter((issue) => issue.severity === "INFO").length ?? 0),
     0,
   );
 
   const hasRuntimeErrors =
-    errors.length > 0 ||
-    results.some((result) => result.result.status === "ERROR");
+    errors.length > 0 || results.some((result) => result.result.status === "ERROR");
   const hasFindings =
     results.some((result) => result.result.status === "FAIL") ||
     criticalIssues > 0 ||
     warningIssues > 0;
 
-  const status: ReviewReport["status"] = hasRuntimeErrors
-    ? "ERROR"
-    : hasFindings
-      ? "FAIL"
-      : "PASS";
+  const status: ReviewReport["status"] = hasRuntimeErrors ? "ERROR" : hasFindings ? "FAIL" : "PASS";
 
   const durationMs = performance.now() - startTime;
   const passedFiles = results.filter((r) => r.result.status === "PASS").length;
@@ -240,12 +222,14 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     targetBranch,
     maxConcurrency,
     startTime,
+    dryRun = false,
   } = options;
 
   const formatRaw = values.format ?? process.env.MP_SENTINEL_FORMAT ?? "console";
   const format = resolveFormat(formatRaw);
   const target = resolveTarget(values, commandPositionals, targetBranch);
-  const aiEnabled = resolveAIEnabled(values, target, config);
+  // In dry-run mode, AI is always disabled
+  const aiEnabled = dryRun ? false : resolveAIEnabled(values, target, config);
 
   const maxFiles = Math.max(1, config.ai?.maxFiles ?? 15);
   const maxDiffLines = Math.max(100, config.ai?.maxDiffLines ?? 1200);
@@ -253,6 +237,9 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
 
   log.header("MP Sentinel Review");
+  if (dryRun) {
+    log.warning("DRY-RUN mode: security scan only — AI calls skipped.");
+  }
   log.info(`Target: ${target.mode}${target.value ? ` (${target.value})` : ""}`);
   log.info(`AI review: ${aiEnabled ? "enabled" : "disabled"}`);
   log.info(
@@ -261,16 +248,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
 
   const candidateFiles = await listFilesForTarget(target);
   if (candidateFiles.length === 0) {
-    const emptyReport = buildReport(
-      target,
-      aiEnabled,
-      promptVersion,
-      [],
-      [],
-      [],
-      0,
-      startTime,
-    );
+    const emptyReport = buildReport(target, aiEnabled, promptVersion, [], [], [], 0, startTime);
     renderReport(emptyReport, format);
     return 0;
   }
@@ -315,17 +293,55 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const runtimeErrors: string[] = [];
   let auditResults: FileAuditResult[] = [];
 
-  if (aiEnabled) {
+  if (aiEnabled || dryRun) {
+    // Resolve provider-specific token limit
+    let providerName: string | undefined;
     try {
-      auditResults = await auditFilesWithConcurrency(
-        sanitizedFiles.map((file) => ({ path: file.path, content: file.content })),
-        config,
-        maxConcurrency,
+      const providerConfig = AIConfig.fromEnvironment();
+      providerName = providerConfig.provider;
+    } catch {
+      // No API key configured — use default limit
+    }
+    const envLimit = Number(process.env.MP_SENTINEL_TOKEN_LIMIT) || 0;
+    const tokenLimit = resolveTokenLimit(providerName, envLimit || config.ai?.tokenLimit);
+
+    // Build system prompt for token accounting
+    let systemPromptForEstimate: string | undefined;
+    try {
+      systemPromptForEstimate = await buildSystemPrompt(config);
+    } catch {
+      // Non-critical — skip system prompt in estimate
+    }
+
+    const { exceeded, total } = await generatePayloadSummary(
+      sanitizedFiles.map((f) => ({ path: f.path, content: f.content })),
+      tokenLimit,
+      systemPromptForEstimate,
+    );
+
+    if (dryRun) {
+      // In dry-run mode: show security results + token preview, then exit
+      log.info(
+        `DRY-RUN preview: ${sanitizedFiles.length} file(s), ~${total.toLocaleString()} estimated tokens (limit: ${tokenLimit.toLocaleString()})`,
       );
-    } catch (error) {
-      runtimeErrors.push(
-        error instanceof Error ? error.message : "Unknown AI runtime error",
+      auditResults = createSecurityOnlyResults(sanitizedFiles, redactionReport);
+    } else if (exceeded) {
+      log.warning(
+        "Aborting AI review to prevent truncated results. " +
+          "Reduce maxFiles or maxCharsPerFile in your config.",
       );
+      process.exitCode = 2;
+      return 2;
+    } else {
+      try {
+        auditResults = await auditFilesWithConcurrency(
+          sanitizedFiles.map((file) => ({ path: file.path, content: file.content })),
+          config,
+          maxConcurrency,
+        );
+      } catch (error) {
+        runtimeErrors.push(error instanceof Error ? error.message : "Unknown AI runtime error");
+      }
     }
   } else {
     auditResults = createSecurityOnlyResults(sanitizedFiles, redactionReport);

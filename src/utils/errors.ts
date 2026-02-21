@@ -14,9 +14,5 @@ export class ProviderError extends Error {
   readonly name = "ProviderError";
 }
 
-export const isTypedError = (
-  error: unknown,
-): error is UserError | SystemError | ProviderError =>
-  error instanceof UserError ||
-  error instanceof SystemError ||
-  error instanceof ProviderError;
+export const isTypedError = (error: unknown): error is UserError | SystemError | ProviderError =>
+  error instanceof UserError || error instanceof SystemError || error instanceof ProviderError;
