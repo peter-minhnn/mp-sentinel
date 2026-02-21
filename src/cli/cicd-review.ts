@@ -191,7 +191,7 @@ const postGitProviderComments = async (
     );
 
     for (const audit of failedAudits) {
-      for (const issue of audit.result.issues!) {
+      for (const issue of audit.result.issues ?? []) {
         await gitProvider.postComment(audit.filePath, issue.line, issue);
       }
     }

@@ -99,8 +99,8 @@ export const fetchSkillsForTechStack = async (
     };
   }
 
-  // Check cache first
-  const cacheKey = technologies.sort().join(",");
+  // Check cache first — use a copy to avoid mutating the array in-place (fix H-08)
+  const cacheKey = [...technologies].sort().join(",");
   const cached = skillsCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -131,17 +131,37 @@ export const fetchSkillsForTechStack = async (
       };
     }
 
-    const data = await response.json();
+    // Runtime type guard — never trust external API data (fix C-02)
+    interface RawSkillsAPIResponse {
+      skills?: unknown[];
+    }
+    const isRawSkill = (v: unknown): v is Record<string, unknown> =>
+      typeof v === "object" && v !== null;
 
-    // Parse response (adjust based on actual API structure)
-    const skills: SkillPrompt[] = Array.isArray((data as any)?.skills)
-      ? (data as any).skills.map((skill: any) => ({
-          skill: skill.name || skill.skill || "",
-          category: skill.category || "general",
-          prompt: skill.prompt || skill.description || "",
-          relevance: skill.relevance || 1,
-        }))
-      : [];
+    const data = await response.json() as RawSkillsAPIResponse;
+    const rawSkills = Array.isArray(data?.skills) ? data.skills : [];
+
+    const skills: SkillPrompt[] = rawSkills
+      .filter(isRawSkill)
+      .map((skill) => ({
+        skill:
+          typeof skill["name"] === "string"
+            ? skill["name"]
+            : typeof skill["skill"] === "string"
+              ? skill["skill"]
+              : "",
+        category:
+          typeof skill["category"] === "string" ? skill["category"] : "general",
+        prompt:
+          typeof skill["prompt"] === "string"
+            ? skill["prompt"]
+            : typeof skill["description"] === "string"
+              ? skill["description"]
+              : "",
+        relevance:
+          typeof skill["relevance"] === "number" ? skill["relevance"] : 1,
+      }))
+      .filter((s) => s.skill.length > 0);
 
     // Cache the result
     skillsCache.set(cacheKey, {

@@ -5,6 +5,7 @@
 
 import type { AIModelConfig, AIProvider } from './types.js';
 import { AIProviderFactory } from './factory.js';
+import { ProviderError } from '../../utils/errors.js';
 
 export class AIConfig {
   /**
@@ -17,7 +18,7 @@ export class AIConfig {
     
     const apiKey = this.getApiKey(provider);
     if (!apiKey) {
-      throw new Error(
+      throw new ProviderError(
         `API key not found for provider: ${provider}. ` +
         `Set ${this.getApiKeyEnvName(provider)} environment variable.`
       );

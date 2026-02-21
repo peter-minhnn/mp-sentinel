@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AuditResult } from "../../types/index.js";
+import { parseAuditResponse } from "../../utils/parser.js";
 
 const CACHE_DIR = ".mp-sentinel-cache";
 const CACHE_VERSION = "1";
@@ -43,8 +44,13 @@ export const readCachedAuditResult = async (
   try {
     const fullPath = getCachePath(key, cwd);
     const content = await readFile(fullPath, "utf-8");
-    const parsed = JSON.parse(content) as AuditResult;
-    return parsed;
+    // Validate cached data through the same normalizer used for live responses
+    // to prevent tampered/corrupted cache files from injecting bad data.
+    const result = parseAuditResponse(content);
+    if (result.status === "ERROR" && result.message === "Failed to parse AI response") {
+      return null; // treat corrupted cache as a miss
+    }
+    return result;
   } catch {
     return null;
   }

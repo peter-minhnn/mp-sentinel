@@ -7,9 +7,13 @@ import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import type { IAIProvider, AIModelConfig } from '../types.js';
 
 export class GeminiProvider implements IAIProvider {
-  private model: GenerativeModel;
+  private readonly model: GenerativeModel;
+  private readonly apiKey: string;
+  private readonly timeoutMs: number;
 
   constructor(config: AIModelConfig) {
+    this.apiKey = config.apiKey;
+    this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
     const genAI = new GoogleGenerativeAI(config.apiKey);
     this.model = genAI.getGenerativeModel({
       model: config.model,
@@ -21,11 +25,22 @@ export class GeminiProvider implements IAIProvider {
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
-    const result = await this.model.generateContent([systemPrompt, userPrompt]);
-    return result.response.text();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      // The @google/generative-ai SDK accepts a RequestOptions object as the
+      // second argument to generateContent, which forwards the signal.
+      const result = await this.model.generateContent(
+        [systemPrompt, userPrompt],
+        { signal: controller.signal } as Parameters<GenerativeModel["generateContent"]>[1],
+      );
+      return result.response.text();
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   isAvailable(): boolean {
-    return !!this.model;
+    return !!this.apiKey;
   }
 }

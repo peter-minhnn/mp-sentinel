@@ -37,11 +37,13 @@ export class FileHandler {
   private readonly cwd: string;
   private readonly allowedExtensions: Set<string>;
   private readonly blockedPatterns: string[];
+  private readonly blockedRegexes: RegExp[];
   private readonly maxFileSize: number;
   private readonly disableGitIgnore: boolean;
   private readonly disableArchIgnore: boolean;
 
   private ignoreFilter: Ignore | null = null;
+  private ignoreFilterInitialized = false;
 
   constructor(options: FileHandlerOptions = {}) {
     this.cwd = resolve(options.cwd ?? process.cwd());
@@ -62,6 +64,17 @@ export class FileHandler {
     if (options.extraBlockedPatterns) {
       this.blockedPatterns.push(...options.extraBlockedPatterns);
     }
+
+    // Pre-compile blocked patterns into RegExp objects once (performance fix H-04)
+    this.blockedRegexes = this.blockedPatterns.map(
+      (p) =>
+        new RegExp(
+          "^" +
+            p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
+            "$",
+          "i",
+        ),
+    );
   }
 
   // ── Public API ─────────────────────────────────────────────────────────
@@ -204,31 +217,22 @@ export class FileHandler {
 
   /**
    * Check whether the file matches any blocked pattern.
+   * Uses pre-compiled RegExp objects for performance (fix H-04).
    */
   private isBlockedFile(filePath: string): boolean {
     const name = basename(filePath);
-    return this.blockedPatterns.some((pattern) =>
-      this.matchGlob(name, pattern),
-    );
-  }
-
-  /**
-   * Minimal glob matcher supporting `*` wildcards only.
-   */
-  private matchGlob(value: string, pattern: string): boolean {
-    const regexStr =
-      "^" +
-      pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
-      "$";
-    return new RegExp(regexStr, "i").test(value);
+    return this.blockedRegexes.some((re) => re.test(name));
   }
 
   // ── Ignore rule initialisation ─────────────────────────────────────────
 
   /**
    * Build the combined `ignore` instance from `.gitignore` + `.archignore`.
+   * Guarded to run only once per FileHandler instance (fix M-05).
    */
   private async initIgnoreFilter(): Promise<void> {
+    if (this.ignoreFilterInitialized) return;
+    this.ignoreFilterInitialized = true;
     const ig = ignore();
     let hasRules = false;
 

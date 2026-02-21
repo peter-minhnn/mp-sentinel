@@ -57,13 +57,16 @@ const run = async (): Promise<void> => {
 
   // Load configuration
   const config: ProjectConfig = await loadProjectConfig();
+  const _parsedConcurrency = parseInt(
+    values.concurrency ??
+      process.env.MP_SENTINEL_CONCURRENCY ??
+      String(config.maxConcurrency ?? 5),
+    10,
+  );
   const maxConcurrency =
-    parseInt(
-      values.concurrency ??
-        process.env.MP_SENTINEL_CONCURRENCY ??
-        String(config.maxConcurrency ?? 5),
-      10,
-    ) || 5;
+    Number.isFinite(_parsedConcurrency) && _parsedConcurrency > 0
+      ? _parsedConcurrency
+      : 5;
   const targetBranch =
     values["target-branch"] ?? process.env.TARGET_BRANCH ?? "origin/main";
 

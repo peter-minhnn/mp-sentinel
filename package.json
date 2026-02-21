@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.1.0",
+  "version": "1.0.2",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
