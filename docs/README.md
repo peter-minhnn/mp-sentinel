@@ -16,7 +16,7 @@ Traditional tools like **ESLint** or **Prettier** are great for syntax and forma
 
 **MP Sentinel fills that gap.** v1.0.3 introduces a stable `review` command contract, diff-hunk auditing, token guardrails, and persistent caching.
 
-- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, or Claude for code review
+- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, or Grok for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
 - ❌ **No Anti-Patterns:** (e.g., using `useEffect` for data fetching instead of `useQuery`).
 - ✅ **Clean Code Enforcement:** Checks for readability, SOLID principles, and proper code splitting.
@@ -193,7 +193,7 @@ MP Sentinel now supports multiple AI providers! Choose the one that fits your ne
 
 ```bash
 # Choose your AI provider (default: gemini)
-AI_PROVIDER=gemini  # or openai, anthropic
+AI_PROVIDER=gemini  # or openai, anthropic, grok
 
 # Optional: Specify model (uses provider default if not set)
 AI_MODEL=gemini-2.5-flash
@@ -202,6 +202,7 @@ AI_MODEL=gemini-2.5-flash
 GEMINI_API_KEY=your_key_here      # For Gemini
 # OPENAI_API_KEY=your_key_here    # For OpenAI
 # ANTHROPIC_API_KEY=your_key_here # For Anthropic
+# GROK_API_KEY=your_key_here      # For Grok
 
 # Optional: Fine-tune AI behavior
 AI_TEMPERATURE=0.2
@@ -221,16 +222,17 @@ TARGET_BRANCH=origin/main
 
 | Provider             | Best Models for Code Review                                            | Get API Key                                     |
 | -------------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| **Google Gemini**    | `gemini-2.5-flash` (default), `gemini-2.0-flash-exp`, `gemini-1.5-pro` | [Get Key](https://aistudio.google.com/)         |
-| **OpenAI GPT**       | `gpt-4.1` (best coding), `gpt-4o` (default), `gpt-4-turbo`             | [Get Key](https://platform.openai.com/api-keys) |
-| **Anthropic Claude** | `claude-sonnet-4.5` (default), `claude-opus-4`, `claude-3-5-sonnet`    | [Get Key](https://console.anthropic.com/)       |
+| **Google Gemini**    | `gemini-2.5-flash` (default), `gemini-3.1-pro-preview`, `gemini-2.5-pro` | [Get Key](https://aistudio.google.com/)         |
+| **OpenAI GPT**       | `gpt-5.3-codex` (best coding, default), `gpt-5.2`, `gpt-5-mini`          | [Get Key](https://platform.openai.com/api-keys) |
+| **Anthropic Claude** | `claude-sonnet-4-6` (default), `claude-opus-4-6`, `claude-haiku-4-5`     | [Get Key](https://console.anthropic.com/)       |
+| **xAI Grok**         | `grok-4-1-fast-reasoning` (default), `grok-4`, `grok-code-fast-1`        | [Get Key](https://console.x.ai/)                |
 
 **Model Selection Guide:**
 
 - **Fast & Cost-Effective**: `gemini-2.5-flash`
-- **Best Coding Performance**: `gpt-4.1` (54.6% SWE-bench score)
-- **Autonomous Tasks**: `claude-opus-4`
-- **Balanced**: `claude-sonnet-4.5`
+- **Best Coding Performance**: `gpt-5.3-codex` or `gemini-3.1-pro-preview`
+- **Autonomous Tasks**: `claude-opus-4-6` or `grok-4`
+- **Balanced**: `claude-sonnet-4-6`
 
 ---
 
@@ -338,7 +340,7 @@ jobs:
       - name: Run MP Sentinel
         env:
           AI_PROVIDER: openai
-          AI_MODEL: gpt-4o # or gpt-4.1 for best coding
+          AI_MODEL: gpt-5.3-codex # or gpt-5.2
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -381,7 +383,7 @@ jobs:
       - name: Run MP Sentinel
         env:
           AI_PROVIDER: anthropic
-          AI_MODEL: claude-sonnet-4.5 # or claude-opus-4
+          AI_MODEL: claude-sonnet-4-6 # or claude-opus-4-6
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -450,7 +452,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
-    AI_MODEL: gpt-4o
+    AI_MODEL: gpt-5.3-codex
     OPENAI_API_KEY: $OPENAI_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
@@ -484,7 +486,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: anthropic
-    AI_MODEL: claude-sonnet-4.5
+    AI_MODEL: claude-sonnet-4-6
     ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'

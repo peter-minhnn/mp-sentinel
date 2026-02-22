@@ -106,7 +106,7 @@ code_audit:
 
 ---
 
-### Option 2: OpenAI GPT-4 (Best Accuracy)
+### Option 2: OpenAI GPT-5 (Best Accuracy)
 
 **Best for:** Critical code reviews, complex refactoring, enterprise teams
 
@@ -145,10 +145,10 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
-      - name: Run Audit with GPT-4
+      - name: Run Audit with GPT-5
         env:
           AI_PROVIDER: openai
-          AI_MODEL: gpt-4o  # or gpt-4.1 for best coding
+          AI_MODEL: gpt-5.3-codex  # or gpt-5.2 for best coding
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -180,7 +180,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
-    AI_MODEL: gpt-4o
+    AI_MODEL: gpt-5.3-codex
     OPENAI_API_KEY: $OPENAI_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
@@ -230,7 +230,7 @@ jobs:
       - name: Run Audit with Claude
         env:
           AI_PROVIDER: anthropic
-          AI_MODEL: claude-sonnet-4.5  # or claude-opus-4
+          AI_MODEL: claude-sonnet-4-6  # or claude-opus-4-6
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -262,7 +262,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: anthropic
-    AI_MODEL: claude-sonnet-4.5
+    AI_MODEL: claude-sonnet-4-6
     ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
@@ -303,11 +303,11 @@ jobs:
     run: npx mp-sentinel
   
   deep-audit:
-    # Detailed review with GPT-4.1 (only on main branch)
+    # Detailed review with GPT-5.2 (only on main branch)
     if: github.base_ref == 'main'
     env:
       AI_PROVIDER: openai
-      AI_MODEL: gpt-4.1
+      AI_MODEL: gpt-5.2
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     run: npx mp-sentinel
 ```
@@ -323,7 +323,7 @@ jobs:
 **Optimization tips:**
 1. Use caching (already included in examples)
 2. Use Gemini for routine reviews
-3. Use GPT-4 only for critical branches
+3. Use GPT-5 only for critical branches
 4. Set `allow_failure: true` to not block PRs
 
 ### GitLab CI
@@ -381,8 +381,8 @@ run: npx mp-sentinel --concurrency 3
 ```yaml
 # Correct model names:
 AI_MODEL: gemini-2.5-flash  # Gemini
-AI_MODEL: gpt-4o            # OpenAI
-AI_MODEL: claude-sonnet-4.5 # Claude
+AI_MODEL: gpt-5.3-codex            # OpenAI
+AI_MODEL: claude-sonnet-4-6 # Claude
 ```
 
 ### Workflow not triggering

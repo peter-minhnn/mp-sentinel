@@ -24,7 +24,7 @@ interface FileAuditResult { ... }
 interface IAIProvider { ... }  // I prefix for interfaces that are implemented
 
 // Types: PascalCase
-type AIProvider = 'gemini' | 'openai' | 'anthropic';
+type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'grok';
 type AuditStatus = 'PASS' | 'FAIL';
 ```
 
@@ -72,7 +72,7 @@ import { loadProjectConfig } from './utils/config.js';
 import type { IAIProvider, AIModelConfig } from './types.js';
 
 // Union types for constrained values
-export type AIProvider = 'gemini' | 'openai' | 'anthropic';
+export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'grok';
 
 // Optional properties with defaults in implementation
 interface Config {

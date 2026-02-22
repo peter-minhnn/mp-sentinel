@@ -23,6 +23,10 @@ describe("resolveTokenLimit", () => {
     expect(resolveTokenLimit("openai")).toBe(PROVIDER_TOKEN_LIMITS["openai"]);
   });
 
+  it("returns Grok limit for grok provider", () => {
+    expect(resolveTokenLimit("grok")).toBe(PROVIDER_TOKEN_LIMITS["grok"]);
+  });
+
   it("returns Anthropic limit for anthropic provider", () => {
     expect(resolveTokenLimit("anthropic")).toBe(PROVIDER_TOKEN_LIMITS["anthropic"]);
   });

@@ -1,6 +1,6 @@
 /**
  * Anthropic Claude Provider
- * Best models for code: claude-sonnet-4.5, claude-opus-4, claude-3-5-sonnet
+ * Best models for code: claude-sonnet-4-6, claude-opus-4-6
  * Reference: https://docs.anthropic.com/en/docs/about-claude/models
  */
 

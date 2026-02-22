@@ -1,4 +1,4 @@
-name: MP Sentinel Code Guard (OpenAI GPT-4)
+name: MP Sentinel Code Guard (OpenAI GPT-5)
 on:
   pull_request:
     types: [opened, synchronize]
@@ -27,13 +27,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run Audit with OpenAI GPT-4
+      - name: Run Audit with OpenAI GPT-5
         env:
           # OpenAI Configuration
           AI_PROVIDER: openai
-          AI_MODEL: gpt-4o  # Best balance of speed and accuracy
-          # AI_MODEL: gpt-4.1  # Best for complex coding tasks
-          # AI_MODEL: gpt-4-turbo  # Alternative option
+          AI_MODEL: gpt-5.3-codex  # Best balance of speed and accuracy
+          # AI_MODEL: gpt-5.2  # Best for complex coding tasks
+          # AI_MODEL: gpt-5-mini  # Alternative option
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           
           # Optional: Fine-tune behavior

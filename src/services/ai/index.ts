@@ -58,7 +58,7 @@ const parseFallbackChain = (fallbackProvider?: string): AIProvider[] => {
   return fallbackProvider
     .split(",")
     .map((p) => p.trim().toLowerCase() as AIProvider)
-    .filter((p): p is AIProvider => ["gemini", "openai", "anthropic"].includes(p));
+    .filter((p): p is AIProvider => ["gemini", "openai", "anthropic", "grok"].includes(p));
 };
 
 /**

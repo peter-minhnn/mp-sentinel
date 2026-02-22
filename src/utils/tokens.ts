@@ -5,11 +5,11 @@
 
 import { log } from "./logger.js";
 
-// ── Provider-specific context-window limits ───────────────────────────────────
 export const PROVIDER_TOKEN_LIMITS: Record<string, number> = {
   gemini: 1_000_000, // Gemini 1.5 Pro / 2.0 Flash
   openai: 128_000, // GPT-4o / GPT-4 Turbo
   anthropic: 200_000, // Claude 3.5 Sonnet / Opus
+  grok: 131_072, // Grok models
 };
 
 export const DEFAULT_TOKEN_LIMIT = 100_000; // Conservative default

@@ -40,6 +40,7 @@
     "claude",
     "openai",
     "anthropic",
+    "grok",
     "multi-provider",
     "clean-code",
     "audit",

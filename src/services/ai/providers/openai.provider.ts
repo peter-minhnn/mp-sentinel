@@ -1,6 +1,6 @@
 /**
  * OpenAI GPT Provider
- * Best models for code: gpt-4.1, gpt-4o, gpt-4-turbo
+ * Best models for code: gpt-5.3-codex, gpt-5.2
  * Reference: https://openai.com/index/gpt-4-1/
  */
 

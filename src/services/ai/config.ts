@@ -66,6 +66,8 @@ export class AIConfig {
         return process.env.OPENAI_API_KEY;
       case "anthropic":
         return process.env.ANTHROPIC_API_KEY;
+      case "grok":
+        return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
       default:
         return undefined;
     }
@@ -79,6 +81,7 @@ export class AIConfig {
       gemini: "GEMINI_API_KEY",
       openai: "OPENAI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
+      grok: "XAI_API_KEY",
     };
     return names[provider];
   }

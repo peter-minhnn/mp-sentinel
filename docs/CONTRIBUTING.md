@@ -27,7 +27,7 @@
 
 ## 🏗️ Project Overview
 
-MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supports multiple AI providers (Gemini, OpenAI, Anthropic) and operates in two modes:
+MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supports multiple AI providers (Gemini, OpenAI, Anthropic, Grok) and operates in two modes:
 
 - **CI/CD Mode**: Integrates with GitHub Actions and GitLab CI/CD
 - **Local Review Mode**: Runs directly on branches for local commit review
@@ -64,7 +64,8 @@ mp-sentinel/
 │   │   │   └── providers/    # Provider implementations
 │   │   │       ├── gemini.provider.ts
 │   │   │       ├── openai.provider.ts
-│   │   │       └── anthropic.provider.ts
+│   │   │       ├── anthropic.provider.ts
+│   │   │       └── grok.provider.ts
 │   │   ├── ai.ts             # Legacy exports (backward compatibility)
 │   │   ├── file.ts           # File operations service
 │   │   └── git-provider.ts   # GitHub/GitLab integration
@@ -522,7 +523,7 @@ export interface IAIProvider {
 }
 
 // ✅ Good: Union types for constrained values
-export type AIProvider = 'gemini' | 'openai' | 'anthropic';
+export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'grok';
 export type AuditStatus = 'PASS' | 'FAIL';
 export type IssueSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
 
@@ -693,8 +694,8 @@ export class AIProviderFactory {
   static getDefaultModel(provider: AIProvider): string {
     const defaults: Record<AIProvider, string> = {
       gemini: 'gemini-2.5-flash',
-      openai: 'gpt-4o',
-      anthropic: 'claude-sonnet-4.5',
+      openai: 'gpt-5.3-codex',
+      anthropic: 'claude-sonnet-4-6',
       newai: 'newai-pro',  // Add default model
     };
     return defaults[provider];
