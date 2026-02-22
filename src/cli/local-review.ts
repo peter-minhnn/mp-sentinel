@@ -217,6 +217,8 @@ const filterCommits = (
     filtered = filtered.filter((commit) => {
       const result = matchCommitPattern(commit.message, commitPatterns, {
         mode: patternMatchMode,
+        // Pass excludePatterns for 'exclude-first' mode
+        excludePatterns,
       });
 
       if (!result.matched && verbosePatternMatching) {

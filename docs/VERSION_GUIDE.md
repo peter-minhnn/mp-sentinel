@@ -1,41 +1,41 @@
-# 📦 Phiên bản & Hướng dẫn Cài đặt (Package Versions & Installation)
+# 📦 Versions & Installation Guide
 
-Tài liệu này cung cấp hướng dẫn chi tiết về các phiên bản của **MP Sentinel** và cách xử lý khi gặp lỗi trong quá trình cài đặt qua `npm`.
-
----
-
-## 🚀 Các phiên bản hiện có (Available Versions)
-
-Bạn có thể cài đặt một phiên bản cụ thể bằng cách thêm `@version` vào sau tên package.
-
-| Phiên bản | Trạng thái | Ghi chú                                                      | Lệnh cài đặt                       |
-| :-------- | :--------- | :----------------------------------------------------------- | :--------------------------------- |
-| **1.0.3** | `Latest`   | Đồng bộ phiên bản, cải tiến build và Prettier. | `npm install -g mp-sentinel@1.0.3` |
-| **1.0.2** | `Stable`   | Tích hợp Skills.sh, xử lý song song cải tiến, bảo mật 3 lớp. | `npm install -g mp-sentinel@1.0.2` |
-| **1.0.1** | `Legacy`   | Thêm Branch Diff Mode, cải thiện khớp mẫu commit.            | `npm install -g mp-sentinel@1.0.1` |
-| **1.0.0** | `Legacy`   | Phiên bản khởi đầu với hỗ trợ đa nhà cung cấp AI.            | `npm install -g mp-sentinel@1.0.0` |
+This document provides detailed instructions on **MP Sentinel** versions and how to troubleshoot errors encountered during `npm` installation.
 
 ---
 
-## 🛠️ Xử lý lỗi khi `npm install` thất bại
+## 🚀 Available Versions
 
-Nếu bạn gặp lỗi (Timeout, 403, 500, hoặc kết nối chậm) khi cài đặt, hãy thử các cách sau:
+You can install a specific version by adding `@version` after the package name.
 
-### 1. Sử dụng Registry thay thế (cho khu vực kết nối chậm)
+| Version | Status | Notes | Installation Command |
+| :--- | :--- | :--- | :--- |
+| **1.0.3** | `Latest` | Version synchronization, build improvements, and Prettier integration. | `npm install -g mp-sentinel@1.0.3` |
+| **1.0.2** | `Stable` | Skills.sh integration, enhanced parallel processing, 3-layer security. | `npm install -g mp-sentinel@1.0.2` |
+| **1.0.1** | `Legacy` | Added Branch Diff Mode, improved commit pattern matching. | `npm install -g mp-sentinel@1.0.1` |
+| **1.0.0** | `Legacy` | Initial version with multi-provider AI support. | `npm install -g mp-sentinel@1.0.0` |
+
+---
+
+## 🛠️ Troubleshooting `npm install` Failures
+
+If you encounter errors (Timeout, 403, 500, or slow connection) during installation, try the following methods:
+
+### 1. Use an Alternative Registry (for slow connection areas)
 
 ```bash
-# Sử dụng registry của China (thông dụng khi mạng quốc tế chậm)
+# Use China registry (common when international networks are slow)
 npm install -g mp-sentinel --registry=https://registry.npmmirror.com
 ```
 
-### 2. Xóa Cache và cài đặt lại
+### 2. Clean Cache and Reinstall
 
 ```bash
 npm cache clean --force
 npm install -g mp-sentinel@latest
 ```
 
-### 3. Cài đặt trực tiếp từ GitHub (Nếu npmjs.com gặp sự cố)
+### 3. Install Directly from GitHub (If npmjs.com has issues)
 
 ```bash
 npm install -g https://github.com/peter-minhnn/mp-sentinel.git
@@ -43,36 +43,36 @@ npm install -g https://github.com/peter-minhnn/mp-sentinel.git
 
 ---
 
-## 🔄 Nâng cấp và Hạ cấp (Upgrade & Downgrade)
+## 🔄 Upgrade & Downgrade
 
-### Cách Nâng cấp (Upgrade)
+### How to Upgrade
 
-Để cập nhật lên phiên bản mới nhất:
+To update to the latest version:
 
 ```bash
 npm update -g mp-sentinel
-# Hoặc cài đặt đè bản latest
+# Or overwrite with the latest version
 npm install -g mp-sentinel@latest
 ```
 
-### Cách Hạ cấp (Downgrade)
+### How to Downgrade
 
-Nếu phiên bản mới gặp lỗi tương thích với hệ thống của bạn, bạn có thể quay lại phiên bản cũ:
+If a new version has compatibility issues with your system, you can revert to an older version:
 
 ```bash
-# Ví dụ: Quay lại bản 1.0.1
+# Example: Revert to version 1.0.1
 npm install -g mp-sentinel@1.0.1
 ```
 
 ---
 
-## 📥 Tải xuống thủ công (Manual Download)
+## 📥 Manual Download
 
-Nếu không thể sử dụng `npm`, bạn có thể tải mã nguồn từ [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases) và chạy trực tiếp:
+If you cannot use `npm`, you can download the source code from [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases) and run it directly:
 
-1. Tải file `.zip` hoặc `.tar.gz` của phiên bản mong muốn.
-2. Giải nén và di chuyển vào thư mục dự án.
-3. Chạy lệnh:
+1. Download the `.zip` or `.tar.gz` file of the desired version.
+2. Extract it and navigate into the project directory.
+3. Run the following commands:
 
 ```bash
 npm install

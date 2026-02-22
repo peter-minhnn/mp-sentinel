@@ -45,6 +45,8 @@ export interface CLIValues {
   "no-skills-fetch": boolean;
   /** Dry-run: security scan only, no AI calls */
   "dry-run": boolean;
+  /** Override the provider context-window token limit */
+  "token-limit"?: string;
 }
 
 const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.3";
@@ -83,6 +85,10 @@ export const buildProgram = (): Command => {
     .option("--no-ai", "Force-disable AI review")
     .option("--no-skills-fetch", "Disable skills.sh API calls (air-gapped mode)", false)
     .option("--dry-run", "Security scan only — skip AI calls and preview results", false)
+    .option(
+      "--token-limit <n>",
+      "Override provider context-window token limit (e.g. 128000 for GPT-4o)",
+    )
     // ── Examples ──────────────────────────────────────────────────────────────
     .addHelpText(
       "after",
@@ -99,6 +105,7 @@ Examples:
   $ npx mp-sentinel --format markdown            # Output as Markdown
   $ npx mp-sentinel --no-skills-fetch            # Disable external skills.sh calls
   $ npx mp-sentinel --dry-run                    # Security-only preview (no AI)
+  $ npx mp-sentinel --token-limit 128000         # Override token limit for GPT-4o
   $ npx mp-sentinel --quiet --format json        # CI-friendly JSON output
 `,
     );
@@ -185,6 +192,9 @@ export const parseCliArgs = (): {
       ...(typeof opts["range"] === "string" && { range: opts["range"] }),
       ...(typeof opts["format"] === "string" && { format: opts["format"] }),
       ...(aiValue !== undefined && { ai: aiValue }),
+      ...(typeof opts["tokenLimit"] === "string" && {
+        "token-limit": opts["tokenLimit"],
+      }),
     } as CLIValues;
 
     return {

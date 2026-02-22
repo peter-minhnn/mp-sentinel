@@ -31,6 +31,8 @@ export interface ReviewRunOptions {
   startTime: number;
   /** When true, run security scan only — skip AI calls and print a preview */
   dryRun?: boolean;
+  /** Override the provider context-window token limit */
+  tokenLimitOverride?: number;
 }
 
 const parseBooleanEnv = (value: string | undefined): boolean | undefined => {
@@ -223,6 +225,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     maxConcurrency,
     startTime,
     dryRun = false,
+    tokenLimitOverride,
   } = options;
 
   const formatRaw = values.format ?? process.env.MP_SENTINEL_FORMAT ?? "console";
@@ -294,7 +297,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   let auditResults: FileAuditResult[] = [];
 
   if (aiEnabled || dryRun) {
-    // Resolve provider-specific token limit
+    // Resolve provider-specific token limit (priority: CLI flag > env > config > provider default)
     let providerName: string | undefined;
     try {
       const providerConfig = AIConfig.fromEnvironment();
@@ -302,8 +305,12 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     } catch {
       // No API key configured — use default limit
     }
+    const cliLimit = tokenLimitOverride ?? 0;
     const envLimit = Number(process.env.MP_SENTINEL_TOKEN_LIMIT) || 0;
-    const tokenLimit = resolveTokenLimit(providerName, envLimit || config.ai?.tokenLimit);
+    const tokenLimit = resolveTokenLimit(
+      providerName,
+      cliLimit || envLimit || config.ai?.tokenLimit,
+    );
 
     // Build system prompt for token accounting
     let systemPromptForEstimate: string | undefined;
@@ -313,17 +320,29 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
       // Non-critical — skip system prompt in estimate
     }
 
-    const { exceeded, total } = await generatePayloadSummary(
+    // User prompt prefix added per file: "Code to review:\n"
+    const userPromptPrefix = "Code to review:\n";
+
+    const { exceeded, total, perFile } = await generatePayloadSummary(
       sanitizedFiles.map((f) => ({ path: f.path, content: f.content })),
       tokenLimit,
       systemPromptForEstimate,
+      userPromptPrefix,
+      values.verbose,
     );
 
     if (dryRun) {
-      // In dry-run mode: show security results + token preview, then exit
+      // In dry-run mode: show full per-file token breakdown + security results
       log.info(
         `DRY-RUN preview: ${sanitizedFiles.length} file(s), ~${total.toLocaleString()} estimated tokens (limit: ${tokenLimit.toLocaleString()})`,
       );
+      if (perFile.length > 0) {
+        log.info("Per-file token breakdown:");
+        const sorted = [...perFile].sort((a, b) => b.tokens - a.tokens);
+        for (const f of sorted) {
+          log.file(`   ${f.path}: ~${f.tokens.toLocaleString()} tokens`);
+        }
+      }
       auditResults = createSecurityOnlyResults(sanitizedFiles, redactionReport);
     } else if (exceeded) {
       log.warning(

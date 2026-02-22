@@ -126,3 +126,62 @@ describe("getFilesFromCommits", () => {
     expect(getFilesFromCommits([])).toEqual([]);
   });
 });
+
+// ── exclude-first mode ────────────────────────────────────────────────────────
+
+describe("matchCommitPattern — exclude-first mode", () => {
+  const patterns: CommitPattern[] = [
+    { type: "feat", pattern: "^feat" },
+    { type: "fix", pattern: "^fix" },
+  ];
+
+  it("excludes commits matching excludePatterns before include matching", () => {
+    const result = matchCommitPattern("feat: add login", patterns, {
+      mode: "exclude-first",
+      excludePatterns: ["^feat"],
+    });
+    expect(result.matched).toBe(false);
+  });
+
+  it("includes commits not matching excludePatterns", () => {
+    const result = matchCommitPattern("fix: bug fix", patterns, {
+      mode: "exclude-first",
+      excludePatterns: ["^feat"],
+    });
+    expect(result.matched).toBe(true);
+    expect(result.matchedPatterns[0]?.type).toBe("fix");
+  });
+
+  it("excludes merge commits with exclude-first", () => {
+    const result = matchCommitPattern("Merge branch 'main'", patterns, {
+      mode: "exclude-first",
+      excludePatterns: ["^Merge"],
+    });
+    expect(result.matched).toBe(false);
+  });
+
+  it("returns false when no include patterns match after exclusion", () => {
+    const result = matchCommitPattern("docs: update readme", patterns, {
+      mode: "exclude-first",
+      excludePatterns: [],
+    });
+    expect(result.matched).toBe(false);
+  });
+
+  it("handles empty excludePatterns (falls through to any logic)", () => {
+    const result = matchCommitPattern("feat: add login", patterns, {
+      mode: "exclude-first",
+      excludePatterns: [],
+    });
+    expect(result.matched).toBe(true);
+  });
+
+  it("skips invalid exclude regex gracefully", () => {
+    const result = matchCommitPattern("feat: add login", patterns, {
+      mode: "exclude-first",
+      excludePatterns: ["[invalid"],
+    });
+    // Invalid regex is skipped, so commit is not excluded
+    expect(result.matched).toBe(true);
+  });
+});

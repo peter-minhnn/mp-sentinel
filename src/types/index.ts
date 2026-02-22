@@ -102,8 +102,9 @@ export interface LocalReviewConfig {
    * Match mode for patterns:
    * - 'any': Match if any pattern matches (default)
    * - 'all': Match only if all required patterns match
+   * - 'exclude-first': Apply excludePatterns first, then match remaining with 'any'
    */
-  patternMatchMode?: "any" | "all";
+  patternMatchMode?: "any" | "all" | "exclude-first";
   /**
    * Show detailed pattern matching info in output
    */

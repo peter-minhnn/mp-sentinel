@@ -57,7 +57,7 @@ const LocalReviewConfigSchema = z.object({
   includeMergeCommits: z.boolean().optional(),
   branchDiffMode: z.boolean().optional(),
   compareBranch: z.string().optional(),
-  patternMatchMode: z.enum(["any", "all"]).optional(),
+  patternMatchMode: z.enum(["any", "all", "exclude-first"]).optional(),
   verbosePatternMatching: z.boolean().optional(),
 });
 

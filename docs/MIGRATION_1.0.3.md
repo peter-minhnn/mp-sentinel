@@ -1,8 +1,8 @@
-# Migration Guide: v1.0.x → v1.0.2
+# Migration Guide: v1.0.2 → v1.0.3
 
 ## 🎯 Overview
 
-Version 1.0.2 introduces Skills.sh integration and enhanced parallel processing. This guide helps you upgrade smoothly.
+Version 1.0.3 introduces internal process improvements, build optimizations, and complete documentation translation. This guide helps you upgrade smoothly.
 
 ## 🔄 Breaking Changes
 
@@ -209,14 +209,14 @@ If you encounter issues:
 
 ## ✅ Checklist
 
-- [ ] Update to v1.0.2
-- [ ] Add `techStack` to config (if not already)
+- [ ] Update to v1.0.3
+- [ ] Verify build process (internal improvements)
+- [ ] Review updated English documentation
 - [ ] Test with `--verbose` flag
-- [ ] Verify skills.sh is working (optional)
 - [ ] Update CI/CD if needed (usually not required)
 
 ---
 
-**Version**: 1.0.2  
-**Release Date**: 2026-02-10  
-**Migration Difficulty**: Easy (5 minutes)
+**Version**: 1.0.3  
+**Release Date**: 2026-02-22  
+**Migration Difficulty**: Easy (1 minute)

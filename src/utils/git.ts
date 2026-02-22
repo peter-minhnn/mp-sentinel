@@ -209,24 +209,69 @@ export interface PatternMatchResult {
  * Options for pattern matching
  */
 export interface PatternMatchOptions {
-  /** Match mode: 'any' (default) - match if any pattern matches, 'all' - require all required patterns */
-  mode?: "any" | "all";
+  /**
+   * Match mode:
+   * - 'any' (default): match if any pattern matches
+   * - 'all': require all required patterns to match
+   * - 'exclude-first': apply excludePatterns first, then match remaining with 'any'
+   */
+  mode?: "any" | "all" | "exclude-first";
+  /** Exclude patterns (regex strings) — commits matching any are excluded before include matching */
+  excludePatterns?: string[];
 }
 
 /**
  * Check if a commit message matches the specified patterns
  *
- * Supports two modes:
+ * Supports three modes:
  * - 'any' (default): Returns true if ANY pattern matches
  * - 'all': Returns true only if ALL patterns marked as 'required' match
+ * - 'exclude-first': Excludes commits matching excludePatterns, then applies 'any' logic
  */
 export const matchCommitPattern = (
   message: string,
   patterns: CommitPattern[],
   options: PatternMatchOptions = {},
 ): PatternMatchResult => {
-  const { mode = "any" } = options;
+  const { mode = "any", excludePatterns = [] } = options;
 
+  // ── exclude-first mode ────────────────────────────────────────────────────
+  if (mode === "exclude-first") {
+    // Step 1: check if message matches any exclude pattern
+    for (const raw of excludePatterns) {
+      try {
+        if (new RegExp(raw, "i").test(message)) {
+          return {
+            matched: false,
+            pattern: undefined,
+            matchedPatterns: [],
+            unmatchedRequiredPatterns: [],
+          };
+        }
+      } catch {
+        // Invalid regex — skip
+      }
+    }
+    // Step 2: apply 'any' logic on remaining patterns
+    const matchedPatterns: CommitPattern[] = [];
+    for (const p of patterns) {
+      try {
+        if (new RegExp(p.pattern, "i").test(message)) {
+          matchedPatterns.push(p);
+        }
+      } catch {
+        continue;
+      }
+    }
+    return {
+      matched: matchedPatterns.length > 0,
+      pattern: matchedPatterns[0],
+      matchedPatterns,
+      unmatchedRequiredPatterns: [],
+    };
+  }
+
+  // ── any / all modes ───────────────────────────────────────────────────────
   const matchedPatterns: CommitPattern[] = [];
   const unmatchedRequiredPatterns: CommitPattern[] = [];
 

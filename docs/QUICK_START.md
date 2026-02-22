@@ -1,4 +1,4 @@
-# Quick Start Guide - MP Sentinel v1.0.2
+# Quick Start Guide - MP Sentinel v1.0.3
 
 ## 1) Install
 

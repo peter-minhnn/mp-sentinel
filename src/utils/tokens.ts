@@ -101,18 +101,26 @@ export const warnIfTokenLimitExceeded = (total: number, limit: number, warnAt = 
 
 /**
  * Generate a human-readable payload summary with token estimates.
- * Accounts for system prompt tokens in the total.
+ * Accounts for system prompt and user prompt tokens in the total.
  * Logs a warning and returns true if the limit is exceeded.
  *
  * @param files        File payloads to estimate
  * @param tokenLimit   Provider context-window limit
  * @param systemPrompt Optional system prompt to include in the estimate
+ * @param userPrompt   Optional user prompt prefix to include in the estimate
+ * @param verbose      When true, show ALL files (not just top 3)
  */
 export const generatePayloadSummary = async (
   files: Array<{ path: string; content: string }>,
   tokenLimit: number,
   systemPrompt?: string,
-): Promise<{ exceeded: boolean; total: number }> => {
+  userPrompt?: string,
+  verbose = false,
+): Promise<{
+  exceeded: boolean;
+  total: number;
+  perFile: Array<{ path: string; tokens: number }>;
+}> => {
   const { total: fileTokens, perFile } = await estimatePayloadTokens(files);
 
   // Account for system prompt overhead
@@ -122,25 +130,37 @@ export const generatePayloadSummary = async (
     systemPromptTokens = encoder.encode(systemPrompt).length;
   }
 
-  const total = fileTokens + systemPromptTokens;
+  // Account for user prompt prefix overhead (e.g., "Code to review:\n")
+  let userPromptTokens = 0;
+  if (userPrompt) {
+    const encoder = await getEncoder();
+    userPromptTokens = encoder.encode(userPrompt).length;
+  }
+
+  const total = fileTokens + systemPromptTokens + userPromptTokens;
 
   log.info(
     `Payload summary: ${files.length} file(s), ~${fileTokens.toLocaleString()} file tokens` +
       (systemPromptTokens > 0
         ? ` + ~${systemPromptTokens.toLocaleString()} system prompt tokens`
         : "") +
+      (userPromptTokens > 0 ? ` + ~${userPromptTokens.toLocaleString()} user prompt tokens` : "") +
       ` = ~${total.toLocaleString()} total`,
   );
 
   if (files.length > 0) {
-    const top = [...perFile].sort((a, b) => b.tokens - a.tokens).slice(0, 3);
-    for (const f of top) {
+    const sorted = [...perFile].sort((a, b) => b.tokens - a.tokens);
+    const toShow = verbose ? sorted : sorted.slice(0, 3);
+    for (const f of toShow) {
       log.file(`   ${f.path}: ~${f.tokens.toLocaleString()} tokens`);
+    }
+    if (!verbose && sorted.length > 3) {
+      log.file(`   ... and ${sorted.length - 3} more file(s)`);
     }
   }
 
   const exceeded = warnIfTokenLimitExceeded(total, tokenLimit);
-  return { exceeded, total };
+  return { exceeded, total, perFile };
 };
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Core AI service with multi-provider support
  * Supports: Google Gemini, OpenAI GPT, Anthropic Claude
- * Features: retry with exponential backoff, fallback provider chain
+ * Features: retry with exponential backoff, fallback provider chain, auto-chunking
  */
 
 import type { AuditResult, ProjectConfig, FileAuditResult } from "../../types/index.js";
@@ -13,6 +13,7 @@ import {
 import { parseAuditResponse } from "../../utils/parser.js";
 import { log } from "../../utils/logger.js";
 import { withRetry, isRetryableError } from "../../utils/retry.js";
+import { chunkFileContent } from "../../utils/tokens.js";
 import type { IAIProvider, AIProvider } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { AIConfig } from "./config.js";
@@ -164,6 +165,7 @@ export const auditFilesWithConcurrency = async (
   const cacheEnabled = config.cacheEnabled !== false;
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   const fallbackChain = parseFallbackChain(config.ai?.fallbackProvider);
+  const maxCharsPerFile = Math.max(1000, config.ai?.maxCharsPerFile ?? 12_000);
 
   if (fallbackChain.length > 0) {
     log.info(`Fallback provider chain: ${fallbackChain.join(" → ")}`);
@@ -178,7 +180,16 @@ export const auditFilesWithConcurrency = async (
 
     const batchPromises = batch.map(async (file) => {
       const startTime = performance.now();
-      log.audit(`Auditing: ${file.path}`);
+
+      // Auto-chunk large files that exceed maxCharsPerFile
+      const chunks = chunkFileContent(file.content, maxCharsPerFile);
+      const isChunked = chunks.length > 1;
+
+      if (isChunked) {
+        log.audit(`Auditing: ${file.path} (${chunks.length} chunks)`);
+      } else {
+        log.audit(`Auditing: ${file.path}`);
+      }
 
       try {
         const cacheKey = buildAuditCacheKey({
@@ -207,7 +218,31 @@ export const auditFilesWithConcurrency = async (
           }
         }
 
-        const result = await auditFile(file.path, file.content, systemPrompt, fallbackChain);
+        // For chunked files: audit each chunk and merge issues
+        let result: AuditResult;
+        if (isChunked) {
+          const chunkResults = await Promise.all(
+            chunks.map((chunk, idx) =>
+              auditFile(
+                `${file.path} [chunk ${idx + 1}/${chunks.length}]`,
+                chunk,
+                systemPrompt,
+                fallbackChain,
+              ),
+            ),
+          );
+          // Merge: FAIL if any chunk fails, collect all issues
+          const allIssues = chunkResults.flatMap((r) => r.issues ?? []);
+          const hasError = chunkResults.some((r) => r.status === "ERROR");
+          const hasFail = chunkResults.some((r) => r.status === "FAIL");
+          result = {
+            status: hasError ? "ERROR" : hasFail ? "FAIL" : "PASS",
+            issues: allIssues,
+            ...(hasError && { message: "One or more chunks failed to audit" }),
+          };
+        } else {
+          result = await auditFile(file.path, file.content, systemPrompt, fallbackChain);
+        }
         const duration = performance.now() - startTime;
 
         if (cacheEnabled && result.status !== "ERROR") {

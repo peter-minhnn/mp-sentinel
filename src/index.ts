@@ -77,6 +77,9 @@ const run = async (): Promise<void> => {
       startTime,
     });
   } else {
+    const cliTokenLimitRaw = values["token-limit"] ? parseInt(values["token-limit"], 10) : 0;
+    const cliTokenLimit =
+      Number.isFinite(cliTokenLimitRaw) && cliTokenLimitRaw > 0 ? cliTokenLimitRaw : 0;
     process.exitCode = await runReview({
       values,
       commandPositionals: command === "review" ? commandPositionals : positionals,
@@ -85,6 +88,7 @@ const run = async (): Promise<void> => {
       maxConcurrency,
       startTime,
       dryRun: values["dry-run"],
+      ...(cliTokenLimit > 0 && { tokenLimitOverride: cliTokenLimit }),
     });
   }
 };

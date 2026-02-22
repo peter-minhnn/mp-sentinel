@@ -9,6 +9,7 @@ import {
   warnIfTokenLimitExceeded,
   chunkFileContent,
   estimatePayloadTokens,
+  generatePayloadSummary,
 } from "../utils/tokens.js";
 
 // ── resolveTokenLimit ─────────────────────────────────────────────────────────
@@ -135,5 +136,56 @@ describe("estimatePayloadTokens", () => {
     const { total: smallTotal } = await estimatePayloadTokens(small);
     const { total: largeTotal } = await estimatePayloadTokens(large);
     expect(largeTotal).toBeGreaterThan(smallTotal);
+  });
+});
+
+// ── generatePayloadSummary ────────────────────────────────────────────────────
+
+describe("generatePayloadSummary", () => {
+  it("returns perFile breakdown", async () => {
+    const files = [
+      { path: "src/a.ts", content: "const x = 1;" },
+      { path: "src/b.ts", content: "const y = 2;" },
+    ];
+    const { perFile } = await generatePayloadSummary(files, 100_000);
+    expect(perFile).toHaveLength(2);
+    expect(perFile[0]?.path).toBeDefined();
+    expect(perFile[0]?.tokens).toBeGreaterThan(0);
+  });
+
+  it("includes system prompt tokens in total", async () => {
+    const files = [{ path: "a.ts", content: "const x = 1;" }];
+    const { total: withoutPrompt } = await generatePayloadSummary(files, 100_000);
+    const { total: withPrompt } = await generatePayloadSummary(
+      files,
+      100_000,
+      "You are a code reviewer.",
+    );
+    expect(withPrompt).toBeGreaterThan(withoutPrompt);
+  });
+
+  it("includes user prompt tokens in total", async () => {
+    const files = [{ path: "a.ts", content: "const x = 1;" }];
+    const { total: withoutUserPrompt } = await generatePayloadSummary(files, 100_000);
+    const { total: withUserPrompt } = await generatePayloadSummary(
+      files,
+      100_000,
+      undefined,
+      "Code to review:\n",
+    );
+    expect(withUserPrompt).toBeGreaterThan(withoutUserPrompt);
+  });
+
+  it("returns exceeded=false when under limit", async () => {
+    const files = [{ path: "a.ts", content: "x" }];
+    const { exceeded } = await generatePayloadSummary(files, 100_000);
+    expect(exceeded).toBe(false);
+  });
+
+  it("returns exceeded=true when over limit", async () => {
+    // Use a very small limit to force exceeded
+    const files = [{ path: "a.ts", content: "const x = 1; const y = 2;" }];
+    const { exceeded } = await generatePayloadSummary(files, 1);
+    expect(exceeded).toBe(true);
   });
 });
