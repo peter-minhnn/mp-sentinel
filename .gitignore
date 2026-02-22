@@ -11,5 +11,3 @@
 *.swp
 *.swo
 .idea
-packages/*
-packages/v*/*.tgz

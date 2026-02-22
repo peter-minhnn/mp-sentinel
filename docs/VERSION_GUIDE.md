@@ -67,11 +67,22 @@ npm install -g mp-sentinel@1.0.1
 
 ---
 
-## 📥 Manual Download
+## 📥 Manual Download & Local Installation
 
-If you cannot use `npm`, you can download the source code from [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases) and run it directly:
+If you cannot use `npm` to install from the public registry (e.g., due to strict firewall or company proxies), you have two options:
 
-1. Download the `.zip` or `.tar.gz` file of the desired version.
+### Option A: Install from Tarball (Recommended for corporate environments)
+
+1. Download the `.tgz` package (e.g., `mp-sentinel-1.0.4.tgz`) from [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases).
+2. Install it locally:
+```bash
+npm install -g ./packages/v1.0.4/mp-sentinel-1.0.4.tgz
+```
+*This method is identical to a standard npm install but doesn't require an active connection to npmjs.org.*
+
+### Option B: Build from Source
+
+1. Download the `.zip` or `.tar.gz` source code of the desired version.
 2. Extract it and navigate into the project directory.
 3. Run the following commands:
 

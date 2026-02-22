@@ -35,7 +35,7 @@ npx mp-sentinel
 
 For detailed usage and configuration, please refer to the [Full Documentation](./docs/README.md).
 
-> 💡 **Having trouble with `npm install`?** Check our [Version & Installation Guide](./docs/VERSION_GUIDE.md) for troubleshooting and manual download options.
+> 💡 **Having trouble with `npm install`?** Check our [Version & Installation Guide](./docs/VERSION_GUIDE.md) for troubleshooting, alternative registries, or **offline installation** using the `.tgz` package. 
 
 ---
 
