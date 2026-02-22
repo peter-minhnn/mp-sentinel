@@ -22,7 +22,7 @@ import { buildAuditCacheKey, readCachedAuditResult, writeCachedAuditResult } fro
 let providerInstance: IAIProvider | null = null;
 let providerConfigCache: ReturnType<typeof AIConfig.fromEnvironment> | null = null;
 
-const TOOL_VERSION = process.env.npm_package_version || "1.0.3";
+const TOOL_VERSION = process.env.npm_package_version || "1.0.4";
 
 const getProviderConfig = (): ReturnType<typeof AIConfig.fromEnvironment> => {
   if (providerConfigCache) {

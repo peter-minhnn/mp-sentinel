@@ -88,6 +88,7 @@ const run = async (): Promise<void> => {
       maxConcurrency,
       startTime,
       dryRun: values["dry-run"],
+      verboseDryRun: values["verbose-dry-run"],
       ...(cliTokenLimit > 0 && { tokenLimitOverride: cliTokenLimit }),
     });
   }

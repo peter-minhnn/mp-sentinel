@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -61,6 +61,7 @@
     "dotenv": "16.6.1",
     "fast-glob": "3.3.3",
     "ignore": "7.0.5",
+    "prompts": "^2.4.2",
     "tiktoken": "1.0.22",
     "zod": "4.3.6"
   },
@@ -70,6 +71,7 @@
     "@types/glob": "8.1.0",
     "@types/jest": "30.0.0",
     "@types/node": "22.19.9",
+    "@types/prompts": "^2.4.9",
     "jest": "30.2.0",
     "prettier": "3.8.1",
     "ts-jest": "29.4.6",

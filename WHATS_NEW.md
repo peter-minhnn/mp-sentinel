@@ -1,4 +1,4 @@
-# 🎉 What's New in v1.0.3
+# 🎉 What's New in v1.0.4
 
 ## 🚀 Major Features
 
@@ -227,7 +227,7 @@ Need help?
 
 ## ✨ Summary
 
-**Version**: 1.0.3  
+**Version**: 1.0.4  
 **Release Date**: 2026-02-10  
 **Status**: Production Ready
 

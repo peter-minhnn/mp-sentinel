@@ -31,6 +31,8 @@ export interface ReviewRunOptions {
   startTime: number;
   /** When true, run security scan only — skip AI calls and print a preview */
   dryRun?: boolean;
+  /** When true, force per-file output during dry run */
+  verboseDryRun?: boolean;
   /** Override the provider context-window token limit */
   tokenLimitOverride?: number;
 }
@@ -224,9 +226,11 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     targetBranch,
     maxConcurrency,
     startTime,
-    dryRun = false,
+    dryRun: dryRunStr = false,
+    verboseDryRun = false,
     tokenLimitOverride,
   } = options;
+  const dryRun = dryRunStr || verboseDryRun;
 
   const formatRaw = values.format ?? process.env.MP_SENTINEL_FORMAT ?? "console";
   const format = resolveFormat(formatRaw);
@@ -328,7 +332,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
       tokenLimit,
       systemPromptForEstimate,
       userPromptPrefix,
-      values.verbose,
+      values.verbose || verboseDryRun,
     );
 
     if (dryRun) {

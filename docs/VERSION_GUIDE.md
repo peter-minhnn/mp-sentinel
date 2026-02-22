@@ -10,8 +10,9 @@ You can install a specific version by adding `@version` after the package name.
 
 | Version | Status | Notes | Installation Command |
 | :--- | :--- | :--- | :--- |
-| **1.0.3** | `Latest` | Version synchronization, build improvements, and Prettier integration. | `npm install -g mp-sentinel@1.0.3` |
-| **1.0.2** | `Stable` | Skills.sh integration, enhanced parallel processing, 3-layer security. | `npm install -g mp-sentinel@1.0.2` |
+| **1.0.4** | `Latest` | Interactive local review, auto-fetch syncing, and mixed uncommitted audits. | `npm install -g mp-sentinel@1.0.4` |
+| **1.0.3** | `Stable` | Version synchronization, build improvements, and Prettier integration. | `npm install -g mp-sentinel@1.0.3` |
+| **1.0.2** | `Legacy` | Skills.sh integration, enhanced parallel processing, 3-layer security. | `npm install -g mp-sentinel@1.0.2` |
 | **1.0.1** | `Legacy` | Added Branch Diff Mode, improved commit pattern matching. | `npm install -g mp-sentinel@1.0.1` |
 | **1.0.0** | `Legacy` | Initial version with multi-provider AI support. | `npm install -g mp-sentinel@1.0.0` |
 

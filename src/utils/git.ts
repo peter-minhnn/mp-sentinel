@@ -47,6 +47,8 @@ export interface GetRecentCommitsOptions {
   branchDiffMode?: boolean;
   /** Target branch to compare against (default: 'origin/main') */
   compareBranch?: string;
+  /** Auto-fetch remote branch before check */
+  fetch?: boolean;
 }
 
 /**
@@ -78,6 +80,7 @@ export const getRecentCommits = async (
     extensions = SUPPORTED_EXTENSIONS,
     branchDiffMode = false,
     compareBranch = "origin/main",
+    fetch = false,
   } = options;
 
   try {
@@ -94,6 +97,18 @@ export const getRecentCommits = async (
       //   2. Fall back to direct range comparison (compareBranch..HEAD)
       //   3. Last resort: fall back to count mode (last N commits)
       let branchDiffResolved = false;
+
+      // Auto-fetch if required and if compareBranch seems to belong to a remote (e.g., origin/...)
+      if (fetch && compareBranch.includes("/")) {
+        const [remote] = compareBranch.split("/");
+        try {
+          const fetchCmd = `git fetch ${remote}`;
+          log.info(`Auto-fetching remote context with: ${fetchCmd}`);
+          await execAsync(fetchCmd);
+        } catch (err) {
+          log.warning(`Failed to auto-fetch remote context: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
 
       try {
         const { stdout: mergeBase } = await execAsync(`git merge-base ${compareBranch} HEAD`);
@@ -190,6 +205,21 @@ export const getFilesInCommit = async (
     const command = `git diff-tree --no-commit-id --name-only -r ${commitHash}`;
     const { stdout } = await execAsync(command);
     return parseAndFilterFiles(stdout, extensions);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Get all uncommitted files (staged and unstaged)
+ */
+export const getUncommittedFiles = async (
+  extensions: RegExp = SUPPORTED_EXTENSIONS,
+): Promise<string[]> => {
+  try {
+    const { stdout: staged } = await execAsync("git diff --cached --name-only");
+    const { stdout: unstaged } = await execAsync("git diff --name-only");
+    return parseAndFilterFiles(`${staged}\n${unstaged}`, extensions);
   } catch {
     return [];
   }

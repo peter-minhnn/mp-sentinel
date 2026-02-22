@@ -19,9 +19,10 @@ All documentation has been moved to the `docs/` directory:
 - [Network Efficiency](./docs/NETWORK_EFFICIENCY.md)
 - [Skills.sh Integration](./docs/SKILLS_INTEGRATION.md)
 - [Skills.sh Quick Start](./docs/SKILLS_QUICK_START.md)
-- [Migration Guide (v1.0.3)](./docs/MIGRATION_1.0.3.md)
+- [Migration Guide (v1.0.4)](./docs/MIGRATION_1.0.4.md)
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.0.4-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -40,7 +41,7 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in v1.0.3:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in v1.0.4:
 
 - 🎯 **Skills.sh Integration** — Technology-specific best practices
 - ⚡ **Enhanced Parallel Processing** — Faster, fault-tolerant file auditing

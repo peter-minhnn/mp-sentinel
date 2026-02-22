@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.0.3-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.0.4-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -14,7 +14,7 @@
 
 Traditional tools like **ESLint** or **Prettier** are great for syntax and formatting, but they miss the bigger picture. They can't tell you if your logic is flawed or if you're breaking the project's architecture.
 
-**MP Sentinel fills that gap.** v1.0.3 introduces a stable `review` command contract, diff-hunk auditing, token guardrails, and persistent caching.
+**MP Sentinel fills that gap.** v1.0.4 introduces interactive local review, auto-fetch syncing, and mixed uncommitted audits.
 
 - 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, or Grok for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
@@ -64,6 +64,10 @@ mp-sentinel review --files src/index.ts src/utils/git.ts
 mp-sentinel review --format console
 mp-sentinel review --format json
 mp-sentinel review --format markdown
+
+# Dry-run / View token estimations (works for local-review too!)
+mp-sentinel review --dry-run
+mp-sentinel review --verbose-dry-run 
 ```
 
 ### Shortcut Mode
@@ -88,7 +92,12 @@ mp-sentinel
 | `--target-branch`  | `-b`      | Target branch for default range mode                   | `origin/main`   |
 | `--concurrency`    | `-c`      | Max concurrent file audits                             | `5`             |
 | `--verbose`        | -         | Enable verbose logging                                 | `false`         |
+| `--dry-run`        | -         | Security scan & token estimation (no AI calls)         | `false`         |
+| `--verbose-dry-run`| -         | Thorough per-file breakdown for tokens                 | `false`         |
 | `--local`          | `-l`      | Legacy local-review mode (still supported)             | `false`         |
+| `--interactive`    | `-i`      | Interactive UI picker for local commits                | `false`         |
+| `--include-uncommitted`| -     | Mixed uncommitted mode (include WIP changes)           | `false`         |
+| `--fetch`          | -         | Auto-fetch tracking branch before detecting base       | `false`         |
 | `--commits`        | `-n`      | Legacy: number of commits in local mode                | `1`             |
 | `--branch-diff`    | `-d`      | Legacy: review all commits since branching             | `false`         |
 | `--compare-branch` | -         | Legacy: comparison branch for local mode               | `origin/main`   |
@@ -185,6 +194,11 @@ Config file precedence: `.mp-sentinelrc.json` first, then `.sentinelrc.json`.
 | `skipPatterns`           | array   | Skip commits with these prefixes      | `[]`          |
 | `includeMergeCommits`    | boolean | Include merge commits                 | `false`       |
 
+#### High-Performance Local Options
+- `--interactive (-i)`: Spawns a checkbox UI list, allowing precision selection of which commits to review.
+- `--fetch`: When using branch-diff mode, Sentinel will securely origin sync (`git fetch`) in the background so you are comparing against the most up-to-date architecture.
+- `--include-uncommitted`: Mixed mode that brings standard local branch diff PLUS uncommitted changes (both Staged + Unstaged workspace files) in a single massive super-audit report. Perfect for reviewing code right before a commit.
+
 ### 🔑 Environment Variables
 
 #### AI Provider Configuration
@@ -254,7 +268,7 @@ const results = await auditFilesWithConcurrency(
 
 ## 🤖 CI/CD Integration
 
-MP Sentinel v1.0.3 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
+MP Sentinel v1.0.4 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
 
 ### Quick Setup
 

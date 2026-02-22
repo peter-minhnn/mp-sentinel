@@ -1,4 +1,4 @@
-# Quick Reference - MP Sentinel v1.0.3
+# Quick Reference - MP Sentinel v1.0.4
 
 ## Core Command
 

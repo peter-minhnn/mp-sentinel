@@ -8,11 +8,17 @@ import type { ProjectConfig, CommitInfo } from "../types/index.js";
 import {
   getRecentCommits,
   getFilesFromCommits,
+  getUncommittedFiles,
   matchCommitPattern,
   shouldSkipCommit,
 } from "../utils/git.js";
+import prompts from "prompts";
+import { getSecurityService } from "../services/security/index.js";
 import { readFilesForAudit } from "../services/file.js";
-import { auditCommit, auditFilesWithConcurrency } from "../services/ai.js";
+import { FileHandler } from "../services/file-handler/index.js";
+import { auditCommit, auditFilesWithConcurrency, AIConfig } from "../services/ai/index.js";
+import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
+import { buildSystemPrompt } from "../config/prompts.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
 import type { CLIValues } from "./args.js";
@@ -52,6 +58,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     includeMergeCommits: config.localReview?.includeMergeCommits ?? false,
     branchDiffMode: isBranchDiffMode,
     compareBranch,
+    fetch: values.fetch,
   });
 
   if (recentCommits.length === 0) {
@@ -66,7 +73,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   log.info(`Found ${recentCommits.length} commit(s) to analyze`);
 
   // Filter commits based on patterns
-  const commitsToReview = filterCommits(
+  let commitsToReview = filterCommits(
     recentCommits,
     config,
     verbosePatternMatching,
@@ -86,6 +93,28 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 0;
   }
 
+  // Interactive Commit Picker Mode
+  if (values.interactive) {
+    const { selectedHashes } = await prompts({
+      type: "multiselect",
+      name: "selectedHashes",
+      message: "Select commits to review:",
+      choices: commitsToReview.map((c) => ({
+        title: `${c.hash.slice(0, 7)}: ${c.message}`,
+        value: c.hash,
+        selected: true,
+      })),
+      instructions: false,
+    });
+
+    if (!selectedHashes || selectedHashes.length === 0) {
+      log.warning("No commits selected via interactive mode. Exiting.");
+      return 0;
+    }
+
+    commitsToReview = commitsToReview.filter((c) => selectedHashes.includes(c.hash));
+  }
+
   // Print commits being reviewed
   printCommitList(commitsToReview);
 
@@ -99,8 +128,22 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   // Get all unique files from all commits to review
   const filesToAudit = getFilesFromCommits(commitsToReview);
 
+  // Mixed Uncommitted Mode
+  if (values["include-uncommitted"]) {
+    log.info("Including uncommitted changes (staged and unstaged) in the review scope...");
+    const uncommittedFiles = await getUncommittedFiles();
+    if (uncommittedFiles.length > 0) {
+      log.info(`Found ${uncommittedFiles.length} uncommitted file(s).`);
+      for (const f of uncommittedFiles) {
+        if (!filesToAudit.includes(f)) {
+          filesToAudit.push(f);
+        }
+      }
+    }
+  }
+
   if (filesToAudit.length === 0) {
-    log.success("No code files changed in the reviewed commits.");
+    log.success("No code files changed in the reviewed scope.");
     return hasErrors ? 1 : 0;
   }
 
@@ -116,8 +159,86 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 1;
   }
 
+  // 1. FILTER FILES WITH .sentinelrc.json IGNORE PATTERNS
+  const fileHandler = new FileHandler();
+  const filterResult = await fileHandler.filterPathsWithIgnores(
+    fileReadResult.success.map(f => f.path)
+  );
+  
+  const acceptedFilePaths = new Set(filterResult.accepted);
+  const acceptedFiles = fileReadResult.success.filter(f => acceptedFilePaths.has(f.path));
+
+  if (filterResult.rejected.length > 0) {
+    log.warning(`⚠️  Skipped ${filterResult.rejected.length} file(s) due to ignore rules:`);
+    for (const { path, reason } of filterResult.rejected) {
+      if (values.verbose) log.file(`   ❌ ${path}: ${reason}`);
+    }
+  }
+
+  if (acceptedFiles.length === 0) {
+    log.success("All changed files were ignored. Nothing to review.");
+    return hasErrors ? 1 : 0;
+  }
+
+  // 2. SECURITY SANITIZATION
+  const securityService = getSecurityService();
+  const { sanitizedFiles } = securityService.sanitizeFiles(
+    acceptedFiles.map(file => ({ path: file.path, content: file.content }))
+  );
+
+  // 3. DRY RUN / TOKEN ESTIMATION
+  const dryRun = values["dry-run"] || values["verbose-dry-run"];
+  const verboseDryRun = values["verbose-dry-run"];
+  
+  if (dryRun) {
+    // Attempt token estimation
+    let providerName: string | undefined;
+    try {
+      const providerConfig = AIConfig.fromEnvironment();
+      providerName = providerConfig.provider;
+    } catch {
+      // Ignored
+    }
+    const cliLimit = values["token-limit"] ? parseInt(values["token-limit"], 10) : 0;
+    const envLimit = Number(process.env.MP_SENTINEL_TOKEN_LIMIT) || 0;
+    const tokenLimit = resolveTokenLimit(providerName, cliLimit || envLimit || config.ai?.tokenLimit);
+    
+    let systemPromptForEstimate: string | undefined;
+    try {
+      systemPromptForEstimate = await buildSystemPrompt(config);
+    } catch {
+      // Ignored
+    }
+
+    const { exceeded, total, perFile } = await generatePayloadSummary(
+      sanitizedFiles,
+      tokenLimit,
+      systemPromptForEstimate,
+      "Code to review:\n",
+      values.verbose || verboseDryRun
+    );
+
+    log.info(
+      `DRY-RUN preview: ${sanitizedFiles.length} file(s), ~${total.toLocaleString()} estimated tokens (limit: ${tokenLimit.toLocaleString()})`,
+    );
+
+    if (verboseDryRun && perFile.length > 0) {
+      log.info("Per-file token breakdown:");
+      const sorted = [...perFile].sort((a, b) => b.tokens - a.tokens);
+      for (const f of sorted) {
+        log.file(`   ${f.path}: ~${f.tokens.toLocaleString()} tokens`);
+      }
+    }
+
+    if (exceeded) {
+      log.warning("WARNING: Token limit exceeded! You should reduce localReview.commitCount or ignore more files.");
+    }
+
+    return 0; // End early for dry-run
+  }
+
   const auditResults = await auditFilesWithConcurrency(
-    fileReadResult.success.map((f) => ({ path: f.path, content: f.content })),
+    sanitizedFiles,
     config,
     maxConcurrency,
   );

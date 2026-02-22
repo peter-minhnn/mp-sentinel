@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAI and Anthropic providers now use request timeout (`AI_TIMEOUT_MS`).
 - Security/file filtering layers are now used in the main review pipeline.
 
+## [1.0.4] - 2026-02-22
+
+### Added
+- **Interactive Local Review**: Added `-i, --interactive` flag to hand-pick commits via terminal checkbox UI.
+- **Mixed Uncommitted Mode**: Added `--include-uncommitted` flag to audit Staged + Unstaged + Commits in one run.
+- **Auto-Fetch Syncing**: Added `--fetch` flag to automatically sync remote branches before a branch-diff review.
+- **Detailed Token Breakdown**: Added `--verbose-dry-run` to see per-file token counts without calling AI.
+- **Command Cheat Sheet**: New comprehensive guide `docs/COMMANDS_CHEAT_SHEET.md`.
+
+### Improved
+- **Security Guard**: File filtering and secret scrubbing are now fully integrated into Local Review mode.
+- **Performance**: Improved git merge-base detection for remote-tracking branches.
+
 ## [1.0.3] - 2026-02-22
 
 ### Fixed

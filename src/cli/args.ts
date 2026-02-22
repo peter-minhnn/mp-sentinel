@@ -23,12 +23,18 @@ export interface CLIValues {
   quiet: boolean;
   /** Enable local review mode - review commits directly on current branch */
   local: boolean;
+  /** UI commit picker */
+  interactive: boolean;
   /** Number of recent commits to review in local mode (default: from config or 1) */
   commits: string;
   /** Enable branch diff mode - get all commits that differ from compare-branch */
   "branch-diff": boolean;
   /** Target branch to compare against for branch-diff mode (default: origin/main) */
   "compare-branch"?: string;
+  /** Auto-fetch origin branch before detecting merge base */
+  fetch: boolean;
+  /** Mixed uncommitted mode (include working tree changes in local review) */
+  "include-uncommitted": boolean;
   /** Review target: staged files */
   staged: boolean;
   /** Review target: single commit SHA */
@@ -45,11 +51,13 @@ export interface CLIValues {
   "no-skills-fetch": boolean;
   /** Dry-run: security scan only, no AI calls */
   "dry-run": boolean;
+  /** Dry-run with forced per-file token breakdown */
+  "verbose-dry-run": boolean;
   /** Override the provider context-window token limit */
   "token-limit"?: string;
 }
 
-const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.3";
+const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.4";
 
 /**
  * Build the commander program (exported for testing).
@@ -71,9 +79,12 @@ export const buildProgram = (): Command => {
     .option("-q, --quiet", "Suppress all non-error output", false)
     // ── Local review mode ─────────────────────────────────────────────────────
     .option("-l, --local", "Enable local review mode (branch-based)", false)
+    .option("-i, --interactive", "Interactive commit picker UI", false)
     .option("-n, --commits <n>", "Number of recent commits to review in local mode", "1")
     .option("-d, --branch-diff", "Enable branch-diff mode (all commits vs compare-branch)", false)
     .option("--compare-branch <branch>", "Branch to compare against in branch-diff mode")
+    .option("--fetch", "Auto-fetch remote branch before detecting merge-base", false)
+    .option("--include-uncommitted", "Include staged/unstaged changes in the review scope", false)
     // ── CI/CD review targets ──────────────────────────────────────────────────
     .option("--staged", "Review staged files", false)
     .option("--commit <sha>", "Review a specific commit SHA")
@@ -83,8 +94,9 @@ export const buildProgram = (): Command => {
     .option("--format <fmt>", "Output format: console | json | markdown (default: console)")
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
-    .option("--no-skills-fetch", "Disable skills.sh API calls (air-gapped mode)", false)
+    .option("--no-skills-fetch", "Disable external skills.sh calls (air-gapped mode)", false)
     .option("--dry-run", "Security scan only — skip AI calls and preview results", false)
+    .option("--verbose-dry-run", "Dry-run with forced per-file token breakdown", false)
     .option(
       "--token-limit <n>",
       "Override provider context-window token limit (e.g. 128000 for GPT-4o)",
@@ -105,6 +117,7 @@ Examples:
   $ npx mp-sentinel --format markdown            # Output as Markdown
   $ npx mp-sentinel --no-skills-fetch            # Disable external skills.sh calls
   $ npx mp-sentinel --dry-run                    # Security-only preview (no AI)
+  $ npx mp-sentinel --verbose-dry-run            # Dry-run with forcing token breakdowns
   $ npx mp-sentinel --token-limit 128000         # Override token limit for GPT-4o
   $ npx mp-sentinel --quiet --format json        # CI-friendly JSON output
 `,
@@ -173,12 +186,16 @@ export const parseCliArgs = (): {
       verbose: Boolean(opts["verbose"] ?? false),
       quiet: Boolean(opts["quiet"] ?? false),
       local: Boolean(opts["local"] ?? false),
+      interactive: Boolean(opts["interactive"] ?? false),
       commits: typeof opts["commits"] === "string" ? opts["commits"] : "1",
       "branch-diff": Boolean(opts["branchDiff"] ?? false),
+      fetch: Boolean(opts["fetch"] ?? false),
+      "include-uncommitted": Boolean(opts["includeUncommitted"] ?? false),
       staged: Boolean(opts["staged"] ?? false),
       files: Array.isArray(opts["files"]) ? (opts["files"] as string[]) : [],
       "no-skills-fetch": opts["skillsFetch"] === false,
       "dry-run": Boolean(opts["dryRun"] ?? false),
+      "verbose-dry-run": Boolean(opts["verboseDryRun"] ?? false),
       ...(typeof opts["targetBranch"] === "string" && {
         "target-branch": opts["targetBranch"],
       }),
