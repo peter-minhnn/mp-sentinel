@@ -406,6 +406,49 @@ jobs:
 
 </details>
 
+<details>
+<summary><b>Option 4: xAI Grok (Extreme Reasoning)</b></summary>
+
+**Setup:**
+
+1. Get API key: https://console.x.ai/
+2. Add to Secrets: `GROK_API_KEY`
+3. Create `.github/workflows/audit.yml`:
+
+```yaml
+name: MP Sentinel Code Guard
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Run MP Sentinel
+        env:
+          AI_PROVIDER: grok
+          AI_MODEL: grok-4-1-fast-reasoning
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: origin/${{ github.base_ref }}
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
+```
+
+</details>
+
 ### GitLab CI Examples
 
 <details>

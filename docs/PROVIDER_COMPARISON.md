@@ -6,15 +6,15 @@ This guide helps you choose the best AI provider for your code review needs.
 
 ## Quick Comparison
 
-| Feature | Google Gemini | OpenAI GPT | Anthropic Claude |
-|---------|--------------|------------|------------------|
-| **Best For** | Fast, cost-effective | Highest accuracy | Long autonomous tasks |
-| **Free Tier** | ✅ Generous | ❌ No | ❌ No |
-| **Speed** | ⚡⚡⚡ Fastest | ⚡⚡ Fast | ⚡⚡ Fast |
-| **Coding Accuracy** | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Best |
-| **Context Window** | 1M tokens | 1M tokens | 1M tokens |
-| **Cost (per 1M tokens)** | $0.075 | $2.50 | $3.00 |
-| **API Stability** | ⭐⭐⭐⭐ Stable | ⭐⭐⭐⭐⭐ Very Stable | ⭐⭐⭐⭐ Stable |
+| Feature | Google Gemini | OpenAI GPT | Anthropic Claude | xAI Grok |
+|---------|--------------|------------|------------------|----------|
+| **Best For** | Fast, cost-effective | Highest accuracy | Long autonomous tasks | Extreme reasoning |
+| **Free Tier** | ✅ Generous | ❌ No | ❌ No | ❌ No |
+| **Speed** | ⚡⚡⚡ Fastest | ⚡⚡ Fast | ⚡⚡ Fast | ⚡⚡⚡ Very Fast |
+| **Coding Accuracy** | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Excellent |
+| **Context Window** | 1M tokens | 1M tokens | 1M tokens | 128k - 512k tokens |
+| **Cost (per 1M tokens)** | $0.075 | $2.50 | $3.00 | $2.00 |
+| **API Stability** | ⭐⭐⭐⭐ Stable | ⭐⭐⭐⭐⭐ Very Stable | ⭐⭐⭐⭐ Stable | ⭐⭐⭐ Beta/Fast-Moving |
 
 ## Detailed Comparison
 
@@ -104,10 +104,37 @@ This guide helps you choose the best AI provider for your code review needs.
 - Haiku: $0.25 per 1M input tokens
 
 **Use When:**
-- Need autonomous code review
-- Long-running analysis tasks
 - Want detailed explanations
 - Building AI agents
+
+### xAI Grok
+
+**Strengths:**
+- 🧠 **Fast Reasoning**: Exceptional at explaining "why" behind logical errors
+- ⚡ **Turbo Speed**: Competitive with Gemini Flash for simple audits
+- 🛠️ **Real-time Context**: Better understanding of latest library syntaxes
+- 🦾 **Code-First**: `grok-code` models are specifically fine-tuned for syntax
+- 🧪 **Developer Friendly**: Simple API structure (OpenAI compatible)
+
+**Weaknesses:**
+- 💰 Pricing is lower than GPT but higher than Gemini
+- 🚫 No permanent free tier (trial credits only)
+- 📉 Lower context window compared to Gemini's 1M
+- 🧪 Ecosystem is still evolving
+
+**Best Models:**
+- `grok-4-1-fast-reasoning` - Best for complex logic debugging (recommended)
+- `grok-4` - Standard high-accuracy model
+- `grok-code-fast-1` - Optimized for speed and syntax highlighting
+
+**Pricing:**
+- Grok-4: $2.00 per 1M input tokens
+- Grok Fast Reasoning: $2.00 per 1M input tokens
+
+**Use When:**
+- You need deep logical reasoning for bugs
+- Want a faster alternative to GPT-5 without losing much accuracy
+- Doing real-time interactive local reviews
 
 ## Benchmark Comparison
 
@@ -143,6 +170,7 @@ Assuming average 500 tokens per file:
 | Gemini | 2.5 Flash | **$0.04** |
 | OpenAI | GPT-5.3-Codex | **$1.25** |
 | Anthropic | Sonnet 4.6 | **$1.50** |
+| xAI | Grok-4 | **$1.00** |
 
 ### Example: 10,000 Files/Month
 | Provider | Model | Monthly Cost |
@@ -182,6 +210,12 @@ Assuming average 500 tokens per file:
 - Highest accuracy
 - Best architectural understanding
 - Detailed suggestions
+
+### Reasoning-Heavy Security Audits
+**Recommended:** xAI Grok-4-1-fast-reasoning
+- Exceptional at spotting race conditions
+- Better at logical "Exploitability" analysis
+- High-speed output for immediate local feedback
 
 ## Migration Path
 
@@ -232,6 +266,13 @@ AI_MODEL=gpt-5.3-codex
 OPENAI_API_KEY=your_key
 ```
 
+### Reasoning-Optimized (Grok)
+```bash
+AI_PROVIDER=grok
+AI_MODEL=grok-4-1-fast-reasoning
+GROK_API_KEY=your_key
+```
+
 ## Decision Tree
 
 ```
@@ -240,7 +281,8 @@ Do you have budget for paid API?
 └─ Yes
    ├─ Need highest accuracy? → Use GPT-5.2
    ├─ Need autonomous agents? → Use Claude Opus 4.6
-   ├─ Need speed + accuracy? → Use GPT-5.3-Codex
+   ├─ Need extreme reasoning? → Use Grok-4-1-fast-reasoning
+   ├─ Need speed + accuracy? → Use GPT-5.3-Codex or Grok-4
    └─ Need cost efficiency? → Use Gemini (Paid)
 ```
 
@@ -262,6 +304,7 @@ Do you have budget for paid API?
 - **Budget-conscious?** → Gemini
 - **Accuracy-critical?** → GPT-5.2
 - **Autonomous tasks?** → Claude Opus 4.6
-- **Balanced needs?** → GPT-5.3-Codex or Claude Sonnet 4.6
+- **Reasoning/Logic heavy?** → Grok-4-1-fast-reasoning
+- **Balanced needs?** → GPT-5.3-Codex, Grok-4, or Claude Sonnet 4.6
 
 **Pro Tip:** Start with Gemini's free tier, then upgrade based on your specific needs.

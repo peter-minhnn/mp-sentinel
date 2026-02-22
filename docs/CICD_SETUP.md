@@ -28,6 +28,53 @@ Complete guide for setting up MP Sentinel in your CI/CD pipeline with any AI pro
 
 ## Provider-Specific Setup
 
+### Option 0: xAI Grok (Extreme Reasoning)
+
+**Best for:** Finding logical race conditions, exploitability analysis, and high-speed reasoning.
+
+#### Get API Key
+1. Visit: https://console.x.ai/
+2. Log in with your X (Twitter) account.
+3. Go to "API Keys" → "Create Key".
+4. Copy your API key (starts with `xai-`).
+
+#### GitHub Actions Setup
+
+**Add Secret:**
+- Name: `GROK_API_KEY`
+- Value: Your API key
+
+**Workflow file** (`.github/workflows/audit.yml`):
+```yaml
+name: MP Sentinel Code Guard
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+      - run: npm ci
+      - run: npm run build
+      - name: Run Audit with Grok
+        env:
+          AI_PROVIDER: grok
+          AI_MODEL: grok-4-1-fast-reasoning
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx mp-sentinel --target-branch origin/${{ github.base_ref }}
+```
+
+---
+
 ### Option 1: Google Gemini (Free Tier)
 
 **Best for:** Getting started, high-volume reviews, cost-conscious teams
@@ -340,11 +387,13 @@ jobs:
 | Provider | Cost per 1M tokens | Free Tier |
 |----------|-------------------|-----------|
 | Gemini | $0.075 | ✅ 60 RPM |
+| Grok | $2.00 | ❌ No |
 | OpenAI | $2.50 | ❌ No |
 | Claude | $3.00 | ❌ No |
 
 **Example monthly costs** (1000 files/month, 500 tokens each):
 - Gemini: $0.04
+- Grok: $1.00
 - OpenAI: $1.25
 - Claude: $1.50
 
@@ -381,6 +430,7 @@ run: npx mp-sentinel --concurrency 3
 ```yaml
 # Correct model names:
 AI_MODEL: gemini-2.5-flash  # Gemini
+AI_MODEL: grok-4-1-fast-reasoning  # xAI Grok
 AI_MODEL: gpt-5.3-codex            # OpenAI
 AI_MODEL: claude-sonnet-4-6 # Claude
 ```
