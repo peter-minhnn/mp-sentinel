@@ -6,26 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- No current unreleased changes.
 
-### Added
-- Stable `review` command contract with explicit targets:
-  - `--staged`
-  - `--commit <sha>`
-  - `--range <base>..<head>`
-  - `--files <path...>`
-- Multi-format output support: `console`, `json`, `markdown`.
-- Exit-code contract: `0` (pass), `1` (findings), `2` (runtime/system/provider error).
-- Diff-hunk review input pipeline and AI guardrails:
-  - `ai.maxFiles`
-  - `ai.maxDiffLines`
-  - `ai.maxCharsPerFile`
-- Persistent AI result cache in `.mp-sentinel-cache`.
+## [1.0.5] - 2026-02-23
 
 ### Changed
-- Staged mode AI policy now defaults to off unless `--ai` or `MP_SENTINEL_AI=1`.
-- Default `AI_MAX_TOKENS` lowered to `2048`.
-- OpenAI and Anthropic providers now use request timeout (`AI_TIMEOUT_MS`).
-- Security/file filtering layers are now used in the main review pipeline.
+- **Local Agent Skills Integration**: MP Sentinel now scans local project directories (like `.skills`, `.agent/skills`, `.cursor/rules`) for best practices instead of relying on the defunct `skills.sh` HTTP API.
+- **Improved Performance & Security**: 100% offline rule fetching for faster startup and zero network dependency during auditing.
+- **Native Ecosystem Support**: Seamlessly works with the `skills` CLI ecosystem (`npx skills add ...`).
+- **Enhanced Technology Matching**: Dynamically boosts the relevance of local markdown rules based on the project's `techStack`.
+
+### Fixed
+- Fixed redundant HTTP calls and console noise when `skills.sh` API returned 404.
+- Increased prompt capacity for local rules (up to 8,000 characters per file).
 
 ## [1.0.4] - 2026-02-22
 

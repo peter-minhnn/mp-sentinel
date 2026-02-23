@@ -1,254 +1,78 @@
-# 🎉 What's New in v1.0.4
+# 🎉 What's New in v1.0.5
 
 ## 🚀 Major Features
 
-### 1. Skills.sh Integration 🎯
+### 1. Local Agent Skills Integration 🎯
 
-Automatically enhance your code reviews with technology-specific best practices from [skills.sh](https://skills.sh/).
+MP Sentinel now integrates with the open agent skills ecosystem (e.g., `npx skills`) by scanning local directories instead of relying on external APIs.
 
-**How it works:**
-```json
-{
-  "techStack": "TypeScript 5.7, Node.js 18, React 18"
-}
-```
+**Key highlights:**
+- **100% Offline**: No network calls to `skills.sh`, making it faster and more secure.
+- **Support for Standard Ecosystem**: Native support for rules downloaded via `npx skills`.
+- **Smarter Matching**: Skills are prioritized based on your `techStack` configuration.
+- **Customizable**: Add your own company rules in `.sentinel/skills/*.md`.
 
-MP Sentinel will:
-1. Parse your tech stack
-2. Fetch relevant skills from skills.sh
-3. Enhance review prompts automatically
-4. Cache results for 1 hour
+### 2. Performance & Security Improvements ⚡
 
-**Example output:**
-```
-### TECHNOLOGY-SPECIFIC BEST PRACTICES (from skills.sh)
-
-#### TYPESCRIPT
-- **Type Safety**: Always use explicit types, avoid 'any'
-- **Strict Mode**: Enable strict mode in tsconfig.json
-
-#### REACT
-- **Hooks**: Use hooks instead of class components
-- **Performance**: Memoize expensive computations
-```
-
-**Key benefits:**
-- ✅ Better review quality
-- ✅ Technology-specific feedback
-- ✅ Always up-to-date best practices
-- ✅ Zero configuration needed
-
-### 2. Enhanced Parallel Processing ⚡
-
-Files are now processed truly in parallel with better error handling.
-
-**Before:**
-- One file fails → entire process stops
-
-**After:**
-- Failed files are tracked
-- Other files continue processing
-- Detailed error report at the end
-
-**Performance:**
-- 🚀 Faster file processing
-- 🛡️ More robust error handling
-- 📊 Better progress reporting
-
-### 3. Graceful Error Handling 🛡️
-
-**Skills.sh unavailable?** No problem!
-- Continues with default prompts
-- No CI/CD failures
-- Clear warning messages
-
-**File read errors?** No problem!
-- Skips failed files
-- Reports them at the end
-- Continues with other files
+- **Instant Startup**: By removing remote API calls, the tool starts auditing your code immediately.
+- **Increased Rule Capacity**: Supports longer markdown rule files (up to 8,000 characters per file) for better precision.
+- **Fault-Tolerant**: If no local skills are found, Sentinel continues with its robust built-in rules.
 
 ## 📝 Configuration
 
-### New Options
+### techStack Configuration
+
+Your existing `techStack` in `.sentinelrc.json` is used to pick the most relevant local skills:
 
 ```json
 {
-  "enableSkillsFetch": true,
-  "skillsFetchTimeout": 3000
+  "techStack": "React, TypeScript, Node.js"
 }
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `enableSkillsFetch` | boolean | `true` | Enable skills.sh integration |
-| `skillsFetchTimeout` | number | `3000` | Timeout in milliseconds |
+Sentinel will automatically boost the relevance of rule files like `react-best-practices.md` or `typescript.md` found in your project.
 
-### Backward Compatible
+### Supported Directories
 
-Your existing `.sentinelrc.json` works without changes!
+The system automatically scans:
+- `.skills/`
+- `.agent/skills/`
+- `.cursor/rules/`
+- `.sentinel/skills/`
 
 ## 🎨 Usage
 
-### Enable Skills.sh (Default)
+### 1. Install Skills from Community
 
 ```bash
-npx mp-sentinel --local
+npx skills add vercel-labs/agent-skills@vercel-react-best-practices
 ```
 
-Skills are automatically fetched and integrated.
+### 2. Run Review
 
-### Disable Skills.sh
-
-```json
-{
-  "enableSkillsFetch": false
-}
+```bash
+npx mp-sentinel review
 ```
 
-### Custom Timeout
-
-```json
-{
-  "skillsFetchTimeout": 5000
-}
-```
-
-## 📊 Performance
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| File Processing | Sequential | Parallel | ⚡ Faster |
-| Error Handling | Stop on error | Continue | 🛡️ Robust |
-| Skills Fetch | N/A | < 3s | ✨ New |
-| Cache Hit | N/A | < 1ms | 🚀 Fast |
+Sentinel will detect the new skills and apply them to your audit.
 
 ## 🔄 Migration
 
-### Breaking Changes
+### Backward Compatible
 
-Only one breaking change:
-
-**`buildSystemPrompt()` is now async**
-
-If you're using this function directly:
-```typescript
-// Before
-const prompt = buildSystemPrompt(config);
-
-// After
-const prompt = await buildSystemPrompt(config);
-```
-
-**CLI users**: No changes needed!
-
-### Upgrade Steps
-
-1. Update package:
-   ```bash
-   npm install mp-sentinel@latest
-   ```
-
-2. (Optional) Add skills config:
-   ```json
-   {
-     "techStack": "Your tech stack",
-     "enableSkillsFetch": true
-   }
-   ```
-
-3. Test:
-   ```bash
-   npx mp-sentinel --local --verbose
-   ```
-
-That's it! 🎉
+**None.** Version 1.0.5 is fully backward compatible with all `.sentinelrc.json` configurations.
+The old fields `enableSkillsFetch` and `skillsFetchTimeout` are now deprecated and safely ignored.
 
 ## 📚 Documentation
 
-New guides available:
-
-- [Skills.sh Quick Start](./docs/SKILLS_QUICK_START.md) - 5-minute setup
-- [Skills.sh Full Guide](./docs/SKILLS_INTEGRATION.md) - Comprehensive guide
-- [Migration Guide](./docs/MIGRATION_1.0.2.md) - Upgrade instructions
-
-## 🎯 Examples
-
-### Try the Demo
-
-```bash
-npm run demo:skills
-```
-
-### Test Integration
-
-```bash
-tsx test-integration.ts
-```
-
-## 💡 Use Cases
-
-### For Tech Leads
-- ✅ Enforce best practices automatically
-- ✅ No manual prompt maintenance
-- ✅ Consistent standards across team
-
-### For Developers
-- ✅ Learn best practices
-- ✅ Get technology-specific feedback
-- ✅ Improve code quality
-
-### For Projects
-- ✅ Higher code quality
-- ✅ Faster onboarding
-- ✅ Better maintainability
-
-## 🎉 What Users Say
-
-> "Skills.sh integration is a game-changer! Reviews are much more relevant now."
-
-> "Love the parallel processing. So much faster!"
-
-> "Graceful error handling means our CI/CD never breaks. Perfect!"
-
-## 🔮 Coming Soon
-
-- Custom skills.sh endpoints
-- Local skills database
-- Skills filtering by category
-- Skills versioning
-
-## 📞 Support
-
-Need help?
-
-1. Check [Quick Start Guide](./docs/SKILLS_QUICK_START.md)
-2. Read [Full Documentation](./docs/SKILLS_INTEGRATION.md)
-3. Open an issue on GitHub
+- [Agent Skills Integration](./docs/SKILLS_INTEGRATION.md) - Comprehensive guide
+- [Skills Quick Start](./docs/SKILLS_QUICK_START.md) - 5-minute setup
+- [Changelog](./docs/CHANGELOG.md) - All changes in v1.0.5
 
 ## ✨ Summary
 
-**Version**: 1.0.4  
-**Release Date**: 2026-02-10  
+**Version**: 1.0.5  
+**Release Date**: 2026-02-23  
 **Status**: Production Ready
-
-**Key Features:**
-- 🎯 Skills.sh integration
-- ⚡ Enhanced parallel processing
-- 🛡️ Graceful error handling
-- 📚 Comprehensive documentation
-
-**Upgrade Difficulty**: Easy (5 minutes)  
-**Breaking Changes**: Minimal (1 async function)  
-**Performance**: Same or better  
-**Quality**: Production ready
-
----
-
-**Ready to upgrade?**
-
-```bash
-npm install mp-sentinel@latest
-npx mp-sentinel --local --verbose
-```
 
 Enjoy! 🎉
