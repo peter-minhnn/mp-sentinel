@@ -26,7 +26,7 @@ export interface CLIValues {
   /** UI commit picker */
   interactive: boolean;
   /** Number of recent commits to review in local mode (default: from config or 1) */
-  commits: string;
+  commits?: string;
   /** Enable branch diff mode - get all commits that differ from compare-branch */
   "branch-diff": boolean;
   /** Target branch to compare against for branch-diff mode (default: origin/main) */
@@ -80,7 +80,7 @@ export const buildProgram = (): Command => {
     // ── Local review mode ─────────────────────────────────────────────────────
     .option("-l, --local", "Enable local review mode (branch-based)", false)
     .option("-i, --interactive", "Interactive commit picker UI", false)
-    .option("-n, --commits <n>", "Number of recent commits to review in local mode", "1")
+    .option("-n, --commits <n>", "Number of recent commits to review in local mode")
     .option("-d, --branch-diff", "Enable branch-diff mode (all commits vs compare-branch)", false)
     .option("--compare-branch <branch>", "Branch to compare against in branch-diff mode")
     .option("--fetch", "Auto-fetch remote branch before detecting merge-base", false)
@@ -187,7 +187,7 @@ export const parseCliArgs = (): {
       quiet: Boolean(opts["quiet"] ?? false),
       local: Boolean(opts["local"] ?? false),
       interactive: Boolean(opts["interactive"] ?? false),
-      commits: typeof opts["commits"] === "string" ? opts["commits"] : "1",
+      ...(typeof opts["commits"] === "string" && { commits: opts["commits"] }),
       "branch-diff": Boolean(opts["branchDiff"] ?? false),
       fetch: Boolean(opts["fetch"] ?? false),
       "include-uncommitted": Boolean(opts["includeUncommitted"] ?? false),

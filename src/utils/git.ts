@@ -49,6 +49,8 @@ export interface GetRecentCommitsOptions {
   compareBranch?: string;
   /** Auto-fetch remote branch before check */
   fetch?: boolean;
+  /** Specific commit SHA to review */
+  commitSha?: string;
 }
 
 /**
@@ -81,6 +83,7 @@ export const getRecentCommits = async (
     branchDiffMode = false,
     compareBranch = "origin/main",
     fetch = false,
+    commitSha,
   } = options;
 
   try {
@@ -90,7 +93,10 @@ export const getRecentCommits = async (
     // Default to count mode; overridden below for branchDiffMode
     let command: string = `git log -${count} ${noMergesFlag} --pretty=format:"${format}"`;
 
-    if (branchDiffMode) {
+    if (commitSha) {
+      // Specific commit mode
+      command = `git log -1 ${noMergesFlag} --pretty=format:"${format}" ${commitSha}`;
+    } else if (branchDiffMode) {
       // Branch diff mode: get all commits since branching from compareBranch
       // Strategy:
       //   1. Try git merge-base (most accurate)

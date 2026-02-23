@@ -38,15 +38,20 @@ export interface LocalReviewOptions {
 export const runLocalReview = async (options: LocalReviewOptions): Promise<number> => {
   const { values, config, currentBranch, maxConcurrency, startTime } = options;
 
-  const commitCount = parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
+  const parsedCommits = values.commits ? parseInt(values.commits, 10) : undefined;
+  const commitCount =
+    parsedCommits || config.localReview?.commitCount || (values.interactive ? 15 : 1);
   const isBranchDiffMode = values["branch-diff"] || config.localReview?.branchDiffMode || false;
   const compareBranch =
     values["compare-branch"] || config.localReview?.compareBranch || "origin/main";
   const verbosePatternMatching = config.localReview?.verbosePatternMatching || values.verbose;
+  const commitSha = values.commit;
 
   log.header("🔍 Local Review Mode");
 
-  if (isBranchDiffMode) {
+  if (commitSha) {
+    log.info(`Reviewing specific commit: ${commitSha} on branch: ${currentBranch}`);
+  } else if (isBranchDiffMode) {
     log.info(`Comparing branch '${currentBranch}' against '${compareBranch}'`);
   } else {
     log.info(`Reviewing ${commitCount} recent commit(s) on branch: ${currentBranch}`);
@@ -59,6 +64,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     branchDiffMode: isBranchDiffMode,
     compareBranch,
     fetch: values.fetch,
+    ...(commitSha ? { commitSha } : {}),
   });
 
   if (recentCommits.length === 0) {
