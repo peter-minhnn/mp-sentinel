@@ -106,7 +106,9 @@ export const getRecentCommits = async (
           log.info(`Auto-fetching remote context with: ${fetchCmd}`);
           await execAsync(fetchCmd);
         } catch (err) {
-          log.warning(`Failed to auto-fetch remote context: ${err instanceof Error ? err.message : String(err)}`);
+          log.warning(
+            `Failed to auto-fetch remote context: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
 

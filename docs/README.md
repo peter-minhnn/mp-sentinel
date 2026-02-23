@@ -564,47 +564,44 @@ Simply copy, rename (remove `.example`), and configure your API key!
 
 ---
 
-## 🎯 Skills.sh Integration
+## 🎯 Agent Skills Integration
 
-MP Sentinel integrates with [skills.sh](https://skills.sh/) to automatically enhance code review prompts based on your project's technology stack.
+MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) to automatically enhance code review prompts with specialized best practices and knowledge bases found locally in your project repository.
 
 ### How It Works
 
 1. **Parse TechStack**: Extracts technologies from your `.sentinelrc.json`
-2. **Fetch Skills**: Retrieves relevant best practices from skills.sh API
-3. **Enhance Prompts**: Integrates skills into AI review prompts
-4. **Fail Gracefully**: If skills.sh is unavailable, continues with default prompts (no retry)
+2. **Scan Directories**: Automatically scans local folders like `.skills`, `.agent/skills`, `.cursor/rules`, or `.sentinel/skills`.
+3. **Smart Relevance**: Boosts priority of Markdown files (`.md` or `.mdc`) whose names match your parsed tech stack.
+4. **Enhance Prompts**: Concatenates and injects the top rules directly into the AI context window.
 
 ### Configuration
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 18, React 18, PostgreSQL 15",
-  "enableSkillsFetch": true,
-  "skillsFetchTimeout": 3000
+  "techStack": "TypeScript 5.7, Node.js 18, React 18, PostgreSQL 15"
 }
 ```
 
 ### Features
 
 - ✅ **Automatic Technology Detection**: Parses techStack string intelligently
-- ✅ **Smart Caching**: 1-hour in-memory cache to minimize API calls
-- ✅ **Fail-Fast Pattern**: 3-second timeout, no retries
-- ✅ **Zero Downtime**: Never fails your CI/CD if skills.sh is down
-- ✅ **Parallel Processing**: Fetches skills while reading files
+- ✅ **100% Offline & Secure**: No third-party API dependencies (skills.sh API is defunct)
+- ✅ **Community Support**: Simply `npx skills add <skill>` and Sentinel will pick it up
+- ✅ **Extreme Customization**: Organizations can throw `.md` rules into `.sentinel/skills` and all future reviews adhere to them.
 
 ### Example Output
 
-```
-### TECHNOLOGY-SPECIFIC BEST PRACTICES (from skills.sh)
+```markdown
+### LOCAL/CUSTOM SKILLS & BEST PRACTICES
 
-#### TYPESCRIPT
+#### Skill: vercel-react-best-practices (from .agent/skills)
+# React Best Practices
 - **Type Safety**: Always use explicit types, avoid 'any'
-- **Strict Mode**: Enable strict mode in tsconfig.json
+- **Data Fetching**: Use Server Components where possible
 
-#### NODEJS
+#### Skill: my-backend-rules (from .sentinel/skills)
 - **Error Handling**: Use try-catch for async operations
-- **Performance**: Use streams for large file operations
 ```
 
 For detailed documentation, see [Skills Integration Guide](./SKILLS_INTEGRATION.md).

@@ -1,14 +1,16 @@
-# Skills.sh Integration
+# Agent Skills Integration
 
-MP Sentinel integrates with [skills.sh](https://skills.sh/) to automatically enhance code review prompts based on your project's technology stack.
+MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) to automatically enhance code review prompts with specialized best practices and knowledge bases found locally in your project repository.
 
 ## Overview
 
 When enabled, MP Sentinel will:
 1. Parse your `techStack` from `.sentinelrc.json`
-2. Fetch relevant best practices and guidelines from skills.sh
-3. Integrate them into the AI review prompts
-4. **Fail gracefully** if skills.sh is unavailable (no retry, continues with default prompts)
+2. Scan local directories (like `.skills`, `.agent/skills`, `.cursor/rules`, `.sentinel/skills`) for `.md` or `.mdc` files
+3. Boost relevance for skill files whose names match technologies defined in your `techStack`
+4. Integrate these markdown rules into the AI review prompts directly
+
+Unlike the older implementation, **this process is 100% offline, highly secure, and instant.** It does not rely on any external `skills.sh` HTTP API.
 
 ## Configuration
 
@@ -16,91 +18,68 @@ Add these fields to your `.sentinelrc.json`:
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 18 (ESM), React 18, PostgreSQL 15",
-  "enableSkillsFetch": true,
-  "skillsFetchTimeout": 3000,
-  "rules": [
-    "Your project-specific rules..."
-  ]
+  "techStack": "TypeScript 5.7, Node.js 18 (ESM), React 18, PostgreSQL 15"
 }
 ```
+
+(The options `enableSkillsFetch` and `skillsFetchTimeout` from v1.0.4 are now deprecated but will not cause errors if left in the config)
 
 ### Configuration Options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `techStack` | `string` | `""` | Comma-separated list of technologies used in your project |
-| `enableSkillsFetch` | `boolean` | `true` | Enable/disable skills.sh integration |
-| `skillsFetchTimeout` | `number` | `3000` | Timeout for skills.sh API calls (milliseconds) |
 
 ## How It Works
 
-### 1. Technology Parsing
+### 1. Adding Skills via CLI
 
-MP Sentinel automatically parses your `techStack` string:
+Users can download curated best practices from the ecosystem using the `skills` CLI:
+```bash
+npx skills add vercel-labs/agent-skills@vercel-react-best-practices -g -y
+```
+Alternatively, users can manually create Markdown files (e.g., `react-architecture.md`) and drop them into the `.skills/` or `.agent/skills/` folder at the root of their repository.
+
+### 2. Technology Parsing
+
+MP Sentinel automatically parses your `techStack` string to identify keywords:
 
 ```
 Input:  "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)"
 Output: ["typescript", "nodejs", "esm", "tsup", "esbuild"]
 ```
 
-Version numbers and special characters are automatically removed.
+### 3. Local Directory Scanning
 
-### 2. Skills Fetching
+During the review run, the system scans well-known locations relative to your project root `process.cwd()`:
+- `.skills/`
+- `.agent/skills/`
+- `.cursor/rules/`
+- `.sentinel/skills/`
 
-The system fetches relevant skills from skills.sh API:
+Any file ending with `.md` or `.mdc` is read and converted into a "SkillPrompt". 
 
-```typescript
-GET https://skills.sh/api/skills?tech=typescript&tech=nodejs&tech=esm&limit=10
+### 4. Smart Relevance & Prompt Enhancement
+
+If a file's name matches one of your `techStack` keywords (e.g., a file named `typescript-patterns.md`), its "relevance score" gets significantly boosted.
+
+The top-scoring skills are concatenated and embedded cleanly into the AI's instruction context block:
+
+```markdown
+### LOCAL/CUSTOM SKILLS & BEST PRACTICES
+
+#### Skill: vercel-react-best-practices (from .agent/skills)
+# React Best Practices...
+(Full markdown rule content injected here)
 ```
 
-### 3. Prompt Enhancement
+## Performance & Security
 
-Fetched skills are integrated into the review prompt:
+### 100% Offline
+Because the Markdown rules reside purely inside your version control system (or locally), MP Sentinel avoids networking latency and potential HTTP 404s from third-party APIs.
 
-```
-### TECHNOLOGY-SPECIFIC BEST PRACTICES (from skills.sh)
-
-#### TYPESCRIPT
-- **Type Safety**: Always use explicit types, avoid 'any'
-- **Strict Mode**: Enable strict mode in tsconfig.json
-
-#### NODEJS
-- **Error Handling**: Use try-catch for async operations
-- **Performance**: Use streams for large file operations
-```
-
-### 4. Fail-Fast Pattern
-
-**CRITICAL**: If skills.sh is unavailable:
-- ✅ No retry attempts
-- ✅ No errors thrown
-- ✅ Continues with default prompts
-- ✅ Logs warning message
-
-This ensures your CI/CD pipeline never fails due to external API issues.
-
-## Performance
-
-### Caching
-
-Skills are cached in-memory for 1 hour to minimize API calls:
-
-```typescript
-const CACHE_TTL = 3600000; // 1 hour
-```
-
-### Timeout
-
-Default timeout is 3 seconds (configurable):
-
-```typescript
-const FETCH_TIMEOUT = 3000; // 3 seconds
-```
-
-### Parallel Processing
-
-Skills fetching happens in parallel with file reading for optimal performance.
+### Extensible
+You can put custom instructions in `.sentinel/skills/my-company-rules.md` and Sentinel will pick it up automatically, enabling enterprise-scale customized AI review standardization without tweaking `.sentinelrc.json` rules array.
 
 ## Examples
 
@@ -108,143 +87,32 @@ Skills fetching happens in parallel with file reading for optimal performance.
 
 ```json
 {
-  "techStack": "TypeScript, Node.js, React, PostgreSQL, Redis",
-  "enableSkillsFetch": true
+  "techStack": "TypeScript, Node.js, React, PostgreSQL"
 }
 ```
 
-Will fetch skills for:
-- TypeScript best practices
-- Node.js patterns
-- React component guidelines
-- PostgreSQL query optimization
-- Redis caching strategies
+If you have downloaded skills like `typescript-advanced.md` and `react-best-practices.md`, Sentinel will highlight and prioritize these over generic rules when reading your local `.skills/` directory.
 
-### Example 2: Python Backend
+### Example 2: Disabled
 
-```json
-{
-  "techStack": "Python 3.11, FastAPI, SQLAlchemy, PostgreSQL",
-  "enableSkillsFetch": true
-}
-```
-
-Will fetch skills for:
-- Python coding standards
-- FastAPI best practices
-- SQLAlchemy patterns
-- Database optimization
-
-### Example 3: Disabled
-
-```json
-{
-  "techStack": "TypeScript, Node.js",
-  "enableSkillsFetch": false
-}
-```
-
-Skills.sh integration is disabled, uses only default prompts.
-
-## API Response Format
-
-Expected response from skills.sh API:
-
-```json
-{
-  "skills": [
-    {
-      "name": "Type Safety",
-      "category": "typescript",
-      "prompt": "Always use explicit types, avoid 'any'",
-      "relevance": 0.95
-    },
-    {
-      "name": "Error Handling",
-      "category": "nodejs",
-      "prompt": "Use try-catch for async operations",
-      "relevance": 0.90
-    }
-  ]
-}
-```
-
-## Error Handling
-
-### Network Errors
-
-```
-⚠️  Failed to fetch skills from skills.sh: Network timeout. Continuing with default prompts.
-```
-
-### API Errors
-
-```
-⚠️  Skills.sh API returned 503. Continuing with default prompts.
-```
-
-### Parse Errors
-
-```
-⚠️  Could not parse technologies from techStack. Continuing with default prompts.
-```
-
-## Testing
-
-### Clear Cache
-
-```typescript
-import { clearSkillsCache } from './services/skills-fetcher.js';
-
-clearSkillsCache();
-```
-
-### Manual Testing
-
-```bash
-# Test with skills.sh enabled
-npx mp-sentinel review --range origin/main..HEAD --verbose
-
-# Test with skills.sh disabled
-# Edit .sentinelrc.json: "enableSkillsFetch": false
-npx mp-sentinel review --range origin/main..HEAD --verbose
-```
-
-## Best Practices
-
-1. **Keep techStack Updated**: Regularly update your `techStack` as your project evolves
-2. **Be Specific**: Include major versions for better skill matching
-3. **Monitor Logs**: Check verbose output to see which skills are fetched
-4. **Test Offline**: Ensure your CI/CD works even when skills.sh is down
+If you do NOT want local skills integration, you can simply keep your `.skills` directories empty or simply ignore them in your `.antigravityignore` or `.archignore`.
 
 ## Troubleshooting
 
-### Skills Not Fetched
+### Skills Not Detected
 
 Check:
-1. `enableSkillsFetch` is `true` (or not set, defaults to `true`)
-2. `techStack` is properly formatted
-3. Network connectivity to skills.sh
-4. Timeout is sufficient (increase `skillsFetchTimeout` if needed)
+1. Ensure the markdown files have `.md` or `.mdc` extensions.
+2. Ensure they are actually inside one of the recognized directories (`.skills`, `.agent/skills`, `.cursor/rules`, `.sentinel/skills`).
+3. Ensure file read permissions are correct.
 
-### Slow Performance
+### Too Many Skills Included
 
-Solutions:
-1. Reduce `skillsFetchTimeout` (default: 3000ms)
-2. Disable skills.sh: `"enableSkillsFetch": false`
-3. Check network latency
-
-### Cache Issues
-
-Clear cache:
-```typescript
-import { clearSkillsCache } from './services/skills-fetcher.js';
-clearSkillsCache();
-```
+If you have downloaded hundreds of skills, Sentinel caps the limit to the top 10 most relevant skills (up to 8,000 characters per skill file). Make sure your `techStack` is precise so that the system boosting accurately picks the best skills for your code review.
 
 ## Integration with CI/CD
 
-Skills.sh integration works seamlessly in CI/CD:
+Because the skills are committed to your GitHub/GitLab repository, MP Sentinel running on CI platforms natively reads them without requiring additional package manager downloads or API keys.
 
 ```yaml
 # GitHub Actions
@@ -254,14 +122,3 @@ Skills.sh integration works seamlessly in CI/CD:
     AI_PROVIDER: gemini
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
-
-Even if skills.sh is unavailable, your pipeline continues without failure.
-
-## Future Enhancements
-
-Planned features:
-- [ ] Custom skills.sh API endpoint
-- [ ] Local skills database fallback
-- [ ] Skills priority/weighting
-- [ ] Skills filtering by category
-- [ ] Skills versioning support

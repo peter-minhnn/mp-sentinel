@@ -44,13 +44,16 @@ describe("GrokProvider", () => {
       const result = await provider.generateContent("system prompt", "user prompt");
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch).toHaveBeenCalledWith("https://api.x.ai/v1/chat/completions", expect.objectContaining({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer test-grok-key",
-        }
-      }));
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.x.ai/v1/chat/completions",
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer test-grok-key",
+          },
+        }),
+      );
       expect(result).toBe("Mocked Grok response");
     });
 
@@ -66,7 +69,7 @@ describe("GrokProvider", () => {
       const provider = new GrokProvider(mockConfig);
 
       await expect(provider.generateContent("system", "user")).rejects.toThrow(
-        "Grok API error: 400 Bad Request Invalid model name"
+        "Grok API error: 400 Bad Request Invalid model name",
       );
     });
   });

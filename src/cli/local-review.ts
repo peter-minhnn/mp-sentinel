@@ -162,11 +162,11 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   // 1. FILTER FILES WITH .sentinelrc.json IGNORE PATTERNS
   const fileHandler = new FileHandler();
   const filterResult = await fileHandler.filterPathsWithIgnores(
-    fileReadResult.success.map(f => f.path)
+    fileReadResult.success.map((f) => f.path),
   );
-  
+
   const acceptedFilePaths = new Set(filterResult.accepted);
-  const acceptedFiles = fileReadResult.success.filter(f => acceptedFilePaths.has(f.path));
+  const acceptedFiles = fileReadResult.success.filter((f) => acceptedFilePaths.has(f.path));
 
   if (filterResult.rejected.length > 0) {
     log.warning(`⚠️  Skipped ${filterResult.rejected.length} file(s) due to ignore rules:`);
@@ -183,13 +183,13 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   // 2. SECURITY SANITIZATION
   const securityService = getSecurityService();
   const { sanitizedFiles } = securityService.sanitizeFiles(
-    acceptedFiles.map(file => ({ path: file.path, content: file.content }))
+    acceptedFiles.map((file) => ({ path: file.path, content: file.content })),
   );
 
   // 3. DRY RUN / TOKEN ESTIMATION
   const dryRun = values["dry-run"] || values["verbose-dry-run"];
   const verboseDryRun = values["verbose-dry-run"];
-  
+
   if (dryRun) {
     // Attempt token estimation
     let providerName: string | undefined;
@@ -201,8 +201,11 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     }
     const cliLimit = values["token-limit"] ? parseInt(values["token-limit"], 10) : 0;
     const envLimit = Number(process.env.MP_SENTINEL_TOKEN_LIMIT) || 0;
-    const tokenLimit = resolveTokenLimit(providerName, cliLimit || envLimit || config.ai?.tokenLimit);
-    
+    const tokenLimit = resolveTokenLimit(
+      providerName,
+      cliLimit || envLimit || config.ai?.tokenLimit,
+    );
+
     let systemPromptForEstimate: string | undefined;
     try {
       systemPromptForEstimate = await buildSystemPrompt(config);
@@ -215,7 +218,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
       tokenLimit,
       systemPromptForEstimate,
       "Code to review:\n",
-      values.verbose || verboseDryRun
+      values.verbose || verboseDryRun,
     );
 
     log.info(
@@ -231,17 +234,15 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     }
 
     if (exceeded) {
-      log.warning("WARNING: Token limit exceeded! You should reduce localReview.commitCount or ignore more files.");
+      log.warning(
+        "WARNING: Token limit exceeded! You should reduce localReview.commitCount or ignore more files.",
+      );
     }
 
     return 0; // End early for dry-run
   }
 
-  const auditResults = await auditFilesWithConcurrency(
-    sanitizedFiles,
-    config,
-    maxConcurrency,
-  );
+  const auditResults = await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency);
 
   // Print summary
   const auditDuration = performance.now() - startTime;
