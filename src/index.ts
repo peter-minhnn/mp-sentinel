@@ -119,7 +119,9 @@ const logVerboseInfo = (
     if (isBranchDiffMode) {
       log.info(`Branch Diff Mode: ON (comparing with ${compareBranch})`);
     } else {
-      const commitCount = parseInt(values.commits, 10) || config.localReview?.commitCount || 1;
+      const parsedCommits = values.commits ? parseInt(values.commits, 10) : undefined;
+      const commitCount =
+        parsedCommits || config.localReview?.commitCount || (values.interactive ? 15 : 1);
       log.info(`Commits to review: ${commitCount}`);
     }
     log.info(`Pattern Match Mode: ${patternMatchMode}`);

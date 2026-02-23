@@ -57,7 +57,7 @@ export interface CLIValues {
   "token-limit"?: string;
 }
 
-const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.5";
+const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.6";
 
 /**
  * Build the commander program (exported for testing).

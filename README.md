@@ -22,7 +22,7 @@ All documentation has been moved to the `docs/` directory:
 - [Migration Guide (v1.0.4)](./docs/MIGRATION_1.0.4.md)
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.0.5-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.0.6-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---

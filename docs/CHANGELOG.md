@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - No current unreleased changes.
 
+## [1.0.6] - 2026-02-23
+
+### Fixed
+- **Local Review Specific Commit**: Fixed an issue where using `--commit <sha>` with `--local` would ignore the specified SHA and default to the latest commit.
+- **Interactive Mode Improvements**: Removed hardcoded default of 1 commit for `--commits` flag, enabling the interactive picker (`-i`) to correctly default to 15 commits for a better user selection experience.
+- **CLI Parsing Consistency**: Synchronized commit count parsing logic between the main entry point and local review module to ensure consistent behavior across all command variations.
+
+
 ## [1.0.5] - 2026-02-23
 
 ### Changed
