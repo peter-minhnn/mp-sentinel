@@ -60,6 +60,10 @@ export interface CLIValues {
   "index-format"?: string;
   /** Force rebuild the source index cache */
   force?: boolean;
+  /** Output index statistics only (with --index-format json) */
+  stats?: boolean;
+  /** Show dependency info for a specific file */
+  explain?: string;
 }
 
 const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.6";
@@ -112,7 +116,9 @@ export const buildProgram = (): Command => {
     .command("indexing")
     .description("Build source index cache for enhanced review context")
     .option("--force", "Force rebuild cache even if up-to-date", false)
-    .option("--index-format <fmt>", "Output format: console | json (default: console)", "console");
+    .option("--index-format <fmt>", "Output format: console | json (default: console)", "console")
+    .option("--stats", "Output index statistics only (with --index-format json)", false)
+    .option("--explain <file>", "Show dependency info for a specific file");
 
   // ── Examples ──────────────────────────────────────────────────────────────
   program.addHelpText(
@@ -235,6 +241,10 @@ export const parseCliArgs = (): {
       // Indexing options
       ...(typeof indexingOptions["indexFormat"] === "string" && {
         "index-format": indexingOptions["indexFormat"],
+      }),
+      ...(typeof indexingOptions["stats"] === "boolean" && { stats: indexingOptions["stats"] }),
+      ...(typeof indexingOptions["explain"] === "string" && {
+        explain: indexingOptions["explain"],
       }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
     } as CLIValues;

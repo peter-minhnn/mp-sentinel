@@ -313,6 +313,12 @@ export interface SourceIndexFile {
   symbols: SymbolInfo[];
   /** Parse errors if any */
   parseErrors?: string[];
+  /** Dependency graph - files this file imports from */
+  importsFrom?: string[];
+  /** Files that import this file */
+  importedBy?: string[];
+  /** Symbols this file exports (expanded for quick lookup) */
+  exportedSymbols?: string[];
 }
 
 /**
@@ -339,7 +345,7 @@ export interface ProjectManifest {
  * Source index schema v1.0
  */
 export interface SourceIndex {
-  schemaVersion: "1.0";
+  schemaVersion: "1.0" | "1.1";
   generatedAt: string;
   toolVersion: string;
   project: ProjectManifest;
@@ -349,12 +355,14 @@ export interface SourceIndex {
     indexedFiles: number;
     skippedFiles: number;
     parseErrors: number;
-    /** Duration of indexing in milliseconds (optional, for backward compatibility) */
+    /** Duration of indexing in milliseconds */
     durationMs?: number;
-    /** Number of files served from cache (optional, for backward compatibility) */
+    /** Number of files served from cache */
     cacheHitFiles?: number;
-    /** Number of files parsed in this session (optional, for backward compatibility) */
+    /** Number of files parsed in this session */
     parsedFiles?: number;
+    /** Number of import edges resolved in dependency graph (optional) */
+    importEdges?: number;
   };
 }
 

@@ -50,6 +50,12 @@ npx mp-sentinel indexing --force
 
 # Output results as JSON (for automation/CI):
 npx mp-sentinel indexing --index-format json
+
+# Show index statistics (builds or updates index first):
+npx mp-sentinel indexing --stats
+
+# Show symbol and dependency info for a specific file:
+npx mp-sentinel indexing --explain src/utils/git.ts
 ```
 
 ### Automation-Friendly Usage

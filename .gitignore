@@ -12,3 +12,4 @@
 *.swo
 .idea
 .mp-sentinel-cache/
+.claude

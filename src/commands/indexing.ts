@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { log } from "../utils/logger.js";
+import { log, setLogQuietMode } from "../utils/logger.js";
 import type { IndexingConfig, SourceIndex, SourceIndexFile } from "../types/index.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
@@ -20,6 +20,7 @@ import {
   getFilesToIndex,
   calculateSHA256,
 } from "../services/source-index/storage.js";
+import { ImportResolver } from "../services/source-index/resolver.js";
 import type { CLIValues } from "../cli/args.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
@@ -35,6 +36,11 @@ const DEFAULT_INDEXING_CONFIG: Required<
 
 const SUPPORTED_INDEX_FORMATS = new Set(["console", "json"]);
 const MAX_PARSE_ERROR_RATE = 0.5;
+
+interface ExplainOptions {
+  explain?: string;
+  stats?: boolean;
+}
 
 async function assertTreeSitterAvailable(): Promise<void> {
   try {
@@ -243,9 +249,39 @@ export async function buildSourceIndex(
     );
   }
 
+  // Build dependency graph
+  log.info("Building dependency graph...");
+  const resolver = new ImportResolver(projectRoot);
+  await resolver.initialize();
+
+  const importGraph = await resolver.resolveBatch(
+    allFiles.map((f) => ({ path: f.path, imports: f.imports })),
+  );
+
+  let importEdges = 0;
+  for (const file of allFiles) {
+    const importsFrom = importGraph.get(file.path) ?? [];
+    file.importsFrom = importsFrom;
+    file.exportedSymbols = file.exports.map((e) => e.names.join(", "));
+    importEdges += importsFrom.length;
+  }
+
+  // Build importedBy reverse relationships
+  for (const file of allFiles) {
+    const importedBy: string[] = [];
+    for (const other of allFiles) {
+      if (other.importsFrom?.includes(file.path)) {
+        importedBy.push(other.path);
+      }
+    }
+    if (importedBy.length > 0) {
+      file.importedBy = importedBy;
+    }
+  }
+
   // Build index
   const index: SourceIndex = {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     generatedAt: new Date().toISOString(),
     toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
     project: manifest,
@@ -258,6 +294,7 @@ export async function buildSourceIndex(
       durationMs: performance.now() - startTime,
       parsedFiles: parsedFiles.length,
       cacheHitFiles: cachedFiles.length,
+      importEdges,
     },
   };
 
@@ -278,12 +315,14 @@ export async function buildSourceIndex(
  * Run the indexing command
  */
 export async function runIndexingCommand(
-  values: CLIValues & { force?: boolean },
+  values: CLIValues & { force?: boolean; stats?: boolean; explain?: string },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
   const startTime = performance.now();
   const format = resolveIndexFormat(values["index-format"]);
 
+  // Suppress informational logs when emitting structured JSON so stdout contains only valid JSON.
+  if (format === "json") setLogQuietMode(true);
   try {
     const config = await loadProjectConfig(projectRoot);
     // For the CLI command, always enable indexing - the user explicitly asked to build the index
@@ -294,6 +333,16 @@ export async function runIndexingCommand(
     };
 
     const index = await buildSourceIndex(projectRoot, indexingConfig, values.force);
+
+    // Handle --explain option
+    if (values.explain) {
+      return handleExplain(values.explain, index, format, projectRoot);
+    }
+
+    // Handle --stats option
+    if (values.stats) {
+      return handleStats(index, format);
+    }
 
     if (format === "json") {
       if (index) {
@@ -347,5 +396,137 @@ export async function runIndexingCommand(
       log.critical("Indexing failed with unknown error");
     }
     return 2;
+  } finally {
+    if (format === "json") setLogQuietMode(false);
   }
+}
+
+/**
+ * Handle --stats option
+ */
+function handleStats(index: SourceIndex | null, format: "console" | "json"): number {
+  if (!index) {
+    if (format === "json") {
+      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+    } else {
+      console.log("No index available");
+    }
+    return 1;
+  }
+
+  const stats = {
+    totalFiles: index.stats.totalFiles,
+    indexedFiles: index.stats.indexedFiles,
+    skippedFiles: index.stats.skippedFiles,
+    parseErrors: index.stats.parseErrors,
+    durationMs: index.stats.durationMs,
+    importEdges: index.stats.importEdges,
+    graphEnabled: index.files.some((f) => f.importsFrom || f.importedBy),
+  };
+
+  if (format === "json") {
+    console.log(JSON.stringify(stats, null, 2));
+  } else {
+    console.log();
+    log.header("Index Statistics");
+    console.log(`  Total files:      ${stats.totalFiles}`);
+    console.log(`  Indexed files:    ${stats.indexedFiles}`);
+    console.log(`  Skipped files:    ${stats.skippedFiles}`);
+    console.log(`  Parse errors:     ${stats.parseErrors}`);
+    console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
+    console.log(`  Graph enabled:    ${stats.graphEnabled ? "yes" : "no"}`);
+    console.log(`  Duration:         ${(stats.durationMs ?? 0).toFixed(0)}ms`);
+    console.log();
+  }
+
+  return 0;
+}
+
+/**
+ * Handle --explain option
+ */
+async function handleExplain(
+  filePath: string,
+  index: SourceIndex | null,
+  format: "console" | "json",
+  projectRoot: string,
+): Promise<number> {
+  if (!index) {
+    if (format === "json") {
+      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+    } else {
+      console.log("No index available. Run 'mp-sentinel indexing' first.");
+    }
+    return 1;
+  }
+
+  // Normalize path relative to project root
+  const normalizedPath =
+    filePath.startsWith("/") || filePath.startsWith("\\")
+      ? filePath.replace(/^[/\\]+/, "")
+      : filePath;
+
+  const file = index.files.find((f) => f.path === normalizedPath || f.path === filePath);
+
+  if (!file) {
+    if (format === "json") {
+      console.log(JSON.stringify({ error: `File not found in index: ${filePath}` }, null, 2));
+    } else {
+      console.log(`File not found in index: ${filePath}`);
+      console.log("\nIndexed files:");
+      index.files.forEach((f) => console.log(`  ${f.path}`));
+    }
+    return 1;
+  }
+
+  const info = {
+    path: file.path,
+    language: file.language,
+    symbols: file.symbols,
+    imports: file.imports,
+    exports: file.exports,
+    importsFrom: file.importsFrom,
+    importedBy: file.importedBy,
+    exportedSymbols: file.exportedSymbols,
+  };
+
+  if (format === "json") {
+    console.log(JSON.stringify(info, null, 2));
+  } else {
+    console.log();
+    log.header(`Dependency Info: ${file.path}`);
+    console.log(`  Language: ${file.language}`);
+
+    if (file.importsFrom && file.importsFrom.length > 0) {
+      console.log(`\n  Imports from:`);
+      file.importsFrom.forEach((p) => console.log(`    ${p}`));
+    }
+
+    if (file.importedBy && file.importedBy.length > 0) {
+      console.log(`\n  Imported by:`);
+      file.importedBy.forEach((p) => console.log(`    ${p}`));
+    }
+
+    if (file.symbols.length > 0) {
+      console.log(`\n  Symbols (${file.symbols.length}):`);
+      file.symbols.slice(0, 20).forEach((s) => {
+        console.log(`    ${s.type} ${s.name}${s.parent ? ` (in ${s.parent})` : ""}`);
+      });
+      if (file.symbols.length > 20) {
+        console.log(`    ... and ${file.symbols.length - 20} more`);
+      }
+    }
+
+    if (file.exportedSymbols && file.exportedSymbols.length > 0) {
+      console.log(`\n  Exported symbols:`);
+      file.exportedSymbols.slice(0, 20).forEach((e) => console.log(`    ${e}`));
+      if (file.exportedSymbols.length > 20) {
+        console.log(`    ... and ${file.exportedSymbols.length - 20} more`);
+      }
+    }
+
+    console.log();
+  }
+
+  return 0;
 }

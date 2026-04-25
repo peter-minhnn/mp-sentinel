@@ -8,9 +8,11 @@ Introducing **Source Indexing** — a powerful new feature that parses your Java
 
 **Key Features:**
 - **AST-based parsing** using tree-sitter for accurate symbol extraction
+- **Graph-aware dependency resolution** — `importsFrom` / `importedBy` edges for every file (schema `1.1`)
+- **tsconfig `paths`/`baseUrl` support** — aliases like `@/lib/foo` resolve correctly
 - **Incremental caching** — only re-index changed files for speed
 - **Configurable** — enable/disable, choose languages, set cache path & file size limits
-- **Enhanced AI prompts** — automatically injects relevant context about your code structure
+- **Enhanced AI prompts** — injects changed files first, then capped direct imports and dependents
 
 **Usage:**
 ```bash
@@ -22,6 +24,12 @@ npx mp-sentinel indexing --force
 
 # Get JSON output for automation
 npx mp-sentinel indexing --index-format json
+
+# Show index statistics
+npx mp-sentinel indexing --stats
+
+# Show symbol and dependency info for a specific file
+npx mp-sentinel indexing --explain src/utils/git.ts
 ```
 
 **Configuration (in `.mp-sentinelrc.json`):**

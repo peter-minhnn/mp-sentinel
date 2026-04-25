@@ -42,8 +42,9 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in v1.0.5:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.7**:
 
+- 📇 **Source Indexing** — AST-based code indexing for smarter AI context
 - 🎯 **Agent Skills Integration** — Seamlessly inject local ecosystem rules (like `.cursor/rules` or `npx skills`)
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency

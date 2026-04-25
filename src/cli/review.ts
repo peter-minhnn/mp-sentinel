@@ -24,7 +24,8 @@ import { AIConfig } from "../services/ai/index.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
 
-const INDEX_CONTEXT_MAX_CHARS = 8000;
+const INDEX_CONTEXT_MAX_CHARS = 12000;
+const MAX_RELATED_PER_FILE = 3;
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -262,22 +263,57 @@ export async function buildIndexContext(
       return null;
     }
 
-    // Build summary for files in the diff
+    // Build file lookup maps
     const fileIndexMap = new Map<string, (typeof index.files)[number]>();
     for (const file of index.files) {
       fileIndexMap.set(file.path, file);
     }
 
-    const relevantFiles: typeof index.files = [];
+    const diffFilePaths = diffFiles.map((f) => f.path);
 
-    for (const file of diffFiles) {
-      const indexed = fileIndexMap.get(file.path);
-      if (indexed && (!indexed.parseErrors || indexed.parseErrors.length === 0)) {
-        relevantFiles.push(indexed);
+    // Collect relevant files in priority order: changed files first,
+    // then direct imports, then direct dependents.
+    // Cap imports and dependents at MAX_RELATED_PER_FILE per changed file.
+    const seen = new Set<string>();
+    const orderedPaths: string[] = [];
+
+    for (const diffPath of diffFilePaths) {
+      if (!seen.has(diffPath)) {
+        orderedPaths.push(diffPath);
+        seen.add(diffPath);
       }
     }
 
-    if (relevantFiles.length === 0) {
+    for (const diffPath of diffFilePaths) {
+      const file = fileIndexMap.get(diffPath);
+      if (!file) continue;
+
+      let added = 0;
+      if (file.importsFrom) {
+        for (const p of file.importsFrom) {
+          if (added >= MAX_RELATED_PER_FILE) break;
+          if (fileIndexMap.has(p) && !seen.has(p)) {
+            orderedPaths.push(p);
+            seen.add(p);
+            added++;
+          }
+        }
+      }
+
+      added = 0;
+      if (file.importedBy) {
+        for (const p of file.importedBy) {
+          if (added >= MAX_RELATED_PER_FILE) break;
+          if (fileIndexMap.has(p) && !seen.has(p)) {
+            orderedPaths.push(p);
+            seen.add(p);
+            added++;
+          }
+        }
+      }
+    }
+
+    if (orderedPaths.length === 0) {
       log.debug("No relevant index entries found for diff files");
       return null;
     }
@@ -299,55 +335,57 @@ export async function buildIndexContext(
       );
     }
     lines.push("");
+    lines.push(`Relevant files (diff + dependencies):`);
+
+    const relevantFiles = orderedPaths
+      .map((p) => fileIndexMap.get(p))
+      .filter((f): f is NonNullable<typeof f> => f !== undefined);
 
     for (const file of relevantFiles) {
-      lines.push(`File: ${file.path}`);
+      const isDiff = diffFilePaths.includes(file.path);
+      lines.push(`\nFile: ${file.path}${isDiff ? " (changed)" : ""}`);
       lines.push(`  Language: ${file.language}`);
 
       if (file.symbols.length > 0) {
         const symbolSummary = file.symbols
-          .slice(0, 20)
+          .slice(0, 15)
           .map(
             (symbol) =>
               `${symbol.type} ${symbol.name}${symbol.parent ? ` (in ${symbol.parent})` : ""}`,
           )
           .join(", ");
-        lines.push(`  Symbols: ${symbolSummary}${file.symbols.length > 20 ? "..." : ""}`);
+        lines.push(`  Symbols: ${symbolSummary}${file.symbols.length > 15 ? "..." : ""}`);
       }
 
-      if (file.imports.length > 0) {
-        const imports = file.imports
-          .slice(0, 10)
-          .map((importInfo) => `${importInfo.kind} from "${importInfo.source}"`)
-          .join("; ");
-        lines.push(`  Imports: ${imports}${file.imports.length > 10 ? "..." : ""}`);
+      if (file.importsFrom && file.importsFrom.length > 0) {
+        const imports = file.importsFrom.slice(0, 8).join(", ");
+        lines.push(`  Imports from: ${imports}${file.importsFrom.length > 8 ? "..." : ""}`);
       }
 
-      if (file.exports.length > 0) {
-        const exports = file.exports
-          .slice(0, 10)
-          .map(
-            (exportInfo) =>
-              `${exportInfo.kind} ${exportInfo.names.join(", ")}` +
-              (exportInfo.source ? ` from "${exportInfo.source}"` : ""),
-          )
-          .join("; ");
-        lines.push(`  Exports: ${exports}${file.exports.length > 10 ? "..." : ""}`);
+      if (file.importedBy && file.importedBy.length > 0) {
+        const importedBy = file.importedBy.slice(0, 8).join(", ");
+        lines.push(`  Imported by: ${importedBy}${file.importedBy.length > 8 ? "..." : ""}`);
+      }
+
+      if (file.exportedSymbols && file.exportedSymbols.length > 0) {
+        const exports = file.exportedSymbols.slice(0, 10).join(", ");
+        lines.push(`  Exports: ${exports}${file.exportedSymbols.length > 10 ? "..." : ""}`);
       }
 
       if (file.parseErrors && file.parseErrors.length > 0) {
         lines.push(`  Parse errors: ${file.parseErrors.join("; ")}`);
       }
-
-      lines.push("");
     }
 
-    lines.push("=== End Source Index Context ===");
+    lines.push("\n=== End Source Index Context ===");
     const context = lines.join("\n");
+
     if (context.length <= INDEX_CONTEXT_MAX_CHARS) {
       return context;
     }
-    return `${context.slice(0, INDEX_CONTEXT_MAX_CHARS)}\n[Source index context truncated]`;
+
+    const truncated = context.slice(0, INDEX_CONTEXT_MAX_CHARS - 50);
+    return `${truncated}\n[Source index context truncated to budget]`;
   } catch (error) {
     log.debug(
       `Failed to load source index context: ${error instanceof Error ? error.message : String(error)}`,

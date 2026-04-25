@@ -14,15 +14,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configurable via `.mp-sentinelrc.json` (`indexing.enabled`, `languages`, `cachePath`, `maxFileSize`)
   - AI review automatically uses index context when available
   - JSON output support for automation: `indexing --index-format json`
-- **Index Metadata**: Added `durationMs`, `cacheHitFiles`, and `parsedFiles` to `SourceIndex.stats` for better monitoring
-- **Commands Cheat Sheet**: New comprehensive documentation `docs/COMMANDS_CHEAT_SHEET.md` with indexing examples
+  - `--stats` flag to print index statistics (builds or updates index first)
+  - `--explain <file>` flag to inspect per-file symbols and dependency edges
+- **Graph-aware dependency index** (schema `1.1`): `importsFrom` and `importedBy` edges on every `SourceIndexFile`
+  - tsconfig `paths`/`baseUrl` aliases resolve correctly (e.g. `@/lib/foo`)
+  - JSONC tsconfig files (with comments / trailing commas) now parse without error
+  - External packages (`react`, `node:*`, `@types/*`, URLs) are never added as internal graph edges
+  - Missing or unresolvable imports do not crash indexing
+  - Circular imports (`a→b→a`) correctly populate both `importsFrom` and `importedBy`
+- **Index Metadata**: Added `durationMs`, `cacheHitFiles`, `parsedFiles`, and `importEdges` to `SourceIndex.stats`
+- **Commands Cheat Sheet**: Consolidated to a single Source Indexing section covering all flags
 
 ### Changed
 - **Configuration Standardization**: Unified config merging for `indexing` section alongside `ai` and `localReview`
-- **Type Safety**: Removed `any` types from `getIndexingConfig()` and review integration
+- **Review context enrichment**: Changed files listed first, then direct imports (capped at 3), then direct dependents (capped at 3); character budget raised to 12 000
+- **Type Safety**: Removed all `as any` casts; all strict TS flags respected
 
 ### Fixed
 - **Indexing Command Semantics**: `mp-sentinel indexing` now always builds the index when called directly, regardless of `indexing.enabled` setting. The `enabled` flag only controls whether the `review` command consumes the cached index.
+- **Resolver correctness**: Bare imports were incorrectly returned as external before tsconfig path mappings were attempted, breaking `@`-prefixed path aliases.
 
 ## [1.0.6] - 2026-02-23
 

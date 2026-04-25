@@ -42,8 +42,8 @@ export async function readIndex(
     const content = await readFile(cachePath, "utf-8");
     const index = JSON.parse(content) as SourceIndex;
 
-    // Validate schema version
-    if (!index.schemaVersion || index.schemaVersion !== "1.0") {
+    // Validate schema version (accept 1.0 and 1.1)
+    if (!index.schemaVersion || (index.schemaVersion !== "1.0" && index.schemaVersion !== "1.1")) {
       log.warning(`Invalid or unsupported index schema version: ${index.schemaVersion}`);
       return null;
     }
