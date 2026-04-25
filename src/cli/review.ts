@@ -21,6 +21,10 @@ import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { AIConfig } from "../services/ai/index.js";
+import { readIndex } from "../services/source-index/storage.js";
+import { resolve as resolvePath } from "node:path";
+
+const INDEX_CONTEXT_MAX_CHARS = 8000;
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -218,6 +222,140 @@ const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
   printConsoleReport(report);
 };
 
+/**
+ * Build contextual information from source index to enrich the AI prompt
+ */
+export async function buildIndexContext(
+  config: ProjectConfig,
+  diffFiles: Array<{ path: string }>,
+  projectRoot: string,
+): Promise<string | null> {
+  try {
+    // Check if indexing is enabled
+    const indexingEnabled = config.indexing?.enabled !== false;
+    if (!indexingEnabled) {
+      log.debug("Source indexing disabled in config");
+      return null;
+    }
+
+    // Use cached index from default location
+    const cachePath = resolvePath(
+      projectRoot,
+      config.indexing?.cachePath ?? ".mp-sentinel-cache/source-index.json",
+    );
+    const index = await readIndex(cachePath);
+
+    if (!index) {
+      log.debug("No source index found for context enrichment");
+      return null;
+    }
+
+    // Validate index - skip if too many parse errors
+    const totalFiles = index.files.length;
+    const filesWithErrors = index.files.filter(
+      (f) => f.parseErrors && f.parseErrors.length > 0,
+    ).length;
+    if (totalFiles > 0 && filesWithErrors / totalFiles > 0.5) {
+      log.warning(
+        `Source index has ${filesWithErrors}/${totalFiles} files with parse errors - skipping context`,
+      );
+      return null;
+    }
+
+    // Build summary for files in the diff
+    const fileIndexMap = new Map<string, (typeof index.files)[number]>();
+    for (const file of index.files) {
+      fileIndexMap.set(file.path, file);
+    }
+
+    const relevantFiles: typeof index.files = [];
+
+    for (const file of diffFiles) {
+      const indexed = fileIndexMap.get(file.path);
+      if (indexed && (!indexed.parseErrors || indexed.parseErrors.length === 0)) {
+        relevantFiles.push(indexed);
+      }
+    }
+
+    if (relevantFiles.length === 0) {
+      log.debug("No relevant index entries found for diff files");
+      return null;
+    }
+
+    // Build concise context with character budget
+    const lines: string[] = [];
+    lines.push("=== Source Index Context ===");
+    lines.push(
+      `Project: ${index.project.packageName || "unknown"} v${index.project.packageVersion || "n/a"}`,
+    );
+    lines.push(`Frameworks: ${index.project.detectedFrameworks.join(", ") || "none"}`);
+    if (Object.keys(index.project.dependencies).length > 0) {
+      const depList = Object.entries(index.project.dependencies)
+        .slice(0, 10)
+        .map(([name, version]) => `${name}@${version}`)
+        .join(", ");
+      lines.push(
+        `Key dependencies: ${depList}${Object.keys(index.project.dependencies).length > 10 ? "..." : ""}`,
+      );
+    }
+    lines.push("");
+
+    for (const file of relevantFiles) {
+      lines.push(`File: ${file.path}`);
+      lines.push(`  Language: ${file.language}`);
+
+      if (file.symbols.length > 0) {
+        const symbolSummary = file.symbols
+          .slice(0, 20)
+          .map(
+            (symbol) =>
+              `${symbol.type} ${symbol.name}${symbol.parent ? ` (in ${symbol.parent})` : ""}`,
+          )
+          .join(", ");
+        lines.push(`  Symbols: ${symbolSummary}${file.symbols.length > 20 ? "..." : ""}`);
+      }
+
+      if (file.imports.length > 0) {
+        const imports = file.imports
+          .slice(0, 10)
+          .map((importInfo) => `${importInfo.kind} from "${importInfo.source}"`)
+          .join("; ");
+        lines.push(`  Imports: ${imports}${file.imports.length > 10 ? "..." : ""}`);
+      }
+
+      if (file.exports.length > 0) {
+        const exports = file.exports
+          .slice(0, 10)
+          .map(
+            (exportInfo) =>
+              `${exportInfo.kind} ${exportInfo.names.join(", ")}` +
+              (exportInfo.source ? ` from "${exportInfo.source}"` : ""),
+          )
+          .join("; ");
+        lines.push(`  Exports: ${exports}${file.exports.length > 10 ? "..." : ""}`);
+      }
+
+      if (file.parseErrors && file.parseErrors.length > 0) {
+        lines.push(`  Parse errors: ${file.parseErrors.join("; ")}`);
+      }
+
+      lines.push("");
+    }
+
+    lines.push("=== End Source Index Context ===");
+    const context = lines.join("\n");
+    if (context.length <= INDEX_CONTEXT_MAX_CHARS) {
+      return context;
+    }
+    return `${context.slice(0, INDEX_CONTEXT_MAX_CHARS)}\n[Source index context truncated]`;
+  } catch (error) {
+    log.debug(
+      `Failed to load source index context: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
 export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const {
     values,
@@ -297,6 +435,13 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     diffResult.files.map((file) => ({ path: file.path, content: file.patch })),
   );
 
+  // Load source index context for AI if available
+  const indexContext = await buildIndexContext(
+    config as Record<string, unknown>,
+    diffResult.files.map((f) => ({ path: f.path })),
+    process.cwd(),
+  );
+
   const runtimeErrors: string[] = [];
   let auditResults: FileAuditResult[] = [];
 
@@ -319,7 +464,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     // Build system prompt for token accounting
     let systemPromptForEstimate: string | undefined;
     try {
-      systemPromptForEstimate = await buildSystemPrompt(config);
+      systemPromptForEstimate = await buildSystemPrompt(config, indexContext ?? undefined);
     } catch {
       // Non-critical — skip system prompt in estimate
     }
@@ -361,6 +506,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
           sanitizedFiles.map((file) => ({ path: file.path, content: file.content })),
           config,
           maxConcurrency,
+          indexContext ?? undefined,
         );
       } catch (error) {
         runtimeErrors.push(error instanceof Error ? error.message : "Unknown AI runtime error");

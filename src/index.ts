@@ -36,11 +36,40 @@ process.on("SIGINT", () => {
 const run = async (): Promise<void> => {
   const startTime = performance.now();
   const { command, values, positionals, commandPositionals } = parseCliArgs();
-  const requestedFormat = values.format ?? process.env.MP_SENTINEL_FORMAT;
+  const requestedFormat =
+    command === "indexing"
+      ? values["index-format"]
+      : (values.format ?? process.env.MP_SENTINEL_FORMAT);
   const quietLogs = values.quiet || requestedFormat === "json" || requestedFormat === "markdown";
   setLogQuietMode(quietLogs);
 
-  // Check if in git repository
+  // Handle indexing command with lazy loading
+  if (command === "indexing") {
+    try {
+      const { runIndexingCommand } = await import("./commands/indexing.js");
+      process.exitCode = await runIndexingCommand(values);
+    } catch (error) {
+      if (values["index-format"] === "json") {
+        console.log(
+          JSON.stringify({
+            status: "ERROR",
+            error: error instanceof Error ? error.message : "Indexing failed with unknown error",
+          }),
+        );
+        process.exitCode = 2;
+        return;
+      }
+      if (error instanceof Error) {
+        log.critical(`Indexing failed: ${error.message}`);
+      } else {
+        log.critical("Indexing failed with unknown error");
+      }
+      process.exitCode = 2;
+    }
+    return;
+  }
+
+  // Check if in git repository (for review commands)
   if (!(await isGitRepository())) {
     throw new SystemError("Not a git repository. Please run from a git project root.");
   }
@@ -67,7 +96,7 @@ const run = async (): Promise<void> => {
     logVerboseInfo(values, config, currentBranch, targetBranch, maxConcurrency, isLocalMode);
   }
 
-  // Execute mode
+  // Execute mode (review commands)
   if (isLocalMode) {
     process.exitCode = await runLocalReview({
       values,

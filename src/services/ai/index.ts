@@ -158,9 +158,10 @@ export const auditFilesWithConcurrency = async (
   files: Array<{ path: string; content: string }>,
   config: ProjectConfig,
   maxConcurrency: number = 5,
+  indexContext?: string,
 ): Promise<FileAuditResult[]> => {
-  // Build system prompt once (with skills.sh integration)
-  const systemPrompt = await buildSystemPrompt(config);
+  // Build system prompt once (with skills.sh integration and optional source index)
+  const systemPrompt = await buildSystemPrompt(config, indexContext);
   const providerConfig = getProviderConfig();
   const cacheEnabled = config.cacheEnabled !== false;
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;

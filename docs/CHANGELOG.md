@@ -5,8 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-- No current unreleased changes.
+## [1.0.7] - 2026-04-25
+
+### Added
+- **Source Indexing**: New `indexing` command and feature to build AST-based source code cache
+  - Parses JS/TS files using tree-sitter for symbol, import, and export extraction
+  - Incremental caching with file change detection for fast updates
+  - Configurable via `.mp-sentinelrc.json` (`indexing.enabled`, `languages`, `cachePath`, `maxFileSize`)
+  - AI review automatically uses index context when available
+  - JSON output support for automation: `indexing --index-format json`
+- **Index Metadata**: Added `durationMs`, `cacheHitFiles`, and `parsedFiles` to `SourceIndex.stats` for better monitoring
+- **Commands Cheat Sheet**: New comprehensive documentation `docs/COMMANDS_CHEAT_SHEET.md` with indexing examples
+
+### Changed
+- **Configuration Standardization**: Unified config merging for `indexing` section alongside `ai` and `localReview`
+- **Type Safety**: Removed `any` types from `getIndexingConfig()` and review integration
+
+### Fixed
+- **Indexing Command Semantics**: `mp-sentinel indexing` now always builds the index when called directly, regardless of `indexing.enabled` setting. The `enabled` flag only controls whether the `review` command consumes the cached index.
 
 ## [1.0.6] - 2026-02-23
 

@@ -31,14 +31,22 @@ Focus on changed lines and nearby context only.
 `;
 
 /**
- * Build system prompt with optional skills.sh integration
- * CRITICAL: This function is async now to support skills fetching
+ * Build system prompt with optional skills.sh integration and source index context
+ * CRITICAL: This function is async now to support skills fetching and index loading
  * If skills fetch fails, it continues with default prompts (no retry)
  */
-export const buildSystemPrompt = async (config: ProjectConfig): Promise<string> => {
+export const buildSystemPrompt = async (
+  config: ProjectConfig,
+  indexContext?: string,
+): Promise<string> => {
   const parts: string[] = [BASE_AUDIT_PROMPT];
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   parts.push(`\n### PROMPT VERSION\n${promptVersion}\n`);
+
+  // Add source index context first (highest priority for architectural understanding)
+  if (indexContext) {
+    parts.push(`\n### PROJECT ARCHITECTURE CONTEXT (from source index)\n${indexContext}\n`);
+  }
 
   if (config.techStack) {
     parts.push(`\n### TECH STACK CONTEXT\nThe code is written in: ${config.techStack}\n`);

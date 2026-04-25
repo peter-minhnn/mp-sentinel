@@ -4,7 +4,7 @@
  * Supports GitHub Actions and GitLab CI/CD integration
  */
 
-import type { ProjectConfig } from "../types/index.js";
+import type { FileAuditResult, ProjectConfig } from "../types/index.js";
 import { getChangedFiles } from "../utils/git.js";
 import { readFilesForAudit } from "../services/file.js";
 import { auditCommit, auditFilesWithConcurrency } from "../services/ai.js";
@@ -149,9 +149,7 @@ const auditFileList = async (
 /**
  * Post review comments to git provider (GitHub/GitLab) if available
  */
-const postGitProviderComments = async (
-  auditResults: import("../types/index.js").FileAuditResult[],
-): Promise<void> => {
+const postGitProviderComments = async (auditResults: FileAuditResult[]): Promise<void> => {
   try {
     const gitProvider = await import("../services/git-provider.js").then((m) => m.getGitProvider());
 

@@ -139,6 +139,8 @@ export interface ProjectConfig {
   /** Timeout for skills.sh API calls in milliseconds (default: 3000) */
   skillsFetchTimeout?: number;
   ai?: AIReviewConfig;
+  /** Source indexing configuration */
+  indexing?: Partial<IndexingConfig>;
 }
 
 export interface AuditIssue {
@@ -199,12 +201,14 @@ export const DEFAULT_CONFIG: Required<
     | "enableSkillsFetch"
     | "skillsFetchTimeout"
     | "ai"
+    | "indexing"
   >
 > & {
   localReview: LocalReviewConfig;
   enableSkillsFetch: boolean;
   skillsFetchTimeout: number;
   ai: AIReviewConfig;
+  indexing: Required<Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">>;
 } = {
   techStack: "",
   rules: [],
@@ -214,6 +218,12 @@ export const DEFAULT_CONFIG: Required<
   cacheEnabled: true,
   enableSkillsFetch: true,
   skillsFetchTimeout: 3000,
+  indexing: {
+    enabled: false,
+    languages: ["typescript", "tsx", "javascript", "jsx"],
+    cachePath: ".mp-sentinel-cache/source-index.json",
+    maxFileSize: 512000,
+  },
   ai: {
     maxFiles: 15,
     maxDiffLines: 1200,
@@ -233,3 +243,144 @@ export const DEFAULT_CONFIG: Required<
     verbosePatternMatching: false,
   },
 };
+
+// ====================================================================================
+// Source Index Types (Tree-sitter AST-based indexing)
+// ====================================================================================
+
+/**
+ * Supported languages for tree-sitter parsing
+ */
+export type IndexableLanguage = "typescript" | "tsx" | "javascript" | "jsx";
+
+/**
+ * Symbol types extracted from AST
+ */
+export interface SymbolInfo {
+  name: string;
+  type:
+    | "function"
+    | "class"
+    | "interface"
+    | "type"
+    | "enum"
+    | "variable"
+    | "method"
+    | "arrow-function";
+  line: number;
+  column: number;
+  parent?: string;
+  /** For classes: extends/implements, for functions: return type hint */
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Import/Export information extracted from AST
+ */
+export interface ImportInfo {
+  source: string;
+  kind: "default" | "named" | "namespace" | "dynamic";
+  names: string[];
+  line: number;
+}
+
+export interface ExportInfo {
+  kind: "default" | "named" | "namespace";
+  names: string[];
+  line: number;
+  source?: string; // For re-exports
+}
+
+/**
+ * Parsed file information stored in source index
+ */
+export interface SourceIndexFile {
+  /** Relative path from project root */
+  path: string;
+  /** Detected language */
+  language: IndexableLanguage;
+  /** File SHA256 hash for cache validation */
+  sha256: string;
+  /** File size in bytes */
+  sizeBytes: number;
+  /** Last modified timestamp (milliseconds since epoch) */
+  mtimeMs: number;
+  /** Import statements found */
+  imports: ImportInfo[];
+  /** Export statements found */
+  exports: ExportInfo[];
+  /** Symbols (functions, classes, interfaces, types) */
+  symbols: SymbolInfo[];
+  /** Parse errors if any */
+  parseErrors?: string[];
+}
+
+/**
+ * Project manifest information
+ */
+export interface ProjectManifest {
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  nodeEngine?: string | undefined;
+  packageManager?: string | undefined;
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  detectedFrameworks: string[];
+  tsConfig?:
+    | {
+        compilerOptions: Record<string, unknown>;
+        extends?: string;
+      }
+    | undefined;
+  toolVersion?: string | undefined;
+}
+
+/**
+ * Source index schema v1.0
+ */
+export interface SourceIndex {
+  schemaVersion: "1.0";
+  generatedAt: string;
+  toolVersion: string;
+  project: ProjectManifest;
+  files: SourceIndexFile[];
+  stats: {
+    totalFiles: number;
+    indexedFiles: number;
+    skippedFiles: number;
+    parseErrors: number;
+    /** Duration of indexing in milliseconds (optional, for backward compatibility) */
+    durationMs?: number;
+    /** Number of files served from cache (optional, for backward compatibility) */
+    cacheHitFiles?: number;
+    /** Number of files parsed in this session (optional, for backward compatibility) */
+    parsedFiles?: number;
+  };
+}
+
+/**
+ * Indexing configuration schema
+ */
+export interface IndexingConfig {
+  enabled: boolean;
+  languages: IndexableLanguage[];
+  cachePath: string;
+  maxFileSize: number;
+}
+
+/**
+ * Project config extended with indexing options
+ */
+export interface ProjectConfigWithIndexing extends ProjectConfig {
+  indexing?: IndexingConfig;
+}
+
+/**
+ * Cache validity information
+ */
+export interface CacheValidity {
+  valid: boolean;
+  staleFiles?: string[];
+  missingFiles?: string[];
+  modifiedFiles?: string[];
+}

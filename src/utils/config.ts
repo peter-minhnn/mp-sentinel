@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import type { ProjectConfig } from "../types/index.js";
+import type { ProjectConfig, IndexingConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/index.js";
 import { log } from "./logger.js";
 import { UserError } from "./errors.js";
@@ -75,6 +75,20 @@ const AIReviewConfigSchema = z.object({
   tokenLimit: z.number().int().positive("ai.tokenLimit must be a positive integer").optional(),
 });
 
+const IndexingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  languages: z
+    .array(z.enum(["typescript", "tsx", "javascript", "jsx"]))
+    .optional()
+    .describe("Languages to include in source indexing"),
+  cachePath: z.string().optional(),
+  maxFileSize: z
+    .number()
+    .int()
+    .positive("indexing.maxFileSize must be a positive integer")
+    .optional(),
+});
+
 export const ProjectConfigSchema = z.object({
   techStack: z.string().optional(),
   rules: z.array(z.string()).optional(),
@@ -93,6 +107,7 @@ export const ProjectConfigSchema = z.object({
     .positive("skillsFetchTimeout must be a positive integer")
     .optional(),
   ai: AIReviewConfigSchema.optional(),
+  indexing: IndexingConfigSchema.optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -119,6 +134,10 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
   localReview: {
     ...DEFAULT_CONFIG.localReview,
     ...(userConfig.localReview ?? {}),
+  },
+  indexing: {
+    ...DEFAULT_CONFIG.indexing,
+    ...(userConfig.indexing ?? {}),
   },
 });
 

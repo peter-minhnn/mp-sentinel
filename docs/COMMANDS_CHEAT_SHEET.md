@@ -4,7 +4,7 @@ A quick reference guide for all **MP Sentinel** CLI commands, organized by commo
 
 ---
 
-## 💻 1. Local Development Workflow (Local Review)
+## 🔍 1. Local Development Workflow (Local Review)
 Audit your code directly on your machine before pushing to a remote branch.
 
 ### Interactive Mode (Picker) - ⭐️ Recommended
@@ -37,7 +37,50 @@ npx mp-sentinel review --local --commits 3  # Audits the last 3 commits
 
 ---
 
-## 🛡 2. CI/CD & Security Scan Workflow
+## 📚 2. Source Indexing Workflow
+Build and manage source index cache for enhanced AI context and faster reviews.
+
+### Build Index Cache
+Create or update the source index cache for your project. The index parses JS/TS files to extract symbols, imports, and exports for better AI understanding.
+```bash
+npx mp-sentinel indexing
+
+# Force rebuild even if cache is up-to-date:
+npx mp-sentinel indexing --force
+
+# Output results as JSON (for automation/CI):
+npx mp-sentinel indexing --index-format json
+```
+
+### Automation-Friendly Usage
+For CI/CD or scripts that need to parse output, use `--index-format json` and call the CLI directly (not via `npm run`) to avoid npm banners:
+```bash
+# Direct CLI call (recommended for automation)
+node dist/index.js indexing --index-format json --force
+
+# Alternative: npm run with --silent flag
+npm run --silent indexing -- --index-format json --force
+```
+
+**Note:** Avoid `npm run indexing` for automation as npm prints banners that interfere with JSON parsing.
+
+### Configure Indexing in `.mp-sentinelrc.json`
+```json
+{
+  "indexing": {
+    "enabled": true,
+    "languages": ["typescript", "tsx", "javascript", "jsx"],
+    "cachePath": ".mp-sentinel-cache/source-index.json",
+    "maxFileSize": 512000
+  }
+}
+```
+
+**Important:** The `indexing.enabled` flag only controls whether the `review` command uses the cached index for enhanced AI context. The `indexing` command itself always builds the cache when invoked directly, regardless of this setting. This means you can safely set `"enabled": false` to disable indexing during reviews without affecting your ability to generate or update the cache.
+
+---
+
+## 🛡 3. CI/CD & Security Scan Workflow
 
 ### Target Branch Comparison (PR Default)
 Automatically detects relevant code changes between your branch and the target branch. This is the default mode used in GitHub Actions and GitLab CI.
@@ -70,7 +113,7 @@ npx mp-sentinel review --local -i --verbose-dry-run
 
 ---
 
-## 🎯 3. Advanced Power-User Workflow
+## 🎯 4. Advanced Power-User Workflow
 
 ### Target Specific Groups of Files
 ```bash

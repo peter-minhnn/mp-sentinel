@@ -6,7 +6,7 @@
 import { Command } from "commander";
 import { UserError } from "../utils/errors.js";
 
-export type CLICommand = "review" | "default";
+export type CLICommand = "review" | "indexing" | "default";
 
 /**
  * Parsed CLI option values
@@ -55,6 +55,11 @@ export interface CLIValues {
   "verbose-dry-run": boolean;
   /** Override the provider context-window token limit */
   "token-limit"?: string;
+  // ── Indexing command options ───────────────────────────────────────────────
+  /** Indexing output format: console | json */
+  "index-format"?: string;
+  /** Force rebuild the source index cache */
+  force?: boolean;
 }
 
 const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.6";
@@ -100,11 +105,19 @@ export const buildProgram = (): Command => {
     .option(
       "--token-limit <n>",
       "Override provider context-window token limit (e.g. 128000 for GPT-4o)",
-    )
-    // ── Examples ──────────────────────────────────────────────────────────────
-    .addHelpText(
-      "after",
-      `
+    );
+
+  // Indexing subcommand
+  const indexingCmd = program
+    .command("indexing")
+    .description("Build source index cache for enhanced review context")
+    .option("--force", "Force rebuild cache even if up-to-date", false)
+    .option("--index-format <fmt>", "Output format: console | json (default: console)", "console");
+
+  // ── Examples ──────────────────────────────────────────────────────────────
+  program.addHelpText(
+    "after",
+    `
 Examples:
   $ npx mp-sentinel                              # CI/CD diff review (default)
   $ npx mp-sentinel --local                      # Review last commit on current branch
@@ -120,8 +133,11 @@ Examples:
   $ npx mp-sentinel --verbose-dry-run            # Dry-run with forcing token breakdowns
   $ npx mp-sentinel --token-limit 128000         # Override token limit for GPT-4o
   $ npx mp-sentinel --quiet --format json        # CI-friendly JSON output
+  $ npx mp-sentinel indexing                     # Build source index cache
+  $ npx mp-sentinel indexing --index-format json # Output index as JSON
+  $ npx mp-sentinel indexing --force             # Force rebuild cache
 `,
-    );
+  );
 
   return program;
 };
@@ -167,10 +183,14 @@ export const parseCliArgs = (): {
     }
 
     const opts = program.opts<Record<string, unknown>>();
+    const indexingOptions =
+      program.commands
+        .find((candidate) => candidate.name() === "indexing")
+        ?.opts<Record<string, unknown>>() ?? {};
     const rawPositionals = program.args;
 
-    const command: CLICommand = rawPositionals[0] === "review" ? "review" : "default";
-    const commandPositionals = command === "review" ? rawPositionals.slice(1) : rawPositionals;
+    const command: CLICommand = rawPositionals[0] === "indexing" ? "indexing" : "review";
+    const commandPositionals = command === "indexing" ? rawPositionals.slice(1) : rawPositionals;
 
     // Normalise the "no-ai" flag: commander sets `ai: false` when --no-ai is passed
     const aiValue: boolean | undefined =
@@ -212,6 +232,11 @@ export const parseCliArgs = (): {
       ...(typeof opts["tokenLimit"] === "string" && {
         "token-limit": opts["tokenLimit"],
       }),
+      // Indexing options
+      ...(typeof indexingOptions["indexFormat"] === "string" && {
+        "index-format": indexingOptions["indexFormat"],
+      }),
+      force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
     } as CLIValues;
 
     return {

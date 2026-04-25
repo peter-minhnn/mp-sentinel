@@ -1,0 +1,26 @@
+{
+  "techStack": "typescript,react,node",
+  "rules": ["security", "performance", "best-practices"],
+  "bypassKeyword": "skip:",
+  "maxConcurrency": 5,
+  "cacheEnabled": true,
+  "ai": {
+    "enabled": true,
+    "maxFiles": 15,
+    "maxDiffLines": 1200,
+    "maxCharsPerFile": 12000,
+    "promptVersion": "2026-02-16"
+  },
+  "localReview": {
+    "enabled": false,
+    "commitCount": 1,
+    "branchDiffMode": true,
+    "compareBranch": "origin/main"
+  },
+  "indexing": {
+    "enabled": true,
+    "languages": ["typescript", "tsx", "javascript", "jsx"],
+    "cachePath": ".mp-sentinel-cache/source-index.json",
+    "maxFileSize": 512000
+  }
+}
