@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.9] - Unreleased
+## [1.0.9] - 2026-04-26
 
 ### Added
 - **`create-skills` command**: generates agent/IDE skill files from the source index
   - 6 adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `generic`
+  - `--all-agents` generates for 5 primary adapters (`claude`, `cursor`, `codex`, `windsurf`, `antigravity`) — `generic` is excluded to avoid path collision with `codex`; use `--agent generic` to target it explicitly
   - Auto-detection of installed agent folders (`.claude/`, `.cursor/`, `.windsurf/`, `.codex/`, `.agents/`, `.antigravity/`, `.agent/`)
   - Interactive multi-select picker (TTY) or non-interactive via `--agent <ids>` / `--all-agents`
   - `--format json` for automation; requires `--agent` or `--all-agents` to preserve parseable stdout
@@ -22,16 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AGENTS.md` §3**: new behavioral contract section for `create-skills` and adapter development rules
 
 - **`create-skills --dry-run`**: preview files that would be created, skipped, or overwritten without writing anything
-  - Actions: `create` (file absent), `skip` (file exists, no `--force`), `overwrite` (file exists with `--force`)
+  - Actions: `create` (file absent), `skip` (file exists, no `--force`), `overwrite` (file exists with `--force`), `conflict` (another adapter in the same batch already claimed this output path)
   - `--dry-run --format json` outputs `{ "dryRun": [...] }` suitable for scripting
 - **`create-skills --check`**: CI mode — verify generated skill files are up-to-date with the current source index
   - Exit `0`: all files present and hash matches current index
   - Exit `1`: any file is missing or stale (hash mismatch)
   - Exit `2`: runtime error (invalid config, corrupt cache, etc.)
+  - Statuses: `up-to-date`, `stale` (hash mismatch), `missing` (file absent), `wrong-agent` (file exists with correct hash but `agent` field differs — file belongs to another adapter)
   - `--check --format json` outputs `{ "check": [...], "status": "ok" | "stale" }`
-- **Generated file metadata header**: every skill file now begins with an HTML comment embedding `generatorVersion`, `sourceIndexSchema`, `sourceIndexHash`, `agent`, and `projectName`
-  - Hash is a 16-char sha256 of stable index content — deterministic, no timestamps
-  - `--check` uses this hash to detect staleness without re-reading full content
+- **Generated file metadata header**: every skill file begins with a deterministic HTML comment embedding `generatorVersion`, `sourceIndexSchema`, `sourceIndexHash` (16-char sha256 over sorted file paths, symbols, and import edges — no timestamps), `agent`, and `projectName`
+  - Adapter output is fully deterministic: re-running `create-skills` with the same index always produces byte-identical files
+  - `--check` uses this header to detect staleness and wrong-agent without re-reading full content
 - **New types in `src/types/index.ts`**: `SkillsMetadata`, `DryRunFileAction`, `SkillsDryRunFile`, `SkillsDryRunResult`, `CheckFileStatus`, `SkillsCheckFile`, `SkillsCheckResult`
 - **New module `src/services/skills-generator/metadata.ts`**: `computeIndexHash`, `renderMetadataHeader`, `parseMetadataFromContent`
 

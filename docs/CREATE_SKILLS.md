@@ -36,6 +36,8 @@ npx mp-sentinel create-skills --agent claude --format json
 | `antigravity` | Google Antigravity | `.antigravity/` or `.agent/` exists | `.antigravity/rules/<project>-best-practices.md` |
 | `generic` | Generic (fallback) | never auto-detected | `.agents/rules/<project>-best-practices.md` |
 
+> **`--all-agents`** generates for the 5 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`. The `generic` adapter is excluded because it writes to the same path as `codex` (`.agents/rules/`) — use `--agent generic` to target it explicitly.
+
 ---
 
 ## Auto-Detection
@@ -97,6 +99,57 @@ Pass `--force` to overwrite.
 
 ```sh
 npx mp-sentinel create-skills --agent claude --force
+```
+
+---
+
+## Dry Run
+
+`--dry-run` previews what would happen without writing any files.
+
+```sh
+npx mp-sentinel create-skills --all-agents --dry-run
+npx mp-sentinel create-skills --all-agents --dry-run --format json
+```
+
+Each file entry has one of these actions:
+
+| Action | Meaning |
+|--------|---------|
+| `create` | File does not exist — would be created |
+| `skip` | File exists and `--force` is not set — would be skipped |
+| `overwrite` | File exists and `--force` is set — would be overwritten |
+| `conflict` | Another adapter in the same batch already claimed this output path |
+
+JSON shape:
+```json
+{ "dryRun": [{ "agent": "claude", "path": "...", "action": "create" }, ...] }
+```
+
+---
+
+## Check Mode (CI Staleness Gate)
+
+`--check` verifies that generated skill files match the current source index without regenerating them.
+
+```sh
+npx mp-sentinel create-skills --agent claude --check
+npx mp-sentinel create-skills --all-agents --check --format json
+# exits 0 = all up-to-date, 1 = any stale or missing, 2 = runtime error
+```
+
+Each file entry has one of these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `up-to-date` | File exists and `sourceIndexHash` matches current index |
+| `stale` | File exists but hash has changed since generation |
+| `missing` | File does not exist |
+| `wrong-agent` | File exists with correct hash but `agent` field in the header belongs to a different adapter |
+
+JSON shape:
+```json
+{ "check": [{ "agent": "claude", "path": "...", "status": "up-to-date" }, ...], "status": "ok" }
 ```
 
 ---

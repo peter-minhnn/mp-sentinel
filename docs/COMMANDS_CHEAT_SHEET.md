@@ -105,12 +105,28 @@ npx mp-sentinel create-skills --agent claude,cursor
 ```bash
 npx mp-sentinel create-skills --all-agents
 ```
+> `--all-agents` generates for the 5 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`. `generic` is excluded (shares an output path with `codex`) — use `--agent generic` to target it explicitly.
 
 ### Overwrite Existing Files
 By default, `create-skills` refuses to overwrite. Use `--force` to allow it.
 ```bash
 npx mp-sentinel create-skills --agent claude --force
 ```
+
+### Preview Without Writing (Dry Run)
+```bash
+npx mp-sentinel create-skills --all-agents --dry-run
+npx mp-sentinel create-skills --all-agents --dry-run --format json
+```
+Actions: `create` | `skip` | `overwrite` | `conflict` (path already claimed by another adapter in the batch).
+
+### CI Staleness Check
+```bash
+npx mp-sentinel create-skills --agent claude --check
+npx mp-sentinel create-skills --all-agents --check --format json
+# exits 0 = up-to-date, 1 = stale/missing, 2 = runtime error
+```
+Statuses: `up-to-date` | `stale` | `missing` | `wrong-agent`.
 
 ### Automation-Friendly Usage
 `--format json` requires `--agent` or `--all-agents` to keep stdout parse-safe.
