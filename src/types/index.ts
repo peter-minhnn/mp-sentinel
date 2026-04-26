@@ -443,3 +443,44 @@ export interface SkillsGenerationResult {
   skipped: boolean;
   skipReason?: string;
 }
+
+/**
+ * Metadata embedded in every generated skill file header.
+ */
+export interface SkillsMetadata {
+  generatorVersion: string;
+  sourceIndexSchema: string;
+  sourceIndexHash: string;
+  agent: AgentAdapterId;
+  projectName: string;
+}
+
+// ── Dry-run types ─────────────────────────────────────────────────────────────
+
+export type DryRunFileAction = "create" | "skip" | "overwrite";
+
+export interface SkillsDryRunFile {
+  outputPath: string;
+  action: DryRunFileAction;
+}
+
+export interface SkillsDryRunResult {
+  agent: AgentAdapterId;
+  label: string;
+  files: SkillsDryRunFile[];
+}
+
+// ── Check types ───────────────────────────────────────────────────────────────
+
+export type CheckFileStatus = "up-to-date" | "stale" | "missing";
+
+export interface SkillsCheckFile {
+  outputPath: string;
+  status: CheckFileStatus;
+}
+
+export interface SkillsCheckResult {
+  agent: AgentAdapterId;
+  label: string;
+  files: SkillsCheckFile[];
+}

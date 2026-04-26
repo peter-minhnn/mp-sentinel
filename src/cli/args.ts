@@ -75,6 +75,10 @@ export interface CLIValues {
   "create-skills-force": boolean;
   /** Use existing cache only; fail if absent */
   "skip-index-refresh": boolean;
+  /** Preview files that would be created/skipped without writing */
+  "create-skills-dry-run": boolean;
+  /** CI mode: verify generated skills are up-to-date; exit 1 if stale */
+  "create-skills-check": boolean;
 }
 
 const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.6";
@@ -145,7 +149,13 @@ export const buildProgram = (): Command => {
       "Output format: console | json (json requires --agent or --all-agents)",
     )
     .option("--force", "Overwrite existing skill files", false)
-    .option("--skip-index-refresh", "Use existing index cache only; fail if absent", false);
+    .option("--skip-index-refresh", "Use existing index cache only; fail if absent", false)
+    .option("--dry-run", "Preview files that would be created/skipped without writing", false)
+    .option(
+      "--check",
+      "CI mode: verify generated skills are up-to-date with source index (exit 1 if stale)",
+      false,
+    );
 
   // ── Examples ──────────────────────────────────────────────────────────────
   program.addHelpText(
@@ -304,6 +314,13 @@ export const parseCliArgs = (): {
         }),
       "create-skills-force": Boolean(createSkillsOptions["force"] ?? false),
       "skip-index-refresh": Boolean(createSkillsOptions["skipIndexRefresh"] ?? false),
+      // Parent --dry-run intercepts subcommand --dry-run (commander puts it in parent opts).
+      // Use || not ?? because the default is false (not undefined).
+      "create-skills-dry-run":
+        command === "create-skills"
+          ? Boolean(createSkillsOptions["dryRun"] || opts["dryRun"])
+          : false,
+      "create-skills-check": Boolean(createSkillsOptions["check"] ?? false),
     } as CLIValues;
 
     return {

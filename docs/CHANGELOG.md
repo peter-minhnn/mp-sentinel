@@ -21,14 +21,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`create-skills` adapter types**: `AgentAdapterId`, `AgentAdapter`, `SkillsGenerationContext`, `GeneratedSkillFile`, `SkillsGenerationResult` added to `src/types/index.ts`
 - **`AGENTS.md` §3**: new behavioral contract section for `create-skills` and adapter development rules
 
+- **`create-skills --dry-run`**: preview files that would be created, skipped, or overwritten without writing anything
+  - Actions: `create` (file absent), `skip` (file exists, no `--force`), `overwrite` (file exists with `--force`)
+  - `--dry-run --format json` outputs `{ "dryRun": [...] }` suitable for scripting
+- **`create-skills --check`**: CI mode — verify generated skill files are up-to-date with the current source index
+  - Exit `0`: all files present and hash matches current index
+  - Exit `1`: any file is missing or stale (hash mismatch)
+  - Exit `2`: runtime error (invalid config, corrupt cache, etc.)
+  - `--check --format json` outputs `{ "check": [...], "status": "ok" | "stale" }`
+- **Generated file metadata header**: every skill file now begins with an HTML comment embedding `generatorVersion`, `sourceIndexSchema`, `sourceIndexHash`, `agent`, and `projectName`
+  - Hash is a 16-char sha256 of stable index content — deterministic, no timestamps
+  - `--check` uses this hash to detect staleness without re-reading full content
+- **New types in `src/types/index.ts`**: `SkillsMetadata`, `DryRunFileAction`, `SkillsDryRunFile`, `SkillsDryRunResult`, `CheckFileStatus`, `SkillsCheckFile`, `SkillsCheckResult`
+- **New module `src/services/skills-generator/metadata.ts`**: `computeIndexHash`, `renderMetadataHeader`, `parseMetadataFromContent`
+
 ### Changed
 - **`src/cli/args.ts`**: `create-skills` subcommand now declares `--format` directly so it appears in `create-skills --help`
 - **`AGENTS.md`**: section renumbering (§3 create-skills inserted; §4–§9 shifted accordingly)
 - **`CLAUDE.md`**: updated section reference (§6 → §7) and added create-skills contract to reading list
+- **`create-skills` output objects**: normal run emits `{ "results": [...] }`; `--dry-run` emits `{ "dryRun": [...] }`; `--check` emits `{ "check": [...], "status": "ok" | "stale" }`; errors always emit `{ "status": "ERROR", "error": "..." }`
 
 ### Fixed
 - **Null index guard**: `create-skills` now fails with exit code `2` if `buildSourceIndex` returns `null` or the cache is corrupt, instead of silently generating files under the generic `"project"` name
 - **Missing package name guard**: fails with exit code `2` if `package.json` has no `"name"` field
+- **Format validation before index build**: invalid `--format` value now returns exit `2` immediately, before the potentially slow index-build step
 
 ## [1.0.8] - 2026-04-26
 

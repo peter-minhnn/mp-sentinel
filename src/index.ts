@@ -83,6 +83,8 @@ const run = async (): Promise<void> => {
         }),
         "create-skills-force": values["create-skills-force"],
         "skip-index-refresh": values["skip-index-refresh"],
+        "create-skills-dry-run": values["create-skills-dry-run"],
+        "create-skills-check": values["create-skills-check"],
       });
     } catch (error) {
       if (values["create-skills-format"] === "json") {
