@@ -17,6 +17,7 @@ All documentation has been moved to the `docs/` directory:
 - [CI/CD Setup Guide](./docs/CICD_SETUP.md)
 - [Provider Comparison](./docs/PROVIDER_COMPARISON.md)
 - [Network Efficiency](./docs/NETWORK_EFFICIENCY.md)
+- [Create Skills Guide](./docs/CREATE_SKILLS.md)
 - [Local Skills Integration](./docs/SKILLS_INTEGRATION.md)
 - [Skills Quick Start](./docs/SKILLS_QUICK_START.md)
 - [Migration Guide (v1.0.4)](./docs/MIGRATION_1.0.4.md)
@@ -42,9 +43,10 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.8**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.9**:
 
-- 🔗 **Graph-Aware Indexing** — `importsFrom`/`importedBy` dependency edges, tsconfig alias resolution, pure-JSON stdout
+- 🤖 **`create-skills` command** — generate Claude, Cursor, Codex, Windsurf & more skill files from your source index in one command
+- 🔗 **Graph-Aware Indexing** — `importsFrom`/`importedBy` dependency edges, tsconfig alias resolution, pure-JSON stdout (v1.0.8)
 - 📇 **Source Indexing** — AST-based code indexing for smarter AI context (v1.0.7)
 - 🎯 **Agent Skills Integration** — Seamlessly inject local ecosystem rules (like `.cursor/rules` or `npx skills`)
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.

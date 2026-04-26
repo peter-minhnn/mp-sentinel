@@ -1,69 +1,70 @@
-# What's New in v1.0.8
+# What's New in v1.0.9
 
-## Major Improvements
+## Major Features
 
-### 1. Graph-Aware Dependency Index
+### 1. `create-skills` — Generate Agent/IDE Skill Files
 
-Building on the source indexing foundation introduced in v1.0.7, v1.0.8 upgrades the index schema to `1.1` with a full dependency graph. Every indexed file now carries `importsFrom` and `importedBy` edges, enabling precise context injection for AI reviews.
-
-**What's new in the graph:**
-- **tsconfig `paths`/`baseUrl` support** — aliases like `@/lib/foo` resolve to actual files
-- **JSONC tsconfig** — tsconfig files with comments or trailing commas parse without error
-- **External package filtering** — `react`, `node:*`, `@types/*`, and URLs are never added as graph edges
-- **Missing import safety** — unresolvable imports are silently skipped, never crash indexing
-- **Circular import detection** — `a→b→a` correctly populates both directions of the graph
-
-### 2. New CLI Flags: `--stats` and `--explain`
+MP Sentinel can now generate structured best-practices files for AI agents and IDEs directly from your source index. One command, multiple targets:
 
 ```bash
-# Show index statistics after building
-npx mp-sentinel indexing --stats
+# Interactive picker — auto-detects existing agent folders
+npx mp-sentinel create-skills
 
-# Get machine-readable stats
-npx mp-sentinel indexing --stats --index-format json
+# Generate for specific agents
+npx mp-sentinel create-skills --agent claude,cursor
 
-# Inspect symbol and dependency info for a file
-npx mp-sentinel indexing --explain src/cli/review.ts
+# Generate for all supported agents at once
+npx mp-sentinel create-skills --all-agents
 
-# Get machine-readable file info
-npx mp-sentinel indexing --explain src/cli/review.ts --index-format json
+# Automation-friendly JSON output
+npx mp-sentinel create-skills --agent claude --format json
+
+# Overwrite existing skill files
+npx mp-sentinel create-skills --agent claude --force
 ```
 
-### 3. Smarter AI Review Context
+**Supported agents:**
 
-When the source index is enabled, the review prompt now includes:
-1. **Changed files first** (the files being reviewed)
-2. **Direct imports** of each changed file (capped at 3 per file)
-3. **Direct dependents** that import the changed file (capped at 3 per file)
+| Agent | Output path |
+|-------|-------------|
+| `claude` | `.claude/skills/<project>-best-practices/SKILL.md` + `references/` |
+| `cursor` | `.cursor/rules/<project>-best-practices.mdc` |
+| `codex` | `.agents/rules/<project>-best-practices.md` |
+| `windsurf` | `.windsurf/rules/<project>-best-practices.md` |
+| `antigravity` | `.antigravity/rules/<project>-best-practices.md` |
+| `generic` | `.agents/rules/<project>-best-practices.md` |
 
-Character budget raised to 12 000 for richer context without exceeding token limits.
+**What's generated:**
+- Project overview (name, version, frameworks, package manager)
+- Architecture (top-level directories, dependency graph stats when schema 1.1)
+- Hub files (most-imported files with their exported symbols — schema 1.1 only)
+- Module map (per-directory breakdown with key exported symbols)
+- Development commands (`npm test`, `npm run build`, type-check)
+- Code conventions (ESM imports, TypeScript, test file count)
 
-### 4. Pure JSON stdout
+**Auto-index:** `create-skills` always ensures a valid source index exists before generating. If the cache is absent it builds automatically — no manual `mp-sentinel indexing` step required.
 
-`--index-format json` now suppresses all informational log messages so stdout contains only valid JSON — safe to pipe directly into `jq` or `JSON.parse`.
+### 2. Hardened CLI Contract
 
-```bash
-node dist/index.js indexing --index-format json | jq '.stats'
-node dist/index.js indexing --stats --index-format json | jq '.'
-node dist/index.js indexing --explain src/index.ts --index-format json | jq '.importsFrom'
-```
-
-## Migration
-
-### Fully Backward Compatible
-
-Schema `1.1` adds optional `importsFrom`, `importedBy`, and `exportedSymbols` fields to `SourceIndexFile`. Existing code that reads schema `1.0` caches will continue to work — the new fields are simply absent.
-
-The `indexing.enabled` setting is `false` by default. Set it to `true` in `.mp-sentinelrc.json` when you are ready to use the enhanced AI context during reviews.
+- `create-skills --help` now shows all options including `--format`.
+- Invalid format (`--format xml`) returns exit code `2` with a clear error message.
+- Unknown `--agent` id returns exit code `2` listing valid options.
+- Absent or corrupt cache with `--skip-index-refresh` fails with exit code `2` instead of silently generating incomplete files.
+- Missing `package.json` name field returns exit code `2` rather than generating files under the generic `"project"` name.
 
 ## Documentation
 
-- [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md) — all indexing flags in one place
+- [Create Skills Guide](./docs/CREATE_SKILLS.md) — full adapter reference, output paths, automation
+- [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md) — `create-skills` section added
 - [Changelog](./docs/CHANGELOG.md) — detailed technical changes per version
+
+## Migration
+
+No breaking changes. `create-skills` is an additive command. Existing `review` and `indexing` workflows are unaffected.
 
 ## Summary
 
-**Version**: 1.0.8
-**Release Date**: 2026-04-26
-**Status**: Stable
-**Builds on**: v1.0.7 source indexing baseline
+**Version**: 1.0.9
+**Release Date**: TBD
+**Status**: Release candidate
+**Builds on**: v1.0.8 graph-aware source indexing

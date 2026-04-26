@@ -392,3 +392,54 @@ export interface CacheValidity {
   missingFiles?: string[];
   modifiedFiles?: string[];
 }
+
+// ====================================================================================
+// Skills Generator Types (create-skills command)
+// ====================================================================================
+
+/**
+ * Supported agent adapter identifiers
+ */
+export type AgentAdapterId = "claude" | "cursor" | "codex" | "windsurf" | "antigravity" | "generic";
+
+/**
+ * Context passed to an adapter's generate() call
+ */
+export interface SkillsGenerationContext {
+  projectRoot: string;
+  projectName: string;
+  force: boolean;
+}
+
+/**
+ * A single file to be written by an adapter
+ */
+export interface GeneratedSkillFile {
+  outputPath: string;
+  content: string;
+}
+
+/**
+ * Adapter interface — each supported AI agent/IDE implements this
+ */
+export interface AgentAdapter {
+  id: AgentAdapterId;
+  label: string;
+  detect(projectRoot: string): boolean;
+  getDefaultOutput(projectRoot: string, projectName: string): string;
+  generate(
+    index: SourceIndex | null,
+    context: SkillsGenerationContext,
+  ): Promise<GeneratedSkillFile[]>;
+}
+
+/**
+ * Result of generating skills for one agent
+ */
+export interface SkillsGenerationResult {
+  agent: AgentAdapterId;
+  label: string;
+  outputPaths: string[];
+  skipped: boolean;
+  skipReason?: string;
+}

@@ -86,7 +86,52 @@ npm run --silent indexing -- --index-format json --force
 
 ---
 
-## 🛡 3. CI/CD & Security Scan Workflow
+## 🤖 3. Create Skills Workflow
+Generate agent/IDE skill files from the source index so AI agents (Claude, Cursor, Codex, Windsurf, etc.) load project context automatically.
+
+### Interactive Agent Picker
+Auto-detects existing agent folders and shows a multi-select UI.
+```bash
+npx mp-sentinel create-skills
+```
+
+### Generate for Specific Agents
+```bash
+npx mp-sentinel create-skills --agent claude
+npx mp-sentinel create-skills --agent claude,cursor
+```
+
+### Generate for All Agents
+```bash
+npx mp-sentinel create-skills --all-agents
+```
+
+### Overwrite Existing Files
+By default, `create-skills` refuses to overwrite. Use `--force` to allow it.
+```bash
+npx mp-sentinel create-skills --agent claude --force
+```
+
+### Automation-Friendly Usage
+`--format json` requires `--agent` or `--all-agents` to keep stdout parse-safe.
+```bash
+npx mp-sentinel create-skills --agent claude --format json
+node dist/index.js create-skills --agent claude,cursor --format json
+```
+
+### Use Existing Index Cache Only
+Skip the auto-index step. Fails if no cache is found.
+```bash
+npx mp-sentinel create-skills --agent claude --skip-index-refresh
+```
+
+**Supported agents:** `claude` | `cursor` | `codex` | `windsurf` | `antigravity` | `generic`
+
+See [docs/CREATE_SKILLS.md](CREATE_SKILLS.md) for full documentation.
+
+---
+
+## 🛡 4. CI/CD & Security Scan Workflow
 
 ### Target Branch Comparison (PR Default)
 Automatically detects relevant code changes between your branch and the target branch. This is the default mode used in GitHub Actions and GitLab CI.
@@ -119,7 +164,7 @@ npx mp-sentinel review --local -i --verbose-dry-run
 
 ---
 
-## 🎯 4. Advanced Power-User Workflow
+## 🎯 5. Advanced Power-User Workflow
 
 ### Target Specific Groups of Files
 ```bash

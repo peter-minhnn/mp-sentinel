@@ -6,7 +6,7 @@
 import { Command } from "commander";
 import { UserError } from "../utils/errors.js";
 
-export type CLICommand = "review" | "indexing" | "default";
+export type CLICommand = "review" | "indexing" | "create-skills" | "default";
 
 /**
  * Parsed CLI option values
@@ -64,6 +64,17 @@ export interface CLIValues {
   stats?: boolean;
   /** Show dependency info for a specific file */
   explain?: string;
+  // ── create-skills command options ─────────────────────────────────────────
+  /** Comma-separated agent adapter ids (claude,cursor,codex,…) */
+  agent?: string;
+  /** Generate for all supported agents */
+  "all-agents": boolean;
+  /** Output format for create-skills: console | json */
+  "create-skills-format"?: string;
+  /** Overwrite existing skill files */
+  "create-skills-force": boolean;
+  /** Use existing cache only; fail if absent */
+  "skip-index-refresh": boolean;
 }
 
 const PACKAGE_VERSION = process.env.npm_package_version ?? "1.0.6";
@@ -120,28 +131,49 @@ export const buildProgram = (): Command => {
     .option("--stats", "Output index statistics only (with --index-format json)", false)
     .option("--explain <file>", "Show dependency info for a specific file");
 
+  // create-skills subcommand
+  program
+    .command("create-skills")
+    .description("Generate agent/IDE skill files from the source index")
+    .option(
+      "--agent <agents>",
+      "Comma-separated adapter ids: claude,cursor,codex,windsurf,antigravity,generic",
+    )
+    .option("--all-agents", "Generate for all supported agent adapters", false)
+    .option(
+      "--format <fmt>",
+      "Output format: console | json (json requires --agent or --all-agents)",
+    )
+    .option("--force", "Overwrite existing skill files", false)
+    .option("--skip-index-refresh", "Use existing index cache only; fail if absent", false);
+
   // ── Examples ──────────────────────────────────────────────────────────────
   program.addHelpText(
     "after",
     `
 Examples:
-  $ npx mp-sentinel                              # CI/CD diff review (default)
-  $ npx mp-sentinel --local                      # Review last commit on current branch
-  $ npx mp-sentinel --local --commits 5          # Review last 5 commits
-  $ npx mp-sentinel --local --branch-diff        # Review all commits vs origin/main
-  $ npx mp-sentinel --staged                     # Review staged files
-  $ npx mp-sentinel --commit abc1234             # Review a specific commit
-  $ npx mp-sentinel --range main..HEAD           # Review a commit range
-  $ npx mp-sentinel --format json                # Output as JSON
-  $ npx mp-sentinel --format markdown            # Output as Markdown
-  $ npx mp-sentinel --no-skills-fetch            # Disable external skills.sh calls
-  $ npx mp-sentinel --dry-run                    # Security-only preview (no AI)
-  $ npx mp-sentinel --verbose-dry-run            # Dry-run with forcing token breakdowns
-  $ npx mp-sentinel --token-limit 128000         # Override token limit for GPT-4o
-  $ npx mp-sentinel --quiet --format json        # CI-friendly JSON output
-  $ npx mp-sentinel indexing                     # Build source index cache
-  $ npx mp-sentinel indexing --index-format json # Output index as JSON
-  $ npx mp-sentinel indexing --force             # Force rebuild cache
+  $ npx mp-sentinel                                       # CI/CD diff review (default)
+  $ npx mp-sentinel --local                               # Review last commit on current branch
+  $ npx mp-sentinel --local --commits 5                   # Review last 5 commits
+  $ npx mp-sentinel --local --branch-diff                 # Review all commits vs origin/main
+  $ npx mp-sentinel --staged                              # Review staged files
+  $ npx mp-sentinel --commit abc1234                      # Review a specific commit
+  $ npx mp-sentinel --range main..HEAD                    # Review a commit range
+  $ npx mp-sentinel --format json                         # Output as JSON
+  $ npx mp-sentinel --format markdown                     # Output as Markdown
+  $ npx mp-sentinel --no-skills-fetch                     # Disable external skills.sh calls
+  $ npx mp-sentinel --dry-run                             # Security-only preview (no AI)
+  $ npx mp-sentinel --verbose-dry-run                     # Dry-run with forcing token breakdowns
+  $ npx mp-sentinel --token-limit 128000                  # Override token limit for GPT-4o
+  $ npx mp-sentinel --quiet --format json                 # CI-friendly JSON output
+  $ npx mp-sentinel indexing                              # Build source index cache
+  $ npx mp-sentinel indexing --index-format json          # Output index as JSON
+  $ npx mp-sentinel indexing --force                      # Force rebuild cache
+  $ npx mp-sentinel create-skills                         # Interactive agent picker
+  $ npx mp-sentinel create-skills --agent claude,cursor   # Generate for specific agents
+  $ npx mp-sentinel create-skills --all-agents            # Generate for all agents
+  $ npx mp-sentinel create-skills --agent claude --format json  # JSON output
+  $ npx mp-sentinel create-skills --agent claude --force  # Overwrite existing files
 `,
   );
 
@@ -193,10 +225,22 @@ export const parseCliArgs = (): {
       program.commands
         .find((candidate) => candidate.name() === "indexing")
         ?.opts<Record<string, unknown>>() ?? {};
+    const createSkillsOptions =
+      program.commands
+        .find((candidate) => candidate.name() === "create-skills")
+        ?.opts<Record<string, unknown>>() ?? {};
     const rawPositionals = program.args;
 
-    const command: CLICommand = rawPositionals[0] === "indexing" ? "indexing" : "review";
-    const commandPositionals = command === "indexing" ? rawPositionals.slice(1) : rawPositionals;
+    const command: CLICommand =
+      rawPositionals[0] === "indexing"
+        ? "indexing"
+        : rawPositionals[0] === "create-skills"
+          ? "create-skills"
+          : "review";
+    const commandPositionals =
+      command === "indexing" || command === "create-skills"
+        ? rawPositionals.slice(1)
+        : rawPositionals;
 
     // Normalise the "no-ai" flag: commander sets `ai: false` when --no-ai is passed
     const aiValue: boolean | undefined =
@@ -247,6 +291,19 @@ export const parseCliArgs = (): {
         explain: indexingOptions["explain"],
       }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
+      // create-skills options
+      ...(typeof createSkillsOptions["agent"] === "string" && {
+        agent: createSkillsOptions["agent"],
+      }),
+      "all-agents": Boolean(createSkillsOptions["allAgents"] ?? false),
+      // Subcommand --format takes priority; fall back to global --format when command is create-skills
+      ...(command === "create-skills" &&
+        (typeof createSkillsOptions["format"] === "string" ||
+          typeof opts["format"] === "string") && {
+          "create-skills-format": (createSkillsOptions["format"] ?? opts["format"]) as string,
+        }),
+      "create-skills-force": Boolean(createSkillsOptions["force"] ?? false),
+      "skip-index-refresh": Boolean(createSkillsOptions["skipIndexRefresh"] ?? false),
     } as CLIValues;
 
     return {

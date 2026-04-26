@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - Unreleased
+
+### Added
+- **`create-skills` command**: generates agent/IDE skill files from the source index
+  - 6 adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `generic`
+  - Auto-detection of installed agent folders (`.claude/`, `.cursor/`, `.windsurf/`, `.codex/`, `.agents/`, `.antigravity/`, `.agent/`)
+  - Interactive multi-select picker (TTY) or non-interactive via `--agent <ids>` / `--all-agents`
+  - `--format json` for automation; requires `--agent` or `--all-agents` to preserve parseable stdout
+  - `--force` to overwrite existing skill files; without it, conflicts return exit code `1`
+  - `--skip-index-refresh` to use existing cache only; fails exit code `2` if cache absent or corrupt
+  - Auto-builds source index before generating (same as `mp-sentinel indexing`)
+  - Content: overview, architecture, hub files (schema 1.1), module map, commands, code conventions
+  - Claude output: `SKILL.md` + `references/architecture.md`, `references/modules.md`, `references/commands.md`
+- **`create-skills` adapter types**: `AgentAdapterId`, `AgentAdapter`, `SkillsGenerationContext`, `GeneratedSkillFile`, `SkillsGenerationResult` added to `src/types/index.ts`
+- **`AGENTS.md` §3**: new behavioral contract section for `create-skills` and adapter development rules
+
+### Changed
+- **`src/cli/args.ts`**: `create-skills` subcommand now declares `--format` directly so it appears in `create-skills --help`
+- **`AGENTS.md`**: section renumbering (§3 create-skills inserted; §4–§9 shifted accordingly)
+- **`CLAUDE.md`**: updated section reference (§6 → §7) and added create-skills contract to reading list
+
+### Fixed
+- **Null index guard**: `create-skills` now fails with exit code `2` if `buildSourceIndex` returns `null` or the cache is corrupt, instead of silently generating files under the generic `"project"` name
+- **Missing package name guard**: fails with exit code `2` if `package.json` has no `"name"` field
+
 ## [1.0.8] - 2026-04-26
 
 ### Added

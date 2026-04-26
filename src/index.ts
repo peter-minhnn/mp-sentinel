@@ -39,7 +39,9 @@ const run = async (): Promise<void> => {
   const requestedFormat =
     command === "indexing"
       ? values["index-format"]
-      : (values.format ?? process.env.MP_SENTINEL_FORMAT);
+      : command === "create-skills"
+        ? values["create-skills-format"]
+        : (values.format ?? process.env.MP_SENTINEL_FORMAT);
   const quietLogs = values.quiet || requestedFormat === "json" || requestedFormat === "markdown";
   setLogQuietMode(quietLogs);
 
@@ -63,6 +65,41 @@ const run = async (): Promise<void> => {
         log.critical(`Indexing failed: ${error.message}`);
       } else {
         log.critical("Indexing failed with unknown error");
+      }
+      process.exitCode = 2;
+    }
+    return;
+  }
+
+  // Handle create-skills command with lazy loading
+  if (command === "create-skills") {
+    try {
+      const { runCreateSkillsCommand } = await import("./commands/create-skills.js");
+      process.exitCode = await runCreateSkillsCommand({
+        ...(typeof values.agent === "string" && { agent: values.agent }),
+        "all-agents": values["all-agents"],
+        ...(typeof values["create-skills-format"] === "string" && {
+          "create-skills-format": values["create-skills-format"],
+        }),
+        "create-skills-force": values["create-skills-force"],
+        "skip-index-refresh": values["skip-index-refresh"],
+      });
+    } catch (error) {
+      if (values["create-skills-format"] === "json") {
+        console.log(
+          JSON.stringify({
+            status: "ERROR",
+            error:
+              error instanceof Error ? error.message : "create-skills failed with unknown error",
+          }),
+        );
+        process.exitCode = 2;
+        return;
+      }
+      if (error instanceof Error) {
+        log.critical(`create-skills failed: ${error.message}`);
+      } else {
+        log.critical("create-skills failed with unknown error");
       }
       process.exitCode = 2;
     }

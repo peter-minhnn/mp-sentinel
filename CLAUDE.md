@@ -10,6 +10,7 @@ Before working on any task, read [AGENTS.md](AGENTS.md). It is the authoritative
 
 - Pipeline architecture and exit code semantics
 - TypeScript/ESM conventions (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, etc.)
+- `create-skills` behavioral contract and adapter rules
 - Indexing behavioral contract and required test matrix
 - Review context enrichment rules
 - Docs/runtime consistency requirements
@@ -21,7 +22,7 @@ Before working on any task, read [AGENTS.md](AGENTS.md). It is the authoritative
 
 ### Verification before done
 
-Always run the checklist from `AGENTS.md §6` before reporting a task complete. For runtime changes:
+Always run the checklist from `AGENTS.md §7` before reporting a task complete. For runtime changes:
 
 ```sh
 npm run format:check && npm run typecheck && npm test && npm run build

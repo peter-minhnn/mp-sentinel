@@ -52,7 +52,40 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ---
 
-## 3. Source Indexing (`mp-sentinel indexing`)
+## 3. `create-skills` Command
+
+### Behavioral contract
+
+- `mp-sentinel create-skills` generates agent/IDE skill files from the source index.
+- It **always** ensures a valid source index exists before generating. If none is available it auto-builds via `buildSourceIndex()`. This mirrors the indexing command's behavior, not the review command's graceful skip.
+- `--skip-index-refresh` uses the existing cache only. If the cache is absent or corrupt, the command fails with exit code `2` — it never silently generates with stale or partial data.
+- If the source index does not contain a project name (`package.json` has no `"name"` field), the command fails with exit code `2` rather than generating files under the generic `"project"` name.
+- `--format json` requires `--agent <ids>` or `--all-agents`. Without an explicit agent selection, JSON mode is disallowed to preserve parseable stdout.
+
+### Output contract — never write into `.sentinel/skills/`
+
+`.sentinel/skills/` is the directory for **end-user review-prompt skills** (injected into AI review calls). `create-skills` must never write into that directory. Every adapter must write to its own agent-specific path:
+
+| Adapter | Default output path |
+|---------|---------------------|
+| `claude` | `.claude/skills/<project>-best-practices/SKILL.md` + `references/` |
+| `cursor` | `.cursor/rules/<project>-best-practices.mdc` |
+| `codex` | `.agents/rules/<project>-best-practices.md` |
+| `windsurf` | `.windsurf/rules/<project>-best-practices.md` |
+| `antigravity` | `.antigravity/rules/<project>-best-practices.md` |
+| `generic` | `.agents/rules/<project>-best-practices.md` |
+
+### Adding a new adapter
+
+1. Create `src/services/skills-generator/adapters/<name>.adapter.ts` implementing `AgentAdapter`.
+2. Register in `src/services/skills-generator/registry.ts` (append to `ADAPTER_REGISTRY`).
+3. Add `<name>` to the `AgentAdapterId` union in `src/types/index.ts`.
+4. Write detection + output-path tests in `src/__tests__/create-skills.test.ts`.
+5. Update `docs/CREATE_SKILLS.md` and `docs/COMMANDS_CHEAT_SHEET.md`.
+
+---
+
+## 4. Source Indexing (`mp-sentinel indexing`)
 
 ### Behavioral contract
 
@@ -79,7 +112,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 4. Review Context Enrichment
+## 5. Review Context Enrichment
 
 - Context priority order: **changed file → direct imports → direct dependents**.
 - Respect the token budget at all times. Never exceed the configured limit even when adding context.
@@ -88,7 +121,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 5. Docs & Runtime Consistency
+## 6. Docs & Runtime Consistency
 
 - **Never document a flag or feature that is not yet implemented.** If it's planned, add a `<!-- TODO -->` comment, not a user-facing paragraph.
 - **No duplicate sections** across `README.md`, `docs/`, and `COMMANDS_CHEAT_SHEET.md`. If content must appear in two places, use a single source and cross-link.
@@ -102,7 +135,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 6. Verification Checklist
+## 7. Verification Checklist
 
 Run these before marking any feature complete.
 
@@ -131,7 +164,7 @@ mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';
 
 ---
 
-## 7. What Belongs Where
+## 8. What Belongs Where
 
 | Concern | Location |
 |---------|----------|
@@ -139,6 +172,8 @@ mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';
 | CI/CD review orchestration | `src/cli/review.ts` |
 | Local review orchestration | `src/cli/local-review.ts` |
 | Indexing command | `src/commands/indexing.ts` |
+| create-skills command | `src/commands/create-skills.ts` |
+| Agent adapter registry | `src/services/skills-generator/` |
 | AI provider abstraction | `src/services/ai/` |
 | Source index / graph | `src/services/source-index/` |
 | Secret detection | `src/services/security/` |
@@ -150,7 +185,7 @@ Do not put business logic in `src/index.ts` (CLI entry). It should only handle S
 
 ---
 
-## 8. Out of Scope for This File
+## 9. Out of Scope for This File
 
 These rules govern **mp-sentinel development**. They do not apply to:
 
