@@ -61,6 +61,21 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 - `--skip-index-refresh` uses the existing cache only. If the cache is absent or corrupt, the command fails with exit code `2` — it never silently generates with stale or partial data.
 - If the source index does not contain a project name (`package.json` has no `"name"` field), the command fails with exit code `2` rather than generating files under the generic `"project"` name.
 - `--format json` requires `--agent <ids>` or `--all-agents`. Without an explicit agent selection, JSON mode is disallowed to preserve parseable stdout.
+- `--dry-run` previews what would happen (actions: `create`, `skip`, `overwrite`) without writing any files. JSON output: `{ "dryRun": [...] }`.
+- `--check` is the CI staleness gate: exit `0` if all generated files have the correct metadata hash, exit `1` if any file is missing or stale, exit `2` on runtime error. JSON output: `{ "check": [...], "status": "ok" | "stale" }`.
+
+### Metadata contract — every generated file begins with a metadata header
+
+The command layer (not adapters) prepends an HTML comment to every generated file:
+
+```
+<!-- @mp-sentinel-generated generatorVersion=X.Y.Z sourceIndexSchema=1.1 sourceIndexHash=<16hexchars> agent=claude projectName=my-project -->
+```
+
+- **Deterministic**: hash is sha256 over sorted file paths, symbols, and import edges — no timestamps.
+- **`--check`** reads this header and compares `sourceIndexHash` against the current index hash. A mismatch = stale.
+- Adapters must NOT embed their own metadata — the command layer owns the header.
+- Do not change the `@mp-sentinel-generated` marker string — it is the parse key.
 
 ### Output contract — never write into `.sentinel/skills/`
 
