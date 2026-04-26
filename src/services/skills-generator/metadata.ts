@@ -11,8 +11,14 @@ export interface SkillsMetadata {
   projectName: string;
 }
 
+/** Sort a string-keyed record into stable [key, value] pairs for hashing. */
+function sortRecord(obj: Record<string, string>): [string, string][] {
+  return Object.entries(obj).sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 /**
- * Deterministic hash of the source index content (excludes timestamps and cache stats).
+ * Deterministic hash covering all fields that affect generated skill content.
+ * Excludes timestamps, duration stats, and cache metadata.
  */
 export function computeIndexHash(index: SourceIndex): string {
   const stable = {
@@ -20,11 +26,20 @@ export function computeIndexHash(index: SourceIndex): string {
     project: {
       packageName: index.project.packageName,
       packageVersion: index.project.packageVersion,
+      nodeEngine: index.project.nodeEngine,
+      packageManager: index.project.packageManager,
+      detectedFrameworks: [...index.project.detectedFrameworks].sort(),
+      dependencies: sortRecord(index.project.dependencies),
+      devDependencies: sortRecord(index.project.devDependencies),
     },
     files: index.files
       .map((f) => ({
         path: f.path,
-        symbols: f.symbols.map((s) => s.name).sort(),
+        language: f.language,
+        symbols: f.symbols
+          .map((s) => ({ name: s.name, type: s.type }))
+          .sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type)),
+        importSources: f.imports.map((i) => i.source).sort(),
         importsFrom: (f.importsFrom ?? []).slice().sort(),
         importedBy: (f.importedBy ?? []).slice().sort(),
       }))

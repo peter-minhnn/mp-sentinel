@@ -125,7 +125,8 @@ async function selectAdapters(
   projectRoot: string,
   isJsonMode: boolean,
 ): Promise<AgentAdapter[]> {
-  if (values["all-agents"]) return ADAPTER_REGISTRY.slice();
+  // generic is a pure fallback — excluded from --all-agents to avoid colliding with codex
+  if (values["all-agents"]) return ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
   if (values.agent) return parseAgentFlag(values.agent);
 
   if (isJsonMode) {
@@ -215,6 +216,7 @@ async function runAdapter(
 
 /**
  * Dry-run: report what would happen without writing any files.
+ * seenPaths tracks paths claimed by earlier adapters in the same batch to detect conflicts.
  */
 async function dryRunAdapter(
   adapter: AgentAdapter,
@@ -222,19 +224,17 @@ async function dryRunAdapter(
   projectName: string,
   projectRoot: string,
   force: boolean,
+  seenPaths: Set<string>,
 ): Promise<SkillsDryRunResult> {
   const raw = await adapter.generate(index, { projectRoot, projectName, force });
 
   const files = raw.map((file) => {
-    const exists = existsSync(file.outputPath);
-    let action: DryRunFileAction;
-    if (!exists) {
-      action = "create";
-    } else if (force) {
-      action = "overwrite";
-    } else {
-      action = "skip";
+    if (seenPaths.has(file.outputPath)) {
+      return { outputPath: file.outputPath, action: "conflict" as DryRunFileAction };
     }
+    seenPaths.add(file.outputPath);
+    const exists = existsSync(file.outputPath);
+    const action: DryRunFileAction = !exists ? "create" : force ? "overwrite" : "skip";
     return { outputPath: file.outputPath, action };
   });
 
@@ -242,7 +242,7 @@ async function dryRunAdapter(
 }
 
 /**
- * Check: compare on-disk metadata hash against the current index hash.
+ * Check: compare on-disk metadata against the current index hash and expected adapter id.
  */
 async function checkAdapter(
   adapter: AgentAdapter,
@@ -260,9 +260,13 @@ async function checkAdapter(
       }
       const content = await readFile(file.outputPath, "utf-8");
       const meta = parseMetadataFromContent(content);
-      const status: CheckFileStatus =
-        meta && meta.sourceIndexHash === currentHash ? "up-to-date" : "stale";
-      return { outputPath: file.outputPath, status };
+      if (!meta || meta.sourceIndexHash !== currentHash) {
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+      if (meta.agent !== adapter.id) {
+        return { outputPath: file.outputPath, status: "wrong-agent" as CheckFileStatus };
+      }
+      return { outputPath: file.outputPath, status: "up-to-date" as CheckFileStatus };
     }),
   );
 
@@ -335,9 +339,17 @@ export async function runCreateSkillsCommand(
 
     // ── Dry-run mode ─────────────────────────────────────────────────────────
     if (isDryRun) {
+      const seenPaths = new Set<string>();
       const dryRunResults: SkillsDryRunResult[] = [];
       for (const adapter of adapters) {
-        const result = await dryRunAdapter(adapter, index, projectName, projectRoot, force);
+        const result = await dryRunAdapter(
+          adapter,
+          index,
+          projectName,
+          projectRoot,
+          force,
+          seenPaths,
+        );
         dryRunResults.push(result);
 
         if (!isJson) {

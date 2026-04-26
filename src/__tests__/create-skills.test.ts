@@ -1069,3 +1069,229 @@ describe("create-skills new CLI flags", () => {
     expect(parsed.values["create-skills-check"]).toBe(false);
   });
 });
+
+// ── Hash correctness ──────────────────────────────────────────────────────────
+
+import type { SourceIndex, ProjectManifest } from "../types/index.js";
+
+function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
+  const project: ProjectManifest = {
+    packageName: "test",
+    packageVersion: "1.0.0",
+    packageManager: "npm",
+    nodeEngine: ">=18",
+    dependencies: { typescript: "5.0.0" },
+    devDependencies: {},
+    detectedFrameworks: [],
+    ...overrides,
+  };
+  return {
+    schemaVersion: "1.1",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    toolVersion: "1.0.0",
+    project,
+    files: [
+      {
+        path: "src/index.ts",
+        language: "typescript",
+        sha256: "abc",
+        sizeBytes: 100,
+        mtimeMs: 0,
+        imports: [{ source: "./utils.js", kind: "named", names: ["helper"], line: 1 }],
+        exports: [],
+        symbols: [{ name: "main", type: "function", line: 1, column: 0 }],
+        importsFrom: ["src/utils.ts"],
+        importedBy: [],
+      },
+    ],
+    stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+  };
+}
+
+describe("computeIndexHash correctness", () => {
+  it("is stable for identical indexes", () => {
+    const h1 = computeIndexHash(makeMinimalIndex());
+    const h2 = computeIndexHash(makeMinimalIndex());
+    expect(h1).toBe(h2);
+  });
+
+  it("changes when packageManager changes", () => {
+    const h1 = computeIndexHash(makeMinimalIndex({ packageManager: "npm" }));
+    const h2 = computeIndexHash(makeMinimalIndex({ packageManager: "pnpm" }));
+    expect(h1).not.toBe(h2);
+  });
+
+  it("changes when detectedFrameworks changes", () => {
+    const h1 = computeIndexHash(makeMinimalIndex({ detectedFrameworks: [] }));
+    const h2 = computeIndexHash(makeMinimalIndex({ detectedFrameworks: ["react"] }));
+    expect(h1).not.toBe(h2);
+  });
+
+  it("changes when a dependency is added", () => {
+    const h1 = computeIndexHash(makeMinimalIndex({ dependencies: { typescript: "5.0.0" } }));
+    const h2 = computeIndexHash(
+      makeMinimalIndex({ dependencies: { typescript: "5.0.0", jest: "29.0.0" } }),
+    );
+    expect(h1).not.toBe(h2);
+  });
+
+  it("changes when a symbol type changes (same name)", () => {
+    const base = makeMinimalIndex();
+    const modified: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          symbols: [{ name: "main", type: "arrow-function", line: 1, column: 0 }],
+        },
+      ],
+    };
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+
+  it("changes when import sources change (ESM detection input)", () => {
+    const base = makeMinimalIndex();
+    const modified: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          imports: [{ source: "./utils", kind: "named", names: ["helper"], line: 1 }],
+        },
+      ],
+    };
+    // ./utils.js vs ./utils — changes ESM convention detection
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+});
+
+// ── wrong-agent detection ─────────────────────────────────────────────────────
+
+describe("--check wrong-agent detection", () => {
+  it("returns wrong-agent when file hash matches but adapter id differs", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    // Generate with codex
+    await runCreateSkillsCommand(
+      {
+        agent: "codex",
+        "all-agents": false,
+        "create-skills-format": undefined,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+      },
+      cwd,
+    );
+
+    // Check with generic (same output path, different agent id)
+    let output: unknown = null;
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) output = JSON.parse(text);
+      orig(...args);
+    };
+
+    let exitCode: number;
+    try {
+      exitCode = await runCreateSkillsCommand(
+        {
+          agent: "generic",
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": true,
+        },
+        cwd,
+      );
+    } finally {
+      console.log = orig;
+    }
+
+    expect(exitCode!).toBe(1);
+    const parsed = output as { check: Array<{ files: Array<{ status: string }> }> };
+    const statuses = parsed.check[0]!.files.map((f) => f.status);
+    expect(statuses).toContain("wrong-agent");
+  });
+});
+
+// ── --all-agents generic exclusion ────────────────────────────────────────────
+
+describe("--all-agents generic exclusion", () => {
+  it("--all-agents does not include generic adapter", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    let output: unknown = null;
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) output = JSON.parse(text);
+      orig(...args);
+    };
+
+    try {
+      await runCreateSkillsCommand(
+        {
+          "all-agents": true,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": true,
+          "create-skills-check": false,
+        },
+        cwd,
+      );
+    } finally {
+      console.log = orig;
+    }
+
+    const parsed = output as { dryRun: Array<{ agent: string }> };
+    const agentIds = parsed.dryRun.map((r) => r.agent);
+    expect(agentIds).not.toContain("generic");
+  });
+
+  it("--agent codex,generic in dry-run reports conflict for duplicate path", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    let output: unknown = null;
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) output = JSON.parse(text);
+      orig(...args);
+    };
+
+    try {
+      await runCreateSkillsCommand(
+        {
+          agent: "codex,generic",
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": true,
+          "create-skills-check": false,
+        },
+        cwd,
+      );
+    } finally {
+      console.log = orig;
+    }
+
+    const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
+    // codex runs first → create; generic sees same path already claimed → conflict
+    const codexActions = parsed.dryRun.find((r) => r.agent === "codex")!.files.map((f) => f.action);
+    const genericActions = parsed.dryRun
+      .find((r) => r.agent === "generic")!
+      .files.map((f) => f.action);
+    expect(codexActions.every((a) => a === "create")).toBe(true);
+    expect(genericActions.every((a) => a === "conflict")).toBe(true);
+  });
+});
