@@ -88,6 +88,7 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 | `codex` | `.agents/rules/<project>-best-practices.md` |
 | `windsurf` | `.windsurf/rules/<project>-best-practices.md` |
 | `antigravity` | `.antigravity/rules/<project>-best-practices.md` |
+| `cline` | `.clinerules/<project>-best-practices.md` |
 | `generic` | `.agents/rules/<project>-best-practices.md` |
 
 ### Adding a new adapter

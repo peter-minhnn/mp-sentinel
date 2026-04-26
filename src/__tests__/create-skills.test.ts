@@ -11,6 +11,7 @@ import {
   detectAdapters,
   parseAgentFlag,
   getAdapter,
+  detectProfile,
 } from "../services/skills-generator/index.js";
 import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
@@ -97,8 +98,8 @@ describe("create-skills CLI args", () => {
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 describe("adapter registry", () => {
-  it("has 6 adapters", () => {
-    expect(ADAPTER_REGISTRY).toHaveLength(6);
+  it("has 7 adapters", () => {
+    expect(ADAPTER_REGISTRY).toHaveLength(7);
   });
 
   it("getAdapter returns the right adapter", () => {
@@ -107,6 +108,7 @@ describe("adapter registry", () => {
     expect(getAdapter("codex")?.id).toBe("codex");
     expect(getAdapter("windsurf")?.id).toBe("windsurf");
     expect(getAdapter("antigravity")?.id).toBe("antigravity");
+    expect(getAdapter("cline")?.id).toBe("cline");
     expect(getAdapter("generic")?.id).toBe("generic");
   });
 
@@ -161,6 +163,13 @@ describe("detectAdapters", () => {
     await mkdir(join(cwd, ".agent"), { recursive: true });
     const detected = detectAdapters(cwd);
     expect(detected.some((a) => a.id === "antigravity")).toBe(true);
+  });
+
+  it("detects cline when .clinerules/ exists", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, ".clinerules"), { recursive: true });
+    const detected = detectAdapters(cwd);
+    expect(detected.some((a) => a.id === "cline")).toBe(true);
   });
 
   it("detects codex when .codex/ exists", async () => {
@@ -283,6 +292,21 @@ describe("Cursor adapter generate()", () => {
     });
     expect(files.length).toBe(1);
     expect(files[0]?.outputPath.endsWith(".mdc")).toBe(true);
+  });
+});
+
+describe("Cline adapter generate()", () => {
+  it("creates a single .md file under .clinerules/", async () => {
+    const cwd = await makeTempDir();
+    const adapter = getAdapter("cline")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    expect(files.length).toBe(1);
+    expect(files[0]?.outputPath).toContain(".clinerules");
+    expect(files[0]?.outputPath.endsWith(".md")).toBe(true);
   });
 });
 
@@ -637,6 +661,7 @@ import {
   computeIndexHash,
   parseMetadataFromContent,
   renderMetadataHeader,
+  applyMetadataHeader,
 } from "../services/skills-generator/metadata.js";
 
 describe("metadata utilities", () => {
@@ -702,7 +727,7 @@ describe("metadata utilities", () => {
     expect(parseMetadataFromContent(content)).toBeNull();
   });
 
-  it("generated files contain metadata header on first line", async () => {
+  it("generated Claude SKILL.md starts with frontmatter and metadata follows", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
 
@@ -722,11 +747,112 @@ describe("metadata utilities", () => {
 
     const skillFile = join(cwd, ".claude", "skills", "fixture-best-practices", "SKILL.md");
     const content = await readFile(skillFile, "utf-8");
+    const lines = content.split("\n");
+    expect(lines[0]).toBe("---");
+    expect(lines[1]).toContain("name:");
+    expect(lines[2]).toContain("description:");
+    expect(lines[3]).toBe("---");
+    expect(lines[4]).toContain("@mp-sentinel-generated");
+
     const meta = parseMetadataFromContent(content);
     expect(meta).not.toBeNull();
     expect(meta!.agent).toBe("claude");
     expect(meta!.projectName).toBe("fixture");
     expect(meta!.sourceIndexHash).toHaveLength(16);
+  });
+
+  it("generated non-frontmatter files have metadata on first line", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "generic",
+        "all-agents": false,
+        "create-skills-format": undefined,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+      },
+      cwd,
+    );
+    expect(exitCode).toBe(0);
+
+    const skillFile = join(cwd, ".agents", "rules", "fixture-best-practices.md");
+    const content = await readFile(skillFile, "utf-8");
+    const lines = content.split("\n");
+    expect(lines[0]).toContain("@mp-sentinel-generated");
+
+    const meta = parseMetadataFromContent(content);
+    expect(meta).not.toBeNull();
+    expect(meta!.agent).toBe("generic");
+  });
+
+  it("create-skills --agent claude --check returns up-to-date after generation", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    // Generate first
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": undefined,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+      },
+      cwd,
+    );
+
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": undefined,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": true,
+      },
+      cwd,
+    );
+
+    expect(exitCode).toBe(0);
+  });
+});
+
+// ── Metadata header placement ─────────────────────────────────────────────────
+
+describe("applyMetadataHeader", () => {
+  it("inserts metadata after YAML frontmatter", () => {
+    const content = ["---", "name: test", "---", "", "# Heading"].join("\n");
+    const header = "<!-- @mp-sentinel-generated agent=claude -->";
+    const result = applyMetadataHeader(content, header);
+    const lines = result.split("\n");
+    expect(lines[0]).toBe("---");
+    expect(lines[1]).toBe("name: test");
+    expect(lines[2]).toBe("---");
+    expect(lines[3]).toBe(header);
+    expect(lines[4]).toBe("");
+    expect(lines[5]).toBe("# Heading");
+  });
+
+  it("prepends metadata when no frontmatter", () => {
+    const content = "# Heading\n\nSome text";
+    const header = "<!-- @mp-sentinel-generated agent=generic -->";
+    const result = applyMetadataHeader(content, header);
+    expect(result.startsWith(header)).toBe(true);
+    expect(result).toContain("# Heading");
+  });
+
+  it("falls back to prepend on malformed frontmatter", () => {
+    const content = "---\nname: test\nno closing dash";
+    const header = "<!-- @mp-sentinel-generated agent=claude -->";
+    const result = applyMetadataHeader(content, header);
+    expect(result.startsWith(header)).toBe(true);
   });
 });
 
@@ -968,8 +1094,11 @@ describe("runCreateSkillsCommand --check", () => {
     // Tamper with a generated file (remove metadata header)
     const skillFile = join(cwd, ".claude", "skills", "fixture-best-practices", "SKILL.md");
     const original = await readFile(skillFile, "utf-8");
-    // Strip the metadata line (first line)
-    const tampered = original.split("\n").slice(1).join("\n");
+    // Strip the metadata line (it's after frontmatter now)
+    const tampered = original
+      .split("\n")
+      .filter((line) => !line.includes("@mp-sentinel-generated"))
+      .join("\n");
     await writeFile(skillFile, tampered, "utf-8");
 
     const exitCode = await runCreateSkillsCommand(
@@ -1135,6 +1264,12 @@ describe("computeIndexHash correctness", () => {
     expect(h1).not.toBe(h2);
   });
 
+  it("changes when manifestHash changes", () => {
+    const base = makeMinimalIndex();
+    const modified: SourceIndex = { ...base, manifestHash: "abc123" };
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+
   it("changes when a symbol type changes (same name)", () => {
     const base = makeMinimalIndex();
     const modified: SourceIndex = {
@@ -1217,6 +1352,115 @@ describe("--check wrong-agent detection", () => {
     const parsed = output as { check: Array<{ files: Array<{ status: string }> }> };
     const statuses = parsed.check[0]!.files.map((f) => f.status);
     expect(statuses).toContain("wrong-agent");
+  });
+});
+
+// ── Profile detection ─────────────────────────────────────────────────────────
+
+describe("detectProfile", () => {
+  it("detects library by default when index is null", () => {
+    expect(detectProfile(null)).toBe("library");
+  });
+
+  it("detects cli-tooling from bin field", () => {
+    const idx = makeMinimalIndex({ bin: "dist/index.js" });
+    expect(detectProfile(idx)).toBe("cli-tooling");
+  });
+
+  it("detects node-service from express dependency", () => {
+    const idx = makeMinimalIndex({ dependencies: { express: "^4.0.0" } });
+    expect(detectProfile(idx)).toBe("node-service");
+  });
+
+  it("detects react-next from next dependency", () => {
+    const idx = makeMinimalIndex({ dependencies: { next: "14.0.0" } });
+    expect(detectProfile(idx)).toBe("react-next");
+  });
+
+  it("detects react-next from detectedFrameworks", () => {
+    const idx = makeMinimalIndex({ detectedFrameworks: ["next.js"] });
+    expect(detectProfile(idx)).toBe("react-next");
+  });
+});
+
+// ── Profile content generation ────────────────────────────────────────────────
+
+describe("profileRules content", () => {
+  it("includes real commands from package.json scripts", () => {
+    const idx = makeMinimalIndex({
+      scripts: { test: "jest", build: "tsc", lint: "eslint src" },
+      bin: "dist/index.js",
+    });
+    const content = generateContent(idx, "test");
+    expect(content.profile).toBe("cli-tooling");
+    expect(content.sections.profileRules).toContain("npm run test");
+    expect(content.sections.profileRules).toContain("npm run build");
+    expect(content.sections.profileRules).toContain("npm run lint");
+  });
+
+  it("includes review pitfalls for cli-tooling profile", () => {
+    const idx = makeMinimalIndex({ bin: "dist/index.js" });
+    const content = generateContent(idx, "test");
+    expect(content.sections.profileRules).toContain("Exit codes are a contract");
+    expect(content.sections.profileRules).toContain("Diff-first review");
+  });
+
+  it("includes review pitfalls for library profile", () => {
+    const idx = makeMinimalIndex({ dependencies: { lodash: "^4.0.0" } });
+    const content = generateContent(idx, "test");
+    expect(content.profile).toBe("library");
+    expect(content.sections.profileRules).toContain("Public API surface");
+    expect(content.sections.profileRules).toContain("SemVer awareness");
+  });
+
+  it("includes review pitfalls for node-service profile", () => {
+    const idx = makeMinimalIndex({ dependencies: { fastify: "^4.0.0" } });
+    const content = generateContent(idx, "test");
+    expect(content.profile).toBe("node-service");
+    expect(content.sections.profileRules).toContain("Handler purity");
+    expect(content.sections.profileRules).toContain("Health checks");
+  });
+
+  it("includes review pitfalls for react-next profile", () => {
+    const idx = makeMinimalIndex({ dependencies: { react: "18.0.0", "react-dom": "18.0.0" } });
+    const content = generateContent(idx, "test");
+    expect(content.profile).toBe("react-next");
+    expect(content.sections.profileRules).toContain("Server/Client boundary");
+    expect(content.sections.profileRules).toContain("next/image");
+  });
+
+  it("includes module ownership when files are present", () => {
+    const idx = makeMinimalIndex();
+    const content = generateContent(idx, "test");
+    expect(content.sections.profileRules).toContain("Module Ownership");
+  });
+
+  it("includes import conventions from source index", () => {
+    const idx = makeMinimalIndex();
+    const content = generateContent(idx, "test");
+    expect(content.sections.profileRules).toContain("Import Conventions");
+  });
+
+  it("includes test expectations when test files exist", () => {
+    const idx = makeMinimalIndex();
+    const withTest: typeof idx = {
+      ...idx,
+      files: [
+        ...idx.files,
+        {
+          path: "src/index.test.ts",
+          language: "typescript" as const,
+          sha256: "def",
+          sizeBytes: 50,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [],
+        },
+      ],
+    };
+    const content = generateContent(withTest, "test");
+    expect(content.sections.profileRules).toContain("Test Expectations");
   });
 });
 

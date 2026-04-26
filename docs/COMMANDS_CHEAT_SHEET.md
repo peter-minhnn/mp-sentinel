@@ -105,7 +105,7 @@ npx mp-sentinel create-skills --agent claude,cursor
 ```bash
 npx mp-sentinel create-skills --all-agents
 ```
-> `--all-agents` generates for the 5 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`. `generic` is excluded (shares an output path with `codex`) — use `--agent generic` to target it explicitly.
+> `--all-agents` generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. `generic` is excluded (shares an output path with `codex`) — use `--agent generic` to target it explicitly.
 
 ### Overwrite Existing Files
 By default, `create-skills` refuses to overwrite. Use `--force` to allow it.
@@ -141,7 +141,9 @@ Skip the auto-index step. Fails if no cache is found.
 npx mp-sentinel create-skills --agent claude --skip-index-refresh
 ```
 
-**Supported agents:** `claude` | `cursor` | `codex` | `windsurf` | `antigravity` | `generic`
+**Supported agents:** `claude` | `cursor` | `codex` | `windsurf` | `antigravity` | `cline` | `generic`
+
+`create-skills` automatically refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures generated profile rules always reflect the current scripts, `bin`, dependencies, and framework signals.
 
 See [docs/CREATE_SKILLS.md](CREATE_SKILLS.md) for full documentation.
 

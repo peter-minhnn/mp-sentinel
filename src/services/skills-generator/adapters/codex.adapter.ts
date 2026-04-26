@@ -48,9 +48,7 @@ export const codexAdapter: AgentAdapter = {
       ``,
       content.sections.modules,
       ``,
-      content.sections.commands,
-      ``,
-      content.sections.conventions,
+      content.sections.profileRules,
     ]
       .filter((s) => s !== undefined)
       .join("\n");

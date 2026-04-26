@@ -45,16 +45,14 @@ export const claudeAdapter: AgentAdapter = {
       ``,
       `- [Architecture & Hub Files](./references/architecture.md)`,
       `- [Module Map](./references/modules.md)`,
-      `- [Commands & Conventions](./references/commands.md)`,
+      `- [Profile Rules](./references/commands.md)`,
     ].join("\n");
 
     const architectureMd = [content.sections.architecture, content.sections.hubFiles]
       .filter(Boolean)
       .join("\n\n");
 
-    const commandsMd = [content.sections.commands, content.sections.conventions]
-      .filter(Boolean)
-      .join("\n\n");
+    const commandsMd = [content.sections.profileRules].filter(Boolean).join("\n\n");
 
     return [
       { outputPath: join(skillDir, "SKILL.md"), content: skillMd },

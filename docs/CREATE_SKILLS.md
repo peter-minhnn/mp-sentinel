@@ -34,9 +34,10 @@ npx mp-sentinel create-skills --agent claude --format json
 | `codex` | Codex / OpenAI | `.codex/` or `.agents/` exists | `.agents/rules/<project>-best-practices.md` |
 | `windsurf` | Windsurf | `.windsurf/` exists | `.windsurf/rules/<project>-best-practices.md` |
 | `antigravity` | Google Antigravity | `.antigravity/` or `.agent/` exists | `.antigravity/rules/<project>-best-practices.md` |
+| `cline` | Cline | `.clinerules/` exists | `.clinerules/<project>-best-practices.md` |
 | `generic` | Generic (fallback) | never auto-detected | `.agents/rules/<project>-best-practices.md` |
 
-> **`--all-agents`** generates for the 5 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`. The `generic` adapter is excluded because it writes to the same path as `codex` (`.agents/rules/`) — use `--agent generic` to target it explicitly.
+> **`--all-agents`** generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. The `generic` adapter is excluded because it writes to the same path as `codex` (`.agents/rules/`) — use `--agent generic` to target it explicitly.
 
 ---
 
@@ -44,7 +45,7 @@ npx mp-sentinel create-skills --agent claude --format json
 
 When you run `create-skills` without `--agent` or `--all-agents`, the command:
 
-1. Scans the project root for known agent folders (`.claude/`, `.cursor/`, `.windsurf/`, `.codex/`, `.agents/`, `.antigravity/`, `.agent/`).
+1. Scans the project root for known agent folders (`.claude/`, `.cursor/`, `.windsurf/`, `.codex/`, `.agents/`, `.antigravity/`, `.agent/`, `.clinerules/`).
 2. Pre-selects detected agents in the interactive picker.
 3. If no known folder is found and the terminal is interactive, shows all options with `claude` pre-selected.
 4. If no TTY is available (non-interactive), falls back to detected agents or `claude` + `generic`.
@@ -60,6 +61,8 @@ When you run `create-skills` without `--agent` or `--all-agents`, the command:
 
 The generated content is richer when a schema `1.1` index is available (includes dependency graph, hub files, and import edges).
 
+`create-skills` auto-refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures profile skills always reflect the current scripts, `bin`, dependencies, and framework signals.
+
 ---
 
 ## Output Content
@@ -72,8 +75,7 @@ Every adapter generates content derived from the source index:
 | **Architecture** | Top-level directories with file counts; graph stats (schema 1.1) |
 | **Hub Files** | Files imported by the most other files (schema 1.1 only) |
 | **Module Map** | Per-directory breakdown with key exported symbols |
-| **Commands** | Development workflow (`npm test`, `npm run build`, etc.) |
-| **Conventions** | Detected patterns: ESM imports, TypeScript, test file count |
+| **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
 
 ### Claude output structure
 
@@ -84,6 +86,12 @@ Every adapter generates content derived from the source index:
     architecture.md           ← Architecture + Hub Files sections
     modules.md                ← Module Map section
     commands.md               ← Commands + Conventions sections
+```
+
+### Cline output structure
+
+```
+.clinerules/<project>-best-practices.md   ← single markdown file
 ```
 
 ### Other adapters (Cursor, Codex, Windsurf, Antigravity, Generic)
@@ -123,7 +131,17 @@ Each file entry has one of these actions:
 
 JSON shape:
 ```json
-{ "dryRun": [{ "agent": "claude", "path": "...", "action": "create" }, ...] }
+{
+  "dryRun": [
+    {
+      "agent": "claude",
+      "label": "Claude Code (.claude/skills/)",
+      "files": [
+        { "outputPath": ".claude/skills/my-project-best-practices/SKILL.md", "action": "create" }
+      ]
+    }
+  ]
+}
 ```
 
 ---
@@ -149,7 +167,18 @@ Each file entry has one of these statuses:
 
 JSON shape:
 ```json
-{ "check": [{ "agent": "claude", "path": "...", "status": "up-to-date" }, ...], "status": "ok" }
+{
+  "check": [
+    {
+      "agent": "claude",
+      "label": "Claude Code (.claude/skills/)",
+      "files": [
+        { "outputPath": ".claude/skills/my-project-best-practices/SKILL.md", "status": "up-to-date" }
+      ]
+    }
+  ],
+  "status": "ok"
+}
 ```
 
 ---
@@ -191,8 +220,8 @@ On error:
 
 | Code | Meaning |
 |------|---------|
-| `0` | All selected adapters generated successfully |
-| `1` | All outputs were skipped (files exist, `--force` not set) |
+| `0` | Success — all selected adapters generated successfully (or all files up-to-date in `--check` mode) |
+| `1` | **Generate mode:** all outputs were skipped (files exist, `--force` not set). **Check mode:** any file is stale, missing, or wrong-agent |
 | `2` | Runtime error (bad agent id, missing cache with `--skip-index-refresh`, etc.) |
 
 ---

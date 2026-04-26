@@ -12,6 +12,7 @@ import {
   readManifest,
   isIndexableLanguage,
   getLanguageForFile,
+  computeManifestHash,
 } from "../services/source-index/manifest.js";
 import { parseFile } from "../services/source-index/parser.js";
 import {
@@ -125,6 +126,9 @@ export async function buildSourceIndex(
 
   const cachePath = resolve(projectRoot, indexingConfig.cachePath);
 
+  // Compute manifest fingerprint (before cache check)
+  const manifestHash = await computeManifestHash(projectRoot);
+
   // Read manifest
   log.info("Reading project manifest...");
   const manifest = await readManifest(projectRoot);
@@ -152,6 +156,7 @@ export async function buildSourceIndex(
   // Check cache validity unless forcing rebuild
   let filesToIndex: string[];
   let cachedFiles: SourceIndexFile[];
+  let manifestChanged = false;
 
   if (!force && existsSync(cachePath)) {
     const existingIndex = await readIndex(cachePath);
@@ -168,18 +173,37 @@ export async function buildSourceIndex(
         getFileMtime,
       );
 
-      if (validity.valid) {
+      // Manifest hash check: old indexes without manifestHash are treated as manifest-stale
+      const existingHash = existingIndex?.manifestHash;
+      if (existingHash === undefined || existingHash !== manifestHash) {
+        manifestChanged = true;
+        log.info(
+          existingHash === undefined
+            ? "Manifest fingerprint missing in cache — treating as stale"
+            : "Manifest inputs changed (package.json / tsconfig / lockfile) — rebuilding",
+        );
+      }
+
+      if (validity.valid && !manifestChanged) {
         log.info("Cache is up-to-date, skipping re-index");
-        return existingIndex;
+        return existingIndex!;
       }
 
       filesToIndex = toIndex;
       cachedFiles = fromCache;
 
-      if (filesToIndex.length === 0) {
-        // All files are cached
-        const existingIndex = await readIndex(cachePath);
-        return existingIndex;
+      if (filesToIndex.length === 0 && manifestChanged) {
+        // Source files unchanged but manifest changed: reuse all cached parsed files,
+        // rebuild dependency graph with new manifest/tsconfig below.
+        log.info("Manifest-only change — reusing cached parsed files, rebuilding graph");
+        filesToIndex = [];
+        cachedFiles = existingIndex?.files ?? [];
+      }
+
+      if (filesToIndex.length === 0 && !manifestChanged) {
+        // All files are cached and manifest unchanged
+        log.info("Cache is up-to-date, skipping re-index");
+        return existingIndex!;
       }
 
       log.info(`Cache invalid: ${filesToIndex.length} files need re-indexing`);
@@ -286,6 +310,7 @@ export async function buildSourceIndex(
     toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
     project: manifest,
     files: allFiles,
+    manifestHash,
     stats: {
       totalFiles: indexableFiles.length,
       indexedFiles: allFiles.length,

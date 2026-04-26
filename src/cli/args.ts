@@ -141,7 +141,7 @@ export const buildProgram = (): Command => {
     .description("Generate agent/IDE skill files from the source index")
     .option(
       "--agent <agents>",
-      "Comma-separated adapter ids: claude,cursor,codex,windsurf,antigravity,generic",
+      "Comma-separated adapter ids: claude,cursor,codex,windsurf,antigravity,cline,generic",
     )
     .option("--all-agents", "Generate for all supported agent adapters", false)
     .option(

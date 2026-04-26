@@ -332,6 +332,8 @@ export interface ProjectManifest {
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
   detectedFrameworks: string[];
+  scripts?: Record<string, string> | undefined;
+  bin?: string | Record<string, string> | undefined;
   tsConfig?:
     | {
         compilerOptions: Record<string, unknown>;
@@ -350,6 +352,8 @@ export interface SourceIndex {
   toolVersion: string;
   project: ProjectManifest;
   files: SourceIndexFile[];
+  /** Deterministic hash of manifest inputs (package.json, tsconfig, lockfile). Absent = manifest-stale. */
+  manifestHash?: string;
   stats: {
     totalFiles: number;
     indexedFiles: number;
@@ -400,7 +404,14 @@ export interface CacheValidity {
 /**
  * Supported agent adapter identifiers
  */
-export type AgentAdapterId = "claude" | "cursor" | "codex" | "windsurf" | "antigravity" | "generic";
+export type AgentAdapterId =
+  | "claude"
+  | "cursor"
+  | "codex"
+  | "windsurf"
+  | "antigravity"
+  | "cline"
+  | "generic";
 
 /**
  * Context passed to an adapter's generate() call

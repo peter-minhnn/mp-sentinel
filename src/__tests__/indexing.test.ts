@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
@@ -6,10 +6,14 @@ import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 import { parseCliArgs } from "../cli/args.js";
 import { buildSourceIndex, getIndexingConfig, runIndexingCommand } from "../commands/indexing.js";
 import { clearConfigCache, loadProjectConfig } from "../utils/config.js";
-import { detectPackageManager, extensionToLanguage } from "../services/source-index/manifest.js";
+import {
+  detectPackageManager,
+  extensionToLanguage,
+  computeManifestHash,
+} from "../services/source-index/manifest.js";
 import { buildIndexContext } from "../cli/review.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
-import type { SourceIndex } from "../types/index.js";
+import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
 const tempDirs: string[] = [];
 
@@ -655,5 +659,194 @@ describe("buildIndexContext priority and cap", () => {
     );
 
     await expect(buildIndexContext(config, [{ path: "src/index.ts" }], cwd)).resolves.not.toThrow();
+  });
+});
+
+// ── Manifest-aware cache invalidation tests ───────────────────────────────────
+
+describe("manifest hash cache invalidation", () => {
+  const makeProject = async (cwd: string, pkg: object) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "package.json"), JSON.stringify(pkg));
+    await writeFile(join(cwd, "src", "index.ts"), `export function hello() { return "hi"; }`);
+  };
+
+  it("returns new index when package.json changes but source files do not", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd, { name: "fixture", version: "1.0.0", dependencies: {} });
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    // First build
+    const idx1 = await buildSourceIndex(cwd, config, false);
+    expect(idx1).not.toBeNull();
+    expect(idx1!.project.packageVersion).toBe("1.0.0");
+    expect(idx1!.manifestHash).toBeDefined();
+
+    // Change version in package.json (source files unchanged)
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.1", dependencies: {} }),
+    );
+
+    // Second build without force — should rebuild because manifest changed
+    const idx2 = await buildSourceIndex(cwd, config, false);
+    expect(idx2).not.toBeNull();
+    expect(idx2!.project.packageVersion).toBe("1.0.1");
+    expect(idx2!.manifestHash).not.toBe(idx1!.manifestHash);
+  });
+
+  it("manifest-only change reuses cached parsed files (0 parsed, all cache hits)", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd, { name: "fixture", version: "1.0.0", scripts: { test: "jest" } });
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    // First build
+    const idx1 = await buildSourceIndex(cwd, config, false);
+    expect(idx1!.stats.parsedFiles).toBe(1);
+    expect(idx1!.stats.cacheHitFiles).toBe(0);
+
+    // Change scripts only
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0", scripts: { test: "vitest" } }),
+    );
+
+    // Second build — should reuse all cached files
+    const idx2 = await buildSourceIndex(cwd, config, false);
+    expect(idx2!.stats.parsedFiles).toBe(0);
+    expect(idx2!.stats.cacheHitFiles).toBe(1);
+    expect(idx2!.project.scripts).toEqual({ test: "vitest" });
+  });
+
+  it("treats legacy index without manifestHash as manifest-stale", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd, { name: "fixture", version: "1.0.0" });
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    // Inject a legacy index without manifestHash
+    const legacyIndex: SourceIndex = {
+      schemaVersion: "1.1",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "fixture",
+        packageVersion: "1.0.0",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [
+        {
+          path: "src/index.ts",
+          language: "typescript",
+          sha256: "abc",
+          sizeBytes: 100,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [{ name: "hello", type: "function", line: 1, column: 0 }],
+        },
+      ],
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+    };
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await writeFile(
+      join(cwd, ".mp-sentinel-cache", "source-index.json"),
+      JSON.stringify(legacyIndex),
+    );
+
+    // buildSourceIndex should detect manifestHash missing and rebuild
+    const idx = await buildSourceIndex(cwd, config, false);
+    expect(idx).not.toBeNull();
+    expect(idx!.manifestHash).toBeDefined();
+  });
+
+  it("tsconfig path alias change rebuilds graph with cached parsed files", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await mkdir(join(cwd, "src", "lib"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "index.ts"),
+      `import { helper } from "@/lib/helper.js"; export const main = 1;`,
+    );
+    await writeFile(join(cwd, "src", "lib", "helper.ts"), `export const helper = () => "hi";`);
+    await writeFile(join(cwd, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    // First build without path alias
+    const idx1 = await buildSourceIndex(cwd, config, false);
+    expect(idx1).not.toBeNull();
+
+    // Update tsconfig with path alias
+    await writeFile(
+      join(cwd, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
+      }),
+    );
+
+    // Second build — source files unchanged, only tsconfig changed
+    const idx2 = await buildSourceIndex(cwd, config, false);
+    expect(idx2).not.toBeNull();
+    expect(idx2!.stats.parsedFiles).toBe(0); // reused cached files
+    expect(idx2!.stats.cacheHitFiles).toBeGreaterThanOrEqual(1);
+    expect(idx2!.manifestHash).not.toBe(idx1!.manifestHash);
+  });
+
+  it("computeManifestHash is deterministic for same inputs", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+
+    const h1 = await computeManifestHash(cwd);
+    const h2 = await computeManifestHash(cwd);
+    expect(h1).toBe(h2);
+  });
+
+  it("computeManifestHash changes when package.json changes", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+
+    const h1 = await computeManifestHash(cwd);
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.1" }),
+    );
+    const h2 = await computeManifestHash(cwd);
+    expect(h1).not.toBe(h2);
   });
 });

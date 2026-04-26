@@ -20,9 +20,18 @@ function sortRecord(obj: Record<string, string>): [string, string][] {
  * Deterministic hash covering all fields that affect generated skill content.
  * Excludes timestamps, duration stats, and cache metadata.
  */
+function normalizeBin(
+  bin: string | Record<string, string> | undefined,
+): string | [string, string][] | undefined {
+  if (bin === undefined) return undefined;
+  if (typeof bin === "string") return bin;
+  return sortRecord(bin);
+}
+
 export function computeIndexHash(index: SourceIndex): string {
   const stable = {
     schemaVersion: index.schemaVersion,
+    manifestHash: index.manifestHash,
     project: {
       packageName: index.project.packageName,
       packageVersion: index.project.packageVersion,
@@ -31,6 +40,8 @@ export function computeIndexHash(index: SourceIndex): string {
       detectedFrameworks: [...index.project.detectedFrameworks].sort(),
       dependencies: sortRecord(index.project.dependencies),
       devDependencies: sortRecord(index.project.devDependencies),
+      scripts: index.project.scripts ? sortRecord(index.project.scripts) : undefined,
+      bin: normalizeBin(index.project.bin),
     },
     files: index.files
       .map((f) => ({
@@ -59,9 +70,81 @@ export function renderMetadataHeader(meta: SkillsMetadata): string {
   return `<!-- ${METADATA_MARKER} ${inner} -->`;
 }
 
+/**
+ * Insert a metadata header into generated skill content.
+ * If the content starts with YAML frontmatter (`---`), the metadata is inserted
+ * immediately after the closing `---` so the frontmatter remains first.
+ * Otherwise the metadata is prepended to the top of the file.
+ */
+export function applyMetadataHeader(content: string, header: string): string {
+  if (!content.startsWith("---")) {
+    return header + "\n" + content;
+  }
+
+  const lines = content.split("\n");
+  let closingIndex = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if ((lines[i] ?? "").trim() === "---") {
+      closingIndex = i;
+      break;
+    }
+  }
+
+  if (closingIndex === -1) {
+    // Malformed frontmatter — fall back to prepend
+    return header + "\n" + content;
+  }
+
+  const before = lines.slice(0, closingIndex + 1).join("\n");
+  const after = lines.slice(closingIndex + 1).join("\n");
+  return before + "\n" + header + "\n" + after;
+}
+
 export function parseMetadataFromContent(content: string): SkillsMetadata | null {
   const lines = content.split("\n");
-  for (let i = 0; i < Math.min(3, lines.length); i++) {
+
+  // If content starts with YAML frontmatter, scan after the closing ---
+  if (content.startsWith("---")) {
+    let closingIndex = -1;
+    for (let i = 1; i < lines.length; i++) {
+      if ((lines[i] ?? "").trim() === "---") {
+        closingIndex = i;
+        break;
+      }
+    }
+    if (closingIndex !== -1) {
+      // Scan lines after the closing --- (where metadata header is placed by applyMetadataHeader)
+      for (let i = closingIndex + 1; i < lines.length; i++) {
+        const line = (lines[i] ?? "").trim();
+        if (!line.includes(METADATA_MARKER)) continue;
+        const inner = line
+          .replace(/^<!--\s*/, "")
+          .replace(/\s*-->$/, "")
+          .replace(METADATA_MARKER, "")
+          .trim();
+        const pairs: Record<string, string> = {};
+        for (const part of inner.split(" ")) {
+          const eq = part.indexOf("=");
+          if (eq !== -1) {
+            pairs[part.slice(0, eq)] = part.slice(eq + 1);
+          }
+        }
+        const { generatorVersion, sourceIndexSchema, sourceIndexHash, agent, projectName } = pairs;
+        if (!generatorVersion || !sourceIndexHash || !agent) return null;
+        return {
+          generatorVersion,
+          sourceIndexSchema: sourceIndexSchema ?? "",
+          sourceIndexHash,
+          agent: agent as AgentAdapterId,
+          projectName: projectName ?? "",
+        };
+      }
+    }
+    // If malformed frontmatter or no metadata found, fall back to scanning first 20 lines
+  }
+
+  // Fallback: scan first 20 lines (for non-frontmatter content or if above didn't find metadata)
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
     const line = (lines[i] ?? "").trim();
     if (!line.includes(METADATA_MARKER)) continue;
     const inner = line

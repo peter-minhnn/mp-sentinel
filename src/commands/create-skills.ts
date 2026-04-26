@@ -19,6 +19,7 @@ import type {
 } from "../types/index.js";
 import {
   ADAPTER_REGISTRY,
+  applyMetadataHeader,
   computeIndexHash,
   detectAdapters,
   parseAgentFlag,
@@ -27,7 +28,7 @@ import {
 } from "../services/skills-generator/index.js";
 import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
 
-const GENERATOR_VERSION = process.env["npm_package_version"] ?? "1.0.9";
+const GENERATOR_VERSION = process.env["npm_package_version"] ?? "1.0.10";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,8 +38,8 @@ export interface CreateSkillsValues {
   "create-skills-format"?: string;
   "create-skills-force": boolean;
   "skip-index-refresh": boolean;
-  "create-skills-dry-run": boolean;
-  "create-skills-check": boolean;
+  "create-skills-dry-run"?: boolean;
+  "create-skills-check"?: boolean;
 }
 
 interface RunOutput {
@@ -185,7 +186,7 @@ async function runAdapter(
   const context = { projectRoot, projectName, force };
   const raw = await adapter.generate(index, context);
 
-  const files = raw.map((f) => ({ ...f, content: metadataHeader + "\n" + f.content }));
+  const files = raw.map((f) => ({ ...f, content: applyMetadataHeader(f.content, metadataHeader) }));
 
   const conflictPaths: string[] = [];
   for (const file of files) {

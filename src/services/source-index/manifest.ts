@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, basename } from "node:path";
+import { createHash } from "node:crypto";
 import { log } from "../../utils/logger.js";
 
 /**
@@ -70,6 +71,8 @@ export async function readPackageManifest(cwd: string): Promise<{
   packageVersion: string | undefined;
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
+  scripts: Record<string, string>;
+  bin: string | Record<string, string> | undefined;
 }> {
   const pkgPath = resolve(cwd, "package.json");
 
@@ -79,6 +82,8 @@ export async function readPackageManifest(cwd: string): Promise<{
       packageVersion: undefined,
       dependencies: {},
       devDependencies: {},
+      scripts: {},
+      bin: undefined,
     };
   }
 
@@ -91,6 +96,8 @@ export async function readPackageManifest(cwd: string): Promise<{
         packageVersion: undefined,
         dependencies: {},
         devDependencies: {},
+        scripts: {},
+        bin: undefined,
       };
     }
 
@@ -99,6 +106,8 @@ export async function readPackageManifest(cwd: string): Promise<{
       packageVersion: pkg.version as string | undefined,
       dependencies: (pkg.dependencies ?? {}) as Record<string, string>,
       devDependencies: (pkg.devDependencies ?? {}) as Record<string, string>,
+      scripts: (pkg.scripts ?? {}) as Record<string, string>,
+      bin: pkg.bin as string | Record<string, string> | undefined,
     };
   } catch (error) {
     log.warning(
@@ -109,6 +118,8 @@ export async function readPackageManifest(cwd: string): Promise<{
       packageVersion: undefined,
       dependencies: {},
       devDependencies: {},
+      scripts: {},
+      bin: undefined,
     };
   }
 }
@@ -233,10 +244,61 @@ export async function readManifest(cwd: string) {
     packageManager: detectPackageManager(cwd),
     dependencies: pkgInfo.dependencies,
     devDependencies: pkgInfo.devDependencies,
+    scripts: pkgInfo.scripts,
+    bin: pkgInfo.bin,
     detectedFrameworks: frameworkList,
     tsConfig,
     toolVersion,
   };
+}
+
+/**
+ * Compute a deterministic hash of manifest inputs:
+ * - package.json content
+ * - tsconfig*.json content
+ * - lockfile identity (which lockfile exists, not its content)
+ */
+export async function computeManifestHash(cwd: string): Promise<string> {
+  const hash = createHash("sha256");
+
+  const pkgPath = resolve(cwd, "package.json");
+  if (existsSync(pkgPath)) {
+    try {
+      const content = await readFile(pkgPath, "utf-8");
+      hash.update(content);
+    } catch {
+      // ignore read errors
+    }
+  }
+
+  const tsconfigPaths = ["tsconfig.json", "tsconfig.app.json", "tsconfig.node.json"];
+  for (const filename of tsconfigPaths) {
+    const path = resolve(cwd, filename);
+    if (existsSync(path)) {
+      try {
+        const content = await readFile(path, "utf-8");
+        hash.update(content);
+      } catch {
+        // ignore read errors
+      }
+    }
+  }
+
+  const lockFiles = [
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lockb",
+    "npm-shrinkwrap.json",
+  ];
+  for (const lockFile of lockFiles) {
+    if (existsSync(resolve(cwd, lockFile))) {
+      hash.update(lockFile);
+      break;
+    }
+  }
+
+  return hash.digest("hex");
 }
 
 /**

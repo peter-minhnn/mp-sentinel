@@ -5,12 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2026-04-26
+
+### Added
+- **Profile-aware generated skills**: `create-skills` now detects project profile (`cli-tooling`, `node-service`, `react-next`, `library`) from manifest signals and generates tailored review pitfalls for each profile
+- **Manifest-aware cache invalidation**: Source index now includes `manifestHash` (fingerprint of `package.json`, `tsconfig*.json`, lockfile identity). When only manifest inputs change, cached parsed files are reused and only the dependency graph is rebuilt, ensuring profile skills stay current without full reparse
+- **Cline adapter**: Added support for Cline AI assistant — generates `.clinerules/<project>-best-practices.md`. Auto-detected when `.clinerules/` exists and included in `--all-agents`
+- **Claude frontmatter fix**: `applyMetadataHeader()` now places metadata after YAML frontmatter closing `---`, ensuring Claude Code skill files have frontmatter as the very first content
+
+### Changed
+- **`computeIndexHash`**: Now includes `manifestHash` in the deterministic hash for accurate staleness detection
+- **Generated content**: "Commands & Conventions" generic section replaced by "Profile Rules" — project-specific section with tailored review pitfalls for `cli-tooling`, `node-service`, `react-next`, and `library` profiles
+
 ## [1.0.9] - 2026-04-26
 
 ### Added
 - **`create-skills` command**: generates agent/IDE skill files from the source index
-  - 6 adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `generic`
-  - `--all-agents` generates for 5 primary adapters (`claude`, `cursor`, `codex`, `windsurf`, `antigravity`) — `generic` is excluded to avoid path collision with `codex`; use `--agent generic` to target it explicitly
+  - 7 adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`, `generic`
+  - `--all-agents` generates for the 6 primary adapters (`claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`) — `generic` is excluded to avoid path collision with `codex`; use `--agent generic` to target it explicitly
   - Auto-detection of installed agent folders (`.claude/`, `.cursor/`, `.windsurf/`, `.codex/`, `.agents/`, `.antigravity/`, `.agent/`)
   - Interactive multi-select picker (TTY) or non-interactive via `--agent <ids>` / `--all-agents`
   - `--format json` for automation; requires `--agent` or `--all-agents` to preserve parseable stdout
@@ -29,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exit `0`: all files present and hash matches current index
   - Exit `1`: any file is missing or stale (hash mismatch)
   - Exit `2`: runtime error (invalid config, corrupt cache, etc.)
-  - Statuses: `up-to-date`, `stale` (hash mismatch), `missing` (file absent), `wrong-agent` (file exists with correct hash but `agent` field differs — file belongs to another adapter)
+  - Statuses: `up-to-date`, `stale` (hash mismatch), `missing`, `wrong-agent` (file exists with correct hash but `agent` field differs — file belongs to another adapter)
   - `--check --format json` outputs `{ "check": [...], "status": "ok" | "stale" }`
 - **Generated file metadata header**: every skill file begins with a deterministic HTML comment embedding `generatorVersion`, `sourceIndexSchema`, `sourceIndexHash` (16-char sha256 over sorted file paths, symbols, and import edges — no timestamps), `agent`, and `projectName`
   - Adapter output is fully deterministic: re-running `create-skills` with the same index always produces byte-identical files

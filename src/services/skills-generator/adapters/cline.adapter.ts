@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentAdapter,
@@ -8,17 +9,16 @@ import type {
 } from "../../../types/index.js";
 import { generateContent } from "../content.js";
 
-export const genericAdapter: AgentAdapter = {
-  id: "generic" as AgentAdapterId,
-  label: "Generic (.agents/rules/)",
+export const clineAdapter: AgentAdapter = {
+  id: "cline" as AgentAdapterId,
+  label: "Cline (.clinerules/)",
 
-  // Generic is a fallback — never auto-detected; only added explicitly
-  detect(_projectRoot: string): boolean {
-    return false;
+  detect(projectRoot: string): boolean {
+    return existsSync(join(projectRoot, ".clinerules"));
   },
 
   getDefaultOutput(projectRoot: string, projectName: string): string {
-    return join(projectRoot, ".agents", "rules", `${projectName}-best-practices.md`);
+    return join(projectRoot, ".clinerules", `${projectName}-best-practices.md`);
   },
 
   async generate(

@@ -4,6 +4,7 @@ import { cursorAdapter } from "./adapters/cursor.adapter.js";
 import { codexAdapter } from "./adapters/codex.adapter.js";
 import { windsurfAdapter } from "./adapters/windsurf.adapter.js";
 import { antigravityAdapter } from "./adapters/antigravity.adapter.js";
+import { clineAdapter } from "./adapters/cline.adapter.js";
 import { genericAdapter } from "./adapters/generic.adapter.js";
 
 /** Ordered list of all supported adapters (generic last — it's always a fallback). */
@@ -13,6 +14,7 @@ export const ADAPTER_REGISTRY: AgentAdapter[] = [
   codexAdapter,
   windsurfAdapter,
   antigravityAdapter,
+  clineAdapter,
   genericAdapter,
 ];
 
