@@ -59,33 +59,72 @@ When you run `create-skills` without `--agent` or `--all-agents`, the command:
 - **Default:** builds or refreshes the index using `buildSourceIndex()` (same as `mp-sentinel indexing`).
 - **`--skip-index-refresh`:** uses the existing cache only. Fails with exit code `2` if no cache is present.
 
-The generated content is richer when a schema `1.1` index is available (includes dependency graph, hub files, and import edges).
+The generated content is richest when a schema `1.2` index is available (dependency graph, hub files, import/export metadata, and codebase insights).
 
 `create-skills` auto-refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures profile skills always reflect the current scripts, `bin`, dependencies, and framework signals.
 
 ---
 
+## AI Enrichment
+
+By default, generated skills are deterministic and use only the source index. If you enable `createSkills.ai`, `create-skills` asks the configured AI provider to add version-aware dependency rules based on `package.json` versions and the indexed codebase.
+
+```json
+{
+  "createSkills": {
+    "ai": {
+      "enabled": true,
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "temperature": 0.2,
+      "maxTokens": 4096
+    }
+  }
+}
+```
+
+Supported providers: `gemini`, `openai`, `anthropic`, `grok`. Invalid provider names fail with exit code `2`; they are never silently ignored.
+
+Use `--no-ai-enrich` to temporarily generate deterministic index-only skills even when config enables AI:
+
+```sh
+npx mp-sentinel create-skills --agent claude --no-ai-enrich
+```
+
+`--check` compares enrichment metadata too, so skills become stale if AI enrichment is enabled/disabled or if provider, model, prompt version, input hash, or output hash changes.
+
+---
+
 ## Output Content
 
-Every adapter generates content derived from the source index:
+Every adapter generates content derived from the source index and `SkillKnowledgeBase`:
 
 | Section | Description |
 |---------|-------------|
 | **Overview** | Project name, version, frameworks, package manager, file count |
-| **Architecture** | Top-level directories with file counts; graph stats (schema 1.1) |
-| **Hub Files** | Files imported by the most other files (schema 1.1 only) |
+| **Architecture** | Top-level directories with file counts; graph stats (schema 1.2) |
+| **Hub Files** | Files imported by the most other files (schema 1.2) |
 | **Module Map** | Per-directory breakdown with key exported symbols |
+| **Codebase Map** | Module ownership (dominant role, key files, key symbols, import/export dirs) + entrypoints (CLI, commands, public API, config) |
+| **Testing Map** | Test-to-source associations, test gaps (source files without test coverage), most-tested modules |
+| **Dependencies** | Top 20 external dependencies with versions from `package.json` + optional AI-enriched rules |
+| **Public API** | Entry points + risk surface (default exports, re-exports, dynamic imports, type-only imports, hub files) |
 | **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
+| **AI Enrichment** | Optional version-aware dependency rules from the configured AI provider |
 
 ### Claude output structure
 
 ```
 .claude/skills/<project>-best-practices/
-  SKILL.md                    ← frontmatter + overview + references
+  SKILL.md                    ← frontmatter + overview + 7 references
   references/
     architecture.md           ← Architecture + Hub Files sections
     modules.md                ← Module Map section
     commands.md               ← Commands + Conventions sections
+    codebase-map.md           ← Module Ownership + Entrypoints tables
+    testing-map.md            ← Test Associations + Test Gaps + Most Tested Modules
+    dependencies.md           ← Top Dependencies (always present; AI enrichment appended when active)
+    public-api.md             ← Entry Points + Risk Surface tables
 ```
 
 ### Cline output structure

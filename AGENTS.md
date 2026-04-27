@@ -5,7 +5,25 @@
 
 ---
 
-## 1. Architecture
+## 1. Agent Workflow
+
+Before making code changes to this repo, agents must:
+
+1. **Read the relevant generated skill/rule** for the area being touched:
+   - `.claude/skills/mp-sentinel-best-practices/SKILL.md` (Claude Code)
+   - `.agents/rules/mp-sentinel-best-practices.md` (Codex / Generic)
+   - `.cursor/rules/mp-sentinel-best-practices.mdc` (Cursor)
+2. **Read local agent instructions**: `AGENTS.md` (this file), `CLAUDE.md`.
+3. **Prefer source index commands** before broad repo scans when dependency context is needed:
+   - `mp-sentinel indexing --stats --index-format json`
+   - `mp-sentinel indexing --explain-index <file> --index-format json`
+   - `mp-sentinel --explain-context --format json --files <file>`
+4. **For skills work**, use the `skill-creator` skill (`mp-sentinel`'s own generated skill).
+5. **Load only relevant references** for the paths you touch: architecture, modules, testing, dependencies.
+
+---
+
+## 2. Architecture
 
 ### Core pipeline — do not break this flow
 
@@ -36,7 +54,7 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ---
 
-## 2. TypeScript / ESM
+## 3. TypeScript / ESM
 
 - **Runtime**: Node ≥ 18, ESM (`"type": "module"` in package.json).
 - All internal imports **must** include the `.js` extension (NodeNext resolution).
@@ -52,7 +70,7 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ---
 
-## 3. `create-skills` Command
+## 4. `create-skills` Command
 
 ### Behavioral contract
 
@@ -69,10 +87,10 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 The command layer (not adapters) prepends an HTML comment to every generated file:
 
 ```
-<!-- @mp-sentinel-generated generatorVersion=X.Y.Z sourceIndexSchema=1.1 sourceIndexHash=<16hexchars> agent=claude projectName=my-project -->
+<!-- @mp-sentinel-generated generatorVersion=X.Y.Z sourceIndexSchema=1.2 sourceIndexHash=<16hexchars> agent=claude projectName=my-project -->
 ```
 
-- **Deterministic**: hash is sha256 over sorted file paths, symbols, and import edges — no timestamps.
+- **Deterministic**: hash is sha256 over sorted manifest fields, file paths, symbols, imports/exports, graph edges, and index insights — no timestamps.
 - **`--check`** reads this header and compares `sourceIndexHash` against the current index hash. A mismatch = stale.
 - Adapters must NOT embed their own metadata — the command layer owns the header.
 - Do not change the `@mp-sentinel-generated` marker string — it is the parse key.
@@ -101,7 +119,7 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 
 ---
 
-## 4. Source Indexing (`mp-sentinel indexing`)
+## 5. Source Indexing (`mp-sentinel indexing`)
 
 ### Behavioral contract
 
@@ -128,7 +146,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 5. Review Context Enrichment
+## 6. Review Context Enrichment
 
 - Context priority order: **changed file → direct imports → direct dependents**.
 - Respect the token budget at all times. Never exceed the configured limit even when adding context.
@@ -137,7 +155,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 6. Docs & Runtime Consistency
+## 7. Docs & Runtime Consistency
 
 - **Never document a flag or feature that is not yet implemented.** If it's planned, add a `<!-- TODO -->` comment, not a user-facing paragraph.
 - **No duplicate sections** across `README.md`, `docs/`, and `COMMANDS_CHEAT_SHEET.md`. If content must appear in two places, use a single source and cross-link.
@@ -151,7 +169,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 
 ---
 
-## 7. Verification Checklist
+## 8. Verification Checklist
 
 Run these before marking any feature complete.
 
@@ -180,7 +198,7 @@ mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';
 
 ---
 
-## 8. What Belongs Where
+## 9. What Belongs Where
 
 | Concern | Location |
 |---------|----------|
@@ -201,7 +219,7 @@ Do not put business logic in `src/index.ts` (CLI entry). It should only handle S
 
 ---
 
-## 9. Out of Scope for This File
+## 10. Out of Scope for This File
 
 These rules govern **mp-sentinel development**. They do not apply to:
 

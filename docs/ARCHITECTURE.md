@@ -2,7 +2,7 @@
 
 ## System Design
 
-MP Sentinel v1.0.11 centers on a stable `review` command contract with diff-first auditing:
+MP Sentinel v1.0.12 centers on a stable `review` command contract with diff-first auditing:
 
 - `review --staged`
 - `review --commit <sha>`
@@ -22,6 +22,7 @@ The runtime is optimized for quality and cost control:
 ```text
 CLI (src/index.ts)
   -> parse args / resolve target / resolve format
+  -> [optional] --explain-context early exit (diagnostics, no AI)
   -> list git files for target
   -> FileHandler filters (allowlist + .gitignore/.archignore + sensitive blocklist)
   -> collect diff hunks with guardrails
@@ -43,7 +44,8 @@ CLI (src/index.ts)
 - `src/services/security/index.ts`: secret redaction and payload diagnostics.
 - `src/services/ai/index.ts`: provider orchestration, caching, concurrent auditing.
 - `src/formatters/report.ts`: console/json/markdown output.
-- `src/services/source-index/context-builder.ts`: **impact-aware review context generation** (new in v1.0.11)
+- `src/services/source-index/context-builder.ts`: **impact-aware review context generation**
+- `src/types/index.ts`: `ExplainContextOutput` type for `--explain-context` diagnostic mode
 
 ## Source Indexing & Review Context (v1.0.11+)
 
@@ -85,6 +87,30 @@ Profile detection uses manifest signals (`bin`, `scripts`, `dependencies`, `dete
 - Corrupt index (parse errors > 50%) → returns `null`.
 - Indexing disabled → returns `null`.
 - Truncation → adds `[Source index context truncated to budget]` marker.
+
+## Explain Context Mode (v1.0.12+)
+
+The `--explain-context` flag on the `review` command provides diagnostic output showing context building details without making AI calls:
+
+- **Entry point**: `src/index.ts` handles `--explain-context` as an early exit before any AI logic.
+- **Implementation**: `renderExplainContext()` in `src/cli/review.ts` — reuses `buildReviewContext()` for consistency.
+- **Output**: JSON (`ExplainContextOutput` type) or human-readable console format.
+- **ASCII-only**: Console output avoids emoji to prevent mojibake on Windows terminals.
+- **Exit code**: Always `0` in non-error cases (even if no index is available).
+
+```json
+{
+  "status": "available",
+  "profile": "library",
+  "budgetChars": 12000,
+  "truncated": false,
+  "relatedFileCount": 5,
+  "relationTypes": ["changed", "import"],
+  "includedFiles": ["src/index.ts", "src/config.ts"],
+  "contextPreview": "=== Source Index Context ===\nProject...",
+  "indexUsed": true
+}
+```
 
 ## Key Patterns
 

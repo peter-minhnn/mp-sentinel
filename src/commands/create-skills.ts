@@ -8,27 +8,35 @@ import { dirname, resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
+import { getToolVersion } from "../utils/version.js";
 import type {
   AgentAdapter,
+  AIEnrichmentOutput,
   CheckFileStatus,
   DryRunFileAction,
+  EnrichmentMetadata,
   SkillsCheckResult,
   SkillsDryRunResult,
+  SkillsGenerationContext,
   SkillsGenerationResult,
+  SkillKnowledgeBase,
   SourceIndex,
 } from "../types/index.js";
 import {
   ADAPTER_REGISTRY,
   applyMetadataHeader,
+  buildSkillKnowledgeBase,
   computeIndexHash,
   detectAdapters,
+  enrichIndex,
   parseAgentFlag,
   parseMetadataFromContent,
   renderMetadataHeader,
+  resolveAIEnrichmentConfig,
 } from "../services/skills-generator/index.js";
 import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
 
-const GENERATOR_VERSION = process.env["npm_package_version"] ?? "1.0.10";
+const GENERATOR_VERSION = getToolVersion();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +48,7 @@ export interface CreateSkillsValues {
   "skip-index-refresh": boolean;
   "create-skills-dry-run"?: boolean;
   "create-skills-check"?: boolean;
+  "create-skills-no-ai-enrich": boolean;
 }
 
 interface RunOutput {
@@ -182,8 +191,16 @@ async function runAdapter(
   projectRoot: string,
   force: boolean,
   metadataHeader: string,
+  enrichment?: AIEnrichmentOutput | undefined,
+  knowledgeBase?: SkillKnowledgeBase | undefined,
 ): Promise<SkillsGenerationResult> {
-  const context = { projectRoot, projectName, force };
+  const context: SkillsGenerationContext = {
+    projectRoot,
+    projectName,
+    force,
+    enrichment,
+    knowledgeBase,
+  };
   const raw = await adapter.generate(index, context);
 
   const files = raw.map((f) => ({ ...f, content: applyMetadataHeader(f.content, metadataHeader) }));
@@ -226,8 +243,17 @@ async function dryRunAdapter(
   projectRoot: string,
   force: boolean,
   seenPaths: Set<string>,
+  enrichment?: AIEnrichmentOutput | undefined,
+  knowledgeBase?: SkillKnowledgeBase | undefined,
 ): Promise<SkillsDryRunResult> {
-  const raw = await adapter.generate(index, { projectRoot, projectName, force });
+  const context: SkillsGenerationContext = {
+    projectRoot,
+    projectName,
+    force,
+    enrichment,
+    knowledgeBase,
+  };
+  const raw = await adapter.generate(index, context);
 
   const files = raw.map((file) => {
     if (seenPaths.has(file.outputPath)) {
@@ -243,7 +269,8 @@ async function dryRunAdapter(
 }
 
 /**
- * Check: compare on-disk metadata against the current index hash and expected adapter id.
+ * Check: compare on-disk metadata against the current index hash, adapter id,
+ * and enrichment metadata.
  */
 async function checkAdapter(
   adapter: AgentAdapter,
@@ -251,8 +278,18 @@ async function checkAdapter(
   projectName: string,
   projectRoot: string,
   currentHash: string,
+  enrichment?: AIEnrichmentOutput | undefined,
+  enrichmentMeta?: EnrichmentMetadata,
+  knowledgeBase?: SkillKnowledgeBase | undefined,
 ): Promise<SkillsCheckResult> {
-  const raw = await adapter.generate(index, { projectRoot, projectName, force: false });
+  const context: SkillsGenerationContext = {
+    projectRoot,
+    projectName,
+    force: false,
+    enrichment,
+    knowledgeBase,
+  };
+  const raw = await adapter.generate(index, context);
 
   const files = await Promise.all(
     raw.map(async (file) => {
@@ -267,6 +304,35 @@ async function checkAdapter(
       if (meta.agent !== adapter.id) {
         return { outputPath: file.outputPath, status: "wrong-agent" as CheckFileStatus };
       }
+
+      // Check enrichment metadata staleness
+      const fileHasAI = meta.enrichment && meta.enrichment.mode === "ai";
+      const currentHasAI = enrichmentMeta && enrichmentMeta.mode === "ai";
+
+      if (fileHasAI && !currentHasAI) {
+        // AI was used before but is now disabled
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+      if (!fileHasAI && currentHasAI) {
+        // AI wasn't used before but is now enabled
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+      if (fileHasAI && currentHasAI && meta.enrichment && enrichmentMeta) {
+        const fileEnrich = meta.enrichment;
+        const curEnrich = enrichmentMeta;
+        if (
+          fileEnrich.mode !== "ai" ||
+          curEnrich.mode !== "ai" ||
+          fileEnrich.provider !== curEnrich.provider ||
+          fileEnrich.model !== curEnrich.model ||
+          fileEnrich.promptVersion !== curEnrich.promptVersion ||
+          fileEnrich.inputHash !== curEnrich.inputHash ||
+          fileEnrich.outputHash !== curEnrich.outputHash
+        ) {
+          return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+        }
+      }
+
       return { outputPath: file.outputPath, status: "up-to-date" as CheckFileStatus };
     }),
   );
@@ -305,13 +371,44 @@ export async function runCreateSkillsCommand(
     const adapters = await selectAdapters(values, projectRoot, isJson);
     if (adapters.length === 0) return 0;
 
+    // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
+    const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index);
+
+    // ── AI Enrichment ───────────────────────────────────────────────────────
+    // Check if AI enrichment is enabled in config AND not overridden by CLI flag
+    let enrichment: AIEnrichmentOutput | undefined = undefined;
+    let enrichmentMetadata: EnrichmentMetadata = { mode: "none" };
+
+    const config = await loadProjectConfig(projectRoot);
+    const aiConfig = config.createSkills?.ai;
+    const aiEnabled = Boolean(aiConfig?.enabled) && !values["create-skills-no-ai-enrich"];
+
+    if (aiEnabled) {
+      const aiEnrichConfig = resolveAIEnrichmentConfig(aiConfig ?? {});
+      const result = await enrichIndex(index, aiEnrichConfig);
+      if (result) {
+        enrichment = result.output;
+        enrichmentMetadata = result.metadata;
+        log.success("AI enrichment complete.");
+      }
+    }
+
     // ── Check mode ──────────────────────────────────────────────────────────
     if (isCheck) {
       const currentHash = computeIndexHash(index);
 
       const checkResults: SkillsCheckResult[] = [];
       for (const adapter of adapters) {
-        const result = await checkAdapter(adapter, index, projectName, projectRoot, currentHash);
+        const result = await checkAdapter(
+          adapter,
+          index,
+          projectName,
+          projectRoot,
+          currentHash,
+          enrichment,
+          enrichmentMetadata,
+          knowledgeBase,
+        );
         checkResults.push(result);
 
         if (!isJson) {
@@ -350,6 +447,8 @@ export async function runCreateSkillsCommand(
           projectRoot,
           force,
           seenPaths,
+          enrichment,
+          knowledgeBase,
         );
         dryRunResults.push(result);
 
@@ -380,9 +479,19 @@ export async function runCreateSkillsCommand(
         sourceIndexHash: indexHash,
         agent: adapter.id,
         projectName,
+        enrichment: enrichmentMetadata,
       });
 
-      const result = await runAdapter(adapter, index, projectName, projectRoot, force, metaHeader);
+      const result = await runAdapter(
+        adapter,
+        index,
+        projectName,
+        projectRoot,
+        force,
+        metaHeader,
+        enrichment,
+        knowledgeBase,
+      );
       results.push(result);
 
       if (!isJson) {

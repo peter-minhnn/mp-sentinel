@@ -141,6 +141,12 @@ Skip the auto-index step. Fails if no cache is found.
 npx mp-sentinel create-skills --agent claude --skip-index-refresh
 ```
 
+### AI-Enriched Skills
+When `createSkills.ai.enabled` is set in config, generated skills include version-aware dependency rules from the configured provider/model. Use `--no-ai-enrich` to force deterministic index-only output for one run.
+```bash
+npx mp-sentinel create-skills --agent claude --no-ai-enrich
+```
+
 **Supported agents:** `claude` | `cursor` | `codex` | `windsurf` | `antigravity` | `cline` | `generic`
 
 `create-skills` automatically refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures generated profile rules always reflect the current scripts, `bin`, dependencies, and framework signals.
@@ -179,6 +185,16 @@ npx mp-sentinel review --verbose-dry-run
 # Combine with local review
 npx mp-sentinel review --local -i --verbose-dry-run
 ```
+
+### Explain Context Mode (Diagnostics)
+Show context building details without making any AI calls — useful for debugging what the review context contains:
+```bash
+npx mp-sentinel --explain-context
+npx mp-sentinel --explain-context --format json
+npx mp-sentinel --explain-context --format json --files src/cli/review.ts
+```
+
+Displays index availability, profile detection, related files, relation types (`changed`, `import`, `dependent`, `hub`), and a preview of the generated context. Pure diagnostic — no AI calls are made.
 
 ---
 

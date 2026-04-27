@@ -18,11 +18,12 @@ import type { IAIProvider, AIProvider } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { AIConfig } from "./config.js";
 import { buildAuditCacheKey, readCachedAuditResult, writeCachedAuditResult } from "./cache.js";
+import { getToolVersion } from "../../utils/version.js";
 
 let providerInstance: IAIProvider | null = null;
 let providerConfigCache: ReturnType<typeof AIConfig.fromEnvironment> | null = null;
 
-const TOOL_VERSION = process.env.npm_package_version || "1.0.6";
+const TOOL_VERSION = getToolVersion();
 
 const getProviderConfig = (): ReturnType<typeof AIConfig.fromEnvironment> => {
   if (providerConfigCache) {

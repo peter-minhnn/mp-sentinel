@@ -141,6 +141,24 @@ export interface ProjectConfig {
   ai?: AIReviewConfig;
   /** Source indexing configuration */
   indexing?: Partial<IndexingConfig>;
+  /** Create-skills AI enrichment configuration */
+  createSkills?: CreateSkillsConfig;
+}
+
+// ====================================================================================
+// Create Skills AI Enrichment Config
+// ====================================================================================
+
+export interface CreateSkillsAIConfig {
+  enabled?: boolean;
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface CreateSkillsConfig {
+  ai?: CreateSkillsAIConfig;
 }
 
 export interface AuditIssue {
@@ -202,6 +220,7 @@ export const DEFAULT_CONFIG: Required<
     | "skillsFetchTimeout"
     | "ai"
     | "indexing"
+    | "createSkills"
   >
 > & {
   localReview: LocalReviewConfig;
@@ -211,6 +230,7 @@ export const DEFAULT_CONFIG: Required<
   indexing: Required<
     Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize" | "maxRelatedFiles">
   >;
+  createSkills: Required<CreateSkillsConfig>;
 } = {
   techStack: "",
   rules: [],
@@ -232,6 +252,11 @@ export const DEFAULT_CONFIG: Required<
     maxDiffLines: 1200,
     maxCharsPerFile: 12000,
     promptVersion: "2026-02-16",
+  },
+  createSkills: {
+    ai: {
+      enabled: false,
+    },
   },
   localReview: {
     enabled: false,
@@ -285,6 +310,8 @@ export interface ImportInfo {
   kind: "default" | "named" | "namespace" | "dynamic";
   names: string[];
   line: number;
+  /** Whether this is a type-only import (import type { X } from ...) */
+  typeOnly?: boolean;
 }
 
 export interface ExportInfo {
@@ -292,6 +319,67 @@ export interface ExportInfo {
   names: string[];
   line: number;
   source?: string; // For re-exports
+  /** Whether this is a type-only re-export (export type { X } from ...) */
+  typeOnly?: boolean;
+  /** Whether this is an export default */
+  isDefault?: boolean;
+}
+
+// ====================================================================================
+// Index Insights (schema 1.2+)
+// ====================================================================================
+
+/**
+ * Detected role of a file in the project
+ */
+export type FileRole =
+  | "cli-entry"
+  | "command"
+  | "service"
+  | "adapter"
+  | "provider"
+  | "test"
+  | "config"
+  | "type"
+  | "example"
+  | "utils"
+  | "unknown";
+
+/**
+ * Classification of npm scripts
+ */
+export type ScriptCategory =
+  | "build"
+  | "test"
+  | "typecheck"
+  | "format"
+  | "release"
+  | "indexing"
+  | "dev"
+  | "other";
+
+/**
+ * Index insights extracted from source index for skill generation
+ */
+export interface IndexInsights {
+  /** File role map: file path -> role */
+  fileRoles: Record<string, FileRole>;
+  /** Public API files (exported via lib/entry) */
+  publicApiFiles: string[];
+  /** Test map: source file -> associated test files */
+  testMap: Record<string, string[]>;
+  /** Command map: script name -> category */
+  commandMap: Record<string, ScriptCategory>;
+  /** Dependency usage map: package name -> files importing it */
+  dependencyUsage: Record<string, string[]>;
+  /** Files with default exports */
+  defaultExportFiles: string[];
+  /** Files with re-exports */
+  reExportFiles: string[];
+  /** Files with type-only imports */
+  typeOnlyImportFiles: string[];
+  /** Files with dynamic imports */
+  dynamicImportFiles: string[];
 }
 
 /**
@@ -322,6 +410,8 @@ export interface SourceIndexFile {
   importedBy?: string[];
   /** Symbols this file exports (expanded for quick lookup) */
   exportedSymbols?: string[];
+  /** Detected file role (schema 1.2+) */
+  role?: FileRole;
 }
 
 /**
@@ -347,10 +437,10 @@ export interface ProjectManifest {
 }
 
 /**
- * Source index schema v1.0
+ * Source index schema v1.0 / v1.1 / v1.2
  */
 export interface SourceIndex {
-  schemaVersion: "1.0" | "1.1";
+  schemaVersion: "1.0" | "1.1" | "1.2";
   generatedAt: string;
   toolVersion: string;
   project: ProjectManifest;
@@ -371,6 +461,8 @@ export interface SourceIndex {
     /** Number of import edges resolved in dependency graph (optional) */
     importEdges?: number;
   };
+  /** Index insights (schema 1.2+) */
+  insights?: IndexInsights;
 }
 
 /**
@@ -424,6 +516,31 @@ export interface ReviewContextMetadata {
 export type RelationType = "changed" | "import" | "dependent" | "hub";
 
 // ====================================================================================
+// Explain Context Types
+// ====================================================================================
+
+/**
+ * Status of the explain-context diagnostic
+ */
+export type ExplainContextStatus = "available" | "unavailable";
+
+/**
+ * Output of the explain-context mode (JSON format)
+ */
+export interface ExplainContextOutput {
+  status: ExplainContextStatus;
+  reason?: string;
+  profile?: SkillProfile;
+  budgetChars?: number;
+  truncated?: boolean;
+  relatedFileCount?: number;
+  relationTypes?: RelationType[];
+  includedFiles?: string[];
+  contextPreview?: string;
+  indexUsed?: boolean;
+}
+
+// ====================================================================================
 // Skills Generator Types (create-skills command)
 // ====================================================================================
 
@@ -446,6 +563,10 @@ export interface SkillsGenerationContext {
   projectRoot: string;
   projectName: string;
   force: boolean;
+  /** Optional AI enrichment output to include in generated content */
+  enrichment?: AIEnrichmentOutput | undefined;
+  /** Codebase-aware knowledge base (v2). Built once, shared across adapters. */
+  knowledgeBase?: SkillKnowledgeBase | undefined;
 }
 
 /**
@@ -481,6 +602,159 @@ export interface SkillsGenerationResult {
   skipReason?: string;
 }
 
+// ====================================================================================
+// AI Enrichment Types
+// ====================================================================================
+
+/**
+ * AI enrichment mode
+ */
+export type EnrichmentMode = "none" | "ai";
+
+/**
+ * AI enrichment input - compact JSON from index
+ */
+export interface AIEnrichmentInput {
+  projectName: string;
+  packageVersion: string;
+  packageManager: string;
+  scripts: Record<string, string>;
+  bin: string | Record<string, string> | undefined;
+  engines: Record<string, string> | undefined;
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  detectedFrameworks: string[];
+  profile: SkillProfile;
+  fileCount: number;
+  moduleRoles: Record<string, string[]>;
+  publicApiFiles: string[];
+  testFileCount: number;
+  topDependencies: string[];
+  /** Test gap count (source files without tests) */
+  testGapCount: number;
+  /** Top dependencies with versions */
+  topDependenciesWithVersions: Record<string, string>;
+  /** Count of default-export files */
+  defaultExportCount: number;
+  /** Count of dynamic-import files */
+  dynamicImportCount: number;
+  /** Count of hub files (imported by >1 file) */
+  hubFileCount: number;
+}
+
+/**
+ * AI enrichment output - validated JSON from AI provider
+ */
+export interface AIEnrichmentOutput {
+  languageRules: string[];
+  libraryRules: string[];
+  versionNotes: string[];
+  riskWarnings: string[];
+  recommendedChecks: string[];
+}
+
+// ====================================================================================
+// SkillKnowledgeBase Types (v2 — codebase-aware skill generation)
+// ====================================================================================
+
+/** Module ownership info for a top-level directory */
+export interface ModuleInfo {
+  /** Top-level directory name, e.g. "src" or "(root)" */
+  directory: string;
+  /** Dominant role assigned to files in this directory */
+  dominantRole: FileRole;
+  /** Total source files in this directory (excluding tests) */
+  sourceFileCount: number;
+  /** Test files in this directory */
+  testFileCount: number;
+  /** Key source file paths (non-test, most symbols first, max 5) */
+  keyFiles: string[];
+  /** Key symbols across the module (max 10) */
+  keySymbols: Array<{ name: string; type: string; file: string }>;
+  /** Other directories that files in this directory import from */
+  importsFromDirs: string[];
+  /** Other directories that import files from this directory */
+  importedByDirs: string[];
+}
+
+/** Entrypoint classification */
+export interface EntrypointInfo {
+  type: "cli" | "public-api" | "config" | "command";
+  path: string;
+  /** Description: for commands the script string, for CLI the bin target */
+  label: string;
+}
+
+/** A source file lacking test coverage */
+export interface TestGapEntry {
+  sourceFile: string;
+  reason: "no-test-file" | "no-import-graph-match";
+}
+
+/** Testing knowledge from the index */
+export interface TestingMap {
+  /** Source file path -> associated test file paths */
+  testAssociations: Record<string, string[]>;
+  /** Source files with no associated test */
+  testGaps: TestGapEntry[];
+  /** Directories sorted by test file count (descending, max 10) */
+  mostTestedModules: ModuleInfo[];
+}
+
+/** A package dependency with version and usage info */
+export interface DepMapEntry {
+  packageName: string;
+  /** Version string from package.json */
+  version: string;
+  /** Files that import from this package */
+  files: string[];
+  /** Number of importing files */
+  fileCount: number;
+}
+
+/** A single risk item in the risk map */
+export interface RiskEntry {
+  file: string;
+  type: "default-export" | "re-export" | "dynamic-import" | "type-only-import" | "hub-file";
+  /** Human-readable description of the risk */
+  detail: string;
+  /** For hub-files: how many files import this file */
+  importCount?: number;
+}
+
+/** Top-level knowledge base derived from SourceIndex for skill generation */
+export interface SkillKnowledgeBase {
+  projectName: string;
+  projectVersion: string;
+  packageManager: string;
+  /** Module ownership by top-level directory */
+  modules: ModuleInfo[];
+  /** Detected entrypoints */
+  entrypoints: EntrypointInfo[];
+  /** Testing map and coverage gaps */
+  testing: TestingMap;
+  /** Top dependencies by usage count with versions (max 20) */
+  dependencies: DepMapEntry[];
+  /** Risk surface items */
+  risks: RiskEntry[];
+}
+
+/**
+ * Enrichment metadata embedded in skill file headers
+ */
+export type EnrichmentMetadata =
+  | {
+      mode: "none";
+    }
+  | {
+      mode: "ai";
+      provider: string;
+      model: string;
+      promptVersion: string;
+      inputHash: string;
+      outputHash: string;
+    };
+
 /**
  * Metadata embedded in every generated skill file header.
  */
@@ -490,6 +764,7 @@ export interface SkillsMetadata {
   sourceIndexHash: string;
   agent: AgentAdapterId;
   projectName: string;
+  enrichment?: EnrichmentMetadata;
 }
 
 // ── Dry-run types ─────────────────────────────────────────────────────────────

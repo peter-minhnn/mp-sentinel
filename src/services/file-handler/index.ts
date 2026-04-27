@@ -108,7 +108,9 @@ export class FileHandler {
    * Use `filterPathsWithIgnores` in runtime paths.
    */
   filterPaths(paths: string[]): FileFilterResult {
-    const filePaths = paths.map((p) => relative(this.cwd, resolve(this.cwd, p)));
+    const filePaths = paths.map((p) =>
+      relative(this.cwd, resolve(this.cwd, p)).replace(/\\/g, "/"),
+    );
     return this.classifyFiles(filePaths);
   }
 

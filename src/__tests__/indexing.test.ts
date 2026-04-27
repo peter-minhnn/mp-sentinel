@@ -56,11 +56,18 @@ describe("indexing CLI args", () => {
     expect(parsed.values.stats).toBe(true);
   });
 
-  it("parses --explain flag", () => {
+  it("parses --explain-index flag", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--explain-index", "src/foo.ts"];
+    const parsed = parseCliArgs();
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.explainIndex).toBe("src/foo.ts");
+  });
+
+  it("parses --explain alias for --explain-index", () => {
     process.argv = ["node", "mp-sentinel", "indexing", "--explain", "src/foo.ts"];
     const parsed = parseCliArgs();
     expect(parsed.command).toBe("indexing");
-    expect(parsed.values.explain).toBe("src/foo.ts");
+    expect(parsed.values.explainIndex).toBe("src/foo.ts");
   });
 });
 
@@ -259,7 +266,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.1");
+      expect(parsed.schemaVersion).toBe("1.2");
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
     } finally {
@@ -324,7 +331,7 @@ describe("indexing command output", () => {
 
     try {
       const exitCode = await runIndexingCommand(
-        { "index-format": "json", explain: "src/index.ts", force: true },
+        { "index-format": "json", explainIndex: "src/index.ts", force: true },
         cwd,
       );
 
@@ -370,7 +377,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.1");
+      expect(parsed.schemaVersion).toBe("1.2");
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
       expect(parsed.stats.indexedFiles).toBe(1);

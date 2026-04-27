@@ -22,7 +22,7 @@ Before working on any task, read [AGENTS.md](AGENTS.md). It is the authoritative
 
 ### Verification before done
 
-Always run the checklist from `AGENTS.md §7` before reporting a task complete. For runtime changes:
+Always run the checklist from `AGENTS.md §8` before reporting a task complete. For runtime changes:
 
 ```sh
 npm run format:check && npm run typecheck && npm test && npm run build

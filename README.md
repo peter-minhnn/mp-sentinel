@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.0.11-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.0.12-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,9 +43,12 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.11**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.12**:
 
-- 🤖 **`create-skills` command** — generate Claude, Cursor, Codex, Windsurf & more skill files from your source index in one command
+- 🔍 **`--explain-context` diagnostic mode** — show context building details without AI calls
+- 🛡️ **CLI parser hardening** — Commander 14 compatibility, version consistency
+- 💻 **Windows path normalization** — forward-slash paths on all platforms
+- 🔗 **Graph-Aware Indexing** — `importsFrom`/`importedBy` dependency edges, tsconfig alias resolution, pure-JSON stdout (v1.0.8)
 - 🔗 **Graph-Aware Indexing** — `importsFrom`/`importedBy` dependency edges, tsconfig alias resolution, pure-JSON stdout (v1.0.8)
 - 📇 **Source Indexing** — AST-based code indexing for smarter AI context (v1.0.7)
 - 🎯 **Agent Skills Integration** — Seamlessly inject local ecosystem rules (like `.cursor/rules` or `npx skills`)

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AgentAdapterId, SourceIndex } from "../../types/index.js";
+import type { AgentAdapterId, EnrichmentMetadata, SourceIndex } from "../../types/index.js";
 
 export const METADATA_MARKER = "@mp-sentinel-generated";
 
@@ -9,6 +9,7 @@ export interface SkillsMetadata {
   sourceIndexHash: string;
   agent: AgentAdapterId;
   projectName: string;
+  enrichment?: EnrichmentMetadata;
 }
 
 /** Sort a string-keyed record into stable [key, value] pairs for hashing. */
@@ -19,6 +20,9 @@ function sortRecord(obj: Record<string, string>): [string, string][] {
 /**
  * Deterministic hash covering all fields that affect generated skill content.
  * Excludes timestamps, duration stats, and cache metadata.
+ *
+ * SkillKnowledgeBase (v2) is purely derived from the fields hashed below,
+ * so this hash also guarantees knowledge-base staleness detection in --check.
  */
 function normalizeBin(
   bin: string | Record<string, string> | undefined,
@@ -47,26 +51,99 @@ export function computeIndexHash(index: SourceIndex): string {
       .map((f) => ({
         path: f.path,
         language: f.language,
+        role: f.role,
         symbols: f.symbols
           .map((s) => ({ name: s.name, type: s.type }))
           .sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type)),
-        importSources: f.imports.map((i) => i.source).sort(),
+        imports: f.imports
+          .map((i) => ({
+            source: i.source,
+            kind: i.kind,
+            names: [...i.names].sort(),
+            typeOnly: i.typeOnly === true,
+          }))
+          .sort(
+            (a, b) =>
+              a.source.localeCompare(b.source) ||
+              a.kind.localeCompare(b.kind) ||
+              a.names.join(",").localeCompare(b.names.join(",")) ||
+              String(a.typeOnly).localeCompare(String(b.typeOnly)),
+          ),
+        exports: f.exports
+          .map((e) => ({
+            kind: e.kind,
+            names: [...e.names].sort(),
+            source: e.source,
+            typeOnly: e.typeOnly === true,
+            isDefault: e.isDefault === true,
+          }))
+          .sort(
+            (a, b) =>
+              a.kind.localeCompare(b.kind) ||
+              a.names.join(",").localeCompare(b.names.join(",")) ||
+              (a.source ?? "").localeCompare(b.source ?? "") ||
+              String(a.typeOnly).localeCompare(String(b.typeOnly)) ||
+              String(a.isDefault).localeCompare(String(b.isDefault)),
+          ),
         importsFrom: (f.importsFrom ?? []).slice().sort(),
         importedBy: (f.importedBy ?? []).slice().sort(),
       }))
       .sort((a, b) => a.path.localeCompare(b.path)),
+    insights: index.insights
+      ? {
+          fileRoles: sortRecord(
+            Object.fromEntries(
+              Object.entries(index.insights.fileRoles).map(([k, v]) => [k, String(v)]),
+            ),
+          ),
+          publicApiFiles: [...index.insights.publicApiFiles].sort(),
+          testMap: sortRecord(
+            Object.fromEntries(
+              Object.entries(index.insights.testMap).map(([k, v]) => [k, [...v].sort().join(",")]),
+            ),
+          ),
+          commandMap: sortRecord(
+            Object.fromEntries(
+              Object.entries(index.insights.commandMap).map(([k, v]) => [k, String(v)]),
+            ),
+          ),
+          dependencyUsage: sortRecord(
+            Object.fromEntries(
+              Object.entries(index.insights.dependencyUsage).map(([k, v]) => [
+                k,
+                [...v].sort().join(","),
+              ]),
+            ),
+          ),
+          defaultExportFiles: [...index.insights.defaultExportFiles].sort(),
+          reExportFiles: [...index.insights.reExportFiles].sort(),
+          typeOnlyImportFiles: [...index.insights.typeOnlyImportFiles].sort(),
+          dynamicImportFiles: [...index.insights.dynamicImportFiles].sort(),
+        }
+      : undefined,
   };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }
 
 export function renderMetadataHeader(meta: SkillsMetadata): string {
-  const inner = [
+  const parts = [
     `generatorVersion=${meta.generatorVersion}`,
     `sourceIndexSchema=${meta.sourceIndexSchema}`,
     `sourceIndexHash=${meta.sourceIndexHash}`,
     `agent=${meta.agent}`,
     `projectName=${meta.projectName}`,
-  ].join(" ");
+  ];
+
+  if (meta.enrichment && meta.enrichment.mode !== "none") {
+    parts.push(`enrichmentMode=${meta.enrichment.mode}`);
+    parts.push(`enrichmentProvider=${meta.enrichment.provider}`);
+    parts.push(`enrichmentModel=${meta.enrichment.model}`);
+    parts.push(`enrichmentPromptVersion=${meta.enrichment.promptVersion}`);
+    parts.push(`enrichmentInputHash=${meta.enrichment.inputHash}`);
+    parts.push(`enrichmentOutputHash=${meta.enrichment.outputHash}`);
+  }
+
+  const inner = parts.join(" ");
   return `<!-- ${METADATA_MARKER} ${inner} -->`;
 }
 
@@ -131,13 +208,34 @@ export function parseMetadataFromContent(content: string): SkillsMetadata | null
         }
         const { generatorVersion, sourceIndexSchema, sourceIndexHash, agent, projectName } = pairs;
         if (!generatorVersion || !sourceIndexHash || !agent) return null;
-        return {
+
+        // Parse enrichment fields if present
+        const enrichmentMode = pairs["enrichmentMode"];
+        let enrichment: EnrichmentMetadata | undefined;
+        if (enrichmentMode) {
+          if (enrichmentMode === "none") {
+            enrichment = { mode: "none" };
+          } else {
+            enrichment = {
+              mode: enrichmentMode as "ai",
+              provider: pairs["enrichmentProvider"] ?? "",
+              model: pairs["enrichmentModel"] ?? "",
+              promptVersion: pairs["enrichmentPromptVersion"] ?? "",
+              inputHash: pairs["enrichmentInputHash"] ?? "",
+              outputHash: pairs["enrichmentOutputHash"] ?? "",
+            };
+          }
+        }
+
+        const result: SkillsMetadata = {
           generatorVersion,
           sourceIndexSchema: sourceIndexSchema ?? "",
           sourceIndexHash,
           agent: agent as AgentAdapterId,
           projectName: projectName ?? "",
         };
+        if (enrichment) result.enrichment = enrichment;
+        return result;
       }
     }
     // If malformed frontmatter or no metadata found, fall back to scanning first 20 lines
@@ -161,13 +259,34 @@ export function parseMetadataFromContent(content: string): SkillsMetadata | null
     }
     const { generatorVersion, sourceIndexSchema, sourceIndexHash, agent, projectName } = pairs;
     if (!generatorVersion || !sourceIndexHash || !agent) return null;
-    return {
+
+    // Parse enrichment fields if present
+    const enrichmentMode = pairs["enrichmentMode"];
+    let enrichment: EnrichmentMetadata | undefined;
+    if (enrichmentMode) {
+      if (enrichmentMode === "none") {
+        enrichment = { mode: "none" };
+      } else {
+        enrichment = {
+          mode: enrichmentMode as "ai",
+          provider: pairs["enrichmentProvider"] ?? "",
+          model: pairs["enrichmentModel"] ?? "",
+          promptVersion: pairs["enrichmentPromptVersion"] ?? "",
+          inputHash: pairs["enrichmentInputHash"] ?? "",
+          outputHash: pairs["enrichmentOutputHash"] ?? "",
+        };
+      }
+    }
+
+    const result: SkillsMetadata = {
       generatorVersion,
       sourceIndexSchema: sourceIndexSchema ?? "",
       sourceIndexHash,
       agent: agent as AgentAdapterId,
       projectName: projectName ?? "",
     };
+    if (enrichment) result.enrichment = enrichment;
+    return result;
   }
   return null;
 }

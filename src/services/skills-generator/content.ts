@@ -1,10 +1,17 @@
 /**
  * Shared content generation for the create-skills command.
  * Produces deterministic, structured markdown from a SourceIndex.
+ * Optionally includes AI-enriched best-practice sections.
  */
 
-import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
+import type {
+  SourceIndex,
+  SourceIndexFile,
+  AIEnrichmentOutput,
+  SkillKnowledgeBase,
+} from "../../types/index.js";
 import { detectProfile, type SkillProfile } from "./profile.js";
+import { buildSkillKnowledgeBase } from "./knowledge-base.js";
 
 const MAX_HUB_FILES = 10;
 const MAX_SYMBOLS_INLINE = 12;
@@ -13,6 +20,7 @@ const MAX_MODULE_DIRS = 15;
 const MAX_FILES_PER_DIR = 5;
 
 export interface SkillSections {
+  agentWorkflow: string;
   overview: string;
   architecture: string;
   hubFiles: string;
@@ -20,6 +28,12 @@ export interface SkillSections {
   commands: string;
   conventions: string;
   profileRules: string;
+  /** AI-enriched best-practice notes (null when AI enrichment is disabled) */
+  aiEnrichment: string | null;
+  codebaseMap: string;
+  testingMap: string;
+  dependencies: string;
+  publicApi: string;
 }
 
 export interface GeneratedContent {
@@ -30,13 +44,22 @@ export interface GeneratedContent {
   sections: SkillSections;
 }
 
-export function generateContent(index: SourceIndex | null, projectName: string): GeneratedContent {
+export function generateContent(
+  index: SourceIndex | null,
+  projectName: string,
+  enrichment?: AIEnrichmentOutput | null,
+  knowledgeBase?: SkillKnowledgeBase | null,
+): GeneratedContent {
   const name = index?.project.packageName ?? projectName;
   const version = index?.project.packageVersion ?? "unknown";
   const frameworks = index?.project.detectedFrameworks ?? [];
   const profile = detectProfile(index);
 
+  // Build knowledge base internally if not provided
+  const kb = knowledgeBase ?? (index ? buildSkillKnowledgeBase(index) : null);
+
   const sections: SkillSections = {
+    agentWorkflow: buildAgentWorkflow(name, kb),
     overview: buildOverview(name, version, frameworks, index, profile),
     architecture: buildArchitecture(index),
     hubFiles: buildHubFiles(index),
@@ -44,9 +67,36 @@ export function generateContent(index: SourceIndex | null, projectName: string):
     commands: buildCommands(index),
     conventions: buildConventions(index),
     profileRules: buildProfileRules(index, profile),
+    aiEnrichment: enrichment ? buildAIEnrichment(enrichment) : null,
+    codebaseMap: buildCodebaseMap(kb),
+    testingMap: buildTestingMapSection(kb),
+    dependencies: buildDependenciesSection(kb, enrichment),
+    publicApi: buildPublicApiSection(kb),
   };
 
   return { projectName: name, projectVersion: version, frameworks, profile, sections };
+}
+
+function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null): string {
+  const pm = kb?.packageManager ?? "npm";
+  return [
+    `## Required Agent Workflow`,
+    ``,
+    `Before writing any code for **${projectName}**, follow these steps in order:`,
+    ``,
+    `1. **Read this skill file** (SKILL.md) — understand the project profile, conventions, and pitfalls.`,
+    `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.cursor/rules/\`, \`.clinerules/\`.`,
+    `3. **Before touching any file**, use source index diagnostics:`,
+    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` — imports, dependents, symbols for the file`,
+    `   - \`mp-sentinel indexing --stats --index-format json\` — index summary with insight counts`,
+    `   - \`mp-sentinel --explain-context --format json --files <file>\` — review context enrichment`,
+    `4. **Load only the relevant references** for the paths you touch:`,
+    `   - \`references/codebase-map.md\` — module ownership, key files, symbols`,
+    `   - \`references/testing-map.md\` — test associations and gaps`,
+    `   - \`references/dependencies.md\` — dependency versions and usage`,
+    `   - \`references/public-api.md\` — public API surface and risks`,
+    `5. **Respect the profile rules** — each profile has specific review pitfalls listed below.`,
+  ].join("\n");
 }
 
 function buildOverview(
@@ -81,16 +131,14 @@ function buildArchitecture(index: SourceIndex | null): string {
     return "## Architecture\n\nNo source index available. Run `mp-sentinel indexing` first.";
   }
 
-  const hasGraph =
-    index.schemaVersion === "1.1" &&
-    index.files.some((f) => (f.importsFrom ?? f.importedBy) !== undefined);
+  const hasGraph = index.files.some((f) => (f.importsFrom ?? f.importedBy) !== undefined);
 
   const lines = [`## Architecture`];
 
   if (hasGraph) {
     lines.push(
       ``,
-      `Graph-aware index (schema 1.1). Import edges: ${index.stats.importEdges ?? 0}.`,
+      `Graph-aware index (schema ${index.schemaVersion}). Import edges: ${index.stats.importEdges ?? 0}.`,
     );
   }
 
@@ -120,7 +168,7 @@ function buildArchitecture(index: SourceIndex | null): string {
 }
 
 function buildHubFiles(index: SourceIndex | null): string {
-  if (!index || index.schemaVersion !== "1.1") return "";
+  if (!index || !index.files.some((f) => f.importedBy !== undefined)) return "";
 
   const hubFiles = index.files
     .filter((f) => (f.importedBy?.length ?? 0) > 1)
@@ -391,4 +439,238 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   }
 
   return lines.join("\n");
+}
+
+// ── Codebase Map ──────────────────────────────────────────────────────────
+
+function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
+  if (!kb) return "## Codebase Map\n\nNo source index available. Run `mp-sentinel indexing` first.";
+
+  const lines = [`## Codebase Map`];
+
+  // Module Ownership
+  if (kb.modules.length > 0) {
+    lines.push(``, `### Module Ownership`, ``);
+    for (const mod of kb.modules) {
+      lines.push(`#### \`${mod.directory}/\` — ${mod.dominantRole}`);
+      lines.push(`- ${mod.sourceFileCount} source file(s), ${mod.testFileCount} test file(s)`);
+      if (mod.keyFiles.length > 0) {
+        lines.push(`- Key files: ${mod.keyFiles.map((f) => `\`${f}\``).join(", ")}`);
+      }
+      if (mod.keySymbols.length > 0) {
+        lines.push(
+          `- Key symbols: ${mod.keySymbols.map((s) => `\`${s.name}\` (${s.type})`).join(", ")}`,
+        );
+      }
+      if (mod.importsFromDirs.length > 0) {
+        lines.push(`- Imports from: ${mod.importsFromDirs.map((d) => `\`${d}/\``).join(", ")}`);
+      }
+      if (mod.importedByDirs.length > 0) {
+        lines.push(`- Imported by: ${mod.importedByDirs.map((d) => `\`${d}/\``).join(", ")}`);
+      }
+      lines.push(``);
+    }
+  }
+
+  // Entrypoints
+  if (kb.entrypoints.length > 0) {
+    lines.push(`### Entrypoints`, ``);
+    for (const ep of kb.entrypoints) {
+      const icon =
+        ep.type === "cli"
+          ? "CLI"
+          : ep.type === "public-api"
+            ? "API"
+            : ep.type === "command"
+              ? "CMD"
+              : "CFG";
+      lines.push(`- **[${icon}]** \`${ep.path}\` — ${ep.label}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// ── Testing Map ────────────────────────────────────────────────────────────
+
+function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
+  if (!kb) return "## Testing Map\n\nNo source index available. Run `mp-sentinel indexing` first.";
+
+  const lines = [`## Testing Map`];
+
+  // Test Associations
+  const assocEntries = Object.entries(kb.testing.testAssociations);
+  if (assocEntries.length > 0) {
+    lines.push(``, `### Test Associations`, ``);
+    lines.push(`| Source File | Test File(s) |`);
+    lines.push(`|---|---|`);
+    for (const [source, tests] of assocEntries.slice(0, 20)) {
+      lines.push(`| \`${source}\` | ${tests.map((t) => `\`${t}\``).join(", ")} |`);
+    }
+    if (assocEntries.length > 20) {
+      lines.push(`| … | ${assocEntries.length - 20} more … |`);
+    }
+    lines.push(``);
+  }
+
+  // Test Gaps
+  if (kb.testing.testGaps.length > 0) {
+    lines.push(`### Test Gaps`, ``);
+    lines.push(`Files with no associated test coverage:`);
+    for (const gap of kb.testing.testGaps.slice(0, 30)) {
+      lines.push(
+        `- \`${gap.sourceFile}\` — ${gap.reason === "no-test-file" ? "no test file found" : "no import-graph match"}`,
+      );
+    }
+    if (kb.testing.testGaps.length > 30) {
+      lines.push(`- … and ${kb.testing.testGaps.length - 30} more`);
+    }
+    lines.push(``);
+  }
+
+  // Most Tested Modules
+  if (kb.testing.mostTestedModules.length > 0) {
+    lines.push(`### Most Tested Modules`, ``);
+    for (const mod of kb.testing.mostTestedModules) {
+      lines.push(`- \`${mod.directory}/\` — ${mod.testFileCount} test file(s)`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// ── Dependencies ───────────────────────────────────────────────────────────
+
+function buildDependenciesSection(
+  kb: SkillKnowledgeBase | null,
+  enrichment?: AIEnrichmentOutput | null,
+): string {
+  if (!kb) return "## Dependencies\n\nNo source index available. Run `mp-sentinel indexing` first.";
+
+  const lines = [`## Dependencies`];
+
+  if (kb.dependencies.length > 0) {
+    lines.push(``, `### Top Dependencies (by usage)`, ``);
+    lines.push(`| Package | Version | Used By |`);
+    lines.push(`|---|---|---|`);
+    for (const dep of kb.dependencies.slice(0, 15)) {
+      lines.push(`| \`${dep.packageName}\` | ${dep.version} | ${dep.fileCount} file(s) |`);
+    }
+    lines.push(``);
+
+    lines.push(`### Dependency Details`, ``);
+    for (const dep of kb.dependencies.slice(0, 15)) {
+      const fileList = dep.files
+        .slice(0, 5)
+        .map((f) => `\`${f}\``)
+        .join(", ");
+      const overflow = dep.files.length > 5 ? ` (+${dep.files.length - 5} more)` : "";
+      lines.push(`- **${dep.packageName}** v${dep.version} — used by: ${fileList}${overflow}`);
+    }
+  }
+
+  // Append AI enrichment if available
+  if (enrichment) {
+    const aiContent = buildAIEnrichment(enrichment);
+    if (aiContent) {
+      lines.push(``, aiContent);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
+
+function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
+  if (!kb) return "## Public API\n\nNo source index available. Run `mp-sentinel indexing` first.";
+
+  const lines = [`## Public API Surface`];
+
+  // Entry points
+  const apiEntries = kb.entrypoints.filter((ep) => ep.type === "public-api" || ep.type === "cli");
+  if (apiEntries.length > 0) {
+    lines.push(``, `### Entry Points`, ``);
+    for (const ep of apiEntries) {
+      lines.push(`- \`${ep.path}\` — ${ep.label}`);
+    }
+  }
+
+  // Risk Surface
+  if (kb.risks.length > 0) {
+    lines.push(``, `### Risk Surface`, ``);
+    const riskCounts = new Map<string, number>();
+    for (const r of kb.risks) {
+      riskCounts.set(r.type, (riskCounts.get(r.type) ?? 0) + 1);
+    }
+    lines.push(`| Risk Type | Count |`);
+    lines.push(`|---|---|`);
+    for (const [type, count] of [...riskCounts.entries()].sort()) {
+      lines.push(`| ${type} | ${count} |`);
+    }
+    lines.push(``);
+
+    lines.push(`### Risk Details`, ``);
+    for (const risk of kb.risks.slice(0, 20)) {
+      const extra = risk.importCount !== undefined ? ` (${risk.importCount} importers)` : "";
+      lines.push(`- **${risk.type}**: \`${risk.file}\`${extra} — ${risk.detail}`);
+    }
+    if (kb.risks.length > 20) {
+      lines.push(`- … and ${kb.risks.length - 20} more risks`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// ── AI Enrichment sections ──────────────────────────────────────────────────
+
+/**
+ * Build AI-enriched best-practice sections from AIEnrichmentOutput.
+ * Returns an empty string if there are no rules to display.
+ */
+function buildAIEnrichment(enrichment: AIEnrichmentOutput): string {
+  const parts: string[] = [];
+
+  if (enrichment.languageRules.length > 0) {
+    parts.push(`## AI-Enriched Language & Framework Rules`, ``);
+    for (const rule of enrichment.languageRules) {
+      parts.push(`- ${rule}`);
+    }
+    parts.push(``);
+  }
+
+  if (enrichment.libraryRules.length > 0) {
+    parts.push(`## AI-Enriched Library Best Practices`, ``);
+    for (const rule of enrichment.libraryRules) {
+      parts.push(`- ${rule}`);
+    }
+    parts.push(``);
+  }
+
+  if (enrichment.versionNotes.length > 0) {
+    parts.push(`## AI-Enriched Version Notes`, ``);
+    for (const note of enrichment.versionNotes) {
+      parts.push(`- ${note}`);
+    }
+    parts.push(``);
+  }
+
+  if (enrichment.riskWarnings.length > 0) {
+    parts.push(`## AI-Enriched Risk Warnings`, ``);
+    for (const warning of enrichment.riskWarnings) {
+      parts.push(`- ${warning}`);
+    }
+    parts.push(``);
+  }
+
+  if (enrichment.recommendedChecks.length > 0) {
+    parts.push(`## AI-Enriched Recommended Checks`, ``);
+    for (const check of enrichment.recommendedChecks) {
+      parts.push(`- ${check}`);
+    }
+    parts.push(``);
+  }
+
+  return parts.join("\n").trim();
 }

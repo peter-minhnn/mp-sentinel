@@ -1,3 +1,148 @@
+# What's New in v1.0.13
+
+## Generated Skills Quality v2 — Codebase-Aware Skills
+
+### 1. SkillKnowledgeBase — Structured Codebase Knowledge
+
+`create-skills` now builds a `SkillKnowledgeBase` from the source index — a deterministic, structured view of the codebase that drives all generated content:
+
+- **Module Ownership**: Per-directory breakdown with dominant role, key files, key symbols, and import/export relationships
+- **Entrypoints**: CLI entry, commands, public API, and config files surfaced explicitly
+- **Testing Map**: Test-to-source associations, test gaps (source files without test coverage), and most-tested modules
+- **Dependency Map**: Top 20 external dependencies with actual versions from `package.json` and file-level usage tracking
+- **Risk Surface**: Default exports, re-exports, dynamic imports, type-only imports, and hub files (high blast-radius files imported by many others)
+
+All derived deterministically from `SourceIndex` — no AI calls in the knowledge base layer. When `index.insights` is absent, returns a minimal KB with empty arrays (graceful degradation).
+
+### 2. New Reference Files (Claude Adapter)
+
+The Claude adapter now produces **8 files** (was 4):
+
+| File | Content |
+|------|---------|
+| `SKILL.md` | Frontmatter + updated workflow + overview + 7 references |
+| `references/architecture.md` | Architecture + hub files (kept) |
+| `references/modules.md` | Module map (kept) |
+| `references/commands.md` | Commands + conventions (kept) |
+| **`references/codebase-map.md`** | Module ownership + entrypoints tables |
+| **`references/testing-map.md`** | Test associations, test gaps, most-tested modules |
+| **`references/dependencies.md`** | Top dependencies with versions (always present; AI enrichment appended when active) |
+| **`references/public-api.md`** | Entry points + risk surface table |
+
+`dependencies.md` is now **always present** (was conditional on AI enrichment). When AI enrichment is active, version-aware rules are appended to it.
+
+### 3. Enhanced Agent Workflow
+
+The SKILL.md workflow now enforces a progressive-disclosure pattern:
+
+1. Read the skill file itself
+2. Read `AGENTS.md` / local rules
+3. Use `indexing --explain-index <file>` for touched files
+4. Read appropriate references (codebase-map, testing-map, dependencies, public-api)
+
+This ensures agents load only the context relevant to their current task.
+
+### 4. Single-File Adapters Embed Knowledge Base
+
+All 6 single-file adapters (`cursor`, `codex`, `cline`, `windsurf`, `antigravity`, `generic`) now embed condensed versions of the 4 new knowledge base sections (codebase map, testing map, dependencies, public API) directly in their output files. No separate reference files are created — the knowledge is inline.
+
+### 5. Version-Aware AI Enrichment
+
+When `createSkills.ai.enabled` is true, AI enrichment now receives:
+
+- `topDependenciesWithVersions` — actual versions from `package.json`
+- `testGapCount`, `defaultExportCount`, `dynamicImportCount`, `hubFileCount` — for richer, codebase-specific recommendations
+
+The enrichment prompt instructs the model to base all recommendations on actual dependency versions, not generic advice.
+
+### 6. Indexing Stats Expansion
+
+`indexing --stats` now shows additional insight counts: default exports, re-exports, type-only imports, dynamic imports, and hub files (files with `importedBy > 1`).
+
+## Documentation
+
+- [Changelog](./docs/CHANGELOG.md) — detailed technical changes per version
+- [Create Skills Guide](./docs/CREATE_SKILLS.md) — updated with new Claude output structure (8 files)
+
+## Migration
+
+No breaking changes. All improvements are additive. Existing skill files remain valid; re-run `create-skills` to get the enhanced output. Single-file adapters produce larger files (4 new sections embedded inline), but the CLI interface and exit codes are unchanged.
+
+## Summary
+
+- **Version**: 1.0.13
+- **Release Date**: 2026-04-28
+- **Builds on**: v1.0.12 diagnostics & CLI hardening
+
+---
+
+# What's New in v1.0.12
+
+## Diagnostics & CLI Hardening
+
+### 1. `--explain-context` Diagnostic Mode
+
+The `review` command now supports a diagnostic-only mode that shows context building details without making any AI calls:
+
+```bash
+mp-sentinel --explain-context
+mp-sentinel --explain-context --format json --files src/cli/review.ts
+```
+
+- Displays index availability, profile detection, related files, and relation types
+- Pure diagnostic — never calls any AI provider
+- JSON output is valid parseable JSON
+- Console output uses ASCII only (no emoji — avoids mojibake on Windows)
+- Exit code `0` in all non-error cases (even if no index available)
+
+### 2. CLI Parser Hardening
+
+- **Robust help/version exit detection**: Commander 14 uses `commander.helpDisplayed` / `commander.versionDisplayed` codes. The parser now also handles older `commander.help` / `commander.version` codes defensively, ensuring all help/version related exits return code `0`.
+- **Root command action**: Added empty `.action()` handler to prevent Commander 14 from auto-showing help when subcommands are registered but none is provided.
+
+### 3. Version Consistency
+
+All runtime version references now use `process.env.npm_package_version` first, then the installed `mp-sentinel` package metadata, with a consistent `"0.0.0-dev"` final fallback:
+- `src/cli/args.ts` — Commander version string
+- `src/cli/help.ts` — `showVersion()` output
+- `src/services/ai/index.ts` — cache key derivation
+- `src/commands/create-skills.ts` — generated file metadata header
+
+This ensures `node dist/index.js --version` matches `package.json` version in production builds and direct local dist smoke tests.
+
+### 4. Backward-Compatible `--explain` Alias
+
+`indexing --explain <file>` continues to work as an alias for `indexing --explain-index <file>`. Both flags map to the same `explainIndex` internal value. The `--explain` alias is preserved for script compatibility (not removed as a breaking change).
+
+### 5. Windows Path Normalization
+
+File paths returned by `FileHandler.filterPaths()` are now normalized to forward-slash format on Windows, preventing double-backslash issues in reported file paths.
+
+## Smaller Fixes
+
+- Tightened `runIndexingCommand()` parameter type from `CLIValues` to a focused intersection type, preventing accidental use of unrelated CLI fields.
+- Test coverage for `--explain-context` parsing, render behavior, exit codes, and JSON output shape.
+- Non-ASCII characters verified clean in all source and test files.
+- `create-skills` can optionally enrich generated skills with AI-generated, version-aware dependency rules from the configured provider/model.
+- Source index schema `1.2` adds codebase insights used by generated skills and stale-check hashing.
+
+## Documentation
+
+- [Changelog](./docs/CHANGELOG.md) — detailed technical changes per version
+- [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md) — `--explain-context` flag added
+
+## Migration
+
+No breaking changes. All improvements are additive.
+
+## Summary
+
+- **Version**: 1.0.12
+- **Release Date**: 2026-04-28
+- **Builds on**: v1.0.11 repository-aware review context
+
+---
+
 # What's New in v1.0.11
 
 ## Major Features
@@ -148,8 +293,8 @@ npx mp-sentinel create-skills --agent claude --force
 
 **What's generated:**
 - Project overview (name, version, frameworks, package manager)
-- Architecture (top-level directories, dependency graph stats when schema 1.1)
-- Hub files (most-imported files with their exported symbols — schema 1.1 only)
+- Architecture (top-level directories, dependency graph stats when schema 1.2)
+- Hub files (most-imported files with their exported symbols — schema 1.2)
 - Module map (per-directory breakdown with key exported symbols)
 - Development commands (`npm test`, `npm run build`, type-check)
 - Code conventions (ESM imports, TypeScript, test file count)
@@ -175,7 +320,7 @@ Possible statuses: `up-to-date`, `stale` (hash mismatch), `missing`, `wrong-agen
 
 Every generated file begins with a metadata header:
 ```
-<!-- @mp-sentinel-generated generatorVersion=1.0.9 sourceIndexSchema=1.1 sourceIndexHash=<16hexchars> agent=claude projectName=my-project -->
+<!-- @mp-sentinel-generated generatorVersion=1.0.9 sourceIndexSchema=1.2 sourceIndexHash=<16hexchars> agent=claude projectName=my-project -->
 ```
 The `sourceIndexHash` is a sha256 over sorted file paths, symbols, and import edges — no timestamps, no random values. Re-running `create-skills` on the same index always produces byte-identical files. `--check` uses this hash to detect staleness without re-reading file content.
 

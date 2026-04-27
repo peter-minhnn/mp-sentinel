@@ -12,6 +12,7 @@ import {
   parseAgentFlag,
   getAdapter,
   detectProfile,
+  resolveAIEnrichmentConfig,
 } from "../services/skills-generator/index.js";
 import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
@@ -253,7 +254,7 @@ describe("generateContent", () => {
 // ── Adapter output ────────────────────────────────────────────────────────────
 
 describe("Claude adapter generate()", () => {
-  it("creates SKILL.md + 3 reference files", async () => {
+  it("creates SKILL.md + 7 reference files", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     const index = await buildSourceIndex(
@@ -272,16 +273,21 @@ describe("Claude adapter generate()", () => {
       projectName: "fixture",
       force: false,
     });
-    expect(files.length).toBe(4);
+    expect(files.length).toBe(8);
     expect(files.some((f) => f.outputPath.endsWith("SKILL.md"))).toBe(true);
-    expect(files.some((f) => f.outputPath.includes("references"))).toBe(true);
+    expect(files.some((f) => f.outputPath.includes("codebase-map.md"))).toBe(true);
+    expect(files.some((f) => f.outputPath.includes("testing-map.md"))).toBe(true);
+    expect(files.some((f) => f.outputPath.includes("dependencies.md"))).toBe(true);
+    expect(files.some((f) => f.outputPath.includes("public-api.md"))).toBe(true);
     const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"))!;
     expect(skillMd.content).toContain("name: fixture-best-practices");
+    expect(skillMd.content).toContain("codebase-map.md");
+    expect(skillMd.content).toContain("testing-map.md");
   });
 });
 
 describe("Cursor adapter generate()", () => {
-  it("creates a single .mdc file", async () => {
+  it("creates a single .mdc file with all sections", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     const adapter = getAdapter("cursor")!;
@@ -292,6 +298,12 @@ describe("Cursor adapter generate()", () => {
     });
     expect(files.length).toBe(1);
     expect(files[0]?.outputPath.endsWith(".mdc")).toBe(true);
+    const content = files[0]!.content;
+    expect(content).toContain("Required Agent Workflow");
+    expect(content).toContain("Codebase Map");
+    expect(content).toContain("Testing Map");
+    expect(content).toContain("Dependencies");
+    expect(content).toContain("Public API");
   });
 });
 
@@ -1215,7 +1227,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
     ...overrides,
   };
   return {
-    schemaVersion: "1.1",
+    schemaVersion: "1.2",
     generatedAt: "2026-01-01T00:00:00.000Z",
     toolVersion: "1.0.0",
     project,
@@ -1297,6 +1309,82 @@ describe("computeIndexHash correctness", () => {
     };
     // ./utils.js vs ./utils — changes ESM convention detection
     expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+
+  it("changes when imported names change", () => {
+    const base = makeMinimalIndex();
+    const modified: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          imports: [{ source: "./utils.js", kind: "named", names: ["helper", "extra"], line: 1 }],
+        },
+      ],
+    };
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+
+  it("changes when import type-only status changes", () => {
+    const base = makeMinimalIndex();
+    const modified: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          imports: [
+            { source: "./utils.js", kind: "named", names: ["helper"], line: 1, typeOnly: true },
+          ],
+        },
+      ],
+    };
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
+  });
+
+  it("changes when export names or sources change", () => {
+    const base = makeMinimalIndex();
+    const namedExport: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          exports: [{ kind: "named", names: ["main"], line: 1 }],
+        },
+      ],
+    };
+    const reExport: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          exports: [{ kind: "named", names: ["main"], line: 1, source: "./main.js" }],
+        },
+      ],
+    };
+    expect(computeIndexHash(base)).not.toBe(computeIndexHash(namedExport));
+    expect(computeIndexHash(namedExport)).not.toBe(computeIndexHash(reExport));
+  });
+
+  it("does not mutate insight arrays while hashing", () => {
+    const index: SourceIndex = {
+      ...makeMinimalIndex(),
+      insights: {
+        fileRoles: { "src/index.ts": "cli-entry" },
+        publicApiFiles: ["src/index.ts"],
+        testMap: { "src/index.ts": ["src/b.test.ts", "src/a.test.ts"] },
+        commandMap: { test: "test" },
+        dependencyUsage: { typescript: ["src/z.ts", "src/a.ts"] },
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      },
+    };
+
+    computeIndexHash(index);
+
+    expect(index.insights!.testMap["src/index.ts"]).toEqual(["src/b.test.ts", "src/a.test.ts"]);
+    expect(index.insights!.dependencyUsage["typescript"]).toEqual(["src/z.ts", "src/a.ts"]);
   });
 });
 
@@ -1441,6 +1529,52 @@ describe("profileRules content", () => {
     expect(content.sections.profileRules).toContain("Import Conventions");
   });
 
+  it("includes schema 1.2 graph and hub-file context", () => {
+    const base = makeMinimalIndex();
+    const index: SourceIndex = {
+      ...base,
+      files: [
+        {
+          ...base.files[0]!,
+          path: "src/index.ts",
+          importsFrom: ["src/utils.ts"],
+          importedBy: [],
+        },
+        {
+          ...base.files[0]!,
+          path: "src/other.ts",
+          importsFrom: ["src/utils.ts"],
+          importedBy: [],
+          symbols: [{ name: "other", type: "function", line: 1, column: 0 }],
+        },
+        {
+          ...base.files[0]!,
+          path: "src/utils.ts",
+          imports: [],
+          importsFrom: [],
+          importedBy: ["src/index.ts", "src/other.ts"],
+          symbols: [{ name: "helper", type: "function", line: 1, column: 0 }],
+        },
+      ],
+      stats: { ...base.stats, totalFiles: 3, indexedFiles: 3, importEdges: 2 },
+    };
+
+    const content = generateContent(index, "test");
+
+    expect(content.sections.architecture).toContain("Graph-aware index (schema 1.2)");
+    expect(content.sections.hubFiles).toContain("src/utils.ts");
+  });
+
+  it("normalizes valid AI enrichment provider names", () => {
+    expect(resolveAIEnrichmentConfig({ provider: "OpenAI" }).provider).toBe("openai");
+  });
+
+  it("throws on unsupported AI enrichment provider names", () => {
+    expect(() => resolveAIEnrichmentConfig({ provider: "azure" })).toThrow(
+      'Unsupported createSkills.ai.provider "azure"',
+    );
+  });
+
   it("includes test expectations when test files exist", () => {
     const idx = makeMinimalIndex();
     const withTest: typeof idx = {
@@ -1537,5 +1671,164 @@ describe("--all-agents generic exclusion", () => {
       .files.map((f) => f.action);
     expect(codexActions.every((a) => a === "create")).toBe(true);
     expect(genericActions.every((a) => a === "conflict")).toBe(true);
+  });
+});
+
+// ── SkillKnowledgeBase ──────────────────────────────────────────────────────
+
+import { buildSkillKnowledgeBase } from "../services/skills-generator/knowledge-base.js";
+
+describe("buildSkillKnowledgeBase", () => {
+  it("returns minimal KB for an index with no insights", () => {
+    const index = makeMinimalIndex();
+    const kb = buildSkillKnowledgeBase(index);
+    expect(kb.modules).toEqual([]);
+    expect(kb.entrypoints).toEqual([]);
+    expect(kb.dependencies).toEqual([]);
+    expect(kb.risks).toEqual([]);
+    expect(kb.testing.testAssociations).toEqual({});
+    expect(kb.testing.testGaps).toEqual([]);
+  });
+
+  it("computes module ownership from file roles", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const config = {
+      enabled: true,
+      languages: ["typescript" as const],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, config, true);
+    expect(index).not.toBeNull();
+    const kb = buildSkillKnowledgeBase(index!);
+    expect(kb.modules.length).toBeGreaterThan(0);
+    const srcModule = kb.modules.find((m) => m.directory === "src");
+    expect(srcModule).toBeDefined();
+    expect(srcModule!.keyFiles).toContain("src/index.ts");
+  });
+
+  it("detects CLI entrypoint from bin field and fileRoles", () => {
+    const idx = makeMinimalIndex({ bin: "dist/index.js" });
+    const withInsights: SourceIndex = {
+      ...idx,
+      insights: {
+        fileRoles: { "src/index.ts": "cli-entry" },
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: {},
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      },
+    };
+    const kb = buildSkillKnowledgeBase(withInsights);
+    const cliEntries = kb.entrypoints.filter((e) => e.type === "cli");
+    expect(cliEntries.length).toBeGreaterThan(0);
+  });
+
+  it("includes dependency versions from manifest", () => {
+    const idx = makeMinimalIndex({ dependencies: { typescript: "5.0.0" } });
+    const withInsights: SourceIndex = {
+      ...idx,
+      insights: {
+        fileRoles: {},
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: { typescript: ["src/index.ts"] },
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      },
+    };
+    const kb = buildSkillKnowledgeBase(withInsights);
+    expect(kb.dependencies.length).toBeGreaterThan(0);
+    const tsDep = kb.dependencies.find((d) => d.packageName === "typescript");
+    expect(tsDep).toBeDefined();
+    expect(tsDep!.version).toBe("5.0.0");
+  });
+
+  it("is deterministic for the same index", () => {
+    const idx = makeMinimalIndex({ dependencies: { typescript: "5.0.0" } });
+    expect(buildSkillKnowledgeBase(idx)).toEqual(buildSkillKnowledgeBase(idx));
+  });
+
+  it("sorts modules by source file count descending", () => {
+    const idx = makeMinimalIndex();
+    const kb = buildSkillKnowledgeBase(idx);
+    for (let i = 1; i < kb.modules.length; i++) {
+      expect(kb.modules[i - 1]!.sourceFileCount).toBeGreaterThanOrEqual(
+        kb.modules[i]!.sourceFileCount,
+      );
+    }
+  });
+
+  it("sorts dependencies by usage count descending", () => {
+    const idx = makeMinimalIndex({ dependencies: { typescript: "5.0.0" } });
+    const kb = buildSkillKnowledgeBase(idx);
+    for (let i = 1; i < kb.dependencies.length; i++) {
+      expect(kb.dependencies[i - 1]!.fileCount).toBeGreaterThanOrEqual(
+        kb.dependencies[i]!.fileCount,
+      );
+    }
+  });
+});
+
+// ── Agent Workflow v2 ──────────────────────────────────────────────────────
+
+describe("agentWorkflow v2 content", () => {
+  it("enforces mandatory index-first diagnostics", () => {
+    const content = generateContent(null, "test", null);
+    expect(content.sections.agentWorkflow).toContain("Before touching any file");
+    expect(content.sections.agentWorkflow).toContain("--explain-index");
+    expect(content.sections.agentWorkflow).toContain("codebase-map.md");
+    expect(content.sections.agentWorkflow).toContain("testing-map.md");
+    expect(content.sections.agentWorkflow).toContain("dependencies.md");
+    expect(content.sections.agentWorkflow).toContain("public-api.md");
+  });
+});
+
+// ── New reference file existence checks ─────────────────────────────────────
+
+describe("--all-agents includes new reference files", () => {
+  it("writes all 7 Claude reference files", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": undefined,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+      },
+      cwd,
+    );
+
+    const base = join(cwd, ".claude", "skills", "fixture-best-practices", "references");
+    expect(existsSync(join(base, "codebase-map.md"))).toBe(true);
+    expect(existsSync(join(base, "testing-map.md"))).toBe(true);
+    expect(existsSync(join(base, "dependencies.md"))).toBe(true);
+    expect(existsSync(join(base, "public-api.md"))).toBe(true);
+    expect(existsSync(join(base, "architecture.md"))).toBe(true);
+    expect(existsSync(join(base, "modules.md"))).toBe(true);
+    expect(existsSync(join(base, "commands.md"))).toBe(true);
   });
 });

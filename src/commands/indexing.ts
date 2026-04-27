@@ -22,6 +22,7 @@ import {
   calculateSHA256,
 } from "../services/source-index/storage.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
+import { buildIndexInsights } from "../services/skills-generator/insights.js";
 import type { CLIValues } from "../cli/args.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
@@ -39,7 +40,7 @@ const SUPPORTED_INDEX_FORMATS = new Set(["console", "json"]);
 const MAX_PARSE_ERROR_RATE = 0.5;
 
 interface ExplainOptions {
-  explain?: string;
+  explainIndex?: string;
   stats?: boolean;
 }
 
@@ -303,9 +304,9 @@ export async function buildSourceIndex(
     }
   }
 
-  // Build index
-  const index: SourceIndex = {
-    schemaVersion: "1.1",
+  // Build preliminary index for insights computation
+  const preIndex: SourceIndex = {
+    schemaVersion: "1.2",
     generatedAt: new Date().toISOString(),
     toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
     project: manifest,
@@ -321,6 +322,39 @@ export async function buildSourceIndex(
       cacheHitFiles: cachedFiles.length,
       importEdges,
     },
+  };
+
+  // Compute insights
+  log.info("Computing index insights...");
+  const insights = buildIndexInsights(preIndex);
+
+  // Apply roles to files and build final index with insights
+  for (const file of allFiles) {
+    const role = insights.fileRoles[file.path];
+    if (role && role !== "unknown") {
+      file.role = role;
+    }
+  }
+
+  // Build index
+  const index: SourceIndex = {
+    schemaVersion: "1.2",
+    generatedAt: new Date().toISOString(),
+    toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
+    project: manifest,
+    files: allFiles,
+    manifestHash,
+    stats: {
+      totalFiles: indexableFiles.length,
+      indexedFiles: allFiles.length,
+      skippedFiles: indexableFiles.length - allFiles.length,
+      parseErrors: totalParseErrors,
+      durationMs: performance.now() - startTime,
+      parsedFiles: parsedFiles.length,
+      cacheHitFiles: cachedFiles.length,
+      importEdges,
+    },
+    insights,
   };
 
   // Write cache
@@ -340,7 +374,7 @@ export async function buildSourceIndex(
  * Run the indexing command
  */
 export async function runIndexingCommand(
-  values: CLIValues & { force?: boolean; stats?: boolean; explain?: string },
+  values: Partial<CLIValues> & { force?: boolean; stats?: boolean; explainIndex?: string },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
   const startTime = performance.now();
@@ -359,9 +393,9 @@ export async function runIndexingCommand(
 
     const index = await buildSourceIndex(projectRoot, indexingConfig, values.force);
 
-    // Handle --explain option
-    if (values.explain) {
-      return handleExplain(values.explain, index, format, projectRoot);
+    // Handle --explain-index option
+    if (values.explainIndex) {
+      return handleExplain(values.explainIndex, index, format, projectRoot);
     }
 
     // Handle --stats option
@@ -390,6 +424,12 @@ export async function runIndexingCommand(
         console.log(`  Errors:   ${index.stats.parseErrors} parse errors`);
         console.log(`  Cache:    ${indexingConfig.cachePath}`);
         console.log(`  Generated: ${index.generatedAt}`);
+        console.log(`  Schema:    ${index.schemaVersion}`);
+        if (index.insights) {
+          console.log(
+            `  Insights: ${Object.keys(index.insights.fileRoles).length} roles, ${index.insights.publicApiFiles.length} public APIs, ${Object.keys(index.insights.testMap).length} test associations`,
+          );
+        }
         console.log();
       } else {
         console.log("Indexing completed but no index was generated.");
@@ -447,6 +487,21 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     durationMs: index.stats.durationMs,
     importEdges: index.stats.importEdges,
     graphEnabled: index.files.some((f) => f.importsFrom || f.importedBy),
+    schemaVersion: index.schemaVersion,
+    insights: index.insights
+      ? {
+          fileRoles: Object.keys(index.insights.fileRoles).length,
+          publicApiFiles: index.insights.publicApiFiles.length,
+          testAssociations: Object.keys(index.insights.testMap).length,
+          commandMap: Object.keys(index.insights.commandMap).length,
+          dependencyUsage: Object.keys(index.insights.dependencyUsage).length,
+          defaultExportFiles: index.insights.defaultExportFiles.length,
+          reExportFiles: index.insights.reExportFiles.length,
+          typeOnlyImportFiles: index.insights.typeOnlyImportFiles.length,
+          dynamicImportFiles: index.insights.dynamicImportFiles.length,
+          hubFileCount: index.files.filter((f) => (f.importedBy?.length ?? 0) > 1).length,
+        }
+      : undefined,
   };
 
   if (format === "json") {
@@ -460,6 +515,19 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     console.log(`  Parse errors:     ${stats.parseErrors}`);
     console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
     console.log(`  Graph enabled:    ${stats.graphEnabled ? "yes" : "no"}`);
+    console.log(`  Schema version:   ${stats.schemaVersion}`);
+    if (stats.insights) {
+      console.log(`  File roles:        ${stats.insights.fileRoles}`);
+      console.log(`  Public APIs:       ${stats.insights.publicApiFiles}`);
+      console.log(`  Test associations:  ${stats.insights.testAssociations}`);
+      console.log(`  Script categories:  ${stats.insights.commandMap}`);
+      console.log(`  Dependencies used:  ${stats.insights.dependencyUsage}`);
+      console.log(`  Default exports:    ${stats.insights.defaultExportFiles}`);
+      console.log(`  Re-exports:         ${stats.insights.reExportFiles}`);
+      console.log(`  Type-only imports:  ${stats.insights.typeOnlyImportFiles}`);
+      console.log(`  Dynamic imports:    ${stats.insights.dynamicImportFiles}`);
+      console.log(`  Hub files:          ${stats.insights.hubFileCount}`);
+    }
     console.log(`  Duration:         ${(stats.durationMs ?? 0).toFixed(0)}ms`);
     console.log();
   }
@@ -513,6 +581,7 @@ async function handleExplain(
     importsFrom: file.importsFrom,
     importedBy: file.importedBy,
     exportedSymbols: file.exportedSymbols,
+    role: file.role,
   };
 
   if (format === "json") {
@@ -521,6 +590,9 @@ async function handleExplain(
     console.log();
     log.header(`Dependency Info: ${file.path}`);
     console.log(`  Language: ${file.language}`);
+    if (file.role) {
+      console.log(`  Role: ${file.role}`);
+    }
 
     if (file.importsFrom && file.importsFrom.length > 0) {
       console.log(`\n  Imports from:`);

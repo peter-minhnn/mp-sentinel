@@ -5,24 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.11] - 2026-04-27
+## [1.0.13] - 2026-04-28
 
 ### Added
-- **Repository-aware review context (v2)**: New `src/services/source-index/context-builder.ts` service provides impact-aware context enrichment with priority ranking: changed files → direct imports → direct dependents → hub files
-- **Configurable context caps**: Added `indexing.maxRelatedFiles` (default 3) to control how many related files per changed file are included in the review context
-- **Hub file detection**: Automatically includes most-imported files (`importedBy ≥ 3`) when budget remains, capped to 5
-- **Profile-aware review pitfalls**: Concise 3–5 bullet section based on `detectProfile()` (reused from `create-skills`) — includes tailored guidance for `cli-tooling`, `node-service`, `react-next`, and `library` profiles
-- **Character budget enforcement**: Hard limit `INDEX_CONTEXT_MAX_CHARS = 12000` with truncation marker `[Source index context truncated to budget]`
-- **Review context metadata**: Internal `ReviewContextMetadata` and `RelationType` types for testability and explainability
+- **SkillKnowledgeBase**: New internal module (`src/services/skills-generator/knowledge-base.ts`) that builds structured codebase knowledge from `SourceIndex` — module ownership, entrypoints, testing map, dependency map, and risk surface. Pure deterministic derivation, no AI calls. Returns minimal KB (empty arrays) when `index.insights` is absent.
+- **4 new Claude reference files**: `references/codebase-map.md` (module ownership + entrypoints), `references/testing-map.md` (test associations, gaps, most-tested modules), `references/dependencies.md` (top dependencies with versions, always present), `references/public-api.md` (entry points + risk surface). Claude adapter now produces 8 files total (was 4-5).
+- **7 new types in `src/types/index.ts`**: `ModuleInfo`, `EntrypointInfo`, `TestGapEntry`, `TestingMap`, `DepMapEntry`, `RiskEntry`, `SkillKnowledgeBase`. Added `knowledgeBase` field to `SkillsGenerationContext`.
+- **4 new content sections**: `codebaseMap`, `testingMap`, `dependencies`, `publicApi` in `SkillSections` with corresponding builders in `content.ts`. Single-file adapters embed condensed versions inline.
+- **`AIEnrichmentInput` expansion**: 5 new fields — `testGapCount`, `topDependenciesWithVersions`, `defaultExportCount`, `dynamicImportCount`, `hubFileCount` — for richer AI recommendations.
+- **Indexing stats expansion**: `handleStats()` now shows default export, re-export, type-only import, dynamic import counts, and hub file count.
+- **Updated agent workflow**: SKILL.md enforces progressive disclosure — read skill → read AGENTS.md → use `--explain-index` → read appropriate references.
 
 ### Changed
-- **`src/cli/review.ts`**: `buildIndexContext()` now delegates to `buildReviewContext()` service, reducing complexity and improving testability
-- **`AGENTS.md`**: Updated Review Context Enrichment section with detailed priority, ranking, and profile rules
-- **`docs/ARCHITECTURE.md`**: Comprehensive update to reflect current source indexing and review context architecture
+- **`dependencies.md`**: Now always generated (was conditional on AI enrichment). AI enrichment is appended when active.
+- **All 7 adapters updated**: Pass `context.knowledgeBase` to `generateContent()`. Claude adapter references list expanded from 4 to 7.
+- **AI enrichment prompt**: Bumped `ENRICHMENT_PROMPT_VERSION` to `2026-04-28`. Prompt now uses actual dependency versions and richer project details for version-aware rules.
 
 ### Fixed
-- **Review cache correctness**: Cache key automatically changes when profile context changes because it flows through `buildSystemPrompt()`
-- **Graceful degradation**: Review continues without context when index is missing, corrupt (parse errors > 50%), or indexing disabled
+- **`resolveExportSource()` path resolution**: No longer appends `.ts` to paths that already have an extension, preventing malformed paths like `src/cli/review.js.ts`.
+
+## [1.0.12] - 2026-04-28
+
+### Added
+- **`--explain-context` diagnostic mode**: New opt-in flag for the `review` command that shows context building details (index availability, profile detection, relation types) without making any AI calls. JSON output is valid parseable JSON; console output uses ASCII only (no emoji). Exit code `0` in all non-error cases.
+- **`ExplainContextOutput` type** and `ExplainContextStatus` union type added to `src/types/index.ts` for typed diagnostic output.
+- **Root command `.action()` handler**: Prevents Commander 14 from auto-showing help when subcommands are registered but no subcommand is provided.
+- **Backward-compatible `--explain` alias**: `indexing --explain <file>` continues to work as an alias for `indexing --explain-index <file>`, preserving script compatibility.
+- **Windows path normalization**: `FileHandler.filterPaths()` now normalizes paths to forward-slash format on Windows.
+- **Optional AI enrichment for `create-skills`**: When `createSkills.ai.enabled` is true, generated skills include version-aware dependency rules from the configured provider/model. `--no-ai-enrich` forces deterministic index-only generation.
+- **Source index schema `1.2` insights**: Source index now includes role, public API, test map, command map, dependency usage, default export, re-export, type-only import, and dynamic import insights for richer generated skills.
+
+### Changed
+- **Version fallback consistency**: All runtime version references (`src/cli/args.ts`, `src/cli/help.ts`, `src/services/ai/index.ts`, `src/commands/create-skills.ts`) now use `process.env.npm_package_version` first, then installed `mp-sentinel` package metadata, with `"0.0.0-dev"` as the final fallback.
+- **`src/cli/args.ts`**: Hardened help/version exit detection — handles both Commander 14 codes (`commander.helpDisplayed`, `commander.versionDisplayed`) and older codes (`commander.help`, `commander.version`) defensively.
+- **`runIndexingCommand()` parameter type**: Tightened from `CLIValues` to `Partial<CLIValues> & { force?; stats?; explainIndex? }` intersection type, preventing accidental use of unrelated CLI fields.
+- **`src/services/file-handler/index.ts`**: `filterPaths()` normalizes Windows backslashes to forward slashes.
+- **`computeIndexHash()` coverage**: Hashing now includes import/export names, type-only import/export status, default exports, re-exports, and schema `1.2` insights so `create-skills --check` catches more source-shape changes.
+
+### Fixed
+- **Version displaying as "1.0.6" or "0.0.0-dev"**: `node dist/index.js --version` now correctly shows `package.json` version instead of a stale hardcoded or env-only fallback.
+- **Commander 14 auto-help on root command**: Empty `.action()` handler added to prevent `--help` from showing when no subcommand is used.
+- **`--explain` flag type**: Replaced `explain` with `explainIndex` in `CLIValues` interface, driving `runIndexingCommand()` with a focused type.
+- **`createSkills.ai.provider` validation**: Unsupported provider names now fail explicitly instead of being ignored and falling back to another provider.
+
+### Documentation
+- Updated `docs/COMMANDS_CHEAT_SHEET.md` with `--explain-context` flag
+- Updated `docs/ARCHITECTURE.md` with explain-context diagnostic mode
+- Updated `docs/CHANGELOG.md` (this file)
+- Updated `WHATS_NEW.md`
 
 ## [1.0.10] - 2026-04-26
 

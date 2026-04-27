@@ -97,6 +97,27 @@ const IndexingConfigSchema = z.object({
     ),
 });
 
+/**
+ * CreateSkills AI enrichment config schema
+ */
+const CreateSkillsAIConfigSchema = z.object({
+  enabled: z.boolean().optional().describe("Enable AI enrichment for create-skills"),
+  provider: z
+    .string()
+    .optional()
+    .describe("AI provider for enrichment (gemini, openai, anthropic, grok)"),
+  model: z.string().optional().describe("Model name for enrichment provider"),
+  temperature: z.number().min(0).max(2).optional().describe("Temperature for enrichment (0-2)"),
+  maxTokens: z.number().int().positive().optional().describe("Max tokens for enrichment response"),
+});
+
+/**
+ * CreateSkills config schema
+ */
+const CreateSkillsConfigSchema = z.object({
+  ai: CreateSkillsAIConfigSchema.optional(),
+});
+
 export const ProjectConfigSchema = z.object({
   techStack: z.string().optional(),
   rules: z.array(z.string()).optional(),
@@ -116,6 +137,7 @@ export const ProjectConfigSchema = z.object({
     .optional(),
   ai: AIReviewConfigSchema.optional(),
   indexing: IndexingConfigSchema.optional(),
+  createSkills: CreateSkillsConfigSchema.optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -146,6 +168,12 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
   indexing: {
     ...DEFAULT_CONFIG.indexing,
     ...(userConfig.indexing ?? {}),
+  },
+  createSkills: {
+    ai: {
+      ...DEFAULT_CONFIG.createSkills.ai,
+      ...(userConfig.createSkills?.ai ?? {}),
+    },
   },
 });
 

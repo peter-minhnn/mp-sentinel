@@ -85,6 +85,7 @@ const run = async (): Promise<void> => {
         "skip-index-refresh": values["skip-index-refresh"],
         "create-skills-dry-run": values["create-skills-dry-run"],
         "create-skills-check": values["create-skills-check"],
+        "create-skills-no-ai-enrich": values["create-skills-no-ai-enrich"],
       });
     } catch (error) {
       if (values["create-skills-format"] === "json") {
@@ -130,6 +131,19 @@ const run = async (): Promise<void> => {
 
   const currentBranch = await getCurrentBranch();
   const isLocalMode = values.local;
+
+  // Handle explain-context mode early (diagnostic only, no AI calls)
+  if (values["explain-context"]) {
+    const { renderExplainContext } = await import("./cli/review.js");
+    await renderExplainContext({
+      values,
+      config,
+      targetBranch,
+      maxConcurrency,
+      startTime,
+    });
+    return;
+  }
 
   if (values.verbose) {
     logVerboseInfo(values, config, currentBranch, targetBranch, maxConcurrency, isLocalMode);
