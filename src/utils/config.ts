@@ -87,6 +87,14 @@ const IndexingConfigSchema = z.object({
     .int()
     .positive("indexing.maxFileSize must be a positive integer")
     .optional(),
+  maxRelatedFiles: z
+    .number()
+    .int()
+    .positive("indexing.maxRelatedFiles must be a positive integer")
+    .optional()
+    .describe(
+      "Maximum number of related files (imports/dependents) per changed file in review context",
+    ),
 });
 
 export const ProjectConfigSchema = z.object({

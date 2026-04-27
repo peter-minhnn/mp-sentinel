@@ -2,7 +2,7 @@
 
 ## System Design
 
-MP Sentinel v1.0.5 centers on a stable `review` command contract with diff-first auditing:
+MP Sentinel v1.0.11 centers on a stable `review` command contract with diff-first auditing:
 
 - `review --staged`
 - `review --commit <sha>`
@@ -15,6 +15,7 @@ The runtime is optimized for quality and cost control:
 - guardrails (`maxFiles`, `maxDiffLines`, `maxCharsPerFile`)
 - secret scrubbing before model calls
 - persistent cache in `.mp-sentinel-cache`
+- **repository-aware review context** from source index (v1.0.11+)
 
 ## High-Level Flow
 
@@ -25,6 +26,10 @@ CLI (src/index.ts)
   -> FileHandler filters (allowlist + .gitignore/.archignore + sensitive blocklist)
   -> collect diff hunks with guardrails
   -> SecurityService redacts secrets
+  -> Load source index context (if indexing.enabled)
+     -> buildIndexContext() reads cache
+     -> context-builder service: priority ranking (changed → imports → dependents → hubs)
+     -> profile-aware pitfalls (cli-tooling/node-service/react-next/library)
   -> AI service (optional by policy) with concurrency + cache
   -> formatters render console/json/markdown report
   -> exit code (0 pass / 1 findings / 2 runtime error)
@@ -38,12 +43,55 @@ CLI (src/index.ts)
 - `src/services/security/index.ts`: secret redaction and payload diagnostics.
 - `src/services/ai/index.ts`: provider orchestration, caching, concurrent auditing.
 - `src/formatters/report.ts`: console/json/markdown output.
+- `src/services/source-index/context-builder.ts`: **impact-aware review context generation** (new in v1.0.11)
+
+## Source Indexing & Review Context (v1.0.11+)
+
+### Behavioral Contract
+
+- `indexing.enabled` controls whether `review` **consumes** the cache. Default: `false`.
+- The `indexing` command always rebuilds the cache regardless of config.
+- Cache location: `.mp-sentinel-cache/source-index.json` (configurable via `indexing.cachePath`).
+- Context generation respects `indexing.maxRelatedFiles` (default: 3) for imports/dependents per changed file.
+- Character budget: `INDEX_CONTEXT_MAX_CHARS = 12000` (hard limit, truncates with marker).
+
+### Priority Order & Impact Ranking
+
+1. **Changed files** — always first, marked as `(changed)`.
+2. **Direct imports** — files that the changed file depends on (cap: `maxRelatedFiles` per changed file).
+3. **Direct dependents** — files that import the changed file (cap: `maxRelatedFiles` per changed file).
+4. **Hub files** — most-imported files (importedBy ≥ 3), added only if budget remains, capped to 5.
+
+Within each tier, files are sorted by:
+- Parse health (files without parse errors preferred)
+- Popularity (`importedBy.length` descending for hubs)
+- Exported symbols availability
+
+### Profile-Aware Pitfalls
+
+The context includes a concise **Profile Review Pitfalls** section (3–5 bullets) based on `detectProfile()`:
+
+- **`cli-tooling`**: exit codes contract, diff-first review, CLI parsing separation, no business logic in entry files.
+- **`node-service`**: handler purity, error middleware, env validation, async boundaries, health checks.
+- **`react-next`**: server/client boundary, data fetching colocation, `next/image` optimization, bundle vigilance.
+- **`library`**: public API surface, type definitions, peer dependencies, tree-shakeability.
+- **fallback** (no index or unknown): generic best practices.
+
+Profile detection uses manifest signals (`bin`, `scripts`, `dependencies`, `detectedFrameworks`).
+
+### Graceful Degradation
+
+- Missing index → returns `null`, review continues without context.
+- Corrupt index (parse errors > 50%) → returns `null`.
+- Indexing disabled → returns `null`.
+- Truncation → adds `[Source index context truncated to budget]` marker.
 
 ## Key Patterns
 
 - Factory: provider creation by `AIProviderFactory`.
 - Strategy: provider interface (`IAIProvider`) for Gemini/OpenAI/Anthropic.
 - Singleton: provider lifecycle reuse inside `src/services/ai/index.ts`.
+- Service Layer: `context-builder.ts` isolates review context logic from CLI orchestration.
 
 ## Guardrails
 
@@ -56,6 +104,11 @@ Configured in `.mp-sentinelrc.json` / `.sentinelrc.json`:
     "maxDiffLines": 1200,
     "maxCharsPerFile": 12000,
     "promptVersion": "2026-02-16"
+  },
+  "indexing": {
+    "enabled": true,
+    "maxRelatedFiles": 3,
+    "cachePath": ".mp-sentinel-cache/source-index.json"
   }
 }
 ```

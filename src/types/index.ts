@@ -208,7 +208,9 @@ export const DEFAULT_CONFIG: Required<
   enableSkillsFetch: boolean;
   skillsFetchTimeout: number;
   ai: AIReviewConfig;
-  indexing: Required<Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">>;
+  indexing: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize" | "maxRelatedFiles">
+  >;
 } = {
   techStack: "",
   rules: [],
@@ -223,6 +225,7 @@ export const DEFAULT_CONFIG: Required<
     languages: ["typescript", "tsx", "javascript", "jsx"],
     cachePath: ".mp-sentinel-cache/source-index.json",
     maxFileSize: 512000,
+    maxRelatedFiles: 3,
   },
   ai: {
     maxFiles: 15,
@@ -378,6 +381,7 @@ export interface IndexingConfig {
   languages: IndexableLanguage[];
   cachePath: string;
   maxFileSize: number;
+  maxRelatedFiles: number;
 }
 
 /**
@@ -396,6 +400,28 @@ export interface CacheValidity {
   missingFiles?: string[];
   modifiedFiles?: string[];
 }
+
+/**
+ * Skill profile for review context (same as in skills-generator)
+ */
+export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "library";
+
+/**
+ * Metadata about the review context generation (for testing/debug)
+ */
+export interface ReviewContextMetadata {
+  profile: SkillProfile;
+  relatedFileCount: number;
+  relationTypes: RelationType[];
+  includedFiles: string[];
+  truncated: boolean;
+  budgetChars: number;
+}
+
+/**
+ * Types of relations between files in the dependency graph
+ */
+export type RelationType = "changed" | "import" | "dependent" | "hub";
 
 // ====================================================================================
 // Skills Generator Types (create-skills command)

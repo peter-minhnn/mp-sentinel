@@ -3,9 +3,7 @@
  * Maps source-index / package manifest signals to actionable skill profiles.
  */
 
-import type { SourceIndex } from "../../types/index.js";
-
-export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "library";
+import type { SourceIndex, SkillProfile } from "../../types/index.js";
 
 const CLI_DEPS = new Set([
   "commander",
@@ -72,3 +70,5 @@ export function detectProfile(index: SourceIndex | null): SkillProfile {
 
   return "library";
 }
+
+export type { SkillProfile };

@@ -21,11 +21,9 @@ import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { AIConfig } from "../services/ai/index.js";
+import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
-
-const INDEX_CONTEXT_MAX_CHARS = 12000;
-const MAX_RELATED_PER_FILE = 3;
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -225,173 +223,50 @@ const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
 
 /**
  * Build contextual information from source index to enrich the AI prompt
+ * Deprecated: Use buildReviewContext from context-builder.ts instead.
  */
 export async function buildIndexContext(
   config: ProjectConfig,
   diffFiles: Array<{ path: string }>,
   projectRoot: string,
 ): Promise<string | null> {
-  try {
-    // Check if indexing is enabled
-    const indexingEnabled = config.indexing?.enabled !== false;
-    if (!indexingEnabled) {
-      log.debug("Source indexing disabled in config");
-      return null;
-    }
+  // Delegate to the new context builder service
+  const indexingEnabled = config.indexing?.enabled !== false;
+  if (!indexingEnabled) {
+    log.debug("Source indexing disabled in config");
+    return null;
+  }
 
-    // Use cached index from default location
-    const cachePath = resolvePath(
-      projectRoot,
-      config.indexing?.cachePath ?? ".mp-sentinel-cache/source-index.json",
-    );
-    const index = await readIndex(cachePath);
+  const cachePath = resolvePath(
+    projectRoot,
+    config.indexing?.cachePath ?? ".mp-sentinel-cache/source-index.json",
+  );
+  const index = await readIndex(cachePath);
 
-    if (!index) {
-      log.debug("No source index found for context enrichment");
-      return null;
-    }
+  if (!index) {
+    log.debug("No source index found for context enrichment");
+    return null;
+  }
 
-    // Validate index - skip if too many parse errors
-    const totalFiles = index.files.length;
-    const filesWithErrors = index.files.filter(
-      (f) => f.parseErrors && f.parseErrors.length > 0,
-    ).length;
-    if (totalFiles > 0 && filesWithErrors / totalFiles > 0.5) {
-      log.warning(
-        `Source index has ${filesWithErrors}/${totalFiles} files with parse errors - skipping context`,
-      );
-      return null;
-    }
-
-    // Build file lookup maps
-    const fileIndexMap = new Map<string, (typeof index.files)[number]>();
-    for (const file of index.files) {
-      fileIndexMap.set(file.path, file);
-    }
-
-    const diffFilePaths = diffFiles.map((f) => f.path);
-
-    // Collect relevant files in priority order: changed files first,
-    // then direct imports, then direct dependents.
-    // Cap imports and dependents at MAX_RELATED_PER_FILE per changed file.
-    const seen = new Set<string>();
-    const orderedPaths: string[] = [];
-
-    for (const diffPath of diffFilePaths) {
-      if (!seen.has(diffPath)) {
-        orderedPaths.push(diffPath);
-        seen.add(diffPath);
-      }
-    }
-
-    for (const diffPath of diffFilePaths) {
-      const file = fileIndexMap.get(diffPath);
-      if (!file) continue;
-
-      let added = 0;
-      if (file.importsFrom) {
-        for (const p of file.importsFrom) {
-          if (added >= MAX_RELATED_PER_FILE) break;
-          if (fileIndexMap.has(p) && !seen.has(p)) {
-            orderedPaths.push(p);
-            seen.add(p);
-            added++;
-          }
-        }
-      }
-
-      added = 0;
-      if (file.importedBy) {
-        for (const p of file.importedBy) {
-          if (added >= MAX_RELATED_PER_FILE) break;
-          if (fileIndexMap.has(p) && !seen.has(p)) {
-            orderedPaths.push(p);
-            seen.add(p);
-            added++;
-          }
-        }
-      }
-    }
-
-    if (orderedPaths.length === 0) {
-      log.debug("No relevant index entries found for diff files");
-      return null;
-    }
-
-    // Build concise context with character budget
-    const lines: string[] = [];
-    lines.push("=== Source Index Context ===");
-    lines.push(
-      `Project: ${index.project.packageName || "unknown"} v${index.project.packageVersion || "n/a"}`,
-    );
-    lines.push(`Frameworks: ${index.project.detectedFrameworks.join(", ") || "none"}`);
-    if (Object.keys(index.project.dependencies).length > 0) {
-      const depList = Object.entries(index.project.dependencies)
-        .slice(0, 10)
-        .map(([name, version]) => `${name}@${version}`)
-        .join(", ");
-      lines.push(
-        `Key dependencies: ${depList}${Object.keys(index.project.dependencies).length > 10 ? "..." : ""}`,
-      );
-    }
-    lines.push("");
-    lines.push(`Relevant files (diff + dependencies):`);
-
-    const relevantFiles = orderedPaths
-      .map((p) => fileIndexMap.get(p))
-      .filter((f): f is NonNullable<typeof f> => f !== undefined);
-
-    for (const file of relevantFiles) {
-      const isDiff = diffFilePaths.includes(file.path);
-      lines.push(`\nFile: ${file.path}${isDiff ? " (changed)" : ""}`);
-      lines.push(`  Language: ${file.language}`);
-
-      if (file.symbols.length > 0) {
-        const symbolSummary = file.symbols
-          .slice(0, 15)
-          .map(
-            (symbol) =>
-              `${symbol.type} ${symbol.name}${symbol.parent ? ` (in ${symbol.parent})` : ""}`,
-          )
-          .join(", ");
-        lines.push(`  Symbols: ${symbolSummary}${file.symbols.length > 15 ? "..." : ""}`);
-      }
-
-      if (file.importsFrom && file.importsFrom.length > 0) {
-        const imports = file.importsFrom.slice(0, 8).join(", ");
-        lines.push(`  Imports from: ${imports}${file.importsFrom.length > 8 ? "..." : ""}`);
-      }
-
-      if (file.importedBy && file.importedBy.length > 0) {
-        const importedBy = file.importedBy.slice(0, 8).join(", ");
-        lines.push(`  Imported by: ${importedBy}${file.importedBy.length > 8 ? "..." : ""}`);
-      }
-
-      if (file.exportedSymbols && file.exportedSymbols.length > 0) {
-        const exports = file.exportedSymbols.slice(0, 10).join(", ");
-        lines.push(`  Exports: ${exports}${file.exportedSymbols.length > 10 ? "..." : ""}`);
-      }
-
-      if (file.parseErrors && file.parseErrors.length > 0) {
-        lines.push(`  Parse errors: ${file.parseErrors.join("; ")}`);
-      }
-    }
-
-    lines.push("\n=== End Source Index Context ===");
-    const context = lines.join("\n");
-
-    if (context.length <= INDEX_CONTEXT_MAX_CHARS) {
-      return context;
-    }
-
-    const truncated = context.slice(0, INDEX_CONTEXT_MAX_CHARS - 50);
-    return `${truncated}\n[Source index context truncated to budget]`;
-  } catch (error) {
-    log.debug(
-      `Failed to load source index context: ${error instanceof Error ? error.message : String(error)}`,
+  // Validate index - skip if too many parse errors
+  const totalFiles = index.files.length;
+  const filesWithErrors = index.files.filter(
+    (f) => f.parseErrors && f.parseErrors.length > 0,
+  ).length;
+  if (totalFiles > 0 && filesWithErrors / totalFiles > 0.5) {
+    log.warning(
+      `Source index has ${filesWithErrors}/${totalFiles} files with parse errors - skipping context`,
     );
     return null;
   }
+
+  const maxRelatedFiles = config.indexing?.maxRelatedFiles ?? 3;
+  const result = await buildReviewContext(index, diffFiles, {
+    maxRelatedFiles,
+    budgetChars: 12000,
+  });
+
+  return result.context || null;
 }
 
 export const runReview = async (options: ReviewRunOptions): Promise<number> => {
@@ -475,7 +350,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
 
   // Load source index context for AI if available
   const indexContext = await buildIndexContext(
-    config as Record<string, unknown>,
+    config,
     diffResult.files.map((f) => ({ path: f.path })),
     process.cwd(),
   );

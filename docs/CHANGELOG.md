@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] - 2026-04-27
+
+### Added
+- **Repository-aware review context (v2)**: New `src/services/source-index/context-builder.ts` service provides impact-aware context enrichment with priority ranking: changed files → direct imports → direct dependents → hub files
+- **Configurable context caps**: Added `indexing.maxRelatedFiles` (default 3) to control how many related files per changed file are included in the review context
+- **Hub file detection**: Automatically includes most-imported files (`importedBy ≥ 3`) when budget remains, capped to 5
+- **Profile-aware review pitfalls**: Concise 3–5 bullet section based on `detectProfile()` (reused from `create-skills`) — includes tailored guidance for `cli-tooling`, `node-service`, `react-next`, and `library` profiles
+- **Character budget enforcement**: Hard limit `INDEX_CONTEXT_MAX_CHARS = 12000` with truncation marker `[Source index context truncated to budget]`
+- **Review context metadata**: Internal `ReviewContextMetadata` and `RelationType` types for testability and explainability
+
+### Changed
+- **`src/cli/review.ts`**: `buildIndexContext()` now delegates to `buildReviewContext()` service, reducing complexity and improving testability
+- **`AGENTS.md`**: Updated Review Context Enrichment section with detailed priority, ranking, and profile rules
+- **`docs/ARCHITECTURE.md`**: Comprehensive update to reflect current source indexing and review context architecture
+
+### Fixed
+- **Review cache correctness**: Cache key automatically changes when profile context changes because it flows through `buildSystemPrompt()`
+- **Graceful degradation**: Review continues without context when index is missing, corrupt (parse errors > 50%), or indexing disabled
+
 ## [1.0.10] - 2026-04-26
 
 ### Added
@@ -148,7 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 1-hour in-memory caching to minimize API calls
   - Configurable timeout (default: 3 seconds)
   - Fail-fast pattern: never blocks CI/CD if skills.sh is unavailable
-- **Enhanced Parallel Processing**: 
+- **Enhanced Parallel Processing**:
   - File reading now uses `Promise.allSettled` for true parallel processing
   - File auditing uses `Promise.allSettled` to ensure all files are processed
   - Failed files are tracked and reported at the end (don't stop the process)
