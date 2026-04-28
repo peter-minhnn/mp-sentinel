@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, sep, posix } from "node:path";
+import fg from "fast-glob";
 import type { AgentAdapterId, LegacyFileInfo } from "../../types/index.js";
 import { METADATA_MARKER, parseMetadataFromContent } from "./metadata.js";
 
@@ -33,6 +34,40 @@ const LEGACY_PATH_DEFS: LegacyPathDef[] = [
       "Delete this file after confirming the new file exists.",
   },
 ];
+
+/**
+ * Current expected output path prefixes per agent.
+ * Directory adapters (claude, codex, antigravity) use a directory prefix;
+ * single-file adapters use the exact file path.
+ */
+type ExpectedPathFn = (projectName: string) => string[];
+
+const CURRENT_OUTPUT_PREFIXES: Partial<Record<AgentAdapterId, ExpectedPathFn>> = {
+  claude: (pn) => [`.claude/skills/${pn}-best-practices/`],
+  cursor: (pn) => [`.cursor/rules/${pn}-best-practices.mdc`],
+  codex: (pn) => [`.agents/skills/${pn}-codex-best-practices/`],
+  windsurf: (pn) => [`.windsurf/rules/${pn}-best-practices.md`],
+  antigravity: (pn) => [`.agents/skills/${pn}-antigravity-best-practices/`],
+  cline: (pn) => [`.clinerules/${pn}-best-practices.md`],
+  generic: (pn) => [`.agents/rules/${pn}-best-practices.md`],
+};
+
+/** Root-level directories where agent adapters write output. */
+const KNOWN_AGENT_DIRS = [
+  ".claude",
+  ".clinerules",
+  ".cursor",
+  ".agents",
+  ".windsurf",
+  ".antigravity",
+];
+
+/**
+ * Normalize a path to forward-slash format for comparison.
+ */
+function toPosix(p: string): string {
+  return p.split(sep).join(posix.sep);
+}
 
 /**
  * Detect legacy generated files from pre-v1.0.17 adapter paths.
@@ -71,4 +106,128 @@ export async function detectLegacyGeneratedFiles(
   }
 
   return results;
+}
+
+/**
+ * Detect generated files with @mp-sentinel-generated metadata under known agent
+ * directories that are NOT at expected current output paths.
+ *
+ * This catches artifacts like a claude-style SKILL.md mistakenly placed under
+ * `.clinerules/` — the file's metadata says agent=claude but its path isn't
+ * the expected `.claude/skills/<project>-best-practices/` directory.
+ *
+ * Files without metadata are never flagged. Files at expected paths are never
+ * flagged (even if they also match a legacy path, those are handled by
+ * detectLegacyGeneratedFiles).
+ */
+export async function detectUnexpectedGeneratedFiles(
+  projectRoot: string,
+  projectName: string,
+): Promise<LegacyFileInfo[]> {
+  const results: LegacyFileInfo[] = [];
+
+  // Resolve all expected path prefixes for the current project
+  const expectedPrefixes = new Map<AgentAdapterId, string[]>();
+  for (const [agent, fn] of Object.entries(CURRENT_OUTPUT_PREFIXES)) {
+    if (fn) {
+      expectedPrefixes.set(agent as AgentAdapterId, fn(projectName));
+    }
+  }
+
+  // Scan each known agent directory for markdown files
+  for (const dir of KNOWN_AGENT_DIRS) {
+    const absDir = join(projectRoot, dir);
+    if (!existsSync(absDir)) continue;
+
+    let found: string[];
+    try {
+      found = await fg(["**/*.md", "**/*.mdc"], { cwd: absDir, absolute: true, onlyFiles: true });
+    } catch {
+      continue;
+    }
+
+    for (const absPath of found) {
+      const relPath = toPosix(relative(projectRoot, absPath));
+
+      // Skip files that are NOT under the known dir (safety check)
+      if (!relPath.startsWith(dir + "/")) continue;
+
+      let content: string;
+      try {
+        content = await readFile(absPath, "utf-8");
+      } catch {
+        continue;
+      }
+
+      // Must contain the metadata marker
+      if (!content.includes(METADATA_MARKER)) continue;
+
+      const meta = parseMetadataFromContent(content);
+      if (!meta) continue;
+
+      const fileAgent = meta.agent as AgentAdapterId;
+
+      // Check if this file's path is expected for this agent
+      const prefixes = expectedPrefixes.get(fileAgent);
+      if (!prefixes || prefixes.length === 0) {
+        // Unknown agent — advisory
+        results.push({
+          path: relPath,
+          agent: fileAgent,
+          supersededBy: fileAgent,
+          suggestion:
+            `Generated file for unknown agent "${fileAgent}" at unexpected path. ` +
+            `Review and delete if no longer needed.`,
+        });
+        continue;
+      }
+
+      const isExpected = prefixes.some((prefix) => relPath.startsWith(prefix));
+      if (isExpected) continue; // At expected path, not unexpected
+
+      // Also skip if this file matches a known LEGACY_PATH_DEFS entry (handled separately)
+      const matchesLegacy = LEGACY_PATH_DEFS.some(
+        (def) => def.oldPath.replace(/\{projectName\}/g, projectName) === relPath,
+      );
+      if (matchesLegacy) continue;
+
+      // This file has mp-sentinel metadata but is at an unexpected path for its agent
+      const expectedDesc = prefixes.map((p) => `"${p}"`).join(" or ");
+      results.push({
+        path: relPath,
+        agent: fileAgent,
+        supersededBy: fileAgent,
+        suggestion:
+          `Generated file for agent "${fileAgent}" found at unexpected path. ` +
+          `Expected under ${expectedDesc}. ` +
+          `Delete this file after confirming official output exists.`,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Combined detection: legacy path matches + unexpected generated files under known dirs.
+ * Deduplicates by path so the same file is not reported twice.
+ */
+export async function detectAllLegacyAndUnexpected(
+  projectRoot: string,
+  projectName: string,
+): Promise<LegacyFileInfo[]> {
+  const legacy = await detectLegacyGeneratedFiles(projectRoot, projectName);
+  const unexpected = await detectUnexpectedGeneratedFiles(projectRoot, projectName);
+
+  const seen = new Set(legacy.map((f) => f.path));
+  const combined = [...legacy];
+
+  for (const f of unexpected) {
+    if (!seen.has(f.path)) {
+      seen.add(f.path);
+      combined.push(f);
+    }
+  }
+
+  return combined;
 }

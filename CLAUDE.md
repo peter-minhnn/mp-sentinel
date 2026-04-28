@@ -20,6 +20,24 @@ Before working on any task, read [AGENTS.md](AGENTS.md). It is the authoritative
 
 ## Claude Code Notes
 
+### Agent skills — always current before coding
+
+Generated skill files are **local-only** (gitignored). Run these before touching code:
+
+```sh
+npm run agent:skills:check
+```
+
+If the check reports stale or missing files, run:
+
+```sh
+npm run agent:skills:refresh
+```
+
+Then read `.claude/skills/mp-sentinel-best-practices/SKILL.md` before making changes.
+
+These commands are deterministic (`--no-ai-enrich`) — no network, no API key needed.
+
 ### Verification before done
 
 Always run the checklist from `AGENTS.md §8` before reporting a task complete. For runtime changes:
@@ -49,3 +67,4 @@ Use `src/types/index.ts` as the single source for shared types. Do not redeclare
 - `src/index.ts` beyond SIGINT handling and top-level command routing.
 - Exit codes — `0 / 1 / 2` semantics are contractual.
 - `.sentinel/skills/` — these are runtime review prompts injected for end users, not agent rules.
+- Generated skill files (`.agents/skills/`, `.cursor/rules/*-best-practices.mdc`, `.clinerules/*.md`, `.windsurf/rules/*.md`, `.antigravity/rules/*.md`, `.agents/rules/*-best-practices.md`) — these are local bootstrap artifacts, never commit them.

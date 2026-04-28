@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-28
+
+### Added
+- **`npm run agent:skills:check`**: CI-style staleness gate (`scripts/agent-skills-check.mjs`) that calls `create-skills --all-agents --check --format json --no-ai-enrich`, parses JSON, and reports missing/stale/wrong-agent/quality errors with exit codes 0/1/2.
+- **`npm run agent:skills:refresh`**: Regeneration script (`scripts/agent-skills-refresh.mjs`) that calls `create-skills --all-agents --force --format json --no-ai-enrich` then verifies with the check script.
+- **Expanded legacy/unexpected artifact detection**: `detectUnexpectedGeneratedFiles()` scans known agent directories (`.claude/`, `.clinerules/`, `.cursor/`, `.agents/`, `.windsurf/`, `.antigravity/`) for `@mp-sentinel-generated` files at unexpected paths. Detects misplaced artifacts (e.g., claude skill under `.clinerules/`).
+- **Combined detection**: `detectAllLegacyAndUnexpected()` merges legacy path matches and unexpected artifact scans with deduplication by path.
+
+### Changed
+- **`AGENTS.md` §1**: Agent workflow now enforces `agent:skills:check` → `agent:skills:refresh` before reading generated skills. Added all 7 adapter paths. Generated skills marked as local-only (not committed).
+- **`CLAUDE.md`**: Added agent skills bootstrap section. Added generated skill paths to "Do not touch" list.
+- **`.gitignore`**: Added `.agents/skills/`, `.cursor/rules/*-best-practices.mdc`, `.windsurf/rules/*-best-practices.md`, `.antigravity/rules/*-best-practices.md`, `.agents/rules/*-best-practices.md`.
+- **`create-skills` command**: Now uses `detectAllLegacyAndUnexpected()` instead of `detectLegacyGeneratedFiles()` for broader diagnostics.
+
+---
+
 ## [1.4.0] - 2026-04-28
 
 ### Added

@@ -30,7 +30,7 @@ import {
   buildSkillKnowledgeBase,
   computeIndexHash,
   detectAdapters,
-  detectLegacyGeneratedFiles,
+  detectAllLegacyAndUnexpected,
   enrichIndex,
   parseAgentFlag,
   parseMetadataFromContent,
@@ -425,7 +425,7 @@ export async function runCreateSkillsCommand(
     if (adapters.length === 0) return 0;
 
     // ── Legacy migration detection ───────────────────────────────────────────
-    const legacyFiles = await detectLegacyGeneratedFiles(projectRoot, projectName);
+    const legacyFiles = await detectAllLegacyAndUnexpected(projectRoot, projectName);
 
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
     const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
@@ -552,6 +552,19 @@ export async function runCreateSkillsCommand(
     }
 
     // ── Normal generate mode ─────────────────────────────────────────────────
+
+    // Pre-create output directories so fidelity hash is stable on first generation.
+    // Without this, computeIndexHash sees a different disk state than the check
+    // run (which runs after directories were created by this generate step).
+    for (const adapter of adapters) {
+      const dirPath = dirname(
+        resolve(projectRoot, adapter.spec.workspacePath.replace(/\{projectName\}/g, projectName)),
+      );
+      if (!existsSync(dirPath)) {
+        await mkdir(dirPath, { recursive: true });
+      }
+    }
+
     const indexHash = computeIndexHash(index, projectRoot);
     const results: SkillsGenerationResult[] = [];
 

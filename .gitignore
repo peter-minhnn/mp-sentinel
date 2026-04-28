@@ -15,3 +15,9 @@
 .claude
 .clinerules
 .roo
+# Agent generated skill/rule files (local bootstrap, not committed)
+.agents/skills/
+.cursor/rules/*-best-practices.mdc
+.windsurf/rules/*-best-practices.md
+.antigravity/rules/*-best-practices.md
+.agents/rules/*-best-practices.md

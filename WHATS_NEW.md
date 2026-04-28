@@ -1,3 +1,19 @@
+# What's New in v1.5.0
+
+## Agent Skills Bootstrap
+
+v1.5.0 introduces a local agent skills bootstrap workflow — generated skills are always fresh before coding, without committing generated files or requiring network/API keys.
+
+- **`npm run agent:skills:check`**: CI-style staleness gate that reports missing, stale, wrong-agent, and quality errors. Exit 0 = up-to-date, 1 = stale, 2 = runtime error.
+- **`npm run agent:skills:refresh`**: Regenerates all agent skills from the current source index, then runs check to verify.
+- **Local-only generated skills**: Output directories (`.agents/skills/`, `.cursor/rules/*-best-practices.mdc`, `.windsurf/rules/*-best-practices.md`, `.antigravity/rules/*-best-practices.md`, `.agents/rules/*-best-practices.md`) are gitignored. Generated skills are local bootstrap artifacts — never committed, never published.
+- **Expanded legacy/unexpected artifact detection**: `create-skills` now scans all known agent directories for `@mp-sentinel-generated` files at unexpected paths. Detects misplaced artifacts (e.g., claude skill under `.clinerules/`) as advisories without blocking.
+- **Updated agent rules**: `AGENTS.md` and `CLAUDE.md` now enforce a check-first workflow: run `agent:skills:check` → `agent:skills:refresh` if stale → read relevant generated skill.
+- **Deterministic**: Both scripts use `--no-ai-enrich` — no network calls, no API keys, fully deterministic.
+- **No new CLI flags**: All changes are npm scripts and diagnostics.
+
+---
+
 # What's New in v1.4.0
 
 ## Review Intelligence Explainability

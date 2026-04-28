@@ -7,21 +7,31 @@
 
 ## 1. Agent Workflow
 
-Before making code changes to this repo, agents must:
+Generated skills are **local bootstrap** — never committed to the repo. Before making code changes to this repo, agents must:
 
-1. **Read the relevant generated skill/rule** for the area being touched:
+1. **Ensure generated skills are current**:
+   ```sh
+   npm run agent:skills:check
+   ```
+   If the check reports stale/missing files, run:
+   ```sh
+   npm run agent:skills:refresh
+   ```
+2. **Read the relevant generated skill/rule** for the area being touched:
    - `.claude/skills/mp-sentinel-best-practices/SKILL.md` (Claude Code)
    - `.agents/skills/mp-sentinel-codex-best-practices/SKILL.md` (Codex)
    - `.agents/skills/mp-sentinel-antigravity-best-practices/SKILL.md` (Antigravity)
    - `.agents/rules/mp-sentinel-best-practices.md` (Generic)
    - `.cursor/rules/mp-sentinel-best-practices.mdc` (Cursor)
-2. **Read local agent instructions**: `AGENTS.md` (this file), `CLAUDE.md`.
-3. **Prefer source index commands** before broad repo scans when dependency context is needed:
+   - `.windsurf/rules/mp-sentinel-best-practices.md` (Windsurf)
+   - `.clinerules/mp-sentinel-best-practices.md` (Cline)
+3. **Read local agent instructions**: `AGENTS.md` (this file), `CLAUDE.md`.
+4. **Prefer source index commands** before broad repo scans when dependency context is needed:
    - `mp-sentinel indexing --stats --index-format json`
    - `mp-sentinel indexing --explain-index <file> --index-format json`
    - `mp-sentinel --explain-context --format json --files <file>`
-4. **For skills work**, use the `skill-creator` skill (`mp-sentinel`'s own generated skill).
-5. **Load only relevant references** for the paths you touch: architecture, modules, testing, dependencies.
+5. **For skills work**, use the `skill-creator` skill (`mp-sentinel`'s own generated skill).
+6. **Load only relevant references** for the paths you touch: architecture, modules, testing, dependencies.
 
 ---
 

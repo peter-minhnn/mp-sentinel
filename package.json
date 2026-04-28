@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -22,7 +22,9 @@
     "WHATS_NEW.md",
     "examples",
     "scripts/release-check.mjs",
-    "scripts/dogfood.mjs"
+    "scripts/dogfood.mjs",
+    "scripts/agent-skills-check.mjs",
+    "scripts/agent-skills-refresh.mjs"
   ],
   "scripts": {
     "build": "tsup",
@@ -34,6 +36,8 @@
     "indexing": "tsx src/index.ts indexing",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
+    "agent:skills:check": "node scripts/agent-skills-check.mjs",
+    "agent:skills:refresh": "node scripts/agent-skills-refresh.mjs",
     "release:check": "node scripts/release-check.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
