@@ -209,6 +209,19 @@ mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';
 
 ---
 
+### Release checklist
+
+Before pushing a release tag, verify:
+
+- [ ] `git tag -l vX.Y.Z` — tag exists and `git rev-parse vX.Y.Z^{commit}` matches the intended release commit.
+- [ ] `node -e "console.log(require('./package-lock.json').version)"` — lockfile version matches.
+- [ ] `npm pack --dry-run` — includes only intended runtime/docs files. No `.env`, cache, or test artifacts.
+- [ ] **Never force-push release tags** (`git push --force origin vX.Y.Z`) without explicit approval.
+- [ ] `git push origin main` before pushing tags so the main branch is current.
+- [ ] `git push origin vX.Y.Z` — push tags individually so you can inspect each one.
+
+---
+
 ## 9. What Belongs Where
 
 | Concern | Location |
