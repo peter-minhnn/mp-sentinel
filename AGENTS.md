@@ -155,6 +155,15 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 - [ ] Missing/unresolvable imports (must not crash, emit a warning)
 - [ ] Circular imports (must be detected and reported, not cause infinite loops)
 
+### Review intelligence — required fixture coverage
+
+Every change to signal logic in `src/services/source-index/context-builder.ts` or `src/services/skills-generator/knowledge-base.ts` must keep `src/__tests__/review-intelligence-fixtures.test.ts` passing. The fixture harness covers:
+
+- [ ] 4 profile fixtures (`cli-tooling`, `library`, `node-service`, `react-next`)
+- [ ] Signal precision: `public-api`, `risk` (hub-file), `test-gap`, `dependency` — included when conditions are met, excluded when not
+- [ ] Graceful degradation: null index, >50% parse errors, disabled indexing, empty changed files
+- [ ] Quality assertions: changed-files-first ordering, no duplicate signals, budget enforcement
+
 ---
 
 ## 6. Review Context Enrichment

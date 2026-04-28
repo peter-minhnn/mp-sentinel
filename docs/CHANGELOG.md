@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-28
+
+### Added
+- **Review intelligence fixture harness**: `src/__tests__/helpers/fixture-builder.ts` creates 4 realistic profile fixtures (`cli-tooling`, `library`, `node-service`, `react-next`) with source files, tests, dependencies, and public API surface, each building a real source index through the pipeline.
+- **`src/__tests__/review-intelligence-fixtures.test.ts`**: 47 tests covering signal precision (`public-api`, `risk`, `test-gap`, `dependency`), graceful degradation (null index, parse errors, empty lists), quality assertions (ordering, dedup, budget), and `--explain-context --format json` output shape validation across all 4 profiles.
+
+### Changed
+- No behavior or CLI contract changes. Pure test coverage for review intelligence regression protection.
+
 ## [1.2.0] - 2026-04-28
 
 ### Added

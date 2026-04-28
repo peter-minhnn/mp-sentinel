@@ -1,3 +1,17 @@
+# What's New in v1.3.0
+
+## Review Intelligence Fixture Coverage
+
+v1.3.0 adds a comprehensive fixture-based regression harness for review intelligence signals — no behavior changes.
+
+- **4 profile fixtures** (`cli-tooling`, `library`, `node-service`, `react-next`): Each creates a realistic mini-project with source files, dependencies, public API surface, test files, and hub files, then builds a real source index through the pipeline.
+- **Signal precision tests**: Verify that `buildReviewContext()` correctly includes `public-api`, `risk` (hub-file), `test-gap`, and `dependency` signals when conditions are met, and excludes them when they are not.
+- **Graceful degradation tests**: Confirm missing index, disabled indexing, and empty changed-files cases all return empty context without throwing.
+- **Quality assertions**: Context starts with changed files before related files, `includedSignals` has no duplicates, context length never exceeds budget, and `--explain-context --format json` output is always parseable with expected fields.
+- **No new CLI flags or behavior changes**: Pure test coverage — the goal is confidence and regression protection, not expanding the feature surface.
+
+---
+
 # What's New in v1.2.0
 
 ## Dogfood Validation Workflow

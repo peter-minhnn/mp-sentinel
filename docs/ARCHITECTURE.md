@@ -109,6 +109,14 @@ Profile detection uses manifest signals (`bin`, `scripts`, `dependencies`, `dete
 - Indexing disabled → returns `null`.
 - Truncation → adds `[Source index context truncated to budget]` marker.
 
+## Review Intelligence Fixture Coverage (v1.3.0+)
+
+v1.3.0 adds a fixture-based regression harness that validates review intelligence signals across 4 project profiles:
+
+- **`src/__tests__/helpers/fixture-builder.ts`**: Creates realistic mini-projects for `cli-tooling`, `library`, `node-service`, and `react-next` profiles, each with source files, tests, dependencies, public API surface, and hub files. Indexes are built through the real pipeline (`buildSourceIndex()`).
+- **`src/__tests__/review-intelligence-fixtures.test.ts`**: 47 tests that exercise signal precision, graceful degradation, quality assertions, and explain-context JSON output shape.
+- **No behavior changes**: This is pure test coverage for review intelligence regression protection.
+
 ## Explain Context Mode (v1.0.12+)
 
 The `--explain-context` flag on the `review` command provides diagnostic output showing context building details without making AI calls:

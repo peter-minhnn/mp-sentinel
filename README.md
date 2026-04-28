@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.2.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.3.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,11 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.2.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.3.0**:
 
-- 🧠 **Shared Repository Intelligence** — review context now surfaces public API risk, hub-file blast radius, test coverage gaps, and dependency-aware signals from the same `SkillKnowledgeBase` that powers `create-skills`
-- 📦 **Legacy File Migration Diagnostics** — detect and advise on old generated skill files
-- 🏷️ **Official Adapter Layouts** — align all adapters with verified IDE/agent docs
+- 🧪 **Review Intelligence Fixture Harness** — 47 fixture-based tests across 4 project profiles validate that review intelligence signals (`public-api`, `risk`, `test-gap`, `dependency`) are correctly set or absent
+- 📋 **Quality Assertions** — context ordering, signal deduplication, budget enforcement, and explain-context JSON output shape are now covered by automated regression tests
+- 🔒 **Graceful Degradation Coverage** — missing index, disabled indexing, and corrupt cache scenarios are validated with fixture-level precision
 - ✅ **Zero-Warning Generation** — clean output with no spurious diagnostics
 - 🔗 **Graph-Aware Indexing** — `importsFrom`/`importedBy` dependency edges, tsconfig alias resolution, pure-JSON stdout
 - 📇 **Source Indexing** — AST-based code indexing for smarter AI context
