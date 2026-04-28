@@ -1,3 +1,18 @@
+# What's New in v1.4.0
+
+## Review Intelligence Explainability
+
+v1.4.0 turns review intelligence signals from opaque labels into explainable structured metadata — no behavior changes, no AI calls, no network calls.
+
+- **`ReviewIntelligenceSignal` type**: Each signal now carries `type`, `file`, `reason`, `evidence`, and `confidence` — so users and agents can understand **why** a signal was raised.
+- **`buildReviewContext()`**: Populates `intelligenceSignals` array alongside the existing `includedSignals` (backward compatible). Signals are deduplicated by `type + file + evidence` and respect the 12k character budget.
+- **`--explain-context --format json`**: JSON output includes the new `intelligenceSignals` field with full structured metadata for each signal.
+- **Console output**: Shows a concise `Signal details: public-api(1), test-gap(2)` summary line.
+- **Graceful fallback**: Indexes without `insights` produce no signals. No new CLI flags.
+- **Full test coverage**: 4 new fixture tests validate structured signal fields, deduplication, and graceful degradation.
+
+---
+
 # What's New in v1.3.0
 
 ## Review Intelligence Fixture Coverage

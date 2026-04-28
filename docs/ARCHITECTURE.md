@@ -62,6 +62,20 @@ When index insights are available, the context builder appends a `--- Review Int
 
 Each signal type is tracked in `ReviewContextMetadata.includedSignals` and surfaced in `--explain-context --format json` output.
 
+### Structured Intelligence Metadata (v1.4.0+)
+
+Each intelligence signal now carries structured metadata (`ReviewIntelligenceSignal`) explaining **why** the signal appeared:
+
+| Field | Description |
+|-------|-------------|
+| `type` | Signal type: `public-api`, `risk`, `test-gap`, `dependency` |
+| `file` | File path that triggered the signal |
+| `reason` | Human-readable explanation of why this signal was raised |
+| `evidence` | Supporting data (import count, package name, entrypoint path, test-gap reason) |
+| `confidence` | Confidence level: `low`, `medium`, or `high` |
+
+Signals are deduplicated by `type + file + evidence` and respect the 12k character budget. Both `includedSignals` (string[]) and `intelligenceSignals` (structured array) are present in metadata — `includedSignals` remains for backward compatibility.
+
 ### Graceful Isolation
 
 - Review never auto-runs indexing; it skips intelligence signals when the index is absent, disabled, corrupt, or has excessive parse errors.
@@ -117,6 +131,16 @@ v1.3.0 adds a fixture-based regression harness that validates review intelligenc
 - **`src/__tests__/review-intelligence-fixtures.test.ts`**: 47 tests that exercise signal precision, graceful degradation, quality assertions, and explain-context JSON output shape.
 - **No behavior changes**: This is pure test coverage for review intelligence regression protection.
 
+## Review Intelligence Explainability (v1.4.0+)
+
+v1.4.0 makes review intelligence signals explainable by adding structured metadata to each signal:
+
+- **`ReviewIntelligenceSignal`**: Each signal carries `type`, `file`, `reason`, `evidence`, and `confidence`.
+- **`buildReviewContext()`**: Populates `intelligenceSignals` alongside `includedSignals` (backward compatible). Signals are deduplicated by `type + file + evidence`.
+- **`--explain-context`**: JSON output includes `intelligenceSignals` array with full structured metadata. Console output shows concise count-per-type summary.
+- **Backward compatible**: `includedSignals` (string[]) is preserved. Indexes without `insights` gracefully fall back with no signals.
+- **No new CLI flags, no AI calls, no network calls.**
+
 ## Explain Context Mode (v1.0.12+)
 
 The `--explain-context` flag on the `review` command provides diagnostic output showing context building details without making AI calls:
@@ -137,6 +161,22 @@ The `--explain-context` flag on the `review` command provides diagnostic output 
   "relationTypes": ["changed", "import"],
   "includedFiles": ["src/index.ts", "src/config.ts"],
   "includedSignals": ["public-api", "test-gap"],
+  "intelligenceSignals": [
+    {
+      "type": "public-api",
+      "file": "src/index.ts",
+      "reason": "File is part of the public API surface; changes may be breaking.",
+      "evidence": "Re-exported from entrypoint: src/lib.ts",
+      "confidence": "high"
+    },
+    {
+      "type": "test-gap",
+      "file": "src/config.ts",
+      "reason": "No associated test file found for src/config.ts.",
+      "evidence": "Reason: no-test-file",
+      "confidence": "medium"
+    }
+  ],
   "contextPreview": "=== Source Index Context ===\nProject...",
   "indexUsed": true
 }

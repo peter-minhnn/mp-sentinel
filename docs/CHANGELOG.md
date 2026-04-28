@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-28
+
+### Added
+- **Structured intelligence signal metadata** (`ReviewIntelligenceSignal`): Each review intelligence signal now carries `type`, `file`, `reason`, `evidence`, and `confidence` fields explaining why the signal was raised.
+- **`intelligenceSignals` in `ReviewContextMetadata`**: `buildReviewContext()` populates `intelligenceSignals` alongside `includedSignals` (backward compatible). Signals are deduplicated by `type + file + evidence`.
+- **`intelligenceSignals` in `--explain-context` JSON output**: Structured signal metadata is included alongside the existing `includedSignals` field.
+- **Console explain-context summary**: Concise count-per-type summary line (`Signal details`) for quick diagnostics.
+
+### Changed
+- No breaking changes. `includedSignals` (string[]) is preserved. Indexes without `insights` gracefully fall back. No new CLI flags, no AI calls, no network calls.
+
 ## [1.3.0] - 2026-04-28
 
 ### Added

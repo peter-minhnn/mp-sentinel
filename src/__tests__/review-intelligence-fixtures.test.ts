@@ -305,6 +305,81 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.metadata.includedSignals).toContain("test-gap");
     expect(result.metadata.includedSignals).toContain("dependency");
   });
+
+  // ── intelligenceSignals structured metadata (v1.4.0) ─────────────────────
+
+  it("includes intelligenceSignals when signals are present", async () => {
+    const index = await makeIndexWithFiles({
+      "src/api.ts": `export function api() { return 1; }`,
+      "src/lib.ts": `export { api } from "./api.js";`,
+    });
+
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+    expect(result.metadata.intelligenceSignals).toBeDefined();
+    expect(result.metadata.intelligenceSignals!.length).toBeGreaterThan(0);
+    const publicApiSignal = result.metadata.intelligenceSignals!.find(
+      (s) => s.type === "public-api",
+    );
+    expect(publicApiSignal).toBeDefined();
+    expect(publicApiSignal!.file).toBe("src/api.ts");
+    expect(publicApiSignal!.reason).toBeTruthy();
+    expect(publicApiSignal!.evidence).toBeTruthy();
+    expect(publicApiSignal!.confidence).toBe("high");
+  });
+
+  it("each intelligenceSignal has required fields", async () => {
+    const index = await makeIndexWithFiles(
+      {
+        "src/pivot.ts": `import _ from "lodash"; export function pivot() { return 1; }`,
+        "src/lib.ts": `export { pivot } from "./pivot.js";`,
+        "src/user1.ts": `import { pivot } from "./pivot.js"; export const x = 1;`,
+        "src/user2.ts": `import { pivot } from "./pivot.js"; export const y = 1;`,
+        "src/user3.ts": `import { pivot } from "./pivot.js"; export const z = 1;`,
+      },
+      { dependencies: { lodash: "4.0.0" } },
+    );
+
+    const result = await buildReviewContext(index, [{ path: "src/pivot.ts" }]);
+    const signals = result.metadata.intelligenceSignals ?? [];
+    expect(signals.length).toBeGreaterThan(0);
+    for (const s of signals) {
+      expect(s.type).toBeDefined();
+      expect(["public-api", "risk", "test-gap", "dependency"]).toContain(s.type);
+      expect(s.file).toBeTruthy();
+      expect(typeof s.file).toBe("string");
+      expect(s.reason).toBeTruthy();
+      expect(typeof s.reason).toBe("string");
+      expect(s.evidence).toBeTruthy();
+      expect(typeof s.evidence).toBe("string");
+      expect(["low", "medium", "high"]).toContain(s.confidence);
+    }
+  });
+
+  it("intelligenceSignals has no duplicates by type + file + evidence", async () => {
+    const index = await makeIndexWithFiles({
+      "src/api.ts": `export function api() { return 1; }`,
+      "src/lib.ts": `export { api } from "./api.js";`,
+    });
+
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+    const signals = result.metadata.intelligenceSignals ?? [];
+    const keys = new Set<string>();
+    for (const s of signals) {
+      const key = `${s.type}|${s.file}|${s.evidence}`;
+      expect(keys.has(key)).toBe(false);
+      keys.add(key);
+    }
+  });
+
+  it("intelligenceSignals is undefined when index has no insights", async () => {
+    const index = await makeIndexWithFiles({
+      "src/plain.ts": `export const x = 1;`,
+    });
+
+    const stripped = { ...index, insights: undefined };
+    const result = await buildReviewContext(stripped, [{ path: "src/plain.ts" }]);
+    expect(result.metadata.intelligenceSignals).toBeUndefined();
+  });
 });
 
 // ── Quality Assertions ─────────────────────────────────────────────────────────
@@ -528,6 +603,17 @@ describe("Review Intelligence — explain-context JSON output shape", () => {
       // Since index.ts is re-exported from lib.ts it should be public-api
       expect(jsonOutput.includedSignals).toBeDefined();
       expect(jsonOutput.includedSignals).toContain("public-api");
+      // v1.4.0: intelligenceSignals should be present with structured metadata
+      expect(jsonOutput.intelligenceSignals).toBeDefined();
+      expect(Array.isArray(jsonOutput.intelligenceSignals)).toBe(true);
+      expect(jsonOutput.intelligenceSignals.length).toBeGreaterThan(0);
+      const publicApiSignal = jsonOutput.intelligenceSignals.find(
+        (s: { type: string }) => s.type === "public-api",
+      );
+      expect(publicApiSignal).toBeDefined();
+      expect(publicApiSignal.file).toBe("src/index.ts");
+      expect(publicApiSignal.reason).toBeTruthy();
+      expect(publicApiSignal.evidence).toBeTruthy();
       expect(jsonOutput.contextPreview).toBeDefined();
       expect(jsonOutput.profile).toBeDefined();
       expect(jsonOutput.budgetChars).toBe(12000);

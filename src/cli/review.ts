@@ -7,6 +7,7 @@ import type {
   FileAuditResult,
   ProjectConfig,
   ReviewFormat,
+  ReviewIntelligenceSignal,
   ReviewReport,
   ReviewTarget,
   SkillProfile,
@@ -496,6 +497,7 @@ export async function renderExplainContext(opts: {
   let relationTypes: RelationType[] = [];
   let includedFiles: string[] = [];
   let includedSignals: string[] | undefined;
+  let intelligenceSignals: ReviewIntelligenceSignal[] | undefined;
   const budgetChars = 12000;
 
   try {
@@ -521,6 +523,7 @@ export async function renderExplainContext(opts: {
           relationTypes = result.metadata.relationTypes;
           includedFiles = result.metadata.includedFiles;
           includedSignals = result.metadata.includedSignals;
+          intelligenceSignals = result.metadata.intelligenceSignals;
         } else {
           unavailableReason = "Source index found but context generation produced no content.";
         }
@@ -549,6 +552,9 @@ export async function renderExplainContext(opts: {
     if (includedSignals && includedSignals.length > 0) {
       output.includedSignals = includedSignals;
     }
+    if (intelligenceSignals && intelligenceSignals.length > 0) {
+      output.intelligenceSignals = intelligenceSignals;
+    }
   }
 
   // Output
@@ -568,6 +574,14 @@ export async function renderExplainContext(opts: {
       console.log(`Relation types: ${output.relationTypes?.join(", ") || "none"}`);
       if (output.includedSignals && output.includedSignals.length > 0) {
         console.log(`Intelligence signals: ${output.includedSignals.join(", ")}`);
+      }
+      if (output.intelligenceSignals && output.intelligenceSignals.length > 0) {
+        const countByType = new Map<string, number>();
+        for (const s of output.intelligenceSignals) {
+          countByType.set(s.type, (countByType.get(s.type) ?? 0) + 1);
+        }
+        const typeSummary = [...countByType.entries()].map(([t, c]) => `${t}(${c})`).join(", ");
+        console.log(`Signal details: ${typeSummary}`);
       }
       console.log("\nIncluded files:");
       for (const file of output.includedFiles || []) {

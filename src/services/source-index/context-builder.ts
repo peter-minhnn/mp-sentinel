@@ -6,6 +6,7 @@ import type {
   SourceIndex,
   SourceIndexFile,
   ReviewContextMetadata,
+  ReviewIntelligenceSignal,
   RelationType,
   SkillKnowledgeBase,
 } from "../../types/index.js";
@@ -328,6 +329,7 @@ export async function buildReviewContext(
 
   // ── Intelligence signals from shared SkillKnowledgeBase ─────────────────────
   const includedSignals: string[] = [];
+  let dedupedIntelligenceSignals: ReviewIntelligenceSignal[] = [];
 
   // Normalize a path to its basename without extension for fuzzy matching across
   // .ts / .js extension differences (import specifiers use .js, files use .ts).
@@ -337,6 +339,7 @@ export async function buildReviewContext(
   try {
     const kb = buildSkillKnowledgeBase(index);
     const signalLines: string[] = [];
+    const intelligenceSignals: ReviewIntelligenceSignal[] = [];
     let headerWritten = false;
 
     const writeHeader = (): void => {
@@ -347,17 +350,31 @@ export async function buildReviewContext(
     };
 
     // Signal: Public API risk — any changed file that is a public-api entrypoint
-    const publicApiChangedPaths = changedPaths.filter((p) =>
+    const publicApiChanged = changedPaths.filter((p) =>
       kb.entrypoints.some(
         (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
       ),
     );
-    if (publicApiChangedPaths.length > 0) {
+    if (publicApiChanged.length > 0) {
       writeHeader();
       signalLines.push(
-        `Public API Risk: ${publicApiChangedPaths.join(", ")} — part of the public API surface; changes may be breaking.`,
+        `Public API Risk: ${publicApiChanged.join(", ")} — part of the public API surface; changes may be breaking.`,
       );
       includedSignals.push("public-api");
+      for (const p of publicApiChanged) {
+        const entrypoint = kb.entrypoints.find(
+          (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
+        );
+        intelligenceSignals.push({
+          type: "public-api",
+          file: p,
+          reason: "File is part of the public API surface; changes may be breaking.",
+          evidence: entrypoint
+            ? `Re-exported from entrypoint: ${entrypoint.path}`
+            : "Detected as public API entrypoint",
+          confidence: "high",
+        });
+      }
     }
 
     // Signal: Hub file blast radius — changed files that are hub files
@@ -367,6 +384,14 @@ export async function buildReviewContext(
         writeHeader();
         signalLines.push(`Hub File Blast Radius: ${cp} — ${hubRisk.detail}`);
         includedSignals.push("risk");
+        const importCount = hubRisk.importCount ?? 0;
+        intelligenceSignals.push({
+          type: "risk",
+          file: cp,
+          reason: `File has high blast radius — imported by ${importCount} other file(s).`,
+          evidence: `importedBy count: ${importCount}`,
+          confidence: importCount >= 5 ? "high" : importCount >= 3 ? "medium" : "low",
+        });
       }
     }
 
@@ -386,6 +411,16 @@ export async function buildReviewContext(
         signalLines.push(`  ... and ${changedWithNoTests.length - 5} more`);
       }
       includedSignals.push("test-gap");
+      for (const p of changedWithNoTests) {
+        const gap = kb.testing.testGaps.find((g) => g.sourceFile === p);
+        intelligenceSignals.push({
+          type: "test-gap",
+          file: p,
+          reason: `No associated test file found for ${p}.`,
+          evidence: gap ? `Reason: ${gap.reason}` : "No test association in index",
+          confidence: "medium",
+        });
+      }
     }
 
     // Signal: Dependency usage — top deps used by changed files
@@ -399,6 +434,29 @@ export async function buildReviewContext(
         .join(", ");
       signalLines.push(`Key Dependencies Used: ${depList}${relevantDeps.length > 5 ? "..." : ""}`);
       includedSignals.push("dependency");
+      for (const dep of relevantDeps.slice(0, 5)) {
+        const filesUsingDep = dep.files.filter((f) => changedSet.has(f));
+        for (const f of filesUsingDep) {
+          intelligenceSignals.push({
+            type: "dependency",
+            file: f,
+            reason: `Changed file imports package \`${dep.packageName}\`.`,
+            evidence: `Package: ${dep.packageName}@${dep.version}`,
+            confidence: "medium",
+          });
+        }
+      }
+    }
+
+    // Dedup intelligenceSignals by type + file + evidence
+    dedupedIntelligenceSignals = [];
+    const seenSignalKeys = new Set<string>();
+    for (const s of intelligenceSignals) {
+      const key = `${s.type}|${s.file}|${s.evidence}`;
+      if (!seenSignalKeys.has(key)) {
+        seenSignalKeys.add(key);
+        dedupedIntelligenceSignals.push(s);
+      }
     }
 
     // Append signals if they fit within remaining budget
@@ -423,6 +481,9 @@ export async function buildReviewContext(
       truncated,
       budgetChars,
       ...(includedSignals.length > 0 && { includedSignals: [...new Set(includedSignals)] }),
+      ...(dedupedIntelligenceSignals.length > 0 && {
+        intelligenceSignals: dedupedIntelligenceSignals,
+      }),
     },
   };
 }

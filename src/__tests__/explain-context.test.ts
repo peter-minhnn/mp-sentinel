@@ -313,6 +313,15 @@ describe("renderExplainContext", () => {
       expect(jsonOutput.indexUsed).toBe(true);
       expect(jsonOutput.includedSignals).toBeDefined();
       expect(jsonOutput.includedSignals).toContain("public-api");
+      // v1.4.0: intelligenceSignals should be present with structured metadata
+      expect(jsonOutput.intelligenceSignals).toBeDefined();
+      expect(Array.isArray(jsonOutput.intelligenceSignals)).toBe(true);
+      expect(jsonOutput.intelligenceSignals.length).toBeGreaterThan(0);
+      const publicApiSignal = jsonOutput.intelligenceSignals.find(
+        (s: { type: string }) => s.type === "public-api",
+      );
+      expect(publicApiSignal).toBeDefined();
+      expect(publicApiSignal.file).toBe("src/api.ts");
     } finally {
       logSpy.mockRestore();
       process.chdir(originalCwd);
@@ -370,6 +379,8 @@ describe("renderExplainContext", () => {
       const calls = logSpy.mock.calls.map((c) => c[0]).join("\n");
       expect(calls).toContain("Intelligence signals:");
       expect(calls).toContain("public-api");
+      // v1.4.0: console output includes signal details summary (count/type)
+      expect(calls).toContain("Signal details:");
     } finally {
       logSpy.mockRestore();
       process.chdir(originalCwd);

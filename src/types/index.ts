@@ -499,6 +499,24 @@ export interface CacheValidity {
 export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "library";
 
 /**
+ * Structured intelligence signal explaining why a signal exists in the review.
+ * Each signal links a type, file, reason, and evidence so users and agents can
+ * understand why a particular risk/concern was flagged.
+ */
+export interface ReviewIntelligenceSignal {
+  /** Signal type */
+  type: "public-api" | "risk" | "test-gap" | "dependency";
+  /** File path that triggered the signal */
+  file: string;
+  /** Human-readable explanation of why this signal was raised */
+  reason: string;
+  /** Supporting evidence (e.g., import count, package name, test association) */
+  evidence: string;
+  /** Confidence level: low | medium | high */
+  confidence: "low" | "medium" | "high";
+}
+
+/**
  * Metadata about the review context generation (for testing/debug)
  */
 export interface ReviewContextMetadata {
@@ -508,8 +526,10 @@ export interface ReviewContextMetadata {
   includedFiles: string[];
   truncated: boolean;
   budgetChars: number;
-  /** Intelligence signal types included in the context */
+  /** Intelligence signal types included in the context (backward compat) */
   includedSignals?: string[];
+  /** Structured intelligence signal metadata (v1.4.0+) */
+  intelligenceSignals?: ReviewIntelligenceSignal[];
 }
 
 /**
@@ -550,6 +570,8 @@ export interface ExplainContextOutput {
   indexUsed?: boolean;
   /** Intelligence signal types included in the review context */
   includedSignals?: string[];
+  /** Structured intelligence signal metadata (v1.4.0+) */
+  intelligenceSignals?: ReviewIntelligenceSignal[];
 }
 
 // ====================================================================================
