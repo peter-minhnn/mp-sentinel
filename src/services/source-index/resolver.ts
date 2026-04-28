@@ -5,7 +5,7 @@
 
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative } from "node:path";
 import { log } from "../../utils/logger.js";
 
 export interface ResolveResult {
@@ -27,7 +27,81 @@ function stripJsonComments(content: string): string {
 }
 
 /**
- * Get TypeScript compiler options from tsconfig.json
+ * Load a tsconfig file with optional extends chain resolution.
+ * Returns merged compilerOptions where parent values serve as defaults
+ * and child values override. baseUrl from a parent is resolved relative
+ * to the parent config's directory.
+ */
+async function loadTsConfigWithExtends(
+  configPath: string,
+  visited: Set<string> = new Set(),
+): Promise<{ compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } } | null> {
+  const absPath = resolve(configPath);
+  if (visited.has(absPath)) return null;
+  visited.add(absPath);
+
+  if (!existsSync(absPath)) return null;
+
+  try {
+    const content = await readFile(absPath, "utf-8");
+    const config = JSON.parse(stripJsonComments(content)) as {
+      extends?: string;
+      compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> };
+    };
+
+    let merged: { baseUrl?: string; paths?: Record<string, string[]> } = {
+      ...config.compilerOptions,
+    };
+
+    if (config.extends) {
+      const parentDir = dirname(absPath);
+      const parentPath = resolve(parentDir, config.extends);
+      // Allow extends without .json extension
+      const parentPaths = [parentPath, parentPath + ".json"];
+      for (const pp of parentPaths) {
+        const parent = await loadTsConfigWithExtends(pp, visited);
+        if (parent?.compilerOptions) {
+          const parentBaseUrl = parent.compilerOptions.baseUrl;
+          const parentPathsOpt = parent.compilerOptions.paths;
+          // If parent defines paths and child does not, use parent's paths.
+          // If child defines paths, they replace parent's (TS behaviour).
+          if (!merged.paths && parentPathsOpt) {
+            merged.paths = parentPathsOpt;
+          }
+          // baseUrl from parent is relative to parent's directory
+          if (!merged.baseUrl && parentBaseUrl) {
+            merged.baseUrl =
+              relative(
+                resolve(projectRootFromPath(absPath)),
+                resolve(parentDir, parentBaseUrl),
+              ).replace(/\\/g, "/") || ".";
+          }
+          break;
+        }
+      }
+    }
+
+    return {
+      compilerOptions: {
+        ...(merged.baseUrl !== undefined && { baseUrl: merged.baseUrl }),
+        ...(merged.paths !== undefined && { paths: merged.paths }),
+      },
+    };
+  } catch (error) {
+    log.debug(
+      `Failed to read tsconfig at ${absPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
+/** Derive the project root from a tsconfig path (assumes config at project root). */
+function projectRootFromPath(configPath: string): string {
+  return dirname(resolve(configPath));
+}
+
+/**
+ * Get TypeScript compiler options from tsconfig.json, with extends chain support.
  */
 export async function readTsConfig(projectRoot: string): Promise<{
   baseUrl?: string;
@@ -40,24 +114,14 @@ export async function readTsConfig(projectRoot: string): Promise<{
   ];
 
   for (const tsConfigPath of tsConfigPaths) {
-    if (existsSync(tsConfigPath)) {
-      try {
-        const content = await readFile(tsConfigPath, "utf-8");
-        const config = JSON.parse(stripJsonComments(content)) as {
-          compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> };
-          baseUrl?: string;
-          paths?: Record<string, string[]>;
-        };
-        const compilerOptions = config.compilerOptions ?? config;
-        return {
-          ...(compilerOptions.baseUrl !== undefined && { baseUrl: compilerOptions.baseUrl }),
-          ...(compilerOptions.paths !== undefined && { paths: compilerOptions.paths }),
-        };
-      } catch (error) {
-        log.debug(
-          `Failed to read tsconfig at ${tsConfigPath}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+    const loaded = await loadTsConfigWithExtends(tsConfigPath);
+    if (loaded?.compilerOptions) {
+      return {
+        ...(loaded.compilerOptions.baseUrl !== undefined && {
+          baseUrl: loaded.compilerOptions.baseUrl,
+        }),
+        ...(loaded.compilerOptions.paths !== undefined && { paths: loaded.compilerOptions.paths }),
+      };
     }
   }
 
@@ -68,8 +132,8 @@ export async function readTsConfig(projectRoot: string): Promise<{
  * Normalize an import specifier by removing file extension if present
  */
 function normalizeImport(specifier: string): string {
-  // Remove .ts, .tsx, .js, .jsx extensions
-  return specifier.replace(/\.(ts|tsx|js|jsx)$/, "");
+  // Remove .mts, .cts, .ts, .tsx, .mjs, .cjs, .js, .jsx extensions
+  return specifier.replace(/\.(m?ts|tsx|m?js|jsx|cjs|cts)$/, "");
 }
 
 /**
@@ -95,7 +159,17 @@ function resolveLocalImport(
   specifier: string,
   sourceDir: string,
   projectRoot: string,
-  fileExtensions: string[] = [".ts", ".tsx", ".js", ".jsx", ".json"],
+  fileExtensions: string[] = [
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json",
+  ],
 ): ResolveResult {
   let normalized = normalizeImport(specifier);
 
@@ -132,7 +206,17 @@ function resolvePathMapping(
   baseUrl: string,
   paths: Record<string, string[]>,
   projectRoot: string,
-  fileExtensions: string[] = [".ts", ".tsx", ".js", ".jsx", ".json"],
+  fileExtensions: string[] = [
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json",
+  ],
 ): ResolveResult {
   const normalized = normalizeImport(specifier);
 
@@ -197,7 +281,7 @@ export class ImportResolver {
     this.projectRoot = projectRoot;
     this.baseUrl = (options.tsconfig?.baseUrl as string | undefined) ?? ".";
     this.paths = options.tsconfig?.paths;
-    this.fileExtensions = [".ts", ".tsx", ".js", ".jsx", ".json"];
+    this.fileExtensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"];
   }
 
   async initialize(): Promise<void> {

@@ -13,6 +13,7 @@ import {
 } from "../services/source-index/manifest.js";
 import { buildIndexContext } from "../cli/review.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
+import { FileHandler } from "../services/file-handler/index.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
 const tempDirs: string[] = [];
@@ -1018,5 +1019,198 @@ describe("incremental parse-error resilience", () => {
     expect(idx2!.files.some((f) => f.path === "src/broken.ts")).toBe(true);
     expect(idx2!.stats.parseErrors).toBe(1);
     expect(idx2!.stats.parseErrors / idx2!.stats.indexedFiles).toBeLessThanOrEqual(0.5);
+  });
+});
+
+// ── Lane B: extension support and resolver accuracy ─────────────────────────
+
+describe("extension support (.mts/.cts/.mjs/.cjs)", () => {
+  it("maps .mts and .cts to typescript language", () => {
+    expect(extensionToLanguage("mts")).toBe("typescript");
+    expect(extensionToLanguage("cts")).toBe("typescript");
+  });
+
+  it("maps .mjs and .cjs to javascript language", () => {
+    expect(extensionToLanguage("mjs")).toBe("javascript");
+    expect(extensionToLanguage("cjs")).toBe("javascript");
+  });
+
+  it("indexes .mts and .cts files", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "app.mts"), `export const app = 1;`);
+    await writeFile(join(cwd, "src", "util.cts"), `export const util = 2;`);
+
+    const idx = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      false,
+    );
+    expect(idx).not.toBeNull();
+    expect(idx!.files.some((f) => f.path === "src/app.mts")).toBe(true);
+    expect(idx!.files.some((f) => f.path === "src/util.cts")).toBe(true);
+  });
+});
+
+describe("import resolver extension normalisation", () => {
+  it("resolves .mjs import specifier to .ts source file", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+    await writeFile(join(cwd, "src", "dep.ts"), `export const dep = 1;`);
+    await writeFile(join(cwd, "src", "main.ts"), `import { dep } from "./dep.mjs";`);
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("./dep.mjs", "src/main.ts");
+    expect(result.path).toBe("src/dep.ts");
+    expect(result.external).toBe(false);
+  });
+
+  it("resolves .cjs import specifier to .ts source file", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+    await writeFile(join(cwd, "src", "dep.ts"), `export const dep = 1;`);
+    await writeFile(join(cwd, "src", "main.ts"), `import { dep } from "./dep.cjs";`);
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("./dep.cjs", "src/main.ts");
+    expect(result.path).toBe("src/dep.ts");
+    expect(result.external).toBe(false);
+  });
+
+  it("resolves .mts import specifier", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
+    await writeFile(join(cwd, "src", "mod.mts"), `export const mod = 1;`);
+    await writeFile(join(cwd, "src", "main.ts"), `import { mod } from "./mod.mts";`);
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("./mod.mts", "src/main.ts");
+    expect(result.path).toBe("src/mod.mts");
+    expect(result.external).toBe(false);
+  });
+});
+
+describe("tsconfig extends resolution", () => {
+  it("resolves path aliases from extended base tsconfig", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src", "lib"), { recursive: true });
+    // Base config defines path alias
+    await writeFile(
+      join(cwd, "tsconfig.base.json"),
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@lib/*": ["src/lib/*"] },
+        },
+      }),
+    );
+    // Child config extends base, does not redefine paths
+    await writeFile(
+      join(cwd, "tsconfig.json"),
+      JSON.stringify({
+        extends: "./tsconfig.base.json",
+        compilerOptions: { outDir: "dist" },
+      }),
+    );
+    await writeFile(join(cwd, "src", "lib", "helper.ts"), `export const helper = 1;`);
+    await writeFile(join(cwd, "src", "main.ts"), `import { helper } from "@lib/helper";`);
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("@lib/helper", "src/main.ts");
+    expect(result.path).toBeDefined();
+    expect(result.path).toBe("src/lib/helper.ts");
+    expect(result.external).toBe(false);
+  });
+
+  it("child paths override parent paths", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src", "lib"), { recursive: true });
+    await mkdir(join(cwd, "src", "overrides"), { recursive: true });
+    await writeFile(
+      join(cwd, "tsconfig.base.json"),
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@lib/*": ["src/lib/*"] },
+        },
+      }),
+    );
+    await writeFile(
+      join(cwd, "tsconfig.json"),
+      JSON.stringify({
+        extends: "./tsconfig.base.json",
+        compilerOptions: {
+          paths: { "@lib/*": ["src/overrides/*"] },
+        },
+      }),
+    );
+    await writeFile(join(cwd, "src", "overrides", "helper.ts"), `export const helper = 1;`);
+    await writeFile(join(cwd, "src", "main.ts"), `import { helper } from "@lib/helper";`);
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("@lib/helper", "src/main.ts");
+    expect(result.path).toBe("src/overrides/helper.ts");
+  });
+
+  it("handles missing extended config gracefully", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "tsconfig.json"),
+      JSON.stringify({
+        extends: "./nonexistent.json",
+        compilerOptions: { baseUrl: ".", paths: { "@app/*": ["src/*"] } },
+      }),
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "main.ts"), `export const main = 1;`);
+
+    // Should not crash — inherits paths from child only
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+    const result = resolver.resolve("@app/main", "src/main.ts");
+    expect(result.path).toBe("src/main.ts");
+  });
+});
+
+describe("maxFileSize enforcement", () => {
+  it("rejects files exceeding maxFileSize in classifyFiles", () => {
+    const handler = new FileHandler({
+      cwd: process.cwd(),
+      maxFileSize: 1,
+      disableGitIgnore: true,
+      disableArchIgnore: true,
+    });
+    const result = handler.filterPaths(["package.json"]);
+    expect(result.stats.accepted).toBe(0);
+    expect(result.stats.rejected).toBe(1);
+    expect(result.stats.byReason["exceeds max file size (1 bytes)"]).toBe(1);
+  });
+
+  it("accepts files within maxFileSize", () => {
+    const handler = new FileHandler({
+      cwd: process.cwd(),
+      maxFileSize: 512000,
+      disableGitIgnore: true,
+      disableArchIgnore: true,
+    });
+    const result = handler.filterPaths(["package.json"]);
+    expect(result.stats.accepted).toBe(1);
   });
 });

@@ -56,6 +56,8 @@ export const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set([
   "jsx",
   "mjs",
   "cjs",
+  "mts",
+  "cts",
   // Config / data
   "json",
   "yaml",

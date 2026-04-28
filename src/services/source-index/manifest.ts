@@ -310,6 +310,8 @@ export function extensionToLanguage(
   const mapping: Record<string, "typescript" | "tsx" | "javascript" | "jsx"> = {
     ts: "typescript",
     tsx: "tsx",
+    mts: "typescript",
+    cts: "typescript",
     js: "javascript",
     jsx: "jsx",
     mjs: "javascript",

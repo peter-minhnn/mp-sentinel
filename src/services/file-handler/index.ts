@@ -15,7 +15,7 @@
 import fg from "fast-glob";
 import ignore, { type Ignore } from "ignore";
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve, relative, basename, extname } from "node:path";
 import { log } from "../../utils/logger.js";
 import {
@@ -183,6 +183,11 @@ export class FileHandler {
         continue;
       }
 
+      if (!this.isWithinSizeLimit(relPath)) {
+        reject(relPath, `exceeds max file size (${this.maxFileSize} bytes)`);
+        continue;
+      }
+
       accepted.push(relPath);
     }
 
@@ -217,6 +222,19 @@ export class FileHandler {
   private isBlockedFile(filePath: string): boolean {
     const name = basename(filePath);
     return this.blockedRegexes.some((re) => re.test(name));
+  }
+
+  /**
+   * Check whether the file exceeds the max file size limit.
+   */
+  private isWithinSizeLimit(relPath: string): boolean {
+    try {
+      const absPath = resolve(this.cwd, relPath);
+      if (!existsSync(absPath)) return true;
+      return statSync(absPath).size <= this.maxFileSize;
+    } catch {
+      return true;
+    }
   }
 
   // ── Ignore rule initialisation ─────────────────────────────────────────
