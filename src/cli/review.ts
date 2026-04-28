@@ -495,6 +495,7 @@ export async function renderExplainContext(opts: {
   let relatedFileCount = 0;
   let relationTypes: RelationType[] = [];
   let includedFiles: string[] = [];
+  let includedSignals: string[] | undefined;
   const budgetChars = 12000;
 
   try {
@@ -519,6 +520,7 @@ export async function renderExplainContext(opts: {
           relatedFileCount = result.metadata.relatedFileCount;
           relationTypes = result.metadata.relationTypes;
           includedFiles = result.metadata.includedFiles;
+          includedSignals = result.metadata.includedSignals;
         } else {
           unavailableReason = "Source index found but context generation produced no content.";
         }
@@ -544,6 +546,9 @@ export async function renderExplainContext(opts: {
     output.includedFiles = includedFiles;
     output.contextPreview = contextString ? contextString.substring(0, 500) : "";
     output.indexUsed = indexUsed;
+    if (includedSignals && includedSignals.length > 0) {
+      output.includedSignals = includedSignals;
+    }
   }
 
   // Output
@@ -561,6 +566,9 @@ export async function renderExplainContext(opts: {
       console.log(`Truncated: ${output.truncated ? "yes" : "no"}`);
       console.log(`Related files: ${output.relatedFileCount}`);
       console.log(`Relation types: ${output.relationTypes?.join(", ") || "none"}`);
+      if (output.includedSignals && output.includedSignals.length > 0) {
+        console.log(`Intelligence signals: ${output.includedSignals.join(", ")}`);
+      }
       console.log("\nIncluded files:");
       for (const file of output.includedFiles || []) {
         console.log(`  - ${file}`);

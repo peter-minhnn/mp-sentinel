@@ -451,4 +451,269 @@ describe("buildReviewContext", () => {
     expect(result.metadata.relatedFileCount).toBe(0);
     expect(result.metadata.truncated).toBe(false);
   });
+
+  it("includes public-api signal when changed file is re-exported from entrypoint", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/api.ts": `export const api = 1;`,
+      "src/lib.ts": `export { api } from "./api.js";`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/api.ts" }]);
+    expect(result.metadata.includedSignals).toContain("public-api");
+    expect(result.context).toContain("Public API Risk");
+    expect(result.context).toContain("src/api.ts");
+  });
+
+  it("includes risk signal when changed file is a hub file imported by multiple files", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/hub.ts": `export const hub = 1;`,
+      "src/user1.ts": `import { hub } from "./hub.js"; export const x = 1;`,
+      "src/user2.ts": `import { hub } from "./hub.js"; export const y = 1;`,
+      "src/user3.ts": `import { hub } from "./hub.js"; export const z = 1;`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/hub.ts" }]);
+    expect(result.metadata.includedSignals).toContain("risk");
+    expect(result.context).toContain("Hub File Blast Radius");
+    expect(result.context).toContain("src/hub.ts");
+  });
+
+  it("includes test-gap signal when changed file has no associated tests", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/untested.ts": `export function untested() { return 1; }`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/untested.ts" }]);
+    expect(result.metadata.includedSignals).toContain("test-gap");
+    expect(result.context).toContain("Test Coverage Gap");
+    expect(result.context).toContain("src/untested.ts");
+  });
+
+  it("includes dependency signal when changed files use external packages", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "test", version: "1.0.0", dependencies: { "fast-glob": "3.3.3" } }),
+    );
+    await writeFile(
+      join(cwd, "src", "scanner.ts"),
+      `import fg from "fast-glob"; export const scan = () => fg.sync("*.ts");`,
+    );
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/scanner.ts" }]);
+    expect(result.metadata.includedSignals).toContain("dependency");
+    expect(result.context).toContain("Key Dependencies Used");
+    expect(result.context).toContain("fast-glob");
+  });
+
+  it("does not include test-gap signal when file has associated tests", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/tested.ts": `export function tested() { return 1; }`,
+      "src/tested.test.ts": `import { tested } from "./tested.js"; test('tested', () => {});`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/tested.ts" }]);
+    if (result.metadata.includedSignals) {
+      expect(result.metadata.includedSignals).not.toContain("test-gap");
+    }
+    expect(result.context).not.toContain("Test Coverage Gap");
+  });
+
+  it("does not include intelligence signals when index has no insights", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/plain.ts": `export const x = 1;`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    // Strip insights to simulate legacy index
+    const strippedIndex = { ...index!, insights: undefined };
+
+    const result = await buildReviewContext(strippedIndex, [{ path: "src/plain.ts" }]);
+    expect(result.metadata.includedSignals).toBeUndefined();
+    expect(result.context).not.toContain("Review Intelligence");
+  });
+
+  it("orders equal-popularity hub candidates by path deterministically", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "test", version: "1.0.0" }));
+    // Two hub files with equal popularity (each imported by 3 files)
+    await writeFile(join(cwd, "src", "hub_a.ts"), `export const hubA = 1;`);
+    await writeFile(join(cwd, "src", "hub_z.ts"), `export const hubZ = 1;`);
+    // 3 files importing each hub (equal popularity = 3)
+    for (const hub of ["hub_a", "hub_z"]) {
+      for (let i = 0; i < 3; i++) {
+        await writeFile(
+          join(cwd, "src", `user_${hub}_${i}.ts`),
+          `import { ${hub === "hub_a" ? "hubA" : "hubZ"} } from "./${hub}.js"; export const x = ${i};`,
+        );
+      }
+    }
+    // Changed file is unrelated (so hubs get added in Tier 4)
+    await writeFile(join(cwd, "src", "changed.ts"), `export const c = 1;`);
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/changed.ts" }], {
+      maxRelatedFiles: 0,
+      budgetChars: 10000,
+    });
+
+    // Both hubs should appear in included files
+    expect(result.metadata.includedFiles).toContain("src/hub_a.ts");
+    expect(result.metadata.includedFiles).toContain("src/hub_z.ts");
+    // hub_a should come before hub_z (path ascending tie-breaker)
+    const hubAIdx = result.metadata.includedFiles.indexOf("src/hub_a.ts");
+    const hubZIdx = result.metadata.includedFiles.indexOf("src/hub_z.ts");
+    expect(hubAIdx).toBeLessThan(hubZIdx);
+  });
+
+  it("deduplicates risk signal when multiple changed files are hub files", async () => {
+    const cwd = await makeTempDir();
+    await makeIndexWithFiles(cwd, {
+      "src/hub1.ts": `export const hub1 = 1;`,
+      "src/hub2.ts": `export const hub2 = 1;`,
+      "src/user1.ts": `import { hub1 } from "./hub1.js"; export const x = 1;`,
+      "src/user2.ts": `import { hub1 } from "./hub1.js"; export const y = 1;`,
+      "src/user3.ts": `import { hub2 } from "./hub2.js"; export const z = 1;`,
+      "src/user4.ts": `import { hub2 } from "./hub2.js"; export const w = 1;`,
+    });
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    // Both hub1 and hub2 are changed — each triggers a "risk" push
+    const result = await buildReviewContext(index!, [
+      { path: "src/hub1.ts" },
+      { path: "src/hub2.ts" },
+    ]);
+
+    expect(result.metadata.includedSignals).toBeDefined();
+    expect(result.metadata.includedSignals).toContain("risk");
+    // Should appear exactly once, not duplicated
+    expect(result.metadata.includedSignals!.filter((s) => s === "risk").length).toBe(1);
+    // Context should mention both hub files
+    expect(result.context).toContain("src/hub1.ts");
+    expect(result.context).toContain("src/hub2.ts");
+  });
+
+  it("deduplicates dependency signal when includedSignals already has it", async () => {
+    // This test verifies the defensive dedup: even though the current code
+    // pushes "dependency" only once, the spread-Set guard ensures it would
+    // collapse duplicates if the signal-push logic later changes.
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "test", version: "1.0.0", dependencies: { lodash: "4.0.0" } }),
+    );
+    await writeFile(join(cwd, "src", "a.ts"), `import _ from "lodash"; export const a = 1;`);
+    await writeFile(join(cwd, "src", "b.ts"), `import _ from "lodash"; export const b = 1;`);
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const result = await buildReviewContext(index!, [{ path: "src/a.ts" }, { path: "src/b.ts" }]);
+
+    expect(result.metadata.includedSignals).toBeDefined();
+    expect(result.metadata.includedSignals).toContain("dependency");
+    // Should appear exactly once
+    expect(result.metadata.includedSignals!.filter((s) => s === "dependency").length).toBe(1);
+  });
 });

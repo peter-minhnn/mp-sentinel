@@ -206,7 +206,7 @@ npx mp-sentinel --explain-context --format json
 npx mp-sentinel --explain-context --format json --files src/cli/review.ts
 ```
 
-Displays index availability, profile detection, related files, relation types (`changed`, `import`, `dependent`, `hub`), and a preview of the generated context. Pure diagnostic — no AI calls are made.
+Displays index availability, profile detection, related files, relation types (`changed`, `import`, `dependent`, `hub`, `public-api`, `test-gap`, `dependency`, `risk`), intelligence signals, and a preview of the generated context. Pure diagnostic — no AI calls are made.
 
 ---
 

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-28
+
+### Added
+- **Shared repository intelligence for review**: `buildReviewContext()` now uses `SkillKnowledgeBase` (the same structured codebase knowledge that powers `create-skills`) to add compact intelligence signals to the review context.
+- **Public API risk signal**: Changed files that are part of the public API surface (re-exported from entrypoints) are flagged with a breaking-change warning.
+- **Hub file blast radius signal**: Changed files imported by many other files are flagged with their import count for blast-radius awareness.
+- **Test coverage gap signal**: Changed source files without associated tests are listed in the review context.
+- **Dependency usage signal**: External packages relevant to the changed files are summarized for dependency-aware review.
+- **`includedSignals` metadata**: `ReviewContextMetadata` and `ExplainContextOutput` now report which intelligence signals were included (`public-api`, `test-gap`, `dependency`, `risk`).
+- **Extended `RelationType`**: Added `public-api`, `test-gap`, `dependency`, and `risk` relation types.
+
+### Changed
+- **Review context enrichment**: Priority order remains changed-files-first; intelligence signals are appended within budget as a `--- Review Intelligence ---` section.
+- **`--explain-context --format json`**: Now includes `includedSignals` array and `indexUsed` boolean for diagnostics.
+- **Disabled indexing diagnostic**: When `indexing.enabled` is `false`, explain-context now clearly reports "Indexing disabled in configuration" as expected behavior, not a failure.
+
 ## [1.0.19] - 2026-04-28
 
 ### Changed

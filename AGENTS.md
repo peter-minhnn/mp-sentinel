@@ -160,9 +160,11 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 ## 6. Review Context Enrichment
 
 - Context priority order: **changed file → direct imports → direct dependents**.
+- Intelligence signals (public API risk, hub-file blast radius, test gaps, dependency usage) are appended from the shared `SkillKnowledgeBase` when index insights are available. Review and `create-skills` use the same KB — no duplicate summaries.
 - Respect the token budget at all times. Never exceed the configured limit even when adding context.
 - AI cache keys must change whenever the **system prompt**, **context content**, or **model version** changes. Stale cache serving wrong responses is worse than a cache miss.
 - Do not add index-dependent logic to the review path without a graceful fallback for when the index is absent.
+- `indexing.enabled` only controls review consumption. `create-skills` always auto-refreshes the index independently.
 
 ---
 

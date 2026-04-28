@@ -508,12 +508,22 @@ export interface ReviewContextMetadata {
   includedFiles: string[];
   truncated: boolean;
   budgetChars: number;
+  /** Intelligence signal types included in the context */
+  includedSignals?: string[];
 }
 
 /**
  * Types of relations between files in the dependency graph
  */
-export type RelationType = "changed" | "import" | "dependent" | "hub";
+export type RelationType =
+  | "changed"
+  | "import"
+  | "dependent"
+  | "hub"
+  | "public-api"
+  | "test-gap"
+  | "dependency"
+  | "risk";
 
 // ====================================================================================
 // Explain Context Types
@@ -538,6 +548,8 @@ export interface ExplainContextOutput {
   includedFiles?: string[];
   contextPreview?: string;
   indexUsed?: boolean;
+  /** Intelligence signal types included in the review context */
+  includedSignals?: string[];
 }
 
 // ====================================================================================

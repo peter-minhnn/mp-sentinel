@@ -7,8 +7,10 @@ import type {
   SourceIndexFile,
   ReviewContextMetadata,
   RelationType,
+  SkillKnowledgeBase,
 } from "../../types/index.js";
 import { detectProfile, type SkillProfile } from "../skills-generator/profile.js";
+import { buildSkillKnowledgeBase } from "../skills-generator/knowledge-base.js";
 import { log } from "../../utils/logger.js";
 
 const INDEX_CONTEXT_MAX_CHARS = 12000;
@@ -191,8 +193,8 @@ export async function buildReviewContext(
         hubCandidates.push({ path: file.path, popularity: importedByCount });
       }
     }
-    // Sort by popularity (descending)
-    hubCandidates.sort((a, b) => b.popularity - a.popularity);
+    // Sort by popularity (descending), path (ascending) tie-breaker
+    hubCandidates.sort((a, b) => b.popularity - a.popularity || a.path.localeCompare(b.path));
     // Add as many as fit within remaining budget (but cap to avoid bloat)
     const maxHubs = Math.min(5, totalFiles - orderedPaths.length);
     for (let i = 0; i < Math.min(maxHubs, hubCandidates.length); i++) {
@@ -324,6 +326,93 @@ export async function buildReviewContext(
     }
   }
 
+  // ── Intelligence signals from shared SkillKnowledgeBase ─────────────────────
+  const includedSignals: string[] = [];
+
+  // Normalize a path to its basename without extension for fuzzy matching across
+  // .ts / .js extension differences (import specifiers use .js, files use .ts).
+  const normalizePathKey = (p: string): string =>
+    p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
+
+  try {
+    const kb = buildSkillKnowledgeBase(index);
+    const signalLines: string[] = [];
+    let headerWritten = false;
+
+    const writeHeader = (): void => {
+      if (!headerWritten) {
+        signalLines.push("\n--- Review Intelligence ---");
+        headerWritten = true;
+      }
+    };
+
+    // Signal: Public API risk — any changed file that is a public-api entrypoint
+    const publicApiChangedPaths = changedPaths.filter((p) =>
+      kb.entrypoints.some(
+        (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
+      ),
+    );
+    if (publicApiChangedPaths.length > 0) {
+      writeHeader();
+      signalLines.push(
+        `Public API Risk: ${publicApiChangedPaths.join(", ")} — part of the public API surface; changes may be breaking.`,
+      );
+      includedSignals.push("public-api");
+    }
+
+    // Signal: Hub file blast radius — changed files that are hub files
+    for (const cp of changedPaths) {
+      const hubRisk = kb.risks.find((r) => r.file === cp && r.type === "hub-file");
+      if (hubRisk) {
+        writeHeader();
+        signalLines.push(`Hub File Blast Radius: ${cp} — ${hubRisk.detail}`);
+        includedSignals.push("risk");
+      }
+    }
+
+    // Signal: Test gaps — changed files without associated tests
+    const changedWithNoTests = changedPaths.filter((p) =>
+      kb.testing.testGaps.some((g) => g.sourceFile === p),
+    );
+    if (changedWithNoTests.length > 0) {
+      writeHeader();
+      signalLines.push(
+        `Test Coverage Gap: ${changedWithNoTests.length} of ${changedPaths.length} changed file(s) have no associated tests:`,
+      );
+      for (const p of changedWithNoTests.slice(0, 5)) {
+        signalLines.push(`  - ${p}`);
+      }
+      if (changedWithNoTests.length > 5) {
+        signalLines.push(`  ... and ${changedWithNoTests.length - 5} more`);
+      }
+      includedSignals.push("test-gap");
+    }
+
+    // Signal: Dependency usage — top deps used by changed files
+    const changedSet = new Set(changedPaths);
+    const relevantDeps = kb.dependencies.filter((d) => d.files.some((f) => changedSet.has(f)));
+    if (relevantDeps.length > 0) {
+      writeHeader();
+      const depList = relevantDeps
+        .slice(0, 5)
+        .map((d) => `${d.packageName}@${d.version}`)
+        .join(", ");
+      signalLines.push(`Key Dependencies Used: ${depList}${relevantDeps.length > 5 ? "..." : ""}`);
+      includedSignals.push("dependency");
+    }
+
+    // Append signals if they fit within remaining budget
+    const signalText = signalLines.join("\n");
+    if (headerWritten && context.length + signalText.length <= budgetChars) {
+      context = context.replace(
+        "\n=== End Source Index Context ===",
+        signalText + "\n=== End Source Index Context ===",
+      );
+    }
+  } catch {
+    // Silently skip intelligence signals on any error (corrupt index, parse issue, etc.)
+  }
+
   return {
     context,
     metadata: {
@@ -333,6 +422,7 @@ export async function buildReviewContext(
       includedFiles,
       truncated,
       budgetChars,
+      ...(includedSignals.length > 0 && { includedSignals: [...new Set(includedSignals)] }),
     },
   };
 }

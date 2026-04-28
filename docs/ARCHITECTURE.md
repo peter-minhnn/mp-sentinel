@@ -47,6 +47,27 @@ CLI (src/index.ts)
 - `src/services/source-index/context-builder.ts`: **impact-aware review context generation**
 - `src/types/index.ts`: `ExplainContextOutput` type for `--explain-context` diagnostic mode
 
+## Shared Repository Intelligence (v1.1.0+)
+
+`create-skills` and `review` now share the same `SkillKnowledgeBase` derived from the source index. This avoids maintaining two separate codebase summaries and lets review catch higher-level risks: public API changes, hub-file blast radius, test gaps, and dependency-sensitive edits.
+
+### Intelligence Signals in Review Context
+
+When index insights are available, the context builder appends a `--- Review Intelligence ---` section with compact risk signals:
+
+- **Public API Risk** — changed files that are part of the public API surface (re-exported from entrypoints).
+- **Hub File Blast Radius** — changed files imported by many other files (high-impact changes).
+- **Test Coverage Gap** — changed source files with no associated tests.
+- **Key Dependencies Used** — external packages relevant to the changed files.
+
+Each signal type is tracked in `ReviewContextMetadata.includedSignals` and surfaced in `--explain-context --format json` output.
+
+### Graceful Isolation
+
+- Review never auto-runs indexing; it skips intelligence signals when the index is absent, disabled, corrupt, or has excessive parse errors.
+- `create-skills` independently refreshes the index and uses the same `SkillKnowledgeBase` for richer documentation.
+- `indexing.enabled` in config only controls review consumption, not `create-skills` or direct `indexing` command behavior.
+
 ## Source Indexing & Review Context (v1.0.11+)
 
 ### Behavioral Contract
@@ -107,6 +128,7 @@ The `--explain-context` flag on the `review` command provides diagnostic output 
   "relatedFileCount": 5,
   "relationTypes": ["changed", "import"],
   "includedFiles": ["src/index.ts", "src/config.ts"],
+  "includedSignals": ["public-api", "test-gap"],
   "contextPreview": "=== Source Index Context ===\nProject...",
   "indexUsed": true
 }

@@ -1,3 +1,34 @@
+# What's New in v1.1.0
+
+## Shared Repository Intelligence for Review
+
+v1.1.0 reuses the same `SkillKnowledgeBase` that powers `create-skills` inside repository-aware review context. Review now catches higher-level risks beyond code-level issues.
+
+### Intelligence Signals in Review Context
+
+When a source index with insights is available, the review context now includes a `--- Review Intelligence ---` section with compact risk signals:
+
+- **Public API Risk** — flags changed files that are part of the public API surface (re-exported from entrypoints like `src/lib.ts` or `src/index.ts`). Changes to these files may be semver-breaking.
+- **Hub File Blast Radius** — flags changed files that are imported by many other files. High blast-radius changes deserve extra scrutiny.
+- **Test Coverage Gap** — lists changed source files that have no associated test files. Helps reviewers spot untested changes before they merge.
+- **Key Dependencies Used** — shows external packages relevant to the changed files, so reviewers can assess dependency-aware risks.
+
+### Diagnostics via --explain-context
+
+`--explain-context --format json` now reports:
+- `includedSignals` — which signal types (`public-api`, `test-gap`, `dependency`, `risk`) were included in the context.
+- `indexUsed: true` — confirms the source index was consumed.
+- When `indexing.enabled` is `false`, the reason clearly states "Indexing disabled in configuration" — expected behavior, not a failure.
+
+### Architecture
+
+- `create-skills` and `review` now share the same `SkillKnowledgeBase` derived from `SourceIndex`. No duplicate codebase summaries.
+- Review gets concise risk summaries; `create-skills` keeps richer documentation.
+- Review never auto-runs indexing. Intelligence signals gracefully skip when the index is absent, disabled, corrupt, or has excessive parse errors.
+- Context budget remains strict and diff-first remains the primary review rule.
+
+---
+
 # What's New in v1.0.19
 
 ## Release Checklist & Docs Polish

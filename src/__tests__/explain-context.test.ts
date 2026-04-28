@@ -285,4 +285,94 @@ describe("renderExplainContext", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("returns JSON with includedSignals when intelligence signals are present", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    // Set up a project where a changed file is in the public API surface and has no tests
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "api.ts"), `export const api = 1;`);
+    await writeFile(join(cwd, "src", "lib.ts"), `export { api } from "./api.js";`);
+    await buildSourceIndex(cwd, baseIndexingConfig, true);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json", files: ["src/api.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(jsonOutput.status).toBe("available");
+      expect(jsonOutput.indexUsed).toBe(true);
+      expect(jsonOutput.includedSignals).toBeDefined();
+      expect(jsonOutput.includedSignals).toContain("public-api");
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("JSON output with disabled indexing reports expected reason", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, false);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json", files: ["src/index.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(jsonOutput.status).toBe("unavailable");
+      expect(jsonOutput.reason).toContain("Indexing disabled");
+      expect(jsonOutput.reason).toContain("indexing.enabled");
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("console output includes intelligence signals line when present", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "api.ts"), `export const api = 1;`);
+    await writeFile(join(cwd, "src", "lib.ts"), `export { api } from "./api.js";`);
+    await buildSourceIndex(cwd, baseIndexingConfig, true);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "console", files: ["src/api.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const calls = logSpy.mock.calls.map((c) => c[0]).join("\n");
+      expect(calls).toContain("Intelligence signals:");
+      expect(calls).toContain("public-api");
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
 });
