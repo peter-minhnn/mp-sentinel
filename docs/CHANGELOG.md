@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.19] - 2026-04-28
+
+### Changed
+- **Release checklist**: Added structured release checklist to `AGENTS.md` for consistent tagging and npm publishing workflow.
+- **Remote tag sync**: All historical tags v1.0.11–v1.0.18 synchronized with `origin`.
+- **Docs polish**: README badge, CHANGELOG, and WHATS_NEW updated for v1.0.19 consistency. No runtime code changes.
+
 ## [1.0.18] - 2026-04-28
 
 ### Added

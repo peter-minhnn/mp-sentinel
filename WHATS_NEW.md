@@ -1,3 +1,15 @@
+# What's New in v1.0.19
+
+## Release Checklist & Docs Polish
+
+v1.0.19 is a documentation and release-process consistency release. No runtime code changes.
+
+- **Release checklist**: Added structured release checklist to AGENTS.md for consistent tagging and publishing.
+- **Remote sync**: Full tag synchronization with `origin` — all tags v1.0.11 through v1.0.18 pushed and verified.
+- **Docs polish**: README badge, CHANGELOG, and WHATS_NEW updated for v1.0.19 consistency.
+
+---
+
 # What's New in v1.0.18
 
 ## Legacy Generated File Migration Diagnostics
