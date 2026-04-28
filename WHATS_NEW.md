@@ -1,3 +1,14 @@
+# What's New in v1.1.2
+
+## Lockfile Integrity Patch
+
+v1.1.2 is a lockfile integrity patch — no runtime code changes.
+
+- **Lockfile regeneration**: Full clean `npm install` from scratch to restore correct dependency version fields. Previous v1.1.1 release accidentally over-edited `package-lock.json` dependency entries during version bumps.
+- **Root version bump**: `1.1.1` → `1.1.2` using npm tooling with manual root-only edits to prevent recurrence.
+
+---
+
 # What's New in v1.1.1
 
 ## README Release Metadata Consistency

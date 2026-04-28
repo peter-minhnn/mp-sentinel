@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-04-28
+
+### Fixed
+- **Lockfile integrity**: Regenerated `package-lock.json` from scratch via `npm install` to restore correct dependency version fields corrupted by global version-string replacement in prior release.
+
 ## [1.1.1] - 2026-04-28
 
 ### Fixed
