@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.18] - 2026-04-28
+
+### Added
+- **Legacy generated file detection**: `detectLegacyGeneratedFiles()` scans for pre-v1.0.17 generated files at old Codex (`.agents/rules/<project>-best-practices.md`) and Antigravity (`.antigravity/rules/<project>-best-practices.md`) paths. Only files with `@mp-sentinel-generated` metadata are flagged; user-authored files are ignored.
+- **`LegacyFileInfo` type**: New type with `path`, `agent`, `supersededBy`, and `suggestion` fields.
+- **Advisory reporting**: Legacy files appear in console (warning) and JSON output (`legacyFiles` field) for all three modes: normal generate, `--dry-run`, and `--check`.
+- **Non-blocking `--check`**: Legacy advisories do not cause `--check` to fail. Exit code remains 0 when official files are current.
+
+### Changed
+- **Output interfaces**: `RunOutput`, `DryRunOutput`, and `CheckOutput` in `create-skills.ts` now include optional `legacyFiles` field.
+
 ## [1.0.17] - 2026-04-28
 
 ### Changed

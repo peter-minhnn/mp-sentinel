@@ -1,3 +1,32 @@
+# What's New in v1.0.18
+
+## Legacy Generated File Migration Diagnostics
+
+`create-skills` now detects legacy generated files left over from pre-v1.0.17 adapter paths and reports them as advisories — no automatic deletion.
+
+### What gets detected
+
+- **Codex legacy**: `.agents/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata.
+- **Antigravity legacy**: `.antigravity/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata.
+
+Files at those paths without mp-sentinel metadata (user-authored rule files) are never flagged.
+
+### How it works
+
+- **Console mode**: Prints a concise advisory when legacy files are found.
+- **JSON mode**: Adds an optional `legacyFiles` field to all output shapes (`results`, `dryRun`, `check`).
+- **`--check` mode**: Legacy advisories do **not** cause `--check` to fail. Exit code 0 when official files are current and only legacy advisories exist.
+
+### No automatic deletion
+
+Legacy files are advisory-only. Users can delete them manually after confirming new official skills exist at the v1.0.17 paths (`.agents/skills/<project>-codex-best-practices/SKILL.md` and `.agents/skills/<project>-antigravity-best-practices/SKILL.md`).
+
+### JSON backward compatibility
+
+The `legacyFiles` field is optional and additive — no existing fields change. Each entry contains `path`, `agent`, `supersededBy`, and `suggestion`.
+
+---
+
 # What's New in v1.0.17
 
 ## Official Skills Layout Audit & Adapter Layout Contract

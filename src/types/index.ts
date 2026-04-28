@@ -845,6 +845,20 @@ export interface SkillsCheckResult {
   quality?: QualityReport | undefined;
 }
 
+// ── Legacy Migration types (v1.0.18+) ──────────────────────────────────────
+
+/** A legacy generated file detected at a pre-v1.0.17 path. */
+export interface LegacyFileInfo {
+  /** Path to the legacy generated file */
+  path: string;
+  /** Which adapter generated the file */
+  agent: AgentAdapterId;
+  /** The current adapter that supersedes it */
+  supersededBy: AgentAdapterId;
+  /** Suggested action for the user */
+  suggestion: string;
+}
+
 // ── Quality Gate types ──────────────────────────────────────────────────────
 
 /** A single quality check result from the skill quality gate */

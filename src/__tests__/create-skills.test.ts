@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
@@ -13,7 +13,9 @@ import {
   getAdapter,
   detectProfile,
   resolveAIEnrichmentConfig,
+  detectLegacyGeneratedFiles,
 } from "../services/skills-generator/index.js";
+import { getToolVersion } from "../utils/version.js";
 import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
 import { clearConfigCache } from "../utils/config.js";
@@ -3068,5 +3070,222 @@ describe("quality gate: adapter-layout-contract", () => {
       (c) => c.type === "adapter-layout-contract" && c.severity === "error",
     );
     expect(layoutErrors).toHaveLength(0);
+  });
+});
+
+// ── Legacy migration diagnostics (v1.0.18+) ────────────────────────────────────
+
+describe("detectLegacyGeneratedFiles", () => {
+  const createLegacyFile = async (
+    cwd: string,
+    relPath: string,
+    agentId: string,
+    projectName: string,
+  ): Promise<void> => {
+    const header = renderMetadataHeader({
+      generatorVersion: getToolVersion(),
+      sourceIndexSchema: "1.2",
+      sourceIndexHash: "abc123def4567890",
+      agent: agentId as "codex" | "antigravity",
+      projectName,
+    });
+    const content = header + "\n# Legacy generated file\n";
+    await mkdir(join(cwd, dirname(relPath)), { recursive: true });
+    await writeFile(join(cwd, relPath), content);
+  };
+
+  it("detects old Codex generated file with metadata", async () => {
+    const cwd = await makeTempDir();
+    await createLegacyFile(cwd, ".agents/rules/myapp-best-practices.md", "codex", "myapp");
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.path).toBe(".agents/rules/myapp-best-practices.md");
+    expect(results[0]!.agent).toBe("codex");
+    expect(results[0]!.supersededBy).toBe("codex");
+  });
+
+  it("detects old Antigravity generated file with metadata", async () => {
+    const cwd = await makeTempDir();
+    await createLegacyFile(
+      cwd,
+      ".antigravity/rules/myapp-best-practices.md",
+      "antigravity",
+      "myapp",
+    );
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.path).toBe(".antigravity/rules/myapp-best-practices.md");
+    expect(results[0]!.agent).toBe("antigravity");
+  });
+
+  it("ignores legacy path file without metadata marker", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, ".agents", "rules"), { recursive: true });
+    await writeFile(
+      join(cwd, ".agents", "rules", "myapp-best-practices.md"),
+      "# Just a user file, no metadata",
+    );
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(0);
+  });
+
+  it("ignores legacy path file with metadata from wrong agent", async () => {
+    const cwd = await makeTempDir();
+    await createLegacyFile(
+      cwd,
+      ".agents/rules/myapp-best-practices.md",
+      "claude" as "codex",
+      "myapp",
+    );
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(0);
+  });
+
+  it("ignores non-existent legacy paths", async () => {
+    const cwd = await makeTempDir();
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(0);
+  });
+
+  it("detects both legacy files when both exist", async () => {
+    const cwd = await makeTempDir();
+    await createLegacyFile(cwd, ".agents/rules/myapp-best-practices.md", "codex", "myapp");
+    await createLegacyFile(
+      cwd,
+      ".antigravity/rules/myapp-best-practices.md",
+      "antigravity",
+      "myapp",
+    );
+    const results = await detectLegacyGeneratedFiles(cwd, "myapp");
+    expect(results).toHaveLength(2);
+  });
+});
+
+describe("runCreateSkillsCommand --check with legacy files", () => {
+  it("exits 0 when official files are current despite legacy files on disk", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    // Pre-create fidelity-signal directories so the hash is stable across generate+check
+    await mkdir(join(cwd, ".agents", "skills"), { recursive: true });
+    await mkdir(join(cwd, ".agents", "rules"), { recursive: true });
+    // Create a legacy file at old Codex path (simulating pre-v1.0.17 leftover)
+    const header = renderMetadataHeader({
+      generatorVersion: getToolVersion(),
+      sourceIndexSchema: "1.2",
+      sourceIndexHash: "abc123def4567890",
+      agent: "codex",
+      projectName: "fixture",
+    });
+    const legacyContent = header + "\n# Legacy generated file\n";
+    await writeFile(join(cwd, ".agents", "rules", "fixture-best-practices.md"), legacyContent);
+    // Generate current Codex skills
+    await runCreateSkillsCommand(
+      {
+        agent: "codex",
+        "all-agents": false,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-no-ai-enrich": false,
+      },
+      cwd,
+    );
+    // Run --check — legacy files should not affect exit code
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "codex",
+        "all-agents": false,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-check": true,
+        "create-skills-no-ai-enrich": false,
+      },
+      cwd,
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("exits 1 when current file is missing regardless of legacy files", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    // Create a legacy file at old Codex path but no current files
+    await mkdir(join(cwd, ".agents", "rules"), { recursive: true });
+    const header = renderMetadataHeader({
+      generatorVersion: getToolVersion(),
+      sourceIndexSchema: "1.2",
+      sourceIndexHash: "abc123def4567890",
+      agent: "codex",
+      projectName: "fixture",
+    });
+    const legacyContent = header + "\n# Legacy generated file\n";
+    await writeFile(join(cwd, ".agents", "rules", "fixture-best-practices.md"), legacyContent);
+    // --check without generating current files → missing → exit 1
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "codex",
+        "all-agents": false,
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-check": true,
+        "create-skills-no-ai-enrich": false,
+      },
+      cwd,
+    );
+    expect(exitCode).toBe(1);
+  });
+});
+
+describe("runCreateSkillsCommand --dry-run with legacy files", () => {
+  it("--dry-run --format json includes legacyFiles when legacy files exist", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    // Create legacy files with metadata
+    await mkdir(join(cwd, ".agents", "rules"), { recursive: true });
+    await mkdir(join(cwd, ".antigravity", "rules"), { recursive: true });
+    const codexHeader = renderMetadataHeader({
+      generatorVersion: getToolVersion(),
+      sourceIndexSchema: "1.2",
+      sourceIndexHash: "abc123def4567890",
+      agent: "codex",
+      projectName: "fixture",
+    });
+    await writeFile(
+      join(cwd, ".agents", "rules", "fixture-best-practices.md"),
+      codexHeader + "\n# Legacy Codex file\n",
+    );
+    const agHeader = renderMetadataHeader({
+      generatorVersion: getToolVersion(),
+      sourceIndexSchema: "1.2",
+      sourceIndexHash: "abc123def4567890",
+      agent: "antigravity",
+      projectName: "fixture",
+    });
+    await writeFile(
+      join(cwd, ".antigravity", "rules", "fixture-best-practices.md"),
+      agHeader + "\n# Legacy Antigravity file\n",
+    );
+    // Run dry-run with JSON
+    let stdout = "";
+    const origLog = console.log;
+    console.log = (data: string) => {
+      stdout += data;
+    };
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "codex",
+        "all-agents": false,
+        "create-skills-dry-run": true,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-no-ai-enrich": false,
+      },
+      cwd,
+    );
+    console.log = origLog;
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.dryRun).toBeDefined();
+    expect(parsed.legacyFiles).toBeDefined();
+    expect(parsed.legacyFiles.length).toBe(2);
   });
 });

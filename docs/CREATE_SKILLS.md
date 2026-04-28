@@ -59,6 +59,17 @@ Each adapter declares an `AdapterSpec` with the official layout verified against
 - **Codex**: Output moved from `.agents/rules/<project>-best-practices.md` to `.agents/skills/<project>-codex-best-practices/SKILL.md`. Old files are not deleted automatically.
 - Folder names are suffixed (`-codex-best-practices`, `-antigravity-best-practices`) to prevent collisions under `.agents/skills/`.
 
+### Legacy File Detection (v1.0.18+)
+
+`create-skills` automatically detects legacy generated files left over from pre-v1.0.17 paths:
+
+- **Detected**: `.agents/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata → advisory for `codex`.
+- **Detected**: `.antigravity/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata → advisory for `antigravity`.
+- **Ignored**: Files at those paths without mp-sentinel metadata (user-authored files are never flagged).
+- **Never deleted**: Legacy files are advisory-only. Delete them manually after confirming new official skills exist.
+
+Legacy advisories appear in all output modes (console warns, JSON includes `legacyFiles` field) but do **not** cause `--check` to fail. See `--format json` for structured legacy file information.
+
 ---
 
 ## Auto-Detection

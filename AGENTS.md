@@ -121,6 +121,13 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 6. Update `docs/CREATE_SKILLS.md` with the "Official Adapter Layouts" table and source links.
 7. Update `docs/COMMANDS_CHEAT_SHEET.md`.
 
+### Migration diagnostics
+
+- `detectLegacyGeneratedFiles()` detects old generated files left at pre-v1.0.17 paths. It must **only** flag files containing the `@mp-sentinel-generated` metadata marker — user-authored files at the same paths are never flagged.
+- Legacy files are advisory-only. Never auto-delete generated skill/rule files.
+- Legacy advisories must not affect `--check` exit codes. Exit `0` when official files are current and only legacy advisories exist.
+- When adapter output paths change in future versions, add the old paths to `LEGACY_PATH_DEFS` in `src/services/skills-generator/legacy-detection.ts`.
+
 ---
 
 ## 5. Source Indexing (`mp-sentinel indexing`)

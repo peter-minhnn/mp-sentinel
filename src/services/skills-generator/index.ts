@@ -31,3 +31,4 @@ export {
 } from "./ai-enrichment.js";
 export type { AIEnrichmentConfig } from "./ai-enrichment.js";
 export { validateSkillQuality } from "./quality-gate.js";
+export { detectLegacyGeneratedFiles } from "./legacy-detection.js";

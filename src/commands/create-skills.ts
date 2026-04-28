@@ -15,6 +15,7 @@ import type {
   CheckFileStatus,
   DryRunFileAction,
   EnrichmentMetadata,
+  LegacyFileInfo,
   QualityReport,
   SkillsCheckResult,
   SkillsDryRunResult,
@@ -29,6 +30,7 @@ import {
   buildSkillKnowledgeBase,
   computeIndexHash,
   detectAdapters,
+  detectLegacyGeneratedFiles,
   enrichIndex,
   parseAgentFlag,
   parseMetadataFromContent,
@@ -55,15 +57,18 @@ export interface CreateSkillsValues {
 
 interface RunOutput {
   results: SkillsGenerationResult[];
+  legacyFiles?: LegacyFileInfo[];
 }
 
 interface DryRunOutput {
   dryRun: SkillsDryRunResult[];
+  legacyFiles?: LegacyFileInfo[];
 }
 
 interface CheckOutput {
   check: SkillsCheckResult[];
   status: "ok" | "stale";
+  legacyFiles?: LegacyFileInfo[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -419,6 +424,9 @@ export async function runCreateSkillsCommand(
     const adapters = await selectAdapters(values, projectRoot, isJson);
     if (adapters.length === 0) return 0;
 
+    // ── Legacy migration detection ───────────────────────────────────────────
+    const legacyFiles = await detectLegacyGeneratedFiles(projectRoot, projectName);
+
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
     const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
 
@@ -479,6 +487,7 @@ export async function runCreateSkillsCommand(
 
       if (isJson) {
         const out: CheckOutput = { check: checkResults, status: overallStatus };
+        if (legacyFiles.length > 0) out.legacyFiles = legacyFiles;
         console.log(JSON.stringify(out, null, 2));
       } else {
         if (hasStaleFiles) {
@@ -487,6 +496,12 @@ export async function runCreateSkillsCommand(
         if (hasQualityErrors) {
           log.warning(
             "Quality gate errors detected. Review the generated skill content for issues.",
+          );
+        }
+        if (legacyFiles.length > 0) {
+          log.warning(
+            `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
+              `These are advisory only — see --format json for details.`,
           );
         }
       }
@@ -522,7 +537,15 @@ export async function runCreateSkillsCommand(
 
       if (isJson) {
         const out: DryRunOutput = { dryRun: dryRunResults };
+        if (legacyFiles.length > 0) out.legacyFiles = legacyFiles;
         console.log(JSON.stringify(out, null, 2));
+      } else {
+        if (legacyFiles.length > 0) {
+          log.warning(
+            `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
+              `These are advisory only — see --format json for details.`,
+          );
+        }
       }
 
       return 0;
@@ -569,11 +592,18 @@ export async function runCreateSkillsCommand(
 
     if (isJson) {
       const out: RunOutput = { results };
+      if (legacyFiles.length > 0) out.legacyFiles = legacyFiles;
       console.log(JSON.stringify(out, null, 2));
     } else {
       const anySkipped = results.some((r) => r.skipped);
       if (anySkipped) {
         log.warning("Some outputs were skipped. Re-run with --force to overwrite.");
+      }
+      if (legacyFiles.length > 0) {
+        log.warning(
+          `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
+            `These are advisory only — see --format json for details.`,
+        );
       }
     }
 

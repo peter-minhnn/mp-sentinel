@@ -130,6 +130,16 @@ Statuses: `up-to-date` | `stale` | `missing` | `wrong-agent`.
 
 Quality gate (v1.0.14+): deterministic checks on all generated content. Quality errors fail `--check`; warnings are informational. JSON outputs include `quality` field. v1.0.16+ adds agent workflow contract verification (requires workflow to direct agents to read skills and use indexing diagnostics) and index fidelity signals (instruction file presence in staleness hash).
 
+### Migration Diagnostics (v1.0.18+)
+`create-skills` detects legacy generated files from pre-v1.0.17 paths (Codex at `.agents/rules/`, Antigravity at `.antigravity/rules/`) and reports them as advisories. Legacy files are never deleted automatically.
+```bash
+# Legacy advisories appear in console output:
+npx mp-sentinel create-skills --all-agents --dry-run
+
+# JSON output includes legacyFiles when legacy files exist:
+npx mp-sentinel create-skills --all-agents --dry-run --format json
+```
+
 ### Automation-Friendly Usage
 `--format json` requires `--agent` or `--all-agents` to keep stdout parse-safe.
 ```bash
