@@ -1,7 +1,32 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentAdapterId, EnrichmentMetadata, SourceIndex } from "../../types/index.js";
 
 export const METADATA_MARKER = "@mp-sentinel-generated";
+
+// ── Fidelity signal detection ────────────────────────────────────────────────
+
+const FIDELITY_INSTRUCTION_FILES = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".cursor/rules",
+  ".clinerules",
+  ".agents/rules",
+  ".windsurf/rules",
+  ".codex/rules",
+  ".antigravity/rules",
+];
+
+function detectFidelityFiles(projectRoot: string): string[] {
+  const found: string[] = [];
+  for (const relPath of FIDELITY_INSTRUCTION_FILES) {
+    if (existsSync(join(projectRoot, relPath))) {
+      found.push(relPath);
+    }
+  }
+  return found;
+}
 
 export interface SkillsMetadata {
   generatorVersion: string;
@@ -32,7 +57,7 @@ function normalizeBin(
   return sortRecord(bin);
 }
 
-export function computeIndexHash(index: SourceIndex): string {
+export function computeIndexHash(index: SourceIndex, projectRoot?: string): string {
   const stable = {
     schemaVersion: index.schemaVersion,
     manifestHash: index.manifestHash,
@@ -121,6 +146,8 @@ export function computeIndexHash(index: SourceIndex): string {
           dynamicImportFiles: [...index.insights.dynamicImportFiles].sort(),
         }
       : undefined,
+    // Fidelity signals — instruction file presence (v1.0.16+)
+    fidelity: projectRoot ? { instructionFiles: detectFidelityFiles(projectRoot) } : undefined,
   };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }

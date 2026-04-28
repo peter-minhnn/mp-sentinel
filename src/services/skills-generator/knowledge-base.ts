@@ -5,6 +5,8 @@
  * When index.insights is absent, returns a minimal KB with empty arrays.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type {
   SourceIndex,
   SourceIndexFile,
@@ -294,7 +296,32 @@ function buildRiskMap(
 
 // ── Main builder ───────────────────────────────────────────────────────────
 
-export function buildSkillKnowledgeBase(index: SourceIndex): SkillKnowledgeBase {
+const KNOWN_INSTRUCTION_FILES = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".cursor/rules",
+  ".clinerules",
+  ".agents/rules",
+  ".windsurf/rules",
+  ".codex/rules",
+  ".antigravity/rules",
+];
+
+function detectInstructionFiles(projectRoot: string): string[] {
+  const found: string[] = [];
+  for (const relPath of KNOWN_INSTRUCTION_FILES) {
+    const absPath = join(projectRoot, relPath);
+    if (existsSync(absPath)) {
+      found.push(relPath);
+    }
+  }
+  return found;
+}
+
+export function buildSkillKnowledgeBase(
+  index: SourceIndex,
+  projectRoot?: string,
+): SkillKnowledgeBase {
   const insights = index.insights;
   const project = index.project;
 
@@ -307,6 +334,8 @@ export function buildSkillKnowledgeBase(index: SourceIndex): SkillKnowledgeBase 
   const typeOnlyImportFiles: string[] = insights?.typeOnlyImportFiles ?? [];
   const dynamicImportFiles: string[] = insights?.dynamicImportFiles ?? [];
 
+  const instructionFiles = projectRoot ? detectInstructionFiles(projectRoot) : [];
+
   if (!insights) {
     return {
       projectName: project.packageName ?? "unknown",
@@ -317,6 +346,7 @@ export function buildSkillKnowledgeBase(index: SourceIndex): SkillKnowledgeBase 
       testing: { testAssociations: {}, testGaps: [], mostTestedModules: [] },
       dependencies: [],
       risks: [],
+      instructionFiles,
     };
   }
 
@@ -341,5 +371,6 @@ export function buildSkillKnowledgeBase(index: SourceIndex): SkillKnowledgeBase 
     testing,
     dependencies,
     risks,
+    instructionFiles,
   };
 }

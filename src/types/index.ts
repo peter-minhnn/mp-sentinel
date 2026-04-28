@@ -739,6 +739,8 @@ export interface SkillKnowledgeBase {
   dependencies: DepMapEntry[];
   /** Risk surface items */
   risks: RiskEntry[];
+  /** Detected agent instruction files (v1.0.16+) */
+  instructionFiles?: string[];
 }
 
 /**

@@ -128,7 +128,7 @@ npx mp-sentinel create-skills --all-agents --check --format json
 ```
 Statuses: `up-to-date` | `stale` | `missing` | `wrong-agent`.
 
-Quality gate (v1.0.14+): deterministic checks on all generated content. Quality errors fail `--check`; warnings are informational. JSON outputs include `quality` field.
+Quality gate (v1.0.14+): deterministic checks on all generated content. Quality errors fail `--check`; warnings are informational. JSON outputs include `quality` field. v1.0.16+ adds agent workflow contract verification (requires workflow to direct agents to read skills and use indexing diagnostics) and index fidelity signals (instruction file presence in staleness hash).
 
 ### Automation-Friendly Usage
 `--format json` requires `--agent` or `--all-agents` to keep stdout parse-safe.

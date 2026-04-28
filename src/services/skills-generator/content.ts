@@ -99,23 +99,44 @@ export function generateContent(
 }
 
 function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null): string {
-  const pm = kb?.packageManager ?? "npm";
+  // Build instruction-files list from detected files or fallback to generic pattern
+  let instructionFilesLine: string;
+  const instructionFiles = kb?.instructionFiles;
+  if (instructionFiles && instructionFiles.length > 0) {
+    const fileList = instructionFiles.map((f) => `\`${f}\``).join(", ");
+    instructionFilesLine = `2. **Read local agent instructions**: ${fileList}.`;
+  } else {
+    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.cursor/rules/\`, \`.clinerules/\`.`;
+  }
+
+  // Reference file list from KB entrypoints or static
+  const refFiles = kb
+    ? [
+        `   - \`references/codebase-map.md\` — ${kb.modules.length} module(s), ${kb.entrypoints.length} entrypoint(s)`,
+        `   - \`references/testing-map.md\` — ${Object.keys(kb.testing.testAssociations).length} test association(s)`,
+        `   - \`references/dependencies.md\` — ${kb.dependencies.length} dependency(s) tracked`,
+        `   - \`references/public-api.md\` — ${kb.risks.length} risk item(s)`,
+      ]
+    : [
+        `   - \`references/codebase-map.md\` — module ownership, key files, symbols`,
+        `   - \`references/testing-map.md\` — test associations and gaps`,
+        `   - \`references/dependencies.md\` — dependency versions and usage`,
+        `   - \`references/public-api.md\` — public API surface and risks`,
+      ];
+
   return [
     `## Required Agent Workflow`,
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
     ``,
     `1. **Read this skill file** (SKILL.md) — understand the project profile, conventions, and pitfalls.`,
-    `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.cursor/rules/\`, \`.clinerules/\`.`,
+    instructionFilesLine,
     `3. **Before touching any file**, use source index diagnostics:`,
     `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` — imports, dependents, symbols for the file`,
     `   - \`mp-sentinel indexing --stats --index-format json\` — index summary with insight counts`,
     `   - \`mp-sentinel --explain-context --format json --files <file>\` — review context enrichment`,
     `4. **Load only the relevant references** for the paths you touch:`,
-    `   - \`references/codebase-map.md\` — module ownership, key files, symbols`,
-    `   - \`references/testing-map.md\` — test associations and gaps`,
-    `   - \`references/dependencies.md\` — dependency versions and usage`,
-    `   - \`references/public-api.md\` — public API surface and risks`,
+    ...refFiles,
     `5. **Respect the profile rules** — each profile has specific review pitfalls listed below.`,
   ].join("\n");
 }
@@ -142,6 +163,47 @@ function buildOverview(
     lines.push(`**Indexed Files:** ${index.stats.indexedFiles}`);
     if (index.stats.importEdges !== undefined)
       lines.push(`**Import Edges (graph):** ${index.stats.importEdges}`);
+
+    // Mention real entrypoints and key scripts when available (v1.0.16+)
+    if (index.insights) {
+      const cliEntries = Object.entries(index.insights.fileRoles)
+        .filter(([, role]) => role === "cli-entry")
+        .map(([path]) => path);
+      const commandFiles = Object.entries(index.insights.fileRoles)
+        .filter(([, role]) => role === "command")
+        .map(([path]) => path);
+
+      if (cliEntries.length > 0) {
+        lines.push(
+          `**CLI Entrypoints:** ${cliEntries
+            .slice(0, 3)
+            .map((p) => `\`${p}\``)
+            .join(", ")}`,
+        );
+      }
+      if (commandFiles.length > 0) {
+        lines.push(
+          `**Command Files:** ${commandFiles
+            .slice(0, 3)
+            .map((p) => `\`${p}\``)
+            .join(", ")}${commandFiles.length > 3 ? ` (+${commandFiles.length - 3} more)` : ""}`,
+        );
+      }
+    }
+
+    // Mention key scripts from package.json
+    const scripts = index.project.scripts;
+    if (scripts && Object.keys(scripts).length > 0) {
+      const pm = index.project.packageManager ?? "npm";
+      const keyScripts = ["test", "build", "dev", "start", "typecheck", "lint", "format"].filter(
+        (s) => scripts[s] !== undefined,
+      );
+      if (keyScripts.length > 0) {
+        lines.push(
+          `**Key Scripts:** ${keyScripts.map((s) => `\`${pm} ${s === "test" ? s : `run ${s}`}\``).join(", ")}`,
+        );
+      }
+    }
   }
 
   return lines.join("\n");
@@ -284,23 +346,29 @@ function buildModules(index: SourceIndex | null): string {
 
 function buildCommands(index: SourceIndex | null): string {
   const pm = index?.project.packageManager ?? "npm";
-  const hasTs =
-    index?.project.dependencies?.["typescript"] !== undefined ||
-    index?.project.devDependencies?.["typescript"] !== undefined;
 
-  const lines = [
-    `## Development Commands`,
-    ``,
-    `Package manager: \`${pm}\``,
-    ``,
-    "```sh",
-    `${pm} test           # Run tests`,
-    `${pm} run build      # Build project`,
-    "```",
-  ];
+  const lines = [`## Development Commands`, ``, `Package manager: \`${pm}\``, ``];
 
-  if (hasTs) {
-    lines.push(``, "```sh", `${pm} run typecheck  # TypeScript type-check`, "```");
+  // Use real scripts from index when available
+  const scripts = index?.project.scripts;
+  if (scripts && Object.keys(scripts).length > 0) {
+    lines.push("```sh");
+    const scriptKeys = Object.keys(scripts).slice(0, MAX_SCRIPT_ENTRIES);
+    for (const key of scriptKeys) {
+      const cmd = scripts[key] ?? key;
+      lines.push(`${pm}${key === "test" ? " " : " run "}${key}  # ${cmd}`);
+    }
+    if (Object.keys(scripts).length > MAX_SCRIPT_ENTRIES) {
+      lines.push(`# … and ${Object.keys(scripts).length - MAX_SCRIPT_ENTRIES} more scripts`);
+    }
+    lines.push("```");
+  } else {
+    lines.push(
+      "```sh",
+      `${pm} test           # Run tests`,
+      `${pm} run build      # Build project`,
+      "```",
+    );
   }
 
   return lines.join("\n");
@@ -466,7 +534,7 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
       lines.push(
         `- **Public API surface** — every exported symbol is a commitment; prefer keeping internals un-exported.`,
         `- **SemVer awareness** — removing or renaming an exported symbol requires a major version bump.`,
-        `- **Type definitions** — if TypeScript is used, ensure \`d.ts\` files or inline types ship with the build artifact.`,
+        `- **Type definitions** — if TypeScript is used, ensure d.ts files or inline types ship with the build artifact.`,
         `- **Peer dependencies** — be explicit about peer deps; avoid accidental bundling of framework code.`,
         `- **Tree-shakeability** — use named exports and avoid side-effectful top-level code to help bundlers eliminate dead code.`,
       );

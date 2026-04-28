@@ -30,15 +30,30 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   "AGENTS.md",
   "CLAUDE.md",
   ".claude/",
+  ".claude",
   ".cursor/",
+  ".cursor",
   ".agents/",
+  ".agents",
   ".clinerules/",
+  ".clinerules",
   ".windsurf/",
+  ".windsurf",
   ".antigravity/",
+  ".antigravity",
   ".agent/",
+  ".agent",
   ".codex/",
+  ".codex",
   ".mp-sentinel-cache/source-index.json",
   ".sentinelrc.json",
+  "references/codebase-map.md",
+  "references/testing-map.md",
+  "references/dependencies.md",
+  "references/public-api.md",
+  "references/architecture.md",
+  "references/modules.md",
+  "references/commands.md",
 ]);
 
 // ── Multi-file adapters ─────────────────────────────────────────────────────
@@ -490,6 +505,61 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
   return checks;
 }
 
+// ── Agent Workflow Contract (v1.0.16+) ───────────────────────────────────────
+
+/**
+ * Verify that the Required Agent Workflow section contains mandatory instructions:
+ * 1. Read skill/rules before writing code
+ * 2. Use indexing diagnostics before broad scans
+ */
+function checkAgentWorkflowContract(
+  file: GeneratedSkillFile,
+  adapterId: AgentAdapterId,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const content = file.content;
+
+  const sections = extractSections(content);
+  const workflowBody = sections.get("Required Agent Workflow");
+  if (!workflowBody) return checks; // Missing section is caught by required-section check
+
+  // Check 1: Must instruct to read skill or rules before coding
+  const hasReadSkill =
+    workflowBody.includes("Read this skill") ||
+    workflowBody.includes("read this skill") ||
+    workflowBody.includes("read the skill") ||
+    workflowBody.includes("SKILL.md") ||
+    workflowBody.includes("best-practices") ||
+    workflowBody.includes("Read the relevant");
+  if (!hasReadSkill) {
+    checks.push({
+      type: "agent-workflow-contract",
+      severity: "error",
+      file: file.outputPath,
+      message:
+        "Required Agent Workflow must instruct agent to read this skill or generated rules before coding",
+    });
+  }
+
+  // Check 2: Must mention using indexing diagnostics before broad scans
+  const hasIndexDiag =
+    workflowBody.includes("explain-index") ||
+    workflowBody.includes("indexing --stats") ||
+    workflowBody.includes("explain-context") ||
+    workflowBody.includes("source index diagnostics");
+  if (!hasIndexDiag) {
+    checks.push({
+      type: "agent-workflow-contract",
+      severity: "error",
+      file: file.outputPath,
+      message:
+        "Required Agent Workflow must instruct agent to use indexing diagnostics before scanning broadly",
+    });
+  }
+
+  return checks;
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 
 export function validateSkillQuality(
@@ -521,6 +591,7 @@ export function validateSkillQuality(
     allChecks.push(...checkEmptySections(file));
     allChecks.push(...checkUnknownPaths(file, index, knownRefPaths));
     allChecks.push(...checkRealSignals(file, index));
+    allChecks.push(...checkAgentWorkflowContract(file, adapterId));
   }
 
   const errors = allChecks.filter((c) => c.severity === "error");

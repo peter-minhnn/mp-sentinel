@@ -228,7 +228,11 @@ Every generated file undergoes deterministic quality validation. Quality issues 
 - **JSON mode**: `quality` field present in all output objects
 - **`--check` mode**: Quality **errors** cause exit code 1 (files are treated as stale). Warnings are informational only.
 
-Quality checks include: max file size, required H2 sections, required references (Claude), duplicate sections, empty sections (warning), and unknown paths (warning).
+Quality checks include: max file size, required H2 sections, required references (Claude), duplicate sections, empty sections (warning), unknown paths (warning), and the **agent workflow contract** (error — requires workflow to instruct reading skill/rules and using indexing diagnostics).
+
+### Index Fidelity (v1.0.16+)
+
+`--check` staleness detection now includes instruction file presence (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.clinerules`, etc.) in the deterministic hash. Adding or removing instruction files after skill generation causes `--check` to correctly report stale.
 
 ---
 

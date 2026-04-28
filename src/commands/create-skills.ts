@@ -420,7 +420,7 @@ export async function runCreateSkillsCommand(
     if (adapters.length === 0) return 0;
 
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
-    const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index);
+    const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
 
     // ── AI Enrichment ───────────────────────────────────────────────────────
     // Check if AI enrichment is enabled in config AND not overridden by CLI flag
@@ -443,7 +443,7 @@ export async function runCreateSkillsCommand(
 
     // ── Check mode ──────────────────────────────────────────────────────────
     if (isCheck) {
-      const currentHash = computeIndexHash(index);
+      const currentHash = computeIndexHash(index, projectRoot);
 
       const checkResults: SkillsCheckResult[] = [];
       for (const adapter of adapters) {
@@ -529,7 +529,7 @@ export async function runCreateSkillsCommand(
     }
 
     // ── Normal generate mode ─────────────────────────────────────────────────
-    const indexHash = computeIndexHash(index);
+    const indexHash = computeIndexHash(index, projectRoot);
     const results: SkillsGenerationResult[] = [];
 
     for (const adapter of adapters) {

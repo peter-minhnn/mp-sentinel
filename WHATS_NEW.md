@@ -1,3 +1,44 @@
+# What's New in v1.0.16
+
+## Zero-Warning Skill Generation & Index Fidelity
+
+### Content codebase-awareness
+
+Generated skill content now references real project signals from the source index rather than generic placeholders:
+
+- **Real entrypoints**: CLI entry files and command files from `index.insights.fileRoles` appear in the Overview section.
+- **Real scripts**: `package.json` scripts are used directly in the Commands section instead of template placeholders.
+- **Real modules**: Module count and entrypoint count reflect actual index data.
+- **Instruction files**: Agent Workflow section shows detected instruction files (`AGENTS.md`, `CLAUDE.md`, `.clinerules`, etc.) instead of generic fallback list.
+
+### Agent Workflow Contract (quality gate)
+
+New `agent-workflow-contract` quality check (error severity) enforces that the Required Agent Workflow section:
+
+1. Instructs agents to read the skill file or agent rules before writing code.
+2. Directs agents to use indexing diagnostics (`--explain-index`, `--stats`, `--explain-context`) before broad repo scans.
+
+These are mandatory instructions — missing either causes the quality gate to fail.
+
+### Index Fidelity Signals
+
+`computeIndexHash()` now includes **instruction file presence** in its deterministic hash. If instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.clinerules`, `.agents/rules`, `.windsurf/rules`, `.codex/rules`, `.antigravity/rules`) are added or removed after skill generation, `--check` correctly detects the mismatch.
+
+### Regression Harness
+
+New fixture-based tests for all 4 project profiles: `cli-tooling`, `library`, `node-service`, `react-next`. Each fixture:
+
+- Builds a real source index with multiple source files, test files, and scripts
+- Generates skills for Claude and single-file adapters
+- Asserts zero quality errors on generated output
+- Asserts that content mentions real project signals (scripts, source directories)
+
+Additional tests cover:
+- Adapter output determinism (byte-identical for same index)
+- `--check` regression (exit codes correctly reflect quality errors vs. warnings)
+
+---
+
 # What's New in v1.0.15
 
 ## Skill Quality Gate v2 — Reduced False Positives & Codebase Fidelity

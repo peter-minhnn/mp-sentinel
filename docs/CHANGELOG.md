@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.16] - 2026-04-28
+
+### Added
+- **Agent Workflow Contract quality check**: New `checkAgentWorkflowContract()` in quality gate validates that Required Agent Workflow section (a) instructs agents to read skill/rules before coding, and (b) directs agents to use indexing diagnostics before broad scans. Error severity — missing either fails the quality gate.
+- **Content codebase-awareness**: `buildAgentWorkflow`, `buildOverview`, and `buildCommands` in `content.ts` now use real project signals from the source index (CLI entrypoints, command files, scripts, module/entrypoint counts, instruction files) instead of generic template placeholders.
+- **Index fidelity signals**: `computeIndexHash()` includes detected instruction file presence (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.clinerules`, `.agents/rules`, `.windsurf/rules`, `.codex/rules`, `.antigravity/rules`) in its deterministic hash. Adding/removing instruction files after generation causes `--check` to correctly report stale.
+- **Instruction file detection**: `buildSkillKnowledgeBase()` and `computeIndexHash()` accept optional `projectRoot` parameter for detecting agent instruction files on disk.
+- **Regression fixture tests**: 4 profile fixtures (`cli-tooling`, `library`, `node-service`, `react-next`) with real source indexes, multiple source/test files, and scripts. Tests verify zero quality errors on generated content.
+- **Adapter determinism tests**: Byte-identical output when same adapter generates from same index twice.
+- **`--check` regression tests**: Verifies exit codes correctly reflect quality errors vs. warnings; JSON output includes quality field in check mode.
+
+### Changed
+- **`KNOWN_NON_SOURCE_PATHS`**: Added bare directory names (`.claude`, `.cursor`, `.agents`, `.clinerules`, `.windsurf`, `.antigravity`, `.agent`, `.codex`) and generated reference file paths (`references/codebase-map.md`, etc.) to eliminate unknown-path warnings for valid generated references.
+- **`content.ts` line 537**: Removed backtick-wrapping from `d.ts` to prevent false unknown-path warning.
+- **`SkillKnowledgeBase` type**: Added optional `instructionFiles?: string[]` field.
+
+### Fixed
+- **False `unknown-path` warnings**: Bare `d.ts` token (from library profile rules) no longer triggers unknown-path warning. Reference file paths and bare agent directory names are recognized as valid.
+- **`--check` wrong-agent detection**: Fidelity signals now match between generate and check phases when agent instruction directories are present.
+
 ## [1.0.15] - 2026-04-28
 
 ### Added
