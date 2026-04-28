@@ -43,6 +43,7 @@ export interface CLIValues {
   "create-skills-dry-run": boolean;
   "create-skills-check": boolean;
   "create-skills-no-ai-enrich": boolean;
+  "explain-agents"?: boolean;
 }
 
 const PACKAGE_VERSION = getToolVersion();
@@ -122,7 +123,12 @@ export const buildProgram = (): Command => {
       "CI mode: verify generated skills are up-to-date with source index (exit 1 if stale)",
       false,
     )
-    .option("--no-ai-enrich", "Disable AI enrichment even if enabled in config", false);
+    .option("--no-ai-enrich", "Disable AI enrichment even if enabled in config", false)
+    .option(
+      "--explain-agents",
+      "Diagnostic mode: show which agents/IDEs are detected and why (no file writes)",
+      false,
+    );
 
   program.addHelpText(
     "after",
@@ -151,6 +157,8 @@ Examples:
   $ npx mp-sentinel create-skills --all-agents            # Generate for all agents
   $ npx mp-sentinel create-skills --agent claude --format json  # JSON output
   $ npx mp-sentinel create-skills --agent claude --force  # Overwrite existing files
+  $ npx mp-sentinel create-skills --explain-agents        # Show detection diagnostics
+  $ npx mp-sentinel create-skills --explain-agents --format json  # JSON detection output
 `,
   );
 
@@ -282,6 +290,10 @@ export const parseCliArgs = (): {
           : false,
       "create-skills-check": Boolean(createSkillsOptions["check"] ?? false),
       "create-skills-no-ai-enrich": createSkillsOptions["aiEnrich"] === false,
+      ...(command === "create-skills" &&
+        createSkillsOptions["explainAgents"] === true && {
+          "explain-agents": true,
+        }),
     } as CLIValues;
 
     return {

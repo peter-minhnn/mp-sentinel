@@ -81,6 +81,57 @@ When you run `create-skills` without `--agent` or `--all-agents`, the command:
 3. If no known folder is found and the terminal is interactive, shows all options with `claude` pre-selected.
 4. If no TTY is available (non-interactive), falls back to detected agents or `claude` + `generic`.
 
+### Detection Contract (v1.6.0+)
+
+| Signal | Detects |
+|--------|---------|
+| `.claude/` exists | Claude Code |
+| `.cursor/` exists | Cursor |
+| `.codex/` or `.agents/` exists | Codex / OpenAI |
+| `.windsurf/` exists | Windsurf |
+| `.antigravity/` or `.agent/` exists | Google Antigravity |
+| `.clinerules/` exists | Cline |
+
+- Root `CLAUDE.md` alone does **not** detect Claude.
+- Root `AGENTS.md` alone does **not** detect Codex.
+- Generic is never auto-detected — only selected explicitly via `--agent generic`.
+
+### Diagnostic: Explain Agent Detection (v1.6.0+)
+
+Use `--explain-agents` to see exactly which agents are detected, why, and what output paths they resolve to — without writing any files, building the source index, or calling AI.
+
+```sh
+# Human-readable console output
+npx mp-sentinel create-skills --explain-agents
+
+# JSON output (no --agent / --all-agents required)
+npx mp-sentinel create-skills --explain-agents --format json
+```
+
+JSON shape:
+
+```json
+{
+  "projectName": "my-project",
+  "defaultSelection": ["claude", "cline"],
+  "agents": [
+    {
+      "id": "claude",
+      "label": "Claude Code (.claude/skills/)",
+      "detected": true,
+      "selected": true,
+      "detectionSignals": [".claude/ exists"],
+      "outputKind": "skill",
+      "workspacePath": ".claude/skills/{projectName}-best-practices/",
+      "resolvedOutput": ".claude/skills/my-project-best-practices/SKILL.md",
+      "officialDocsUrl": "https://docs.anthropic.com/en/docs/claude-code/skills"
+    }
+  ]
+}
+```
+
+`--explain-agents` is a pure diagnostic — it never writes files, never builds the index, and never calls AI. JSON mode is allowed without `--agent` or `--all-agents`.
+
 ---
 
 ## Auto-Index Behavior

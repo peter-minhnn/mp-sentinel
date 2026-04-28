@@ -2,7 +2,7 @@
  * create-skills command — generate agent/IDE skill files from the source index.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
@@ -15,6 +15,7 @@ import type {
   CheckFileStatus,
   DryRunFileAction,
   EnrichmentMetadata,
+  ExplainAgentsOutput,
   LegacyFileInfo,
   QualityReport,
   SkillsCheckResult,
@@ -32,6 +33,7 @@ import {
   detectAdapters,
   detectAllLegacyAndUnexpected,
   enrichIndex,
+  explainAgentDetection,
   parseAgentFlag,
   parseMetadataFromContent,
   renderMetadataHeader,
@@ -53,6 +55,7 @@ export interface CreateSkillsValues {
   "create-skills-dry-run"?: boolean;
   "create-skills-check"?: boolean;
   "create-skills-no-ai-enrich": boolean;
+  "explain-agents"?: boolean;
 }
 
 interface RunOutput {
@@ -408,6 +411,60 @@ export async function runCreateSkillsCommand(
     const isCheck = values["create-skills-check"];
 
     if (isJson) setLogQuietMode(true);
+
+    // ── Explain-agents diagnostic mode ────────────────────────────────────────
+    if (values["explain-agents"]) {
+      const rawPkgName = (() => {
+        try {
+          const pkgPath = resolve(projectRoot, "package.json");
+          if (existsSync(pkgPath)) {
+            const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+              name?: string;
+            };
+            return pkg.name ?? "";
+          }
+        } catch {
+          // ignore
+        }
+        return "";
+      })();
+      const pName = rawPkgName ? sanitizeProjectName(rawPkgName) : "project";
+      const { entries, defaultSelection } = explainAgentDetection(projectRoot, pName);
+
+      if (isJson) {
+        const out: ExplainAgentsOutput = {
+          projectName: pName,
+          defaultSelection,
+          agents: entries,
+        };
+        console.log(JSON.stringify(out, null, 2));
+      } else {
+        log.info(`Project: ${pName}`);
+        log.info(`Default selection: ${defaultSelection.join(", ") || "(none)"}`);
+        log.info("");
+        for (const entry of entries) {
+          const mark = entry.detected ? "✓" : "✗";
+          const sel = entry.selected ? " [default]" : "";
+          log.info(`${mark} ${entry.id}${sel}`);
+          log.info(`  Label:       ${entry.label}`);
+          log.info(`  Detected:    ${entry.detected}`);
+          if (entry.detectionSignals.length > 0) {
+            log.info(`  Signals:     ${entry.detectionSignals.join(", ")}`);
+          } else {
+            log.info(`  Signals:     (none — not auto-detected)`);
+          }
+          log.info(`  Output:      ${entry.outputKind}`);
+          log.info(`  Template:    ${entry.workspacePath}`);
+          log.info(`  Resolved:    ${entry.resolvedOutput}`);
+          if (entry.officialDocsUrl) {
+            log.info(`  Docs:        ${entry.officialDocsUrl}`);
+          }
+          log.info("");
+        }
+      }
+
+      return 0;
+    }
 
     log.info("Resolving source index...");
     const index = await resolveIndex(projectRoot, values["skip-index-refresh"]);

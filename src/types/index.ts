@@ -918,3 +918,32 @@ export interface QualityReport {
   /** Count of warning-severity checks */
   warnings: number;
 }
+
+// ── Explain Agents types (v1.6.0+) ──────────────────────────────────────────
+
+/** A single agent entry in the explain-agents diagnostic output */
+export interface ExplainAgentEntry {
+  id: AgentAdapterId;
+  label: string;
+  /** Whether the adapter's detect() returned true */
+  detected: boolean;
+  /** Whether this adapter would be selected by default (no --agent / --all-agents) */
+  selected: boolean;
+  /** Which paths/signals triggered detection */
+  detectionSignals: string[];
+  /** Output kind from adapter spec */
+  outputKind: AdapterOutputKind;
+  /** Workspace path template from adapter spec (with {projectName} placeholder) */
+  workspacePath: string;
+  /** Resolved output path with projectName substituted */
+  resolvedOutput: string;
+  /** Official docs URL from adapter spec */
+  officialDocsUrl: string;
+}
+
+/** Top-level output of the explain-agents diagnostic */
+export interface ExplainAgentsOutput {
+  projectName: string;
+  defaultSelection: AgentAdapterId[];
+  agents: ExplainAgentEntry[];
+}

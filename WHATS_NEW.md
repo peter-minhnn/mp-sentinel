@@ -1,3 +1,18 @@
+# What's New in v1.6.0
+
+## Explain Agent Detection
+
+v1.6.0 adds a diagnostic mode to `create-skills` so users can see exactly which agents/IDEs mp-sentinel detects, why, and what output paths they resolve to.
+
+- **`create-skills --explain-agents`**: Console output listing every agent with detection status, signals, default selection, output kind, workspace template, and resolved output path.
+- **`create-skills --explain-agents --format json`**: Machine-readable JSON output. JSON mode is allowed without `--agent` or `--all-agents`.
+- **No side effects**: Does not write files, does not build the source index, does not call AI.
+- **Detection contract documented**: `.claude/` detects Claude (not root `CLAUDE.md` alone). `.agents/` or `.codex/` detects Codex. `.antigravity/` or `.agent/` detects Antigravity. `.clinerules/` detects Cline. Generic is never auto-detected.
+- **Detection signals**: Each agent entry lists which specific paths triggered detection (e.g., `.claude/ exists`).
+- **No new deps or breaking changes**: Pure additive diagnostic feature.
+
+---
+
 # What's New in v1.5.0
 
 ## Agent Skills Bootstrap

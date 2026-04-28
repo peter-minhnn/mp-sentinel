@@ -159,6 +159,16 @@ When `createSkills.ai.enabled` is set in config, generated skills include versio
 npx mp-sentinel create-skills --agent claude --no-ai-enrich
 ```
 
+### Diagnostic: Explain Agent Detection (v1.6.0+)
+Show which agents/IDEs are detected, why, and what output paths they resolve to — without writing files or building the index.
+```bash
+# Console output
+npx mp-sentinel create-skills --explain-agents
+
+# JSON output (no --agent / --all-agents required)
+npx mp-sentinel create-skills --explain-agents --format json
+```
+
 **Supported agents:** `claude` | `cursor` | `codex` | `windsurf` | `antigravity` | `cline` | `generic`
 
 `create-skills` automatically refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures generated profile rules always reflect the current scripts, `bin`, dependencies, and framework signals.

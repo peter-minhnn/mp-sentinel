@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.5.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.6.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,14 +43,15 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.5.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.6.0**:
 
-- 🔍 **Review Intelligence Explainability** — structured signal metadata (`ReviewIntelligenceSignal`) with `type`, `file`, `reason`, `evidence`, and `confidence` explaining why each signal was raised
-- 📋 **`--explain-context` JSON** — includes `intelligenceSignals` array alongside existing `includedSignals` for full diagnostic transparency
-- 🧪 **Regression Coverage** — 4 new fixture tests validate structured signal fields, deduplication, and graceful degradation
-- 🔙 **Backward Compatible** — `includedSignals` preserved, no new CLI flags, no AI calls, no network calls
+- 🔎 **Explain Agent Detection** — `create-skills --explain-agents` shows exactly which agents are detected, why, and where files would be generated
+- 🤖 **Agent Skills Bootstrap** — `npm run agent:skills:check` / `agent:skills:refresh` keeps generated skills current before coding
+- 🔍 **Review Intelligence Explainability** — structured signal metadata explaining why each review signal was raised
+- 📋 **`--explain-context` JSON** — full diagnostic transparency for context building
+- 🧪 **Regression Coverage** — comprehensive fixture tests for review intelligence and indexing
 - ✓ **Full Verification** — all 422 tests pass across 14 suites, `release:check` and `dogfood` pass successfully
-- 🎯 **Agent Skills Integration** — Seamlessly inject local ecosystem rules (like `.cursor/rules` or `npx skills`)
+- 🎯 **Agent Skills Integration** — inject local ecosystem rules (like `.cursor/rules` or `.claude/skills/`)
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines

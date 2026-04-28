@@ -10,7 +10,13 @@ export type {
   DepMapEntry,
   RiskEntry,
 } from "../../types/index.js";
-export { ADAPTER_REGISTRY, getAdapter, parseAgentFlag, detectAdapters } from "./registry.js";
+export {
+  ADAPTER_REGISTRY,
+  getAdapter,
+  parseAgentFlag,
+  detectAdapters,
+  explainAgentDetection,
+} from "./registry.js";
 export {
   computeIndexHash,
   renderMetadataHeader,

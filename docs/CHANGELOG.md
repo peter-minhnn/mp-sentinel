@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-04-28
+
+### Added
+- **`create-skills --explain-agents`**: Diagnostic mode that shows which agents/IDEs are detected, why (detection signals), and what output paths they resolve to — without writing files, building the source index, or calling AI.
+- **`create-skills --explain-agents --format json`**: Machine-readable JSON output with `projectName`, `defaultSelection`, and per-agent `detected`, `selected`, `detectionSignals`, `outputKind`, `workspacePath`, `resolvedOutput`, and `officialDocsUrl` fields. JSON mode is allowed without `--agent` or `--all-agents`.
+- **Detection contract documented**: `.claude/` detects Claude (root `CLAUDE.md` alone does not). `.agents/` or `.codex/` detects Codex. `.antigravity/` or `.agent/` detects Antigravity. `.clinerules/` detects Cline. Generic is never auto-detected.
+- **Explain agent detection function** (`explainAgentDetection()`): New exported function in the skills-generator service that collects detection signals and computes default selection.
+
+### Changed
+- No breaking changes. Pure additive diagnostic feature.
+
 ## [1.5.0] - 2026-04-28
 
 ### Added
