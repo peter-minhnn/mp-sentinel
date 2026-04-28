@@ -1,3 +1,15 @@
+# What's New in v1.9.2
+
+## Incremental Indexing Resilience
+
+v1.9.2 fixes a critical blocker where `create-skills --check` (and thus `agent:skills:check`) would fail because incremental source indexing aborted when a small batch of changed files had parse errors, even though a healthy cached index existed.
+
+- **Incremental parse-error resilience**: `buildSourceIndex()` no longer aborts incremental re-indexing based on the parse-error rate of just the changed batch. Instead, it evaluates final index health (`totalParseErrors / allFiles.length`) and falls back to existing cached entries for files that fail to re-parse. Full rebuilds with high parse-error rates still fail.
+- **Never overwrite a good cache**: If an incremental update would push the overall parse-error rate above the 50% threshold while the existing cache was healthy, the existing cache is preserved.
+- **Existing cached entry fallback**: When a file that existed in the previous index fails to re-parse during incremental indexing, the old cached entry is reused with a warning instead of counting as a parse error.
+
+---
+
 # What's New in v1.9.1
 
 ## Legacy Advisory Hygiene

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-04-29
+
+### Fixed
+- **Incremental indexing parse-error resilience**: `buildSourceIndex()` no longer aborts incremental re-indexing when a small batch of changed files fails to parse while a healthy cache exists. The abort decision now evaluates final index health (`totalParseErrors / allFiles.length`) instead of the incremental batch rate. Files that fail to re-parse fall back to existing cached entries when available.
+- **Never overwrite a good cache**: If an incremental update would push the overall parse-error rate above 50% while the existing cache was healthy, the existing cache is preserved rather than being overwritten with a degraded index.
+- **`create-skills --check` no longer blocked by incremental parse failures**: The `create-skills --check --format json` flow (used by `agent:skills:check`) now returns structured `{ check: [...] }` JSON even when incremental parse errors exist and a good cache is present.
+
 ## [1.9.1] - 2026-04-29
 
 ### Changed

@@ -157,10 +157,11 @@ export async function buildSourceIndex(
   // Check cache validity unless forcing rebuild
   let filesToIndex: string[];
   let cachedFiles: SourceIndexFile[];
+  let existingIndex: SourceIndex | null = null;
   let manifestChanged = false;
 
   if (!force && existsSync(cachePath)) {
-    const existingIndex = await readIndex(cachePath);
+    existingIndex = await readIndex(cachePath);
     if (existingIndex && getIndexParseErrorRate(existingIndex) > MAX_PARSE_ERROR_RATE) {
       log.warning("Existing source index has too many parse errors. Rebuilding full cache.");
       filesToIndex = indexableFiles;
@@ -261,17 +262,68 @@ export async function buildSourceIndex(
     }
   }
 
+  // ── Incremental parse-error resilience ───────────────────────────────────
+  // When doing incremental indexing with an existing cache, files that fail to
+  // re-parse should fall back to their existing cached entries (if available).
+  // This avoids a small batch of transient parse failures blocking the entire
+  // operation even though a healthy cache exists.
+  const existingFileMap =
+    !force && existingIndex
+      ? new Map(existingIndex.files.map((f) => [f.path, f]))
+      : new Map<string, SourceIndexFile>();
+
+  if (!force && existingIndex && cachedFiles.length > 0) {
+    for (let i = parsedFiles.length - 1; i >= 0; i--) {
+      const parsed = parsedFiles[i];
+      if (!parsed) continue;
+      if (parsed.parseErrors && parsed.parseErrors.length > 0) {
+        const existing = existingFileMap.get(parsed.path);
+        if (existing) {
+          log.warning(
+            `Incremental re-parse failed for ${parsed.path} — keeping existing cached entry`,
+          );
+          parsedFiles.splice(i, 1);
+          cachedFiles.push(existing);
+          parseErrors = Math.max(0, parseErrors - 1);
+        }
+      }
+    }
+  }
+
   // Combine with cached files
   const allFiles = [...cachedFiles, ...parsedFiles];
   const totalParseErrors = allFiles.filter(
     (file) => file.parseErrors && file.parseErrors.length > 0,
   ).length;
 
-  const parseErrorRate = filesToIndex.length > 0 ? parseErrors / filesToIndex.length : 0;
-  if (parseErrorRate > MAX_PARSE_ERROR_RATE) {
-    throw new UserError(
-      `Source indexing aborted because ${parseErrors}/${filesToIndex.length} parsed file(s) had errors. Existing cache was not overwritten.`,
-    );
+  // Decision based on final index health, not just the incremental batch
+  const finalErrorRate = allFiles.length > 0 ? totalParseErrors / allFiles.length : 0;
+  // A true full rebuild has no existing cache to fall back on.
+  // cachedFiles can be empty during incremental when all files changed,
+  // but existingIndex still provides a safety net.
+  const isFullRebuild = force || !existingIndex;
+
+  if (finalErrorRate > MAX_PARSE_ERROR_RATE) {
+    if (isFullRebuild) {
+      throw new UserError(
+        `Source indexing aborted: ${totalParseErrors}/${allFiles.length} file(s) have parse errors ` +
+          `(${(finalErrorRate * 100).toFixed(0)}% > ${(MAX_PARSE_ERROR_RATE * 100).toFixed(0)}% max). ` +
+          `Existing cache was not overwritten.`,
+      );
+    }
+
+    // Incremental update would result in a degraded index — compare with existing
+    if (existingIndex) {
+      const existingRate = getIndexParseErrorRate(existingIndex);
+      if (existingRate <= finalErrorRate) {
+        log.warning(
+          `Incremental index update would degrade index health ` +
+            `(${(existingRate * 100).toFixed(0)}% → ${(finalErrorRate * 100).toFixed(0)}% parse errors). ` +
+            `Keeping existing cache.`,
+        );
+        return existingIndex;
+      }
+    }
   }
 
   // Build dependency graph
@@ -356,6 +408,22 @@ export async function buildSourceIndex(
     },
     insights,
   };
+
+  // Never overwrite a previously healthy cache with a degraded one.
+  // Allow minor regressions (e.g., new files with parse errors) as long as
+  // the overall rate stays within acceptable bounds.
+  if (existingIndex && !force) {
+    const existingRate = getIndexParseErrorRate(existingIndex);
+    const newRate = finalErrorRate;
+    if (existingRate <= MAX_PARSE_ERROR_RATE && newRate > MAX_PARSE_ERROR_RATE) {
+      log.warning(
+        `New index parse-error rate crosses threshold ` +
+          `(${(existingRate * 100).toFixed(0)}% → ${(newRate * 100).toFixed(0)}%). ` +
+          `Keeping existing cache.`,
+      );
+      return existingIndex;
+    }
+  }
 
   // Write cache
   log.info("Writing source index cache...");

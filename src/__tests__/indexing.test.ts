@@ -857,3 +857,166 @@ describe("manifest hash cache invalidation", () => {
     expect(h1).not.toBe(h2);
   });
 });
+
+// ── Incremental parse-error resilience ─────────────────────────────────────
+
+describe("incremental parse-error resilience", () => {
+  const defaultConfig = {
+    enabled: true,
+    languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+    cachePath: ".mp-sentinel-cache/source-index.json",
+    maxFileSize: 512000,
+  };
+
+  it("keeps existing cached entries when incremental re-parse fails (healthy cache)", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "a.ts"), `export const a = 1;`);
+    await writeFile(join(cwd, "src", "b.ts"), `export const b = 2;`);
+    await writeFile(join(cwd, "src", "c.ts"), `export const c = 3;`);
+
+    // Build healthy initial index
+    const idx1 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx1).not.toBeNull();
+    expect(idx1!.stats.parseErrors).toBe(0);
+
+    // Modify one file to contain a syntax error that tree-sitter reports
+    await writeFile(join(cwd, "src", "b.ts"), `export const b = ;`);
+
+    // Incremental re-index: file b.ts fails to parse but old cached entry is healthy
+    const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx2).not.toBeNull();
+    // The file b.ts should still be in the index (from old cache)
+    expect(idx2!.files.some((f) => f.path === "src/b.ts")).toBe(true);
+    // The overall index should still be healthy
+    expect(idx2!.stats.parseErrors).toBeLessThanOrEqual(idx2!.stats.indexedFiles * 0.5);
+  });
+
+  it("survives small incremental parse-error batch without aborting", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    // Create 10 healthy files
+    for (let i = 0; i < 10; i++) {
+      await writeFile(join(cwd, "src", `f${i}.ts`), `export const f${i} = ${i};`);
+    }
+
+    // Build healthy initial index
+    const idx1 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx1).not.toBeNull();
+    expect(idx1!.stats.parseErrors).toBe(0);
+
+    // Break 2 files (small batch relative to 10 total)
+    await writeFile(join(cwd, "src", "f1.ts"), `export const f1 = ;`);
+    await writeFile(join(cwd, "src", "f2.ts"), `export const f2 = ;`);
+
+    // Should not abort — 2/2 incremental parse failures but 0/10 overall
+    // when old cached entries are used for failed files.
+    const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx2).not.toBeNull();
+    // Both broken files should still be present (from old cache)
+    expect(idx2!.files.some((f) => f.path === "src/f1.ts")).toBe(true);
+    expect(idx2!.files.some((f) => f.path === "src/f2.ts")).toBe(true);
+  });
+
+  it("still fails full rebuild with high parse-error rate", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    // Create files where >50% have syntax errors
+    await writeFile(join(cwd, "src", "ok1.ts"), `export const ok1 = 1;`);
+    await writeFile(join(cwd, "src", "bad1.ts"), `export const bad1 = ;`);
+    await writeFile(join(cwd, "src", "bad2.ts"), `export const bad2 = ;`);
+
+    // Force rebuild (no existing cache) — should throw because 2/3 = 66% > 50%
+    await expect(buildSourceIndex(cwd, defaultConfig, true)).rejects.toThrow(
+      "Source indexing aborted",
+    );
+  });
+
+  it("full rebuild succeeds when parse-error rate is at or below 50%", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "ok1.ts"), `export const ok1 = 1;`);
+    await writeFile(join(cwd, "src", "ok2.ts"), `export const ok2 = 2;`);
+    await writeFile(join(cwd, "src", "ok3.ts"), `export const ok3 = 3;`);
+    await writeFile(join(cwd, "src", "bad1.ts"), `export const bad1 = ;`);
+    await writeFile(join(cwd, "src", "bad2.ts"), `export const bad2 = ;`);
+
+    // Force rebuild: 2/5 = 40% < 50% — should succeed
+    const idx = await buildSourceIndex(cwd, defaultConfig, true);
+    expect(idx).not.toBeNull();
+    expect(idx!.stats.parseErrors).toBe(2);
+  });
+
+  it("does not overwrite a good cache with a worse index", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "a.ts"), `export const a = 1;`);
+    await writeFile(join(cwd, "src", "b.ts"), `export const b = 2;`);
+    await writeFile(join(cwd, "src", "c.ts"), `export const c = 3;`);
+
+    // Build healthy initial index
+    const idx1 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx1!.stats.parseErrors).toBe(0);
+
+    // Replace all files with broken content + add more broken files
+    await writeFile(join(cwd, "src", "a.ts"), `export const a = ;`);
+    await writeFile(join(cwd, "src", "b.ts"), `export const b = ;`);
+    await writeFile(join(cwd, "src", "c.ts"), `export const c = ;`);
+    await writeFile(join(cwd, "src", "d.ts"), `export const d = ;`);
+    await writeFile(join(cwd, "src", "e.ts"), `export const e = ;`);
+
+    // Incremental (no force): all 5 files need re-index, all 5 fail.
+    // With no healthy cached files to fall back to, the overall error rate
+    // would be high, and the existing cache is better — keep it.
+    const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx2).not.toBeNull();
+    // Should return the existing good index, not the degraded one
+    expect(idx2!.stats.parseErrors).toBe(0);
+  });
+
+  it("warns but continues when new files fail to parse alongside healthy cache", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "a.ts"), `export const a = 1;`);
+    await writeFile(join(cwd, "src", "b.ts"), `export const b = 2;`);
+
+    // Build healthy initial index
+    const idx1 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx1!.stats.parseErrors).toBe(0);
+
+    // Add a new file with syntax errors (not in existing cache)
+    await writeFile(join(cwd, "src", "broken.ts"), `export const broken = ;`);
+
+    // Incremental: new broken file has parse error but overall rate is 1/3 ≈ 33% < 50%
+    const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
+    expect(idx2).not.toBeNull();
+    // The broken file is included (with parseErrors) — but overall index is healthy
+    expect(idx2!.files.some((f) => f.path === "src/broken.ts")).toBe(true);
+    expect(idx2!.stats.parseErrors).toBe(1);
+    expect(idx2!.stats.parseErrors / idx2!.stats.indexedFiles).toBeLessThanOrEqual(0.5);
+  });
+});
