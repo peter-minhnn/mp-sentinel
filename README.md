@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.7.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.8.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,14 +43,12 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.7.1**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.8.0**:
 
-- 🔎 **Explain Agent Detection** — `create-skills --explain-agents` shows exactly which agents are detected, why, and where files would be generated
-- 🤖 **Agent Skills Bootstrap** — `npm run agent:skills:check` / `agent:skills:refresh` keeps generated skills current before coding
-- 🔍 **Review Intelligence Explainability** — structured signal metadata explaining why each review signal was raised
-- 📋 **`--explain-context` JSON** — full diagnostic transparency for context building
-- 🧪 **Regression Coverage** — comprehensive fixture tests for review intelligence and indexing
-- ✓ **Full Verification** — all 422 tests pass across 14 suites, `release:check` and `dogfood` pass successfully
+- 🩺 **Doctor Remediation UX** — `recommendedCommands` provides machine-runnable remediation steps in JSON output
+- 📊 **Severity-Grouped Console** — findings grouped by `[fail]` / `[warn]` / `[ok]` for at-a-glance triage
+- 🔧 **Smart Command Selection** — prefers `npm run agent:skills:refresh` when available, falls back to CLI
+- ✓ **Full Verification** — all 469 tests pass across 15 suites
 - 🎯 **Agent Skills Integration** — inject local ecosystem rules (like `.cursor/rules` or `.claude/skills/`)
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency

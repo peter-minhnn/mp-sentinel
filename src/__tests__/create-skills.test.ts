@@ -3346,6 +3346,7 @@ describe("runCreateSkillsCommand --doctor", () => {
       "legacyFiles",
       "scripts",
       "recommendedActions",
+      "recommendedCommands",
     ];
     for (const field of requiredFields) {
       expect(parsed).toHaveProperty(field);
@@ -3356,12 +3357,19 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(Array.isArray(parsed.legacyFiles)).toBe(true);
     expect(Array.isArray(parsed.scripts)).toBe(true);
     expect(Array.isArray(parsed.recommendedActions)).toBe(true);
+    expect(Array.isArray(parsed.recommendedCommands)).toBe(true);
     expect(parsed.index).toBeDefined();
     expect(typeof parsed.index.status).toBe("string");
     expect(typeof parsed.status).toBe("string");
     // Missing index → action-required → exit 1
     expect(exitCode).toBe(1);
     expect(parsed.status).toBe("action-required");
+    // recommendedCommands must be an array of non-empty trimmed strings
+    for (const cmd of parsed.recommendedCommands) {
+      expect(typeof cmd).toBe("string");
+      expect(cmd.trim()).toBe(cmd);
+      expect(cmd.trim().length).toBeGreaterThan(0);
+    }
   });
 
   it("--doctor --format json works without --agent or --all-agents", async () => {
@@ -3824,9 +3832,58 @@ describe("runCreateSkillsCommand --doctor", () => {
 
   it("--doctor console output contains no risky Unicode chars", async () => {
     const cwd = await makeTempDir();
-    await makeMinimalProject(cwd);
-    // Create .claude dir so claude adapter is detected and shows [ok]
+    await makeCliToolingProject(cwd);
+    // Add DOCTOR_SCRIPTS so the "Script: ..." rendering path is exercised
+    const pkgRaw = await readFile(join(cwd, "package.json"), "utf-8");
+    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
+    const scripts = (pkg.scripts ?? {}) as Record<string, string>;
+    scripts["agent:skills:check"] = "mp-sentinel create-skills --check";
+    scripts["agent:skills:refresh"] = "mp-sentinel create-skills --all-agents --force";
+    scripts["dogfood"] = "npm run dogfood";
+    pkg.scripts = scripts;
+    await writeFile(join(cwd, "package.json"), JSON.stringify(pkg, null, 2));
+
     await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    // Build index and write up-to-date skills so recommendedCommands stays empty,
+    // exercising the "(none - no automated commands recommended)" rendering path.
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+
+    for (const file of genFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
     const cap = captureStdout();
     await runCreateSkillsCommand(
       {
@@ -3843,6 +3900,15 @@ describe("runCreateSkillsCommand --doctor", () => {
     );
     cap.restore();
     const out = cap.stdout;
+
+    // Available scripts must be rendered (exercises line 788)
+    expect(out).toContain("Script: agent:skills:check - Checks skill file freshness");
+    expect(out).toContain("Script: agent:skills:refresh - Regenerates stale/missing skill files");
+    expect(out).toContain("Script: dogfood - Validates end-to-end local workflow");
+
+    // Empty recommended commands must be rendered (exercises line 806)
+    expect(out).toContain("(none - no automated commands recommended)");
+
     const risky = [
       { char: "—", name: "em dash (--)" },
       { char: "→", name: "right arrow (->)" },
@@ -3854,8 +3920,259 @@ describe("runCreateSkillsCommand --doctor", () => {
     for (const r of risky) {
       expect(out).not.toContain(r.char);
     }
-    // ASCII equivalents should be present
+    // ASCII markers should be present; [x] must not appear
     expect(out).toContain("[ok]");
-    expect(out).toContain("[x]");
+    expect(out).toContain("[fail]");
+    expect(out).toContain("[warn]");
+    expect(out).not.toContain("[x]");
+  });
+
+  it("--doctor missing index includes mp-sentinel indexing as first recommendedCommand", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.recommendedCommands.length).toBeGreaterThan(0);
+    expect(parsed.recommendedCommands[0]).toBe("mp-sentinel indexing");
+  });
+
+  it("--doctor stale skills with refresh script prefers npm run agent:skills:refresh", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    // Add agent:skills:refresh script to the fixture
+    const pkgRaw = await readFile(join(cwd, "package.json"), "utf-8");
+    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
+    const scripts = (pkg.scripts ?? {}) as Record<string, string>;
+    scripts["agent:skills:refresh"] = "node scripts/agent-skills-refresh.mjs";
+    pkg.scripts = scripts;
+    await writeFile(join(cwd, "package.json"), JSON.stringify(pkg, null, 2));
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    // Build index
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    // Write stale skill files
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    const genVersion = getToolVersion();
+    const wrongHash = "0000000000000000";
+    for (const file of genFiles) {
+      const header = `<!-- @mp-sentinel-generated generatorVersion=${genVersion} sourceIndexSchema=${index!.schemaVersion} sourceIndexHash=${wrongHash} agent=claude projectName=${projectName} -->`;
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.status).toBe("action-required");
+    // Since the fixture has agent:skills:refresh script, it should be preferred
+    expect(parsed.recommendedCommands).toContain("npm run agent:skills:refresh");
+    // Should NOT contain the fallback create-skills command
+    expect(
+      parsed.recommendedCommands.filter(
+        (c: string) => c === "mp-sentinel create-skills --all-agents --force",
+      ).length,
+    ).toBe(0);
+  });
+
+  it("--doctor stale skills without refresh script falls back to create-skills CLI", async () => {
+    const cwd = await makeTempDir();
+    // Use makeMinimalProject which lacks agent:skills:refresh, then add .claude/
+    await makeMinimalProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    // Write up-to-date skills first so the index is usable
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    const genVersion = getToolVersion();
+    // Write files with a wrong hash (stale)
+    const wrongHash = "0000000000000000";
+    for (const file of genFiles) {
+      const header = `<!-- @mp-sentinel-generated generatorVersion=${genVersion} sourceIndexSchema=${index!.schemaVersion} sourceIndexHash=${wrongHash} agent=claude projectName=${projectName} -->`;
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    // Without refresh script, should fall back to create-skills CLI
+    expect(parsed.recommendedCommands).toContain("mp-sentinel create-skills --all-agents --force");
+    expect(
+      parsed.recommendedCommands.filter((c: string) => c === "npm run agent:skills:refresh").length,
+    ).toBe(0);
+  });
+
+  it("--doctor healthy project has empty recommendedCommands", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+
+    for (const file of genFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.status).toBe("ok");
+    expect(exitCode).toBe(0);
+    expect(parsed.recommendedCommands).toEqual([]);
+  });
+
+  it("--doctor recommendedCommands is deduped and stable", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    // Create .agents/ so codex is also detected
+    await mkdir(join(cwd, ".agents"), { recursive: true });
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    // No duplicate commands
+    const cmds = parsed.recommendedCommands;
+    const deduped = [...new Set(cmds)];
+    expect(cmds).toEqual(deduped);
+    // First command should be indexing (the root cause)
+    if (cmds.length > 0) {
+      expect(cmds[0]).toBe("mp-sentinel indexing");
+    }
   });
 });

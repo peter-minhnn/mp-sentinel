@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-04-28
+
+### Added
+- **`recommendedCommands` in doctor JSON output**: Machine-runnable commands in execution order, separate from human-readable `recommendedActions`. Commands follow policy: missing index → `mp-sentinel indexing`, stale index → `mp-sentinel indexing --force`, stale/missing skills → `npm run agent:skills:refresh` (preferred when script exists) or `mp-sentinel create-skills --all-agents --force` (fallback).
+- **`DoctorActionEntry` type**: New type with optional `commands` field for findings that suggest remediation commands.
+- **`categorizeDoctorFindings()` helper**: Internal helper centralizes all doctor finding categorization (index, skills, legacy, scripts) into `recommendedActions`, `recommendedCommands`, `failItems`, and `warnItems`.
+
+### Changed
+- **Console output regrouped by severity**: Doctor console now renders `[fail] Action Required`, `[warn] Advisory`, and `[ok] Healthy` sections instead of category-based `[Agents]`/`[Index]`/`[Skills]`/`[Legacy]`/`[Scripts]`/`[Recommended]` sections.
+- **`[x]` marker removed**: Replaced with `[fail]` for action-required findings and `[warn]` for advisories. Non-detected agents are neutral (appear in `[ok]` section as "not detected").
+- **Status policy**: Legacy files and missing scripts are advisory-only and no longer contribute to `action-required` status. Only index issues, skill issues, and quality errors trigger exit 1.
+- **Dogfood doctor step**: Now validates `recommendedCommands` as array of non-empty trimmed strings.
+
 ## [1.7.1] - 2026-04-28
 
 ### Fixed

@@ -987,6 +987,13 @@ export interface DoctorSkillInfo {
   quality?: QualityReport;
 }
 
+/** A single categorized finding from the doctor diagnostic */
+export interface DoctorActionEntry {
+  label: string;
+  action: string;
+  commands?: string[];
+}
+
 /** Top-level output of the --doctor diagnostic */
 export interface DoctorOutput {
   status: DoctorStatus;
@@ -997,4 +1004,5 @@ export interface DoctorOutput {
   legacyFiles: LegacyFileInfo[];
   scripts: DoctorScriptInfo[];
   recommendedActions: string[];
+  recommendedCommands: string[];
 }

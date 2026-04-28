@@ -257,6 +257,7 @@ function stepDoctor() {
   const requiredFields = [
     "status", "projectName", "agents", "index",
     "skills", "legacyFiles", "scripts", "recommendedActions",
+    "recommendedCommands",
   ];
   for (const field of requiredFields) {
     if (!(field in json)) {
@@ -277,11 +278,24 @@ function stepDoctor() {
     return false;
   }
 
+  // recommendedCommands must be an array of non-empty trimmed strings
+  if (!Array.isArray(json.recommendedCommands)) {
+    fail("create-skills --doctor", "recommendedCommands is not an array");
+    return false;
+  }
+  for (const cmd of json.recommendedCommands) {
+    if (typeof cmd !== "string" || cmd.trim() === "") {
+      fail("create-skills --doctor", "recommendedCommands contains non-string or empty entry");
+      return false;
+    }
+  }
+
   ok(
     "create-skills --doctor",
     `status=${json.status}, index=${json.index.status}, ` +
     `skills=${json.skills.length} agents, ${json.legacyFiles?.length ?? 0} legacy, ` +
-    `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions`,
+    `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions, ` +
+    `${json.recommendedCommands?.length ?? 0} commands`,
   );
   return true;
 }

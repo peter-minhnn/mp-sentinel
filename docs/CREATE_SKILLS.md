@@ -361,13 +361,63 @@ On error:
 
 ---
 
+## Doctor Diagnostic (v1.7.0+)
+
+`--doctor` performs a read-only health check covering agent detection, source index cache status, skill file freshness, quality gate results, legacy files, and npm script availability. No file writes, no AI calls, no auto-indexing.
+
+```sh
+# Console output grouped by severity
+npx mp-sentinel create-skills --doctor
+
+# JSON output for CI health checks
+npx mp-sentinel create-skills --doctor --format json
+```
+
+**Exit codes:** `0` = healthy (no fail items; warn items may exist), `1` = action required (fail items exist), `2` = error (corrupt/unreadable index).
+
+**Console sections:** `[fail] Action Required`, `[warn] Advisory`, `[ok] Healthy`. Non-detected agents are neutral and appear in `[ok]` as "not detected".
+
+### JSON Shape (v1.8.0+)
+
+```json
+{
+  "status": "action-required",
+  "projectName": "mp-sentinel",
+  "agents": [ { "id": "claude", "detected": true, ... } ],
+  "index": { "status": "missing", "reason": "..." },
+  "skills": [ { "agent": "claude", "status": "unverifiable", "files": [], ... } ],
+  "legacyFiles": [],
+  "scripts": [ { "name": "agent:skills:check", "status": "available", ... } ],
+  "recommendedActions": [
+    "Run \"mp-sentinel indexing\" to build the source index at \".mp-sentinel-cache/source-index.json\"."
+  ],
+  "recommendedCommands": [
+    "mp-sentinel indexing"
+  ]
+}
+```
+
+`recommendedActions` (human-readable) and `recommendedCommands` (machine-runnable) follow this command policy:
+
+| Condition | Command |
+|-----------|---------|
+| Missing index | `mp-sentinel indexing` |
+| Stale index (no manifestHash) | `mp-sentinel indexing --force` |
+| Stale/missing/wrong-agent skills | `npm run agent:skills:refresh` (if script exists), else `mp-sentinel create-skills --all-agents --force` |
+| Quality errors | (action text only, no automated command) |
+| Legacy files, missing scripts | Advisory only (warn, not fail) |
+
+`recommendedCommands` is deduplicated and ordered (index first, then skills).
+
+---
+
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success — all selected adapters generated successfully (or all files up-to-date in `--check` mode) |
-| `1` | **Generate mode:** all outputs were skipped (files exist, `--force` not set). **Check mode:** any file is stale, missing, wrong-agent, or has quality errors |
-| `2` | Runtime error (bad agent id, missing cache with `--skip-index-refresh`, etc.) |
+| `0` | Success — all selected adapters generated successfully (or all files up-to-date in `--check` mode). **Doctor:** no fail items (warn items may exist) |
+| `1` | **Generate mode:** all outputs were skipped (files exist, `--force` not set). **Check mode:** any file is stale, missing, wrong-agent, or has quality errors. **Doctor:** fail items exist |
+| `2` | Runtime error (bad agent id, missing cache with `--skip-index-refresh`, etc.). **Doctor:** corrupt/unreadable index |
 
 ---
 

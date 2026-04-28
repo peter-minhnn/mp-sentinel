@@ -1,3 +1,20 @@
+# What's New in v1.8.0
+
+## Doctor Remediation UX
+
+v1.8.0 adds remediation UX to `create-skills --doctor` with machine-runnable commands and severity-grouped console output.
+
+- **`recommendedCommands` in JSON output**: New `recommendedCommands: string[]` field in doctor JSON output provides machine-runnable commands in execution order, separate from human-readable `recommendedActions`. Consumers can pipe commands directly into CI/CD remediation steps.
+- **Command policy**: Missing index → `mp-sentinel indexing`. Stale index → `mp-sentinel indexing --force`. Stale/missing skills → `npm run agent:skills:refresh` (preferred when script exists) or `mp-sentinel create-skills --all-agents --force` (fallback). Quality errors → action text only (no automated command).
+- **Severity-grouped console output**: Console rendering now groups findings by severity: `[fail] Action Required`, `[warn] Advisory`, `[ok] Healthy`. Non-detected agents are neutral (not warnings). `[x]` marker removed entirely.
+- **`categorizeDoctorFindings()` helper**: Internal helper centralizes all doctor finding categorization, replacing scattered inline `recommendedActions.push()` calls.
+- **`DoctorActionEntry` type**: New type with optional `commands` field for findings that can suggest one or more remediation commands.
+- **Status policy documented**: `error` (exit 2) for unreadable/corrupt index only. `action-required` (exit 1) when `failItems` exist. `ok` (exit 0) when no failItems (warnItems may exist). Legacy files and missing scripts are advisory-only and never cause exit 1.
+- **Dogfood guard**: `recommendedCommands` validated as array of non-empty trimmed strings in the dogfood doctor step.
+- **Full test coverage**: New tests for command preference (`npm run agent:skills:refresh` vs CLI fallback), healthy project has empty `recommendedCommands`, dedup stability, and first command ordering.
+
+---
+
 # What's New in v1.7.1
 
 ## Dogfood Step Count Consistency

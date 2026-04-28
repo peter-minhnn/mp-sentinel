@@ -173,6 +173,21 @@ npx mp-sentinel create-skills --explain-agents --format json
 
 `create-skills` automatically refreshes the index when manifest inputs (`package.json`, `tsconfig*.json`, lockfile identity) change, even if source files are unchanged. This ensures generated profile rules always reflect the current scripts, `bin`, dependencies, and framework signals.
 
+### Diagnostic: Doctor Health Check (v1.7.0+)
+Read-only health check covering agent detection, source index cache, skill freshness, quality gate, legacy files, and npm scripts. No file writes, no AI calls, no auto-indexing.
+```bash
+# Console output grouped by severity: [fail] / [warn] / [ok]
+npx mp-sentinel create-skills --doctor
+
+# JSON output for CI health checks (v1.8.0+ adds recommendedCommands)
+npx mp-sentinel create-skills --doctor --format json
+
+# Scope to specific agents
+npx mp-sentinel create-skills --doctor --agent claude,cursor
+```
+**Exit codes:** `0` = healthy, `1` = action required, `2` = error (corrupt index).
+**JSON output** includes `recommendedActions` (human-readable) and `recommendedCommands` (machine-runnable, ordered, deduplicated).
+
 See [docs/CREATE_SKILLS.md](CREATE_SKILLS.md) for full documentation.
 
 ---
