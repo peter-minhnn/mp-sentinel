@@ -1,3 +1,14 @@
+# What's New in v1.7.1
+
+## Dogfood Step Count Consistency
+
+v1.7.1 is a patch hardening release — no CLI behavior, flags, JSON contracts, or doctor logic changes.
+
+- **Dogfood step labels**: `npm run dogfood` now correctly shows `[1/7]` through `[7/7]` for all seven steps (was showing `[1/6]`–`[4/6]` for the first four steps). A `TOTAL_STEPS` constant guards against future miscounts.
+- **Step labels use constant**: All step header lines now use `` `\n[${n}/${TOTAL_STEPS}] ...` `` instead of hardcoded fractions.
+
+---
+
 # What's New in v1.7.0
 
 ## Create Skills Doctor

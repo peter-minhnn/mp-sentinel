@@ -26,6 +26,7 @@ import { existsSync } from "node:fs";
 
 // --- helpers -----------------------------------------------------------
 
+const TOTAL_STEPS = 7;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -63,7 +64,7 @@ function parseJson(raw, label) {
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write("\n[1/6] release:check\n");
+  process.stdout.write(`\n[1/${TOTAL_STEPS}] release:check\n`);
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -74,7 +75,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write("\n[2/6] build\n");
+  process.stdout.write(`\n[2/${TOTAL_STEPS}] build\n`);
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -91,7 +92,7 @@ function stepBuild() {
 }
 
 function stepIndexing() {
-  process.stdout.write("\n[3/6] indexing --stats\n");
+  process.stdout.write(`\n[3/${TOTAL_STEPS}] indexing --stats\n`);
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -113,7 +114,7 @@ function stepIndexing() {
 }
 
 function stepCreateSkills() {
-  process.stdout.write("\n[4/6] create-skills --dry-run\n");
+  process.stdout.write(`\n[4/${TOTAL_STEPS}] create-skills --dry-run\n`);
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -143,7 +144,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write("\n[5/7] explain-agents\n");
+  process.stdout.write(`\n[5/${TOTAL_STEPS}] explain-agents\n`);
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -203,7 +204,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write("\n[6/7] explain-context\n");
+  process.stdout.write(`\n[6/${TOTAL_STEPS}] explain-context\n`);
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -232,7 +233,7 @@ function stepExplainContext() {
 }
 
 function stepDoctor() {
-  process.stdout.write("\n[7/7] create-skills --doctor\n");
+  process.stdout.write(`\n[7/${TOTAL_STEPS}] create-skills --doctor\n`);
   let raw;
   try {
     raw = execSync(
