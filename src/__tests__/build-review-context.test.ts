@@ -655,8 +655,10 @@ describe("buildReviewContext", () => {
       "src/hub2.ts": `export const hub2 = 1;`,
       "src/user1.ts": `import { hub1 } from "./hub1.js"; export const x = 1;`,
       "src/user2.ts": `import { hub1 } from "./hub1.js"; export const y = 1;`,
-      "src/user3.ts": `import { hub2 } from "./hub2.js"; export const z = 1;`,
+      "src/user3.ts": `import { hub1 } from "./hub1.js"; export const z = 1;`,
       "src/user4.ts": `import { hub2 } from "./hub2.js"; export const w = 1;`,
+      "src/user5.ts": `import { hub2 } from "./hub2.js"; export const v = 1;`,
+      "src/user6.ts": `import { hub2 } from "./hub2.js"; export const u = 1;`,
     });
 
     const index = await buildSourceIndex(

@@ -336,139 +336,172 @@ export async function buildReviewContext(
   const normalizePathKey = (p: string): string =>
     p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
 
+  const signalLines: string[] = [];
+  const intelligenceSignals: ReviewIntelligenceSignal[] = [];
+  let headerWritten = false;
+
+  const writeHeader = (): void => {
+    if (!headerWritten) {
+      signalLines.push("\n--- Review Intelligence ---");
+      headerWritten = true;
+    }
+  };
+
+  let kb;
   try {
-    const kb = buildSkillKnowledgeBase(index);
-    const signalLines: string[] = [];
-    const intelligenceSignals: ReviewIntelligenceSignal[] = [];
-    let headerWritten = false;
+    kb = buildSkillKnowledgeBase(index);
+  } catch {
+    kb = null;
+  }
 
-    const writeHeader = (): void => {
-      if (!headerWritten) {
-        signalLines.push("\n--- Review Intelligence ---");
-        headerWritten = true;
-      }
-    };
-
-    // Signal: Public API risk — any changed file that is a public-api entrypoint
-    const publicApiChanged = changedPaths.filter((p) =>
-      kb.entrypoints.some(
-        (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
-      ),
-    );
-    if (publicApiChanged.length > 0) {
-      writeHeader();
-      signalLines.push(
-        `Public API Risk: ${publicApiChanged.join(", ")} — part of the public API surface; changes may be breaking.`,
+  if (kb) {
+    // Signal: Public API risk — any changed file that is a public-api entrypoint.
+    // Prefer exact path match; fall back to extension-normalized matching
+    // only for paths that did not match exactly.
+    try {
+      let publicApiChanged = changedPaths.filter((p) =>
+        kb.entrypoints.some((e) => e.type === "public-api" && e.path === p),
       );
-      includedSignals.push("public-api");
-      for (const p of publicApiChanged) {
-        const entrypoint = kb.entrypoints.find(
-          (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
+      const remainingForApi = changedPaths.filter((p) => !publicApiChanged.includes(p));
+      if (remainingForApi.length > 0) {
+        const fuzzyMatches = remainingForApi.filter((p) =>
+          kb.entrypoints.some(
+            (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
+          ),
         );
-        intelligenceSignals.push({
-          type: "public-api",
-          file: p,
-          reason: "File is part of the public API surface; changes may be breaking.",
-          evidence: entrypoint
-            ? `Re-exported from entrypoint: ${entrypoint.path}`
-            : "Detected as public API entrypoint",
-          confidence: "high",
-        });
+        publicApiChanged = publicApiChanged.concat(fuzzyMatches);
       }
+      if (publicApiChanged.length > 0) {
+        writeHeader();
+        signalLines.push(
+          `Public API Risk: ${publicApiChanged.join(", ")} — part of the public API surface; changes may be breaking.`,
+        );
+        includedSignals.push("public-api");
+        for (const p of publicApiChanged) {
+          const entrypoint =
+            kb.entrypoints.find((e) => e.type === "public-api" && e.path === p) ??
+            kb.entrypoints.find(
+              (e) => e.type === "public-api" && normalizePathKey(e.path) === normalizePathKey(p),
+            );
+          intelligenceSignals.push({
+            type: "public-api",
+            file: p,
+            reason: "File is part of the public API surface; changes may be breaking.",
+            evidence: entrypoint
+              ? `Re-exported from entrypoint: ${entrypoint.path}`
+              : "Detected as public API entrypoint",
+            confidence: "high",
+          });
+        }
+      }
+    } catch {
+      // Per-signal isolation: public-api error does not suppress other signals
     }
 
     // Signal: Hub file blast radius — changed files that are hub files
-    for (const cp of changedPaths) {
-      const hubRisk = kb.risks.find((r) => r.file === cp && r.type === "hub-file");
-      if (hubRisk) {
-        writeHeader();
-        signalLines.push(`Hub File Blast Radius: ${cp} — ${hubRisk.detail}`);
-        includedSignals.push("risk");
-        const importCount = hubRisk.importCount ?? 0;
-        intelligenceSignals.push({
-          type: "risk",
-          file: cp,
-          reason: `File has high blast radius — imported by ${importCount} other file(s).`,
-          evidence: `importedBy count: ${importCount}`,
-          confidence: importCount >= 5 ? "high" : importCount >= 3 ? "medium" : "low",
-        });
+    try {
+      for (const cp of changedPaths) {
+        const hubRisk = kb.risks.find((r) => r.file === cp && r.type === "hub-file");
+        if (hubRisk) {
+          writeHeader();
+          signalLines.push(`Hub File Blast Radius: ${cp} — ${hubRisk.detail}`);
+          includedSignals.push("risk");
+          const importCount = hubRisk.importCount ?? 0;
+          intelligenceSignals.push({
+            type: "risk",
+            file: cp,
+            reason: `File has high blast radius — imported by ${importCount} other file(s).`,
+            evidence: `importedBy count: ${importCount}`,
+            confidence: importCount >= 5 ? "high" : importCount >= 3 ? "medium" : "low",
+          });
+        }
       }
+    } catch {
+      // Per-signal isolation: risk error does not suppress other signals
     }
 
     // Signal: Test gaps — changed files without associated tests
-    const changedWithNoTests = changedPaths.filter((p) =>
-      kb.testing.testGaps.some((g) => g.sourceFile === p),
-    );
-    if (changedWithNoTests.length > 0) {
-      writeHeader();
-      signalLines.push(
-        `Test Coverage Gap: ${changedWithNoTests.length} of ${changedPaths.length} changed file(s) have no associated tests:`,
+    try {
+      const changedWithNoTests = changedPaths.filter((p) =>
+        kb.testing.testGaps.some((g) => g.sourceFile === p),
       );
-      for (const p of changedWithNoTests.slice(0, 5)) {
-        signalLines.push(`  - ${p}`);
-      }
-      if (changedWithNoTests.length > 5) {
-        signalLines.push(`  ... and ${changedWithNoTests.length - 5} more`);
-      }
-      includedSignals.push("test-gap");
-      for (const p of changedWithNoTests) {
-        const gap = kb.testing.testGaps.find((g) => g.sourceFile === p);
-        intelligenceSignals.push({
-          type: "test-gap",
-          file: p,
-          reason: `No associated test file found for ${p}.`,
-          evidence: gap ? `Reason: ${gap.reason}` : "No test association in index",
-          confidence: "medium",
-        });
-      }
-    }
-
-    // Signal: Dependency usage — top deps used by changed files
-    const changedSet = new Set(changedPaths);
-    const relevantDeps = kb.dependencies.filter((d) => d.files.some((f) => changedSet.has(f)));
-    if (relevantDeps.length > 0) {
-      writeHeader();
-      const depList = relevantDeps
-        .slice(0, 5)
-        .map((d) => `${d.packageName}@${d.version}`)
-        .join(", ");
-      signalLines.push(`Key Dependencies Used: ${depList}${relevantDeps.length > 5 ? "..." : ""}`);
-      includedSignals.push("dependency");
-      for (const dep of relevantDeps.slice(0, 5)) {
-        const filesUsingDep = dep.files.filter((f) => changedSet.has(f));
-        for (const f of filesUsingDep) {
+      if (changedWithNoTests.length > 0) {
+        writeHeader();
+        signalLines.push(
+          `Test Coverage Gap: ${changedWithNoTests.length} of ${changedPaths.length} changed file(s) have no associated tests:`,
+        );
+        for (const p of changedWithNoTests.slice(0, 5)) {
+          signalLines.push(`  - ${p}`);
+        }
+        if (changedWithNoTests.length > 5) {
+          signalLines.push(`  ... and ${changedWithNoTests.length - 5} more`);
+        }
+        includedSignals.push("test-gap");
+        for (const p of changedWithNoTests) {
+          const gap = kb.testing.testGaps.find((g) => g.sourceFile === p);
           intelligenceSignals.push({
-            type: "dependency",
-            file: f,
-            reason: `Changed file imports package \`${dep.packageName}\`.`,
-            evidence: `Package: ${dep.packageName}@${dep.version}`,
+            type: "test-gap",
+            file: p,
+            reason: `No associated test file found for ${p}.`,
+            evidence: gap ? `Reason: ${gap.reason}` : "No test association in index",
             confidence: "medium",
           });
         }
       }
+    } catch {
+      // Per-signal isolation: test-gap error does not suppress other signals
     }
 
-    // Dedup intelligenceSignals by type + file + evidence
-    dedupedIntelligenceSignals = [];
-    const seenSignalKeys = new Set<string>();
-    for (const s of intelligenceSignals) {
-      const key = `${s.type}|${s.file}|${s.evidence}`;
-      if (!seenSignalKeys.has(key)) {
-        seenSignalKeys.add(key);
-        dedupedIntelligenceSignals.push(s);
+    // Signal: Dependency usage — top deps used by changed files
+    try {
+      const changedSet = new Set(changedPaths);
+      const relevantDeps = kb.dependencies.filter((d) => d.files.some((f) => changedSet.has(f)));
+      if (relevantDeps.length > 0) {
+        writeHeader();
+        const depList = relevantDeps
+          .slice(0, 5)
+          .map((d) => `${d.packageName}@${d.version}`)
+          .join(", ");
+        signalLines.push(
+          `Key Dependencies Used: ${depList}${relevantDeps.length > 5 ? "..." : ""}`,
+        );
+        includedSignals.push("dependency");
+        for (const dep of relevantDeps.slice(0, 5)) {
+          const filesUsingDep = dep.files.filter((f) => changedSet.has(f));
+          for (const f of filesUsingDep) {
+            intelligenceSignals.push({
+              type: "dependency",
+              file: f,
+              reason: `Changed file imports package \`${dep.packageName}\`.`,
+              evidence: `Package: ${dep.packageName}@${dep.version}`,
+              confidence: "medium",
+            });
+          }
+        }
       }
+    } catch {
+      // Per-signal isolation: dependency error does not suppress other signals
     }
+  }
 
-    // Append signals if they fit within remaining budget
-    const signalText = signalLines.join("\n");
-    if (headerWritten && context.length + signalText.length <= budgetChars) {
-      context = context.replace(
-        "\n=== End Source Index Context ===",
-        signalText + "\n=== End Source Index Context ===",
-      );
+  // Dedup intelligenceSignals by type + file + evidence
+  dedupedIntelligenceSignals = [];
+  const seenSignalKeys = new Set<string>();
+  for (const s of intelligenceSignals) {
+    const key = `${s.type}|${s.file}|${s.evidence}`;
+    if (!seenSignalKeys.has(key)) {
+      seenSignalKeys.add(key);
+      dedupedIntelligenceSignals.push(s);
     }
-  } catch {
-    // Silently skip intelligence signals on any error (corrupt index, parse issue, etc.)
+  }
+
+  // Append signals if they fit within remaining budget
+  const signalText = signalLines.join("\n");
+  if (headerWritten && context.length + signalText.length <= budgetChars) {
+    context = context.replace(
+      "\n=== End Source Index Context ===",
+      signalText + "\n=== End Source Index Context ===",
+    );
   }
 
   return {

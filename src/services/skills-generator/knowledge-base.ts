@@ -188,7 +188,7 @@ function buildTestingMap(
   for (const file of index.files) {
     if (isTestFile(file.path)) continue;
     const role = fileRoles[file.path] ?? "unknown";
-    if (role === "type" || role === "config") continue;
+    if (role === "type" || role === "config" || role === "utils" || role === "adapter") continue;
     if (file.symbols.length === 0) continue;
     if (testAssociations[file.path]) continue;
 
@@ -273,7 +273,7 @@ function buildRiskMap(
 
   // Hub files: imported by >1 other file
   const hubFiles = index.files
-    .filter((f) => (f.importedBy?.length ?? 0) > 1)
+    .filter((f) => (f.importedBy?.length ?? 0) > 2)
     .sort(
       (a, b) =>
         (b.importedBy?.length ?? 0) - (a.importedBy?.length ?? 0) || a.path.localeCompare(b.path),
