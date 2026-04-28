@@ -16,8 +16,8 @@
  * Exit: 0 = clean, 1 = one or more checks failed.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve, join } from "node:path";
 
 // --- helpers -----------------------------------------------------------
 
@@ -208,6 +208,46 @@ function checkPackageFiles() {
   }
 }
 
+function checkScriptAsciiSafety() {
+  const RISKY_CHARS = [
+    { code: 0x2014, name: "em dash (--)" },
+    { code: 0x2192, name: "right arrow (->)" },
+    { code: 0x2190, name: "left arrow (<-)" },
+    { code: 0x2026, name: "ellipsis (...)" },
+  ];
+
+  let clean = true;
+  let totalFiles = 0;
+
+  let scriptFiles;
+  try {
+    scriptFiles = readdirSync("scripts").filter((f) => f.endsWith(".mjs"));
+  } catch {
+    // scripts/ directory does not exist - skip check (packaged installs may not ship scripts/ for non-repo usage)
+    return;
+  }
+
+  for (const file of scriptFiles) {
+    totalFiles++;
+    const content = readText(join("scripts", file));
+    if (!content) continue;
+
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      for (const rc of RISKY_CHARS) {
+        if (lines[i].includes(String.fromCodePoint(rc.code))) {
+          fail(`scripts/${file}:${i + 1} contains ${rc.name}`);
+          clean = false;
+        }
+      }
+    }
+  }
+
+  if (clean) {
+    ok(`Script ASCII safety (${totalFiles} files)`);
+  }
+}
+
 // --- main --------------------------------------------------------------
 
 const pkg = readJson("package.json");
@@ -227,6 +267,7 @@ checkWhatsNew(expected);
 checkChangelog(expected);
 checkLockfileIntegrity();
 checkPackageFiles();
+checkScriptAsciiSafety();
 
 process.stdout.write("\n");
 

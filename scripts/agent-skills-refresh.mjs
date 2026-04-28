@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Agent skills refresh — generate fresh agent skills then verify.
+ * Agent skills refresh - generate fresh agent skills then verify.
  *
  * Steps:
  *   1. Runs `create-skills --all-agents --force --format json --no-ai-enrich`
@@ -9,9 +9,9 @@
  *   2. Runs `agent:skills:check` to verify generated files pass all checks.
  *
  * Exit codes:
- *   0 — generated and verified successfully
- *   1 — generation succeeded but check found issues
- *   2 — script/runtime error (create-skills or check crash)
+ *   0 - generated and verified successfully
+ *   1 - generation succeeded but check found issues
+ *   2 - script/runtime error (create-skills or check crash)
  *
  * Usage:
  *   node scripts/agent-skills-refresh.mjs
@@ -75,6 +75,6 @@ try {
   process.stdout.write("[agent:skills:refresh] All checks passed.\n");
   process.exit(0);
 } catch (e) {
-  // agent-skills-check exits 1 on stale — that means refresh didn't fix everything
+  // agent-skills-check exits 1 on stale - that means refresh didn't fix everything
   process.exit(e.status ?? 1);
 }

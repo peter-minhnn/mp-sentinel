@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Dogfood validation — runs the core local workflow end-to-end without network calls.
+ * Dogfood validation - runs the core local workflow end-to-end without network calls.
  *
  * Steps:
- *   1. release:check        — version consistency + lockfile integrity
- *   2. build                — tsup compile
- *   3. indexing --stats     — source index build + stats (JSON)
- *   4. create-skills --dry-run — all adapters, no writes (JSON)
- *   5. --explain-agents     — agent detection diagnostics (JSON)
- *   6. --explain-context    — context diagnostics (JSON)
+ *   1. release:check        - version consistency + lockfile integrity
+ *   2. build                - tsup compile
+ *   3. indexing --stats     - source index build + stats (JSON)
+ *   4. create-skills --dry-run - all adapters, no writes (JSON)
+ *   5. --explain-agents     - agent detection diagnostics (JSON)
+ *   6. --explain-context    - context diagnostics (JSON)
  *
  * Each JSON step is parsed, not just visually inspected.
  * explain-context "unavailable" due to indexing.enabled=false is expected.
@@ -30,14 +30,14 @@ const STEP_INDENT = "  ";
 
 function fail(step, detail) {
   process.stderr.write(`\n${STEP_INDENT}FAIL  ${step}`);
-  if (detail) process.stderr.write(` — ${detail}`);
+  if (detail) process.stderr.write(` - ${detail}`);
   process.stderr.write("\n");
   process.exitCode = 1;
 }
 
 function ok(step, detail) {
   process.stdout.write(`${STEP_INDENT}PASS  ${step}`);
-  if (detail) process.stdout.write(` — ${detail}`);
+  if (detail) process.stdout.write(` - ${detail}`);
   process.stdout.write("\n");
 }
 
@@ -220,7 +220,7 @@ function stepExplainContext() {
 
   if (json.status === "unavailable") {
     if (json.reason && json.reason.includes("indexing.enabled = false")) {
-      ok("explain-context", "unavailable (indexing disabled) — expected with default config");
+      ok("explain-context", "unavailable (indexing disabled) - expected with default config");
       return true;
     }
     fail("explain-context", `unexpected unavailable reason: ${json.reason}`);
@@ -233,7 +233,7 @@ function stepExplainContext() {
 
 // --- main --------------------------------------------------------------
 
-process.stdout.write("\nDogfood validation — mp-sentinel local workflow\n");
+process.stdout.write("\nDogfood validation - mp-sentinel local workflow\n");
 
 const steps = [
   stepReleaseCheck,

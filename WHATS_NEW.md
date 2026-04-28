@@ -1,3 +1,15 @@
+# What's New in v1.6.2
+
+## ASCII-Safe Script Output
+
+v1.6.2 is a patch hardening release — no new CLI behavior, no new flags.
+
+- **ASCII-only script output**: All `scripts/*.mjs` runtime output now uses ASCII exclusively. Replaced `—` (em dash) with `-`, `→` (right arrow) with `->` across `dogfood.mjs`, `agent-skills-check.mjs`, and `agent-skills-refresh.mjs`. Prevents mojibake like `â€"` or `â†'` on Windows/CI terminals.
+- **Release guard**: `npm run release:check` now includes a script ASCII safety check that scans all `scripts/*.mjs` files for output-risky Unicode characters (`—`, `→`, `←`, `…`) and fails if any are found. This prevents regression in future script changes.
+- **JSON CLI output unchanged**: Only script-level console output is affected. All structured JSON output from `create-skills`, `indexing`, and `--explain-context` remains untouched.
+
+---
+
 # What's New in v1.6.1
 
 ## Explain Agents Dogfood Guard

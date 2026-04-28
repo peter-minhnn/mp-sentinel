@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Agent skills check — validate generated agent skills are up-to-date.
+ * Agent skills check - validate generated agent skills are up-to-date.
  *
  * Runs `create-skills --all-agents --check --format json --no-ai-enrich` and
  * parses the JSON output to report missing, stale, wrong-agent, and quality
  * errors with clear exit codes.
  *
  * Exit codes (match create-skills check semantics):
- *   0 — all generated files up-to-date
- *   1 — one or more files missing, stale, wrong-agent, or quality errors
- *   2 — script/runtime error (JSON parse failure, create-skills crash)
+ *   0 - all generated files up-to-date
+ *   1 - one or more files missing, stale, wrong-agent, or quality errors
+ *   2 - script/runtime error (JSON parse failure, create-skills crash)
  *
  * Usage:
  *   node scripts/agent-skills-check.mjs
@@ -40,7 +40,7 @@ try {
     { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
   );
 } catch (e) {
-  // If exit code is 1 (stale), that's expected — still parse the JSON.
+  // If exit code is 1 (stale), that's expected - still parse the JSON.
   if (e.stdout) {
     raw = e.stdout;
   } else {
@@ -106,7 +106,7 @@ if (data.legacyFiles && data.legacyFiles.length > 0) {
     `ADVISORY: ${data.legacyFiles.length} legacy generated file(s) detected:\n`,
   );
   for (const lf of data.legacyFiles) {
-    process.stderr.write(`  - ${lf.path} (agent: ${lf.agent}) → ${lf.suggestion}\n`);
+    process.stderr.write(`  - ${lf.path} (agent: ${lf.agent}) -> ${lf.suggestion}\n`);
   }
 }
 
@@ -116,7 +116,7 @@ const status = data.status === "ok" && !hasIssues ? "ok" : "stale";
 process.stdout.write(
   `[agent:skills:check] ${totalFiles} files: ` +
     `up-to-date=${statusCounts["up-to-date"]}, stale=${statusCounts.stale}, ` +
-    `missing=${statusCounts.missing}, wrong-agent=${statusCounts["wrong-agent"]} → ${status}\n`,
+    `missing=${statusCounts.missing}, wrong-agent=${statusCounts["wrong-agent"]} -> ${status}\n`,
 );
 
 if (hasIssues) process.exit(1);
