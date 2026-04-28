@@ -1,3 +1,13 @@
+# What's New in v1.1.4
+
+## Release Script Packaging Fix
+
+v1.1.4 fixes a packaging gap — no runtime code changes.
+
+- **Packaging fix**: `scripts/release-check.mjs` now included in the npm tarball via `package.json.files`. Previously, `npm run release:check` would fail when run from an installed package because the script was missing from the published artifact.
+
+---
+
 # What's New in v1.1.3
 
 ## Release Automation Guardrails
