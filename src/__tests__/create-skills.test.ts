@@ -4175,4 +4175,118 @@ describe("runCreateSkillsCommand --doctor", () => {
       expect(cmds[0]).toBe("mp-sentinel indexing");
     }
   });
+
+  // ── v1.9.0 Skill encoding hygiene ────────────────────────────────────────
+
+  it("--all-agents --dry-run reports zero risky-unicode quality errors", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    let jsonOutput = "";
+    const origLog = console.log;
+    console.log = (s: string) => {
+      if (s.startsWith("{")) jsonOutput = s;
+    };
+
+    await runCreateSkillsCommand(
+      {
+        "all-agents": true,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": true,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": true,
+      },
+      cwd,
+    );
+
+    console.log = origLog;
+    const parsed = JSON.parse(jsonOutput);
+    expect(Array.isArray(parsed.dryRun)).toBe(true);
+
+    for (const agent of parsed.dryRun) {
+      const unicodeErrors = (agent.quality?.checks ?? []).filter(
+        (c: { type: string }) => c.type === "risky-unicode",
+      );
+      expect(unicodeErrors).toHaveLength(0);
+    }
+  });
+
+  it("generated skills for all agents pass risky-unicode quality check", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+
+    // Test Claude adapter specifically (multi-file skill layout)
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    const report = validateSkillQuality(genFiles, "claude", index!, adapter.spec, projectName);
+    const unicodeChecks = report.checks.filter((c) => c.type === "risky-unicode");
+    expect(unicodeChecks).toHaveLength(0);
+
+    // Test Codex adapter (single-file skill layout)
+    const codexAdapter = getAdapter("codex")!;
+    const codexFiles = await codexAdapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    const codexReport = validateSkillQuality(
+      codexFiles,
+      "codex",
+      index!,
+      codexAdapter.spec,
+      projectName,
+    );
+    const codexUnicodeChecks = codexReport.checks.filter((c) => c.type === "risky-unicode");
+    expect(codexUnicodeChecks).toHaveLength(0);
+
+    // Test Antigravity adapter (single-file skill layout under .agents/skills/)
+    const agAdapter = getAdapter("antigravity")!;
+    const agFiles = await agAdapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    const agReport = validateSkillQuality(
+      agFiles,
+      "antigravity",
+      index!,
+      agAdapter.spec,
+      projectName,
+    );
+    const agUnicodeChecks = agReport.checks.filter((c) => c.type === "risky-unicode");
+    expect(agUnicodeChecks).toHaveLength(0);
+  });
 });

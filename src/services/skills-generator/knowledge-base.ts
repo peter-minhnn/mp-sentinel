@@ -1,5 +1,5 @@
 /**
- * SkillKnowledgeBase — builds structured codebase knowledge from SourceIndex.
+ * SkillKnowledgeBase - builds structured codebase knowledge from SourceIndex.
  *
  * Pure deterministic derivation from SourceIndex fields. No AI calls.
  * When index.insights is absent, returns a minimal KB with empty arrays.
@@ -245,7 +245,7 @@ function buildRiskMap(
   const result: RiskEntry[] = [];
 
   for (const file of defaultExportFiles) {
-    result.push({ file, type: "default-export", detail: "Default export — harder to tree-shake" });
+    result.push({ file, type: "default-export", detail: "Default export - harder to tree-shake" });
   }
   for (const file of reExportFiles) {
     const reExportCount =
@@ -253,21 +253,21 @@ function buildRiskMap(
     result.push({
       file,
       type: "re-export",
-      detail: `Re-exports ${reExportCount} module(s) — indirect coupling`,
+      detail: `Re-exports ${reExportCount} module(s) - indirect coupling`,
     });
   }
   for (const file of dynamicImportFiles) {
     result.push({
       file,
       type: "dynamic-import",
-      detail: "Dynamic import — lazy-loaded dependency",
+      detail: "Dynamic import - lazy-loaded dependency",
     });
   }
   for (const file of typeOnlyImportFiles) {
     result.push({
       file,
       type: "type-only-import",
-      detail: "Type-only imports — safe to remove without runtime impact",
+      detail: "Type-only imports - safe to remove without runtime impact",
     });
   }
 
@@ -286,7 +286,7 @@ function buildRiskMap(
     result.push({
       file: file.path,
       type: "hub-file",
-      detail: `Imported by ${count} file(s) — high blast radius`,
+      detail: `Imported by ${count} file(s) - high blast radius`,
       importCount: count,
     });
   }

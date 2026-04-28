@@ -29,12 +29,12 @@ const MAX_RISK_ENTRIES = 20;
 const MAX_SCRIPT_ENTRIES = 12;
 const MAX_IMPORT_FROM_LIST = 5;
 
-/** Clean a semver range for display: "^2.4.2" → "2.4.2 (range ^2.4.2)" */
+/** Clean a semver range for display: "^2.4.2" -> "2.4.2 (range ^2.4.2)" */
 function cleanDisplayVersion(version: string): string {
   if (!version) return version;
   // Already a bare version
   if (/^\d/.test(version)) return version;
-  // Has a range prefix — show both
+  // Has a range prefix - show both
   const bare = version.replace(/^[\^~>=<]+/, "");
   if (bare === version) return version;
   return `${bare} (range ${version})`;
@@ -112,16 +112,16 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
   // Reference file list from KB entrypoints or static
   const refFiles = kb
     ? [
-        `   - \`references/codebase-map.md\` — ${kb.modules.length} module(s), ${kb.entrypoints.length} entrypoint(s)`,
-        `   - \`references/testing-map.md\` — ${Object.keys(kb.testing.testAssociations).length} test association(s)`,
-        `   - \`references/dependencies.md\` — ${kb.dependencies.length} dependency(s) tracked`,
-        `   - \`references/public-api.md\` — ${kb.risks.length} risk item(s)`,
+        `   - \`references/codebase-map.md\` - ${kb.modules.length} module(s), ${kb.entrypoints.length} entrypoint(s)`,
+        `   - \`references/testing-map.md\` - ${Object.keys(kb.testing.testAssociations).length} test association(s)`,
+        `   - \`references/dependencies.md\` - ${kb.dependencies.length} dependency(s) tracked`,
+        `   - \`references/public-api.md\` - ${kb.risks.length} risk item(s)`,
       ]
     : [
-        `   - \`references/codebase-map.md\` — module ownership, key files, symbols`,
-        `   - \`references/testing-map.md\` — test associations and gaps`,
-        `   - \`references/dependencies.md\` — dependency versions and usage`,
-        `   - \`references/public-api.md\` — public API surface and risks`,
+        `   - \`references/codebase-map.md\` - module ownership, key files, symbols`,
+        `   - \`references/testing-map.md\` - test associations and gaps`,
+        `   - \`references/dependencies.md\` - dependency versions and usage`,
+        `   - \`references/public-api.md\` - public API surface and risks`,
       ];
 
   return [
@@ -129,15 +129,15 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
     ``,
-    `1. **Read this skill file** (SKILL.md) — understand the project profile, conventions, and pitfalls.`,
+    `1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.`,
     instructionFilesLine,
     `3. **Before touching any file**, use source index diagnostics:`,
-    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` — imports, dependents, symbols for the file`,
-    `   - \`mp-sentinel indexing --stats --index-format json\` — index summary with insight counts`,
-    `   - \`mp-sentinel --explain-context --format json --files <file>\` — review context enrichment`,
+    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols for the file`,
+    `   - \`mp-sentinel indexing --stats --index-format json\` - index summary with insight counts`,
+    `   - \`mp-sentinel --explain-context --format json --files <file>\` - review context enrichment`,
     `4. **Load only the relevant references** for the paths you touch:`,
     ...refFiles,
-    `5. **Respect the profile rules** — each profile has specific review pitfalls listed below.`,
+    `5. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
   ].join("\n");
 }
 
@@ -240,10 +240,10 @@ function buildArchitecture(index: SourceIndex | null): string {
       const count = index.files.filter((f) =>
         dir === "(root)" ? !f.path.includes("/") : f.path.startsWith(`${dir}/`),
       ).length;
-      lines.push(`- \`${dir}/\` — ${count} file(s)`);
+      lines.push(`- \`${dir}/\` - ${count} file(s)`);
     }
     if (topDirs.length > MAX_MODULE_DIRS) {
-      lines.push(`- … and ${topDirs.length - MAX_MODULE_DIRS} more`);
+      lines.push(`- ... and ${topDirs.length - MAX_MODULE_DIRS} more`);
     }
   }
 
@@ -277,7 +277,7 @@ function buildHubFiles(index: SourceIndex | null): string {
         ? ` (+${file.symbols.length - MAX_SYMBOLS_INLINE} more)`
         : "";
 
-    entryLines.push(``, `### \`${file.path}\` — imported by ${importedByCount} file(s)`);
+    entryLines.push(``, `### \`${file.path}\` - imported by ${importedByCount} file(s)`);
     if (topSymbols) entryLines.push(`Exports: ${topSymbols}${overflow}`);
     if ((file.importsFrom?.length ?? 0) > 0) {
       const deps = file
@@ -289,7 +289,7 @@ function buildHubFiles(index: SourceIndex | null): string {
 
     if (entryLines.length > MAX_HUB_FILE_DETAIL_LINES) {
       entryLines.splice(MAX_HUB_FILE_DETAIL_LINES);
-      entryLines.push("… (truncated)");
+      entryLines.push("... (truncated)");
     }
     lines.push(...entryLines);
   }
@@ -337,7 +337,7 @@ function buildModules(index: SourceIndex | null): string {
     }
 
     if (files.length > MAX_FILES_PER_DIR) {
-      lines.push(`- … and ${files.length - MAX_FILES_PER_DIR} more files`);
+      lines.push(`- ... and ${files.length - MAX_FILES_PER_DIR} more files`);
     }
   }
 
@@ -359,7 +359,7 @@ function buildCommands(index: SourceIndex | null): string {
       lines.push(`${pm}${key === "test" ? " " : " run "}${key}  # ${cmd}`);
     }
     if (Object.keys(scripts).length > MAX_SCRIPT_ENTRIES) {
-      lines.push(`# … and ${Object.keys(scripts).length - MAX_SCRIPT_ENTRIES} more scripts`);
+      lines.push(`# ... and ${Object.keys(scripts).length - MAX_SCRIPT_ENTRIES} more scripts`);
     }
     lines.push("```");
   } else {
@@ -381,12 +381,12 @@ function buildConventions(index: SourceIndex | null): string {
 
   const hasEsm = index.files.some((f) => f.imports.some((i) => i.source.endsWith(".js")));
   if (hasEsm) {
-    lines.push(``, `- **Module System:** ESM — internal imports include \`.js\` extension`);
+    lines.push(``, `- **Module System:** ESM - internal imports include \`.js\` extension`);
   }
 
   const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
   if (hasTs) {
-    lines.push(`- **Language:** TypeScript — use \`import type\` for type-only imports`);
+    lines.push(`- **Language:** TypeScript - use \`import type\` for type-only imports`);
   }
 
   const testFileCount = index.files.filter(
@@ -415,7 +415,7 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
       lines.push(`${pm} run ${key}  # ${scripts[key]}`);
     }
     if (scriptKeys.length > MAX_SCRIPT_ENTRIES) {
-      lines.push(`# … and ${scriptKeys.length - MAX_SCRIPT_ENTRIES} more scripts`);
+      lines.push(`# ... and ${scriptKeys.length - MAX_SCRIPT_ENTRIES} more scripts`);
     }
     lines.push("```");
   } else {
@@ -450,7 +450,7 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
             f.path.includes(".test.") || f.path.includes(".spec.") || f.path.includes("__tests__"),
         ).length;
         const testNote = testCount > 0 ? ` (${testCount} test files)` : "";
-        lines.push(`- \`${dir}/\` — ${files.length} source file(s)${testNote}`);
+        lines.push(`- \`${dir}/\` - ${files.length} source file(s)${testNote}`);
       }
     }
   }
@@ -475,11 +475,11 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
     const tsConfigPaths = index.project.tsConfig?.compilerOptions?.paths;
     if (tsConfigPaths && Object.keys(tsConfigPaths as Record<string, unknown>).length > 0) {
       lines.push(
-        `- Respect \`tsconfig.json\` path aliases — do not bypass with relative traversals.`,
+        `- Respect \`tsconfig.json\` path aliases - do not bypass with relative traversals.`,
       );
     }
   } else {
-    lines.push(`_No source index available — conventions cannot be inferred._`);
+    lines.push(`_No source index available - conventions cannot be inferred._`);
   }
 
   // ── Test Expectations ──
@@ -504,39 +504,39 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   switch (profile) {
     case "cli-tooling":
       lines.push(
-        `- **Exit codes are a contract** — never change 0/1/2 semantics without a breaking-change note.`,
-        `- **Diff-first review** — do not send full file content to the AI when \`diff\` + context is sufficient.`,
-        `- **Keep CLI parsing separate** — argument parsing belongs in a dedicated \`src/cli/\` layer, not inside command implementations.`,
-        `- **No business logic in \`src/index.ts\`** — entry files should only route, never contain core logic.`,
-        `- **Watch for breaking changes in scripts** — renaming a script or changing its side-effects is a breaking change for consumers.`,
+        `- **Exit codes are a contract** - never change 0/1/2 semantics without a breaking-change note.`,
+        `- **Diff-first review** - do not send full file content to the AI when \`diff\` + context is sufficient.`,
+        `- **Keep CLI parsing separate** - argument parsing belongs in a dedicated \`src/cli/\` layer, not inside command implementations.`,
+        `- **No business logic in \`src/index.ts\`** - entry files should only route, never contain core logic.`,
+        `- **Watch for breaking changes in scripts** - renaming a script or changing its side-effects is a breaking change for consumers.`,
       );
       break;
     case "node-service":
       lines.push(
-        `- **Handler purity** — route handlers should be thin; delegate to services / repositories.`,
-        `- **Error middleware** — unhandled errors must be caught by centralized error middleware, never leak stack traces in production.`,
-        `- **Env config validation** — validate all \`process.env\` reads at startup; fail fast on missing required variables.`,
-        `- **Async boundaries** — always await or explicitly catch promises in request handlers to prevent unhandled rejections.`,
-        `- **Health checks** — any new dependency (DB, cache, queue) needs a corresponding health-check probe.`,
+        `- **Handler purity** - route handlers should be thin; delegate to services / repositories.`,
+        `- **Error middleware** - unhandled errors must be caught by centralized error middleware, never leak stack traces in production.`,
+        `- **Env config validation** - validate all \`process.env\` reads at startup; fail fast on missing required variables.`,
+        `- **Async boundaries** - always await or explicitly catch promises in request handlers to prevent unhandled rejections.`,
+        `- **Health checks** - any new dependency (DB, cache, queue) needs a corresponding health-check probe.`,
       );
       break;
     case "react-next":
       lines.push(
-        `- **Server/Client boundary** — avoid importing server-only modules into client components; use the \`'use server'\` / \`'use client'\` split explicitly.`,
-        `- **Data fetching colocation** — keep data fetching close to the component that consumes it; do not prop-drill fetched data across >2 layers.`,
-        `- **No direct DOM mutations in React** — use refs and effects, never direct \`document.querySelector\` manipulation outside of isolated helpers.`,
-        `- **Image optimization** — prefer \`next/image\` over raw \`<img>\` tags.`,
-        `- **Bundle size vigilance** — adding a new dependency to a page-level component can bloat the route chunk; audit with \`next bundle-analyzer\` if available.`,
+        `- **Server/Client boundary** - avoid importing server-only modules into client components; use the \`'use server'\` / \`'use client'\` split explicitly.`,
+        `- **Data fetching colocation** - keep data fetching close to the component that consumes it; do not prop-drill fetched data across >2 layers.`,
+        `- **No direct DOM mutations in React** - use refs and effects, never direct \`document.querySelector\` manipulation outside of isolated helpers.`,
+        `- **Image optimization** - prefer \`next/image\` over raw \`<img>\` tags.`,
+        `- **Bundle size vigilance** - adding a new dependency to a page-level component can bloat the route chunk; audit with \`next bundle-analyzer\` if available.`,
       );
       break;
     case "library":
     default:
       lines.push(
-        `- **Public API surface** — every exported symbol is a commitment; prefer keeping internals un-exported.`,
-        `- **SemVer awareness** — removing or renaming an exported symbol requires a major version bump.`,
-        `- **Type definitions** — if TypeScript is used, ensure d.ts files or inline types ship with the build artifact.`,
-        `- **Peer dependencies** — be explicit about peer deps; avoid accidental bundling of framework code.`,
-        `- **Tree-shakeability** — use named exports and avoid side-effectful top-level code to help bundlers eliminate dead code.`,
+        `- **Public API surface** - every exported symbol is a commitment; prefer keeping internals un-exported.`,
+        `- **SemVer awareness** - removing or renaming an exported symbol requires a major version bump.`,
+        `- **Type definitions** - if TypeScript is used, ensure d.ts files or inline types ship with the build artifact.`,
+        `- **Peer dependencies** - be explicit about peer deps; avoid accidental bundling of framework code.`,
+        `- **Tree-shakeability** - use named exports and avoid side-effectful top-level code to help bundlers eliminate dead code.`,
       );
       break;
   }
@@ -555,7 +555,7 @@ function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
   if (kb.modules.length > 0) {
     lines.push(``, `### Module Ownership`, ``);
     for (const mod of kb.modules) {
-      lines.push(`#### \`${mod.directory}/\` — ${mod.dominantRole}`);
+      lines.push(`#### \`${mod.directory}/\` - ${mod.dominantRole}`);
       lines.push(`- ${mod.sourceFileCount} source file(s), ${mod.testFileCount} test file(s)`);
       if (mod.keyFiles.length > 0) {
         lines.push(`- Key files: ${mod.keyFiles.map((f) => `\`${f}\``).join(", ")}`);
@@ -587,7 +587,7 @@ function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
             : ep.type === "command"
               ? "CMD"
               : "CFG";
-      lines.push(`- **[${icon}]** \`${ep.path}\` — ${ep.label}`);
+      lines.push(`- **[${icon}]** \`${ep.path}\` - ${ep.label}`);
     }
   }
 
@@ -613,7 +613,7 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
       lines.push(`| \`${source}\` | ${tests.map((t) => `\`${t}\``).join(", ")} |`);
     }
     if (assocEntries.length > MAX_TEST_ASSOC_ENTRIES) {
-      lines.push(`| … | ${assocEntries.length - MAX_TEST_ASSOC_ENTRIES} more … |`);
+      lines.push(`| ... | ${assocEntries.length - MAX_TEST_ASSOC_ENTRIES} more ... |`);
     }
     lines.push(``);
   }
@@ -624,11 +624,11 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
     lines.push(`Files with no associated test coverage:`);
     for (const gap of kb.testing.testGaps.slice(0, MAX_TEST_GAP_ENTRIES)) {
       lines.push(
-        `- \`${gap.sourceFile}\` — ${gap.reason === "no-test-file" ? "no test file found" : "no import-graph match"}`,
+        `- \`${gap.sourceFile}\` - ${gap.reason === "no-test-file" ? "no test file found" : "no import-graph match"}`,
       );
     }
     if (kb.testing.testGaps.length > MAX_TEST_GAP_ENTRIES) {
-      lines.push(`- … and ${kb.testing.testGaps.length - MAX_TEST_GAP_ENTRIES} more`);
+      lines.push(`- ... and ${kb.testing.testGaps.length - MAX_TEST_GAP_ENTRIES} more`);
     }
     lines.push(``);
   }
@@ -637,7 +637,7 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
   if (kb.testing.mostTestedModules.length > 0) {
     lines.push(`### Most Tested Modules`, ``);
     for (const mod of kb.testing.mostTestedModules) {
-      lines.push(`- \`${mod.directory}/\` — ${mod.testFileCount} test file(s)`);
+      lines.push(`- \`${mod.directory}/\` - ${mod.testFileCount} test file(s)`);
     }
   }
 
@@ -675,7 +675,7 @@ function buildDependenciesSection(
           ? ` (+${dep.files.length - MAX_DEP_FILE_LIST} more)`
           : "";
       const displayVersion = cleanDisplayVersion(dep.version);
-      lines.push(`- **${dep.packageName}** v${displayVersion} — used by: ${fileList}${overflow}`);
+      lines.push(`- **${dep.packageName}** v${displayVersion} - used by: ${fileList}${overflow}`);
     }
   }
 
@@ -702,7 +702,7 @@ function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
   if (apiEntries.length > 0) {
     lines.push(``, `### Entry Points`, ``);
     for (const ep of apiEntries) {
-      lines.push(`- \`${ep.path}\` — ${ep.label}`);
+      lines.push(`- \`${ep.path}\` - ${ep.label}`);
     }
   }
 
@@ -729,12 +729,12 @@ function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
       // Cap detail lines
       const detailLines = detail.split("\n");
       if (detailLines.length > MAX_RISK_DETAIL_LINES) {
-        detail = detailLines.slice(0, MAX_RISK_DETAIL_LINES).join("\n") + "\n… (truncated)";
+        detail = detailLines.slice(0, MAX_RISK_DETAIL_LINES).join("\n") + "\n... (truncated)";
       }
-      lines.push(`- **${risk.type}**: \`${risk.file}\`${extra} — ${detail}`);
+      lines.push(`- **${risk.type}**: \`${risk.file}\`${extra} - ${detail}`);
     }
     if (kb.risks.length > MAX_RISK_ENTRIES) {
-      lines.push(`- … and ${kb.risks.length - MAX_RISK_ENTRIES} more risks`);
+      lines.push(`- ... and ${kb.risks.length - MAX_RISK_ENTRIES} more risks`);
     }
   }
 

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-04-29
+
+### Added
+- **`risky-unicode` quality-gate check**: New deterministic check (`checkRiskyUnicode`) flags 12 risky Unicode characters in generated skill files: em dash, en dash, right/left arrows, ellipsis, smart quotes (single/double), checkmark, ballot x. Severity: error. Surfaced in `--check`, `--dry-run`, and `--doctor` flows.
+
+### Changed
+- **ASCII-safe generated skill prose**: All em dashes (U+2014), ellipsis (U+2026), and other non-ASCII punctuation replaced with ASCII equivalents across `content.ts`, `knowledge-base.ts`, `ai-enrichment.ts`, and 7 adapter files (~80 replacements total). Generated skill files now render correctly in terminals and AI agent readers.
+- **Doctor console ASCII output**: `create-skills --doctor` console rendering uses ASCII hyphens instead of em dashes in script descriptions and command sections.
+
+### Fixed
+- **Double-space artifacts**: Cleaned up `  -  ` (double-space around hyphen) artifacts from em dash replacement via normalization pass.
+- **Smart-quote hygiene**: Replaced Unicode bullet (U+2022) with ASCII asterisk in AI enrichment templates.
+
 ## [1.8.0] - 2026-04-28
 
 ### Added

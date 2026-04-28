@@ -882,4 +882,112 @@ describe("validateSkillQuality", () => {
       expect(layoutErrors).toHaveLength(0);
     });
   });
+
+  // ── Risky Unicode ──────────────────────────────────────────────────────────
+
+  describe("risky unicode", () => {
+    it("flags em dash in generated content as error", () => {
+      const content = "## Overview\n\nThis is a test — with em dash.";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(1);
+      expect(unicodeErrors[0]!.message).toContain("em dash");
+    });
+
+    it("flags ellipsis in generated content as error", () => {
+      const content = "## Architecture\n\nLoading… please wait.";
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(1);
+      expect(unicodeErrors[0]!.message).toContain("ellipsis");
+    });
+
+    it("flags right arrow in generated content as error", () => {
+      const content = "## Commands\n\nRun → Build → Deploy";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(1);
+      expect(unicodeErrors[0]!.message).toContain("right arrow");
+    });
+
+    it("passes clean ASCII generated content", () => {
+      const content = [
+        "## Overview",
+        "",
+        "Project: my-cli v2.0.0 - a CLI tool for automation.",
+        "",
+        "## Architecture",
+        "",
+        "- src/cli/ - 3 source file(s)",
+        "- src/utils/ - 2 source file(s)",
+        "",
+        "## Agent Workflow",
+        "",
+        "1. Read this skill file (SKILL.md) - understand the project profile.",
+        "2. Use source index diagnostics before broad scans.",
+        "3. Load relevant references for the paths you touch.",
+      ].join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeChecks = report.checks.filter((c) => c.type === "risky-unicode");
+      expect(unicodeChecks).toHaveLength(0);
+    });
+
+    it("flags multiple risky character types in the same file", () => {
+      const content = "## Overview\n\nEm dash — here, ellipsis… there, arrow → next.";
+      const files = [makeFile(".agents/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "codex", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(3); // em dash, ellipsis, arrow
+    });
+
+    it("counts multiple occurrences of the same character correctly", () => {
+      const content = "## Overview\n\nDash — here — and — there.";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(1);
+      expect(unicodeErrors[0]!.message).toContain("3 occurrence(s)");
+    });
+
+    it("does not break on empty content", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "")];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeChecks = report.checks.filter((c) => c.type === "risky-unicode");
+      expect(unicodeChecks).toHaveLength(0);
+    });
+
+    it("flags checkmark and ballot x in generated content", () => {
+      const content = "## Status\n\nTests: ✓ passed, ✗ failed";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(2);
+    });
+
+    it("flags smart quotes in generated content", () => {
+      const content = "## Overview\n\nUse ‘single’ and “double” quotes carefully.";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const unicodeErrors = report.checks.filter(
+        (c) => c.type === "risky-unicode" && c.severity === "error",
+      );
+      expect(unicodeErrors.length).toBe(4); // left single, right single, left double, right double
+    });
+  });
 });

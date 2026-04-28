@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.8.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.9.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,11 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.8.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.9.0**:
 
-- 🩺 **Doctor Remediation UX** — `recommendedCommands` provides machine-runnable remediation steps in JSON output
-- 📊 **Severity-Grouped Console** — findings grouped by `[fail]` / `[warn]` / `[ok]` for at-a-glance triage
-- 🔧 **Smart Command Selection** — prefers `npm run agent:skills:refresh` when available, falls back to CLI
+- 🔤 **ASCII-Safe Skill Encoding** — generated skill content sanitized to ASCII-only punctuation for terminal/agent compatibility
+- 🛡️ **Risky-Unicode Quality Gate** — new deterministic check flags em dashes, arrows, ellipsis, and smart quotes in skill output
+- 🩺 **Doctor ASCII Console** — `create-skills --doctor` console output is fully ASCII-safe
 - ✓ **Full Verification** — all 469 tests pass across 15 suites
 - 🎯 **Agent Skills Integration** — inject local ecosystem rules (like `.cursor/rules` or `.claude/skills/`)
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.

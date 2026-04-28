@@ -338,6 +338,50 @@ function checkEmptySections(file: GeneratedSkillFile): QualityCheck[] {
   return checks;
 }
 
+// ── Risky Unicode ─────────────────────────────────────────────────────────────
+
+// Characters likely to cause mojibake or readability issues when agents read
+// generated skills in a terminal environment.
+const RISKY_UNICODE: Array<{ char: string; name: string }> = [
+  // Punctuation dashes
+  { char: "—", name: "em dash (--)" },
+  { char: "–", name: "en dash (-)" },
+  // Arrows
+  { char: "→", name: "right arrow (->)" },
+  { char: "←", name: "left arrow (<-)" },
+  // Typographic
+  { char: "…", name: "ellipsis (...)" },
+  { char: "‘", name: "left single quote" },
+  { char: "’", name: "right single quote" },
+  { char: "“", name: "left double quote" },
+  { char: "”", name: "right double quote" },
+  // Symbols
+  { char: "✓", name: "checkmark" },
+  { char: "✗", name: "ballot x" },
+];
+
+function checkRiskyUnicode(file: GeneratedSkillFile): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  for (const rc of RISKY_UNICODE) {
+    if (file.content.includes(rc.char)) {
+      // Count occurrences for a useful message
+      let count = 0;
+      let idx = file.content.indexOf(rc.char);
+      while (idx !== -1) {
+        count++;
+        idx = file.content.indexOf(rc.char, idx + 1);
+      }
+      checks.push({
+        type: "risky-unicode",
+        severity: "error",
+        file: file.outputPath,
+        message: `Found ${count} occurrence(s) of ${rc.name} (U+${rc.char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}) — replace with ASCII equivalent`,
+      });
+    }
+  }
+  return checks;
+}
+
 function checkUnknownPaths(
   file: GeneratedSkillFile,
   index: SourceIndex | null,
@@ -761,6 +805,7 @@ export function validateSkillQuality(
     allChecks.push(...checkUnknownPaths(file, index, knownRefPaths));
     allChecks.push(...checkRealSignals(file, index));
     allChecks.push(...checkAgentWorkflowContract(file, adapterId));
+    allChecks.push(...checkRiskyUnicode(file));
   }
 
   const errors = allChecks.filter((c) => c.severity === "error");

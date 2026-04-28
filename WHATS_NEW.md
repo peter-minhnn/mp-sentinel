@@ -1,6 +1,14 @@
-# What's New in v1.8.0
+# What's New in v1.9.0
 
-## Doctor Remediation UX
+## Skill Encoding Hygiene
+
+v1.9.0 sanitizes generated skill content to ASCII-safe punctuation and adds a quality-gate check for risky Unicode characters.
+
+- **ASCII-safe generated prose**: All em dashes, ellipsis, arrows, and smart quotes in generated skill content replaced with ASCII equivalents. Generated skills now render correctly in terminal environments and AI agent readers.
+- **`risky-unicode` quality-gate check**: New deterministic quality check flags 12 risky Unicode characters (em/en dashes, arrows, smart quotes, ellipsis, checkmark, ballot x) in generated skill files. Severity: error. Surfaced in `--check`, `--dry-run`, and `--doctor` flows.
+- **Full template sanitization**: All templates in `content.ts`, `knowledge-base.ts`, `ai-enrichment.ts`, and 7 adapter files are now ASCII-clean.
+
+## Doctor Remediation UX (v1.8.0)
 
 v1.8.0 adds remediation UX to `create-skills --doctor` with machine-runnable commands and severity-grouped console output.
 

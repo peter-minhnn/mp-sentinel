@@ -1,5 +1,5 @@
 /**
- * AI Enrichment — uses an AI provider to generate supplementary
+ * AI Enrichment - uses an AI provider to generate supplementary
  * best-practice notes for skill files.
  *
  * This is an **opt-in** feature controlled by `createSkills.ai.enabled` in
@@ -7,7 +7,7 @@
  * purely deterministic from the source index.
  *
  * The AI enrichment pipeline:
- *   SourceIndex → AIEnrichmentInput → provider.generateContent() → AIEnrichmentOutput
+ *   SourceIndex -> AIEnrichmentInput -> provider.generateContent() -> AIEnrichmentOutput
  *
  * Output is validated with a Zod schema. If parsing or validation fails,
  * the command fails with exit code 2.
@@ -61,7 +61,7 @@ export function validateAIEnrichmentOutput(raw: string): AIEnrichmentOutput {
   const result = AIEnrichmentOutputSchema.safeParse(parsed);
   if (!result.success) {
     const issues = result.error.issues
-      .map((i) => `  • ${i.path.join(".")} — ${i.message}`)
+      .map((i) => `  * ${i.path.join(".")} - ${i.message}`)
       .join("\n");
     throw new Error(
       `AI enrichment output failed Zod validation:\n${issues}\n\nRaw output:\n${raw.slice(0, 500)}`,
@@ -227,7 +227,7 @@ function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
     "Array of 2-5 language/framework best-practice rules tailored to the project's tech stack and detected frameworks. Reference the exact package versions found in topDependenciesWithVersions above."
   ],
   "libraryRules": [
-    "Array of 2-5 library-specific best-practice rules. Use the version information from topDependenciesWithVersions — e.g., 'With zod v4.3.6, use .parse() for input validation'."
+    "Array of 2-5 library-specific best-practice rules. Use the version information from topDependenciesWithVersions - e.g., 'With zod v4.3.6, use .parse() for input validation'."
   ],
   "versionNotes": [
     "Array of 1-3 notes about version constraints or gotchas based on the actual dependency versions in the manifest."

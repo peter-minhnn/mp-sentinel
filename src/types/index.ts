@@ -897,7 +897,7 @@ export interface LegacyFileInfo {
 
 /** A single quality check result from the skill quality gate */
 export interface QualityCheck {
-  /** Check type identifier: max-file-size, required-section, required-references, duplicate-section, empty-section, unknown-path, missing-real-signal, agent-workflow-contract, adapter-layout-contract */
+  /** Check type identifier: max-file-size, required-section, required-references, duplicate-section, empty-section, unknown-path, missing-real-signal, agent-workflow-contract, adapter-layout-contract, risky-unicode */
   type: string;
   /** Error = fails --check; warning = informational only */
   severity: "error" | "warning";
