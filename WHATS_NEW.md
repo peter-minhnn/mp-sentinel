@@ -1,3 +1,15 @@
+# What's New in v1.2.0
+
+## Dogfood Validation Workflow
+
+v1.2.0 adds `npm run dogfood` — a single command that validates the full source-index → review → create-skills loop end-to-end, without network calls.
+
+- **`npm run dogfood`**: Runs release:check → build → indexing --stats → create-skills --dry-run → explain-context. All JSON outputs are parsed and validated, not just visually inspected.
+- **Publish-ready acceptance suite**: Every step runs against the built CLI (`dist/`) so it validates what ships, not just source.
+- **No API keys required**: The dogfood workflow avoids all AI/network calls — it validates the local tooling surface only.
+
+---
+
 # What's New in v1.1.5
 
 ## Release Script Packaging Self-Check

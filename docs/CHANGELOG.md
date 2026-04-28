@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-28
+
+### Added
+- **`npm run dogfood`**: New validation command that runs the core local workflow end-to-end without network calls. Steps: release:check → build → indexing --stats → create-skills --dry-run → explain-context. All JSON outputs are parsed programmatically. explain-context "unavailable" due to `indexing.enabled=false` is accepted as expected.
+- **`scripts/dogfood.mjs`**: Zero-dependency ESM script powering the dogfood command. Published in the npm tarball.
+
+### Changed
+- **`package.json`**: Added `dogfood` script and `scripts/dogfood.mjs` to published files.
+
 ## [1.1.5] - 2026-04-28
 
 ### Added
