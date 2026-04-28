@@ -1,3 +1,63 @@
+# What's New in v1.0.15
+
+## Skill Quality Gate v2 — Reduced False Positives & Codebase Fidelity
+
+### Unknown-path allowlist
+
+The quality gate no longer flags valid non-source paths as unknown. Paths like `package.json`, `tsconfig.json`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.clinerules/`, `.mp-sentinel-cache/source-index.json`, and others are recognized as valid references. Directory references (e.g. `` `src/` ``) and ESM `.js` extensions (which map to `.ts` source files) are also correctly resolved.
+
+### Codebase fidelity checks
+
+New `missing-real-signal` warnings when generated content lacks references to real project signals present in the index:
+- CLI entrypoints and command files
+- package.json scripts
+- Top-level source directories
+
+These warnings are informational — they guide adapter improvements without blocking generation. Reference files are excluded from these checks (only the main skill file is validated).
+
+### Named content caps
+
+All inline `.slice(0, N)` caps in `content.ts` are now named constants: `MAX_TEST_ASSOC_ENTRIES`, `MAX_TEST_GAP_ENTRIES`, `MAX_DEP_TABLE_ENTRIES`, `MAX_DEP_DETAIL_ENTRIES`, `MAX_DEP_FILE_LIST`, `MAX_RISK_ENTRIES`, `MAX_SCRIPT_ENTRIES`, `MAX_IMPORT_FROM_LIST`. Each cap is independently testable and documented.
+
+### Exit code documentation
+
+`docs/CREATE_SKILLS.md` exit code table now explicitly mentions that quality errors cause `--check` to exit `1`.
+
+---
+
+# What's New in v1.0.14
+
+## Skill Quality Gate — Deterministic Content Validation
+
+`create-skills` now runs a deterministic quality gate on all generated skill content before writing files. The gate catches structural issues in generated skills:
+
+- **Max file size**: SKILL.md ≤ 3000 chars, reference files ≤ 6000 chars, single-file adapters ≤ 20000 chars
+- **Required sections**: Every file must contain its expected H2 sections (e.g., SKILL.md needs "Required Agent Workflow", "Overview", "References")
+- **Required references**: Claude SKILL.md must link exactly 7 `./references/*.md` files
+- **No duplicate sections**: Same H2 heading must not appear twice in one file
+- **No empty sections**: H2 headings with no body content are flagged as warnings
+- **Real path validation**: Backtick-enclosed file paths in generated content are checked against the source index
+
+### How it works
+
+- **Errors** (size limits, missing sections, missing references, duplicate sections) cause `--check` to fail with exit code 1
+- **Warnings** (empty sections, unknown paths) are informational only — they appear in console/log output but do not block
+- In normal generate mode: quality issues are logged but files are still written
+- In JSON mode: quality reports appear in all three output modes (`results[].quality`, `dryRun[].quality`, `check[].quality`)
+
+### Deterministic sorting & line caps
+
+- All list sorts now use stable tie-breakers (path/name as secondary key) for reproducible output
+- Hub file detail entries capped at 15 lines; risk detail entries capped at 3 lines
+- Dependency versions now display cleaned: `^2.4.2` renders as `2.4.2 (range ^2.4.2)`
+
+### New types
+
+- `QualityCheck`: type, severity (`error` | `warning`), file, message
+- `QualityReport`: passed, checks[], errors count, warnings count
+
+---
+
 # What's New in v1.0.13
 
 ## Generated Skills Quality v2 — Codebase-Aware Skills

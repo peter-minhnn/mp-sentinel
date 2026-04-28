@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.15] - 2026-04-28
+
+### Added
+- **Unknown-path allowlist**: `KNOWN_NON_SOURCE_PATHS` set in quality gate recognizes valid non-source paths (`package.json`, `tsconfig.json`, `AGENTS.md`, `CLAUDE.md`, agent dirs, cache files). Directory references (trailing `/`) and ESM `.js` paths (mapped to `.ts`/`.tsx`) are also excluded from unknown-path warnings.
+- **Codebase fidelity checks**: New `missing-real-signal` warnings verify that generated skill content mentions real project signals (CLI entrypoints, command files, package.json scripts, top-level source directories) when the index has data. Reference files are excluded from these checks.
+- **Named content caps**: All inline `.slice()` limits in `content.ts` converted to named constants (`MAX_TEST_ASSOC_ENTRIES`, `MAX_TEST_GAP_ENTRIES`, `MAX_DEP_TABLE_ENTRIES`, `MAX_DEP_DETAIL_ENTRIES`, `MAX_DEP_FILE_LIST`, `MAX_RISK_ENTRIES`, `MAX_SCRIPT_ENTRIES`, `MAX_IMPORT_FROM_LIST`).
+
+### Changed
+- **Quality gate exit code docs**: `docs/CREATE_SKILLS.md` exit code table now explicitly states quality errors cause `--check` to exit `1`.
+- **Script mention detection**: `missing-real-signal` check uses precise regex matching for script references (backtick-wrapped, `npm run` patterns) instead of substring matching to avoid false matches.
+
+### Fixed
+- **False-positive `unknown-path` warnings**: Non-source paths, directory references, and ESM `.js` paths no longer trigger warnings. Root-level files (e.g. `index.ts`) are no longer misidentified as source directories.
+
+## [1.0.14] - 2026-04-28
+
+### Added
+- **Skill quality gate**: New module `src/services/skills-generator/quality-gate.ts` with `validateSkillQuality()` for deterministic content validation. Checks: max file size, required H2 sections, required references (Claude), duplicate sections, empty sections (warning), unknown paths (warning).
+- **Quality types**: `QualityCheck` and `QualityReport` interfaces in `src/types/index.ts`. Optional `quality` field added to `SkillsGenerationResult`, `SkillsDryRunResult`, and `SkillsCheckResult`.
+- **Quality in all output modes**: JSON outputs include quality reports. `--check` fails on quality errors (exit 1). Warnings are informational only.
+- **Stable sorting**: Secondary tie-breakers (path/name) added to all list sorts in `content.ts` and `knowledge-base.ts` for fully deterministic output.
+- **Line caps**: Hub file detail entries ≤ 15 lines, risk detail entries ≤ 3 lines.
+- **Dependency display cleanup**: `cleanDisplayVersion()` helper renders semver ranges like `^2.4.2` as `2.4.2 (range ^2.4.2)` in generated skills. Raw versions preserved in AI input and hashing.
+
 ## [1.0.13] - 2026-04-28
 
 ### Added

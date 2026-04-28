@@ -1,0 +1,750 @@
+import { describe, it, expect } from "@jest/globals";
+import { validateSkillQuality } from "../services/skills-generator/quality-gate.js";
+import type {
+  GeneratedSkillFile,
+  AgentAdapterId,
+  SourceIndex,
+  ProjectManifest,
+} from "../types/index.js";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function makeFile(outputPath: string, content: string): GeneratedSkillFile {
+  return { outputPath, content };
+}
+
+function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
+  const project: ProjectManifest = {
+    packageName: "test",
+    packageVersion: "1.0.0",
+    packageManager: "npm",
+    nodeEngine: ">=18",
+    dependencies: {},
+    devDependencies: {},
+    detectedFrameworks: [],
+    ...overrides,
+  };
+  return {
+    schemaVersion: "1.2",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    toolVersion: "1.0.0",
+    project,
+    files: [
+      {
+        path: "src/index.ts",
+        language: "typescript",
+        sha256: "abc",
+        sizeBytes: 100,
+        mtimeMs: 0,
+        imports: [],
+        exports: [],
+        symbols: [{ name: "main", type: "function", line: 1, column: 0 }],
+        importsFrom: [],
+        importedBy: [],
+      },
+      {
+        path: "src/utils.ts",
+        language: "typescript",
+        sha256: "def",
+        sizeBytes: 50,
+        mtimeMs: 0,
+        imports: [],
+        exports: [],
+        symbols: [{ name: "helper", type: "function", line: 1, column: 0 }],
+        importsFrom: [],
+        importedBy: ["src/index.ts"],
+      },
+      {
+        path: "src/cli/args.ts",
+        language: "typescript",
+        sha256: "ghi",
+        sizeBytes: 200,
+        mtimeMs: 0,
+        imports: [{ source: "./utils.js", kind: "named", names: ["helper"], line: 1 }],
+        exports: [],
+        symbols: [{ name: "parseArgs", type: "function", line: 1, column: 0 }],
+        importsFrom: ["src/utils.ts"],
+        importedBy: [],
+      },
+    ],
+    stats: { totalFiles: 3, indexedFiles: 3, skippedFiles: 0, parseErrors: 0 },
+  };
+}
+
+// ── Edge cases ───────────────────────────────────────────────────────────────
+
+describe("validateSkillQuality", () => {
+  describe("edge cases", () => {
+    it("returns empty report for empty files array", () => {
+      const report = validateSkillQuality([], "claude", null);
+      expect(report.passed).toBe(true);
+      expect(report.checks).toHaveLength(0);
+      expect(report.errors).toBe(0);
+      expect(report.warnings).toBe(0);
+    });
+
+    it("handles null index gracefully (skips path validation)", () => {
+      const files = [makeFile("SKILL.md", "## Overview\n\ncontent")];
+      const report = validateSkillQuality(files, "claude", null);
+      expect(report.checks.filter((c) => c.type === "unknown-path")).toHaveLength(0);
+    });
+
+    it("handles unknown adapter file layout gracefully", () => {
+      // For an unknown multi-file adapter, unknown filenames skip required sections
+      const files = [makeFile("custom.md", "## Anything\n\ncontent")];
+      const report = validateSkillQuality(files, "generic" as AgentAdapterId, null);
+      expect(report.errors).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // ── Max file size ──────────────────────────────────────────────────────────
+
+  describe("max file size", () => {
+    it("flags SKILL.md over 3000 chars as error for claude", () => {
+      const longContent = "# Header\n\n" + "x".repeat(3001);
+      const files = [makeFile(".claude/skills/test/SKILL.md", longContent)];
+      const report = validateSkillQuality(files, "claude", null);
+      const sizeErrors = report.checks.filter(
+        (c) => c.type === "max-file-size" && c.severity === "error",
+      );
+      expect(sizeErrors.length).toBe(1);
+      expect(sizeErrors[0]!.file).toContain("SKILL.md");
+    });
+
+    it("flags reference files over 6000 chars for claude", () => {
+      const longContent = "## Architecture\n\n" + "x".repeat(6001);
+      const files = [makeFile(".claude/skills/test/references/architecture.md", longContent)];
+      const report = validateSkillQuality(files, "claude", null);
+      const sizeErrors = report.checks.filter(
+        (c) => c.type === "max-file-size" && c.severity === "error",
+      );
+      expect(sizeErrors.length).toBe(1);
+    });
+
+    it("flags single-file adapter output over 20000 chars", () => {
+      const longContent = "# Big\n\n" + "x".repeat(20001);
+      const files = [makeFile(".cursor/rules/test.mdc", longContent)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const sizeErrors = report.checks.filter(
+        (c) => c.type === "max-file-size" && c.severity === "error",
+      );
+      expect(sizeErrors.length).toBe(1);
+    });
+
+    it("passes files within size limits", () => {
+      const files = [
+        makeFile(".claude/skills/test/SKILL.md", "x".repeat(1000)),
+        makeFile(".claude/skills/test/references/architecture.md", "x".repeat(2000)),
+      ];
+      const report = validateSkillQuality(files, "claude", null);
+      const sizeErrors = report.checks.filter(
+        (c) => c.type === "max-file-size" && c.severity === "error",
+      );
+      expect(sizeErrors).toHaveLength(0);
+    });
+  });
+
+  // ── Required sections ──────────────────────────────────────────────────────
+
+  describe("required sections", () => {
+    it("flags missing required sections in Claude SKILL.md", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "# No H2 headings\n\ncontent")];
+      const report = validateSkillQuality(files, "claude", null);
+      const sectionChecks = report.checks.filter((c) => c.type === "required-section");
+      expect(sectionChecks.length).toBeGreaterThan(0);
+      expect(sectionChecks.every((c) => c.severity === "error")).toBe(true);
+    });
+
+    it("passes when all required sections are present in SKILL.md", () => {
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "step 1",
+        "",
+        "## Overview",
+        "",
+        "overview text",
+        "",
+        "## References",
+        "",
+        "- [ref](./references/foo.md)",
+      ].join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const sectionErrors = report.checks.filter(
+        (c) => c.type === "required-section" && c.severity === "error",
+      );
+      expect(sectionErrors).toHaveLength(0);
+    });
+
+    it("matches Project Profile section by prefix", () => {
+      const content = ["## Project Profile: cli-tooling", "", "profile content"].join("\n");
+      const files = [makeFile(".claude/skills/test/references/commands.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const profileMissing = report.checks.filter(
+        (c) => c.type === "required-section" && c.message.includes("Project Profile"),
+      );
+      expect(profileMissing).toHaveLength(0);
+    });
+
+    it("flags missing prefixed section in commands.md", () => {
+      const files = [
+        makeFile(".claude/skills/test/references/commands.md", "## Some Other Section\n\ncontent"),
+      ];
+      const report = validateSkillQuality(files, "claude", null);
+      const profileChecks = report.checks.filter(
+        (c) => c.type === "required-section" && c.message.includes("Project Profile"),
+      );
+      expect(profileChecks.length).toBeGreaterThan(0);
+    });
+
+    it("flags missing sections in single-file adapter output", () => {
+      const files = [makeFile(".cursor/rules/test.mdc", "# No proper H2s")];
+      const report = validateSkillQuality(files, "cursor", null);
+      const sectionChecks = report.checks.filter((c) => c.type === "required-section");
+      expect(sectionChecks.length).toBeGreaterThan(0);
+    });
+
+    it("passes single-file with all required sections", () => {
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "step",
+        "",
+        "## Overview",
+        "",
+        "text",
+        "",
+        "## Architecture",
+        "",
+        "text",
+        "",
+        "## Module Map",
+        "",
+        "text",
+        "",
+        "## Codebase Map",
+        "",
+        "text",
+        "",
+        "## Testing Map",
+        "",
+        "text",
+        "",
+        "## Dependencies",
+        "",
+        "text",
+        "",
+        "## Public API Surface",
+        "",
+        "text",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "text",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const sectionErrors = report.checks.filter(
+        (c) => c.type === "required-section" && c.severity === "error",
+      );
+      expect(sectionErrors).toHaveLength(0);
+    });
+  });
+
+  // ── Required references (Claude only) ──────────────────────────────────────
+
+  describe("required references", () => {
+    it("flags SKILL.md without 7 reference links", () => {
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## References",
+        "",
+        "- [one](./references/a.md)",
+      ].join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const refChecks = report.checks.filter((c) => c.type === "required-references");
+      expect(refChecks.length).toBe(1);
+      expect(refChecks[0]!.severity).toBe("error");
+    });
+
+    it("passes when exactly 7 reference links are present", () => {
+      const refs = [
+        "- [a](./references/architecture.md)",
+        "- [b](./references/codebase-map.md)",
+        "- [c](./references/testing-map.md)",
+        "- [d](./references/dependencies.md)",
+        "- [e](./references/public-api.md)",
+        "- [f](./references/modules.md)",
+        "- [g](./references/commands.md)",
+      ];
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## References",
+        "",
+        ...refs,
+      ].join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const refErrors = report.checks.filter(
+        (c) => c.type === "required-references" && c.severity === "error",
+      );
+      expect(refErrors).toHaveLength(0);
+    });
+
+    it("does not flag references check on non-Claude adapters", () => {
+      const files = [makeFile(".cursor/rules/test.mdc", "no refs at all")];
+      const report = validateSkillQuality(files, "cursor", null);
+      const refChecks = report.checks.filter((c) => c.type === "required-references");
+      expect(refChecks).toHaveLength(0);
+    });
+  });
+
+  // ── No duplicate sections ──────────────────────────────────────────────────
+
+  describe("duplicate sections", () => {
+    it("flags duplicate H2 headings", () => {
+      const content = "## Overview\n\nfirst\n\n## Overview\n\nsecond";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const dupChecks = report.checks.filter((c) => c.type === "duplicate-section");
+      expect(dupChecks.length).toBeGreaterThanOrEqual(1);
+      expect(dupChecks[0]!.severity).toBe("error");
+    });
+
+    it("passes when all H2s are unique", () => {
+      const content = "## First\n\na\n\n## Second\n\nb\n\n## Third\n\nc";
+      const files = [makeFile(".agents/rules/test.md", content)];
+      const report = validateSkillQuality(files, "generic", null);
+      const dupChecks = report.checks.filter((c) => c.type === "duplicate-section");
+      expect(dupChecks).toHaveLength(0);
+    });
+  });
+
+  // ── Empty sections ─────────────────────────────────────────────────────────
+
+  describe("empty sections", () => {
+    it("flags H2 heading with no content after it", () => {
+      const content = "## Overview\n\n## Architecture\n\ncontent here";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const emptyChecks = report.checks.filter((c) => c.type === "empty-section");
+      expect(emptyChecks.length).toBe(1);
+      expect(emptyChecks[0]!.severity).toBe("warning");
+    });
+
+    it("passes sections with content", () => {
+      const content = "## Overview\n\nhas content\n\n## Architecture\n\nalso has content";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const emptyChecks = report.checks.filter((c) => c.type === "empty-section");
+      expect(emptyChecks).toHaveLength(0);
+    });
+
+    it("flags trailing empty section at EOF", () => {
+      const content = "## Overview\n\ncontent\n\n## Trailing\n";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const emptyTrailing = report.checks.filter(
+        (c) => c.type === "empty-section" && c.message.includes("Trailing"),
+      );
+      expect(emptyTrailing.length).toBe(1);
+    });
+  });
+
+  // ── Unknown path validation ────────────────────────────────────────────────
+
+  describe("unknown path validation", () => {
+    it("flags backtick paths not in source index", () => {
+      const index = makeMinimalIndex();
+      const content = "check `src/ghost.ts` file";
+      const files = [makeFile(".claude/skills/test/references/architecture.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks.length).toBe(1);
+      expect(pathChecks[0]!.severity).toBe("warning");
+    });
+
+    it("passes known paths from source index", () => {
+      const index = makeMinimalIndex();
+      const content = "check `src/index.ts` and `src/utils.ts`";
+      const files = [makeFile(".claude/skills/test/references/architecture.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathErrors = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathErrors).toHaveLength(0);
+    });
+
+    it("ignores ./references/ prefixed paths", () => {
+      const index = makeMinimalIndex();
+      const content = "see `./references/architecture.md` for details";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+
+    it("ignores commands and package names", () => {
+      const index = makeMinimalIndex();
+      const content = "run `npm test` with package `@jest/globals`";
+      const files = [makeFile(".claude/skills/test/references/commands.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+
+    it("ignores URLs", () => {
+      const index = makeMinimalIndex();
+      const content = "see `https://example.com/doc` for docs";
+      const files = [makeFile(".claude/skills/test/references/architecture.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+
+    it("allows known non-source paths like package.json and tsconfig.json", () => {
+      const index = makeMinimalIndex();
+      const content = "Config files: `package.json`, `tsconfig.json`, `AGENTS.md`, `CLAUDE.md`";
+      const files = [makeFile(".claude/skills/test/references/commands.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+
+    it("allows paths under known non-source directories", () => {
+      const index = makeMinimalIndex();
+      const content =
+        "Agent dirs: `.claude/skills/proj/SKILL.md`, `.cursor/rules/proj.mdc`, `.clinerules/proj.md`";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+
+    it("allows .mp-sentinel-cache/source-index.json as known path", () => {
+      const index = makeMinimalIndex();
+      const content = "Cache at `.mp-sentinel-cache/source-index.json`";
+      const files = [makeFile(".claude/skills/test/references/architecture.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const pathChecks = report.checks.filter((c) => c.type === "unknown-path");
+      expect(pathChecks).toHaveLength(0);
+    });
+  });
+
+  // ── Codebase fidelity ────────────────────────────────────────────────────
+
+  describe("codebase fidelity (real signals)", () => {
+    it("warns when content does not mention CLI entrypoints present in index", () => {
+      const index = makeMinimalIndex({
+        scripts: { test: "jest", build: "tsup" },
+      });
+      // Add a CLI entrypoint role via insights
+      index.insights = {
+        fileRoles: {
+          "src/index.ts": "cli-entry",
+          "src/utils.ts": "utils",
+          "src/cli/args.ts": "command",
+        },
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: {},
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      };
+      // Content that doesn't mention the CLI entrypoint path
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "modules",
+        "",
+        "## Codebase Map",
+        "",
+        "map",
+        "",
+        "## Testing Map",
+        "",
+        "tests",
+        "",
+        "## Dependencies",
+        "",
+        "deps",
+        "",
+        "## Public API Surface",
+        "",
+        "api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", index);
+      const signalChecks = report.checks.filter((c) => c.type === "missing-real-signal");
+      const cliChecks = signalChecks.filter((c) => c.message.includes("CLI entrypoint"));
+      expect(cliChecks.length).toBe(1);
+      expect(cliChecks[0]!.severity).toBe("warning");
+    });
+
+    it("passes when content mentions real entrypoints", () => {
+      const index = makeMinimalIndex({
+        scripts: { test: "jest", build: "tsup" },
+      });
+      index.insights = {
+        fileRoles: {
+          "src/index.ts": "cli-entry",
+          "src/utils.ts": "utils",
+          "src/cli/args.ts": "command",
+        },
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: {},
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      };
+      // Content that DOES mention the CLI entrypoint
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps involving src/index.ts and src/cli/args.ts cli-entry stuff",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "modules",
+        "",
+        "## Codebase Map",
+        "",
+        "map",
+        "",
+        "## Testing Map",
+        "",
+        "tests",
+        "",
+        "## Dependencies",
+        "",
+        "deps",
+        "",
+        "## Public API Surface",
+        "",
+        "api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", index);
+      const cliChecks = report.checks.filter(
+        (c) => c.type === "missing-real-signal" && c.message.includes("CLI entrypoint"),
+      );
+      expect(cliChecks).toHaveLength(0);
+    });
+
+    it("warns when content does not mention package.json scripts", () => {
+      const index = makeMinimalIndex({
+        scripts: { test: "jest", build: "tsup", lint: "eslint" },
+      });
+      // Content with no script references
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "modules",
+        "",
+        "## Codebase Map",
+        "",
+        "map",
+        "",
+        "## Testing Map",
+        "",
+        "tests",
+        "",
+        "## Dependencies",
+        "",
+        "deps",
+        "",
+        "## Public API Surface",
+        "",
+        "api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", index);
+      const signalChecks = report.checks.filter(
+        (c) => c.type === "missing-real-signal" && c.message.includes("package.json script"),
+      );
+      expect(signalChecks.length).toBe(1);
+      expect(signalChecks[0]!.severity).toBe("warning");
+    });
+
+    it("warns when content does not mention top-level source directories", () => {
+      const index = makeMinimalIndex();
+      // Content with no source dir mentions
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "modules",
+        "",
+        "## Codebase Map",
+        "",
+        "map",
+        "",
+        "## Testing Map",
+        "",
+        "tests",
+        "",
+        "## Dependencies",
+        "",
+        "deps",
+        "",
+        "## Public API Surface",
+        "",
+        "api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", index);
+      const signalChecks = report.checks.filter(
+        (c) => c.type === "missing-real-signal" && c.message.includes("source directory"),
+      );
+      expect(signalChecks.length).toBe(1);
+    });
+
+    it("skips real-signal checks when index is null", () => {
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const signalChecks = report.checks.filter((c) => c.type === "missing-real-signal");
+      expect(signalChecks).toHaveLength(0);
+    });
+
+    it("only checks main skill files, not reference files", () => {
+      const index = makeMinimalIndex({
+        scripts: { test: "jest" },
+      });
+      index.insights = {
+        fileRoles: { "src/index.ts": "cli-entry" },
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: {},
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      };
+      // Reference files should not trigger real-signal checks
+      const content = "## Architecture\n\nsome architecture text";
+      const files = [makeFile(".claude/skills/test/references/architecture.md", content)];
+      const report = validateSkillQuality(files, "claude", index);
+      const signalChecks = report.checks.filter((c) => c.type === "missing-real-signal");
+      expect(signalChecks).toHaveLength(0);
+    });
+  });
+
+  // ── QualityReport structure ────────────────────────────────────────────────
+
+  describe("QualityReport structure", () => {
+    it("passed is true when there are only warnings", () => {
+      const content = "## Overview\n\n## Architecture\n\ncontent";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      // May have warnings for empty Overview, but passed should be true
+      expect(report.passed).toBe(report.errors === 0);
+    });
+
+    it("passed is false when there are errors", () => {
+      const content = "## Overview\n\n## Overview\n\ncontent";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      if (report.errors > 0) {
+        expect(report.passed).toBe(false);
+      }
+    });
+
+    it("errors and warnings counts match checks array", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "## Overview\n\ncontent")];
+      const report = validateSkillQuality(files, "claude", null);
+      const actualErrors = report.checks.filter((c) => c.severity === "error").length;
+      const actualWarnings = report.checks.filter((c) => c.severity === "warning").length;
+      expect(report.errors).toBe(actualErrors);
+      expect(report.warnings).toBe(actualWarnings);
+    });
+  });
+});

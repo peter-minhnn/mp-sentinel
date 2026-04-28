@@ -18,6 +18,27 @@ const MAX_SYMBOLS_INLINE = 12;
 const MAX_SYMBOLS_SHORT = 8;
 const MAX_MODULE_DIRS = 15;
 const MAX_FILES_PER_DIR = 5;
+const MAX_HUB_FILE_DETAIL_LINES = 15;
+const MAX_RISK_DETAIL_LINES = 3;
+const MAX_TEST_ASSOC_ENTRIES = 20;
+const MAX_TEST_GAP_ENTRIES = 30;
+const MAX_DEP_TABLE_ENTRIES = 15;
+const MAX_DEP_DETAIL_ENTRIES = 15;
+const MAX_DEP_FILE_LIST = 5;
+const MAX_RISK_ENTRIES = 20;
+const MAX_SCRIPT_ENTRIES = 12;
+const MAX_IMPORT_FROM_LIST = 5;
+
+/** Clean a semver range for display: "^2.4.2" → "2.4.2 (range ^2.4.2)" */
+function cleanDisplayVersion(version: string): string {
+  if (!version) return version;
+  // Already a bare version
+  if (/^\d/.test(version)) return version;
+  // Has a range prefix — show both
+  const bare = version.replace(/^[\^~>=<]+/, "");
+  if (bare === version) return version;
+  return `${bare} (range ${version})`;
+}
 
 export interface SkillSections {
   agentWorkflow: string;
@@ -172,7 +193,10 @@ function buildHubFiles(index: SourceIndex | null): string {
 
   const hubFiles = index.files
     .filter((f) => (f.importedBy?.length ?? 0) > 1)
-    .sort((a, b) => (b.importedBy?.length ?? 0) - (a.importedBy?.length ?? 0))
+    .sort(
+      (a, b) =>
+        (b.importedBy?.length ?? 0) - (a.importedBy?.length ?? 0) || a.path.localeCompare(b.path),
+    )
     .slice(0, MAX_HUB_FILES);
 
   if (hubFiles.length === 0) return "";
@@ -180,6 +204,7 @@ function buildHubFiles(index: SourceIndex | null): string {
   const lines = [`## Hub Files (most imported)`];
 
   for (const file of hubFiles) {
+    const entryLines: string[] = [];
     const importedByCount = file.importedBy?.length ?? 0;
     const topSymbols = file.symbols
       .slice(0, MAX_SYMBOLS_INLINE)
@@ -190,15 +215,21 @@ function buildHubFiles(index: SourceIndex | null): string {
         ? ` (+${file.symbols.length - MAX_SYMBOLS_INLINE} more)`
         : "";
 
-    lines.push(``, `### \`${file.path}\` — imported by ${importedByCount} file(s)`);
-    if (topSymbols) lines.push(`Exports: ${topSymbols}${overflow}`);
+    entryLines.push(``, `### \`${file.path}\` — imported by ${importedByCount} file(s)`);
+    if (topSymbols) entryLines.push(`Exports: ${topSymbols}${overflow}`);
     if ((file.importsFrom?.length ?? 0) > 0) {
       const deps = file
-        .importsFrom!.slice(0, 5)
+        .importsFrom!.slice(0, MAX_IMPORT_FROM_LIST)
         .map((p) => `\`${p}\``)
         .join(", ");
-      lines.push(`Depends on: ${deps}`);
+      entryLines.push(`Depends on: ${deps}`);
     }
+
+    if (entryLines.length > MAX_HUB_FILE_DETAIL_LINES) {
+      entryLines.splice(MAX_HUB_FILE_DETAIL_LINES);
+      entryLines.push("… (truncated)");
+    }
+    lines.push(...entryLines);
   }
 
   return lines.join("\n");
@@ -219,14 +250,16 @@ function buildModules(index: SourceIndex | null): string {
   }
 
   const lines = [`## Module Map`];
-  const sorted = [...moduleMap.entries()].sort((a, b) => b[1].length - a[1].length);
+  const sorted = [...moduleMap.entries()].sort(
+    (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
+  );
 
   for (const [dir, files] of sorted.slice(0, MAX_MODULE_DIRS)) {
     lines.push(``, `### \`${dir}/\` (${files.length} file(s))`);
 
     const keyFiles = files
       .filter((f) => f.symbols.length > 0)
-      .sort((a, b) => b.symbols.length - a.symbols.length)
+      .sort((a, b) => b.symbols.length - a.symbols.length || a.path.localeCompare(b.path))
       .slice(0, MAX_FILES_PER_DIR);
 
     for (const file of keyFiles) {
@@ -310,11 +343,11 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
 
   if (scriptKeys.length > 0) {
     lines.push("```sh");
-    for (const key of scriptKeys.slice(0, 12)) {
+    for (const key of scriptKeys.slice(0, MAX_SCRIPT_ENTRIES)) {
       lines.push(`${pm} run ${key}  # ${scripts[key]}`);
     }
-    if (scriptKeys.length > 12) {
-      lines.push(`# … and ${scriptKeys.length - 12} more scripts`);
+    if (scriptKeys.length > MAX_SCRIPT_ENTRIES) {
+      lines.push(`# … and ${scriptKeys.length - MAX_SCRIPT_ENTRIES} more scripts`);
     }
     lines.push("```");
   } else {
@@ -332,7 +365,9 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
       moduleMap.set(topDir, bucket);
     }
 
-    const sorted = [...moduleMap.entries()].sort((a, b) => b[1].length - a[1].length);
+    const sorted = [...moduleMap.entries()].sort(
+      (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
+    );
     if (sorted.length > 0) {
       lines.push(
         ``,
@@ -499,16 +534,18 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
   const lines = [`## Testing Map`];
 
   // Test Associations
-  const assocEntries = Object.entries(kb.testing.testAssociations);
+  const assocEntries = Object.entries(kb.testing.testAssociations).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
   if (assocEntries.length > 0) {
     lines.push(``, `### Test Associations`, ``);
     lines.push(`| Source File | Test File(s) |`);
     lines.push(`|---|---|`);
-    for (const [source, tests] of assocEntries.slice(0, 20)) {
+    for (const [source, tests] of assocEntries.slice(0, MAX_TEST_ASSOC_ENTRIES)) {
       lines.push(`| \`${source}\` | ${tests.map((t) => `\`${t}\``).join(", ")} |`);
     }
-    if (assocEntries.length > 20) {
-      lines.push(`| … | ${assocEntries.length - 20} more … |`);
+    if (assocEntries.length > MAX_TEST_ASSOC_ENTRIES) {
+      lines.push(`| … | ${assocEntries.length - MAX_TEST_ASSOC_ENTRIES} more … |`);
     }
     lines.push(``);
   }
@@ -517,13 +554,13 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
   if (kb.testing.testGaps.length > 0) {
     lines.push(`### Test Gaps`, ``);
     lines.push(`Files with no associated test coverage:`);
-    for (const gap of kb.testing.testGaps.slice(0, 30)) {
+    for (const gap of kb.testing.testGaps.slice(0, MAX_TEST_GAP_ENTRIES)) {
       lines.push(
         `- \`${gap.sourceFile}\` — ${gap.reason === "no-test-file" ? "no test file found" : "no import-graph match"}`,
       );
     }
-    if (kb.testing.testGaps.length > 30) {
-      lines.push(`- … and ${kb.testing.testGaps.length - 30} more`);
+    if (kb.testing.testGaps.length > MAX_TEST_GAP_ENTRIES) {
+      lines.push(`- … and ${kb.testing.testGaps.length - MAX_TEST_GAP_ENTRIES} more`);
     }
     lines.push(``);
   }
@@ -553,19 +590,24 @@ function buildDependenciesSection(
     lines.push(``, `### Top Dependencies (by usage)`, ``);
     lines.push(`| Package | Version | Used By |`);
     lines.push(`|---|---|---|`);
-    for (const dep of kb.dependencies.slice(0, 15)) {
-      lines.push(`| \`${dep.packageName}\` | ${dep.version} | ${dep.fileCount} file(s) |`);
+    for (const dep of kb.dependencies.slice(0, MAX_DEP_TABLE_ENTRIES)) {
+      const displayVersion = cleanDisplayVersion(dep.version);
+      lines.push(`| \`${dep.packageName}\` | ${displayVersion} | ${dep.fileCount} file(s) |`);
     }
     lines.push(``);
 
     lines.push(`### Dependency Details`, ``);
-    for (const dep of kb.dependencies.slice(0, 15)) {
+    for (const dep of kb.dependencies.slice(0, MAX_DEP_DETAIL_ENTRIES)) {
       const fileList = dep.files
-        .slice(0, 5)
+        .slice(0, MAX_DEP_FILE_LIST)
         .map((f) => `\`${f}\``)
         .join(", ");
-      const overflow = dep.files.length > 5 ? ` (+${dep.files.length - 5} more)` : "";
-      lines.push(`- **${dep.packageName}** v${dep.version} — used by: ${fileList}${overflow}`);
+      const overflow =
+        dep.files.length > MAX_DEP_FILE_LIST
+          ? ` (+${dep.files.length - MAX_DEP_FILE_LIST} more)`
+          : "";
+      const displayVersion = cleanDisplayVersion(dep.version);
+      lines.push(`- **${dep.packageName}** v${displayVersion} — used by: ${fileList}${overflow}`);
     }
   }
 
@@ -611,12 +653,20 @@ function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
     lines.push(``);
 
     lines.push(`### Risk Details`, ``);
-    for (const risk of kb.risks.slice(0, 20)) {
+    const riskEntries = kb.risks.slice(0, MAX_RISK_ENTRIES);
+    for (let i = 0; i < riskEntries.length; i++) {
+      const risk = riskEntries[i]!;
       const extra = risk.importCount !== undefined ? ` (${risk.importCount} importers)` : "";
-      lines.push(`- **${risk.type}**: \`${risk.file}\`${extra} — ${risk.detail}`);
+      let detail = risk.detail;
+      // Cap detail lines
+      const detailLines = detail.split("\n");
+      if (detailLines.length > MAX_RISK_DETAIL_LINES) {
+        detail = detailLines.slice(0, MAX_RISK_DETAIL_LINES).join("\n") + "\n… (truncated)";
+      }
+      lines.push(`- **${risk.type}**: \`${risk.file}\`${extra} — ${detail}`);
     }
-    if (kb.risks.length > 20) {
-      lines.push(`- … and ${kb.risks.length - 20} more risks`);
+    if (kb.risks.length > MAX_RISK_ENTRIES) {
+      lines.push(`- … and ${kb.risks.length - MAX_RISK_ENTRIES} more risks`);
     }
   }
 

@@ -124,9 +124,11 @@ Actions: `create` | `skip` | `overwrite` | `conflict` (path already claimed by a
 ```bash
 npx mp-sentinel create-skills --agent claude --check
 npx mp-sentinel create-skills --all-agents --check --format json
-# exits 0 = up-to-date, 1 = stale/missing, 2 = runtime error
+# exits 0 = up-to-date, 1 = stale/missing/quality-error, 2 = runtime error
 ```
 Statuses: `up-to-date` | `stale` | `missing` | `wrong-agent`.
+
+Quality gate (v1.0.14+): deterministic checks on all generated content. Quality errors fail `--check`; warnings are informational. JSON outputs include `quality` field.
 
 ### Automation-Friendly Usage
 `--format json` requires `--agent` or `--all-agents` to keep stdout parse-safe.

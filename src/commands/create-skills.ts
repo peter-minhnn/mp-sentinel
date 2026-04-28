@@ -15,6 +15,7 @@ import type {
   CheckFileStatus,
   DryRunFileAction,
   EnrichmentMetadata,
+  QualityReport,
   SkillsCheckResult,
   SkillsDryRunResult,
   SkillsGenerationContext,
@@ -33,6 +34,7 @@ import {
   parseMetadataFromContent,
   renderMetadataHeader,
   resolveAIEnrichmentConfig,
+  validateSkillQuality,
 } from "../services/skills-generator/index.js";
 import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
 
@@ -191,6 +193,7 @@ async function runAdapter(
   projectRoot: string,
   force: boolean,
   metadataHeader: string,
+  isJson: boolean,
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
 ): Promise<SkillsGenerationResult> {
@@ -202,6 +205,19 @@ async function runAdapter(
     knowledgeBase,
   };
   const raw = await adapter.generate(index, context);
+
+  // ── Quality gate ──
+  const quality = validateSkillQuality(raw, adapter.id, index);
+  if (!isJson) {
+    for (const check of quality.checks) {
+      const prefix = `[quality:${adapter.id}]`;
+      if (check.severity === "error") {
+        log.warning(`${prefix} ${check.file}: ${check.message}`);
+      } else {
+        log.info(`${prefix} ${check.file}: ${check.message}`);
+      }
+    }
+  }
 
   const files = raw.map((f) => ({ ...f, content: applyMetadataHeader(f.content, metadataHeader) }));
 
@@ -219,6 +235,7 @@ async function runAdapter(
       outputPaths: conflictPaths,
       skipped: true,
       skipReason: `${conflictPaths.length} file(s) already exist. Re-run with --force to overwrite.`,
+      quality,
     };
   }
 
@@ -229,7 +246,13 @@ async function runAdapter(
     writtenPaths.push(file.outputPath);
   }
 
-  return { agent: adapter.id, label: adapter.label, outputPaths: writtenPaths, skipped: false };
+  return {
+    agent: adapter.id,
+    label: adapter.label,
+    outputPaths: writtenPaths,
+    skipped: false,
+    quality,
+  };
 }
 
 /**
@@ -243,6 +266,7 @@ async function dryRunAdapter(
   projectRoot: string,
   force: boolean,
   seenPaths: Set<string>,
+  isJson: boolean,
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
 ): Promise<SkillsDryRunResult> {
@@ -255,6 +279,19 @@ async function dryRunAdapter(
   };
   const raw = await adapter.generate(index, context);
 
+  // ── Quality gate ──
+  const quality = validateSkillQuality(raw, adapter.id, index);
+  if (!isJson) {
+    for (const check of quality.checks) {
+      const prefix = `[quality:${adapter.id}]`;
+      if (check.severity === "error") {
+        log.warning(`${prefix} ${check.file}: ${check.message}`);
+      } else {
+        log.info(`${prefix} ${check.file}: ${check.message}`);
+      }
+    }
+  }
+
   const files = raw.map((file) => {
     if (seenPaths.has(file.outputPath)) {
       return { outputPath: file.outputPath, action: "conflict" as DryRunFileAction };
@@ -265,7 +302,7 @@ async function dryRunAdapter(
     return { outputPath: file.outputPath, action };
   });
 
-  return { agent: adapter.id, label: adapter.label, files };
+  return { agent: adapter.id, label: adapter.label, files, quality };
 }
 
 /**
@@ -291,8 +328,16 @@ async function checkAdapter(
   };
   const raw = await adapter.generate(index, context);
 
+  // ── Quality gate ──
+  const quality = validateSkillQuality(raw, adapter.id, index);
+
   const files = await Promise.all(
     raw.map(async (file) => {
+      // If quality errors exist for this file, mark it as stale
+      const fileQualityErrors = quality.checks.filter(
+        (c) => c.file === file.outputPath && c.severity === "error",
+      );
+
       if (!existsSync(file.outputPath)) {
         return { outputPath: file.outputPath, status: "missing" as CheckFileStatus };
       }
@@ -310,11 +355,9 @@ async function checkAdapter(
       const currentHasAI = enrichmentMeta && enrichmentMeta.mode === "ai";
 
       if (fileHasAI && !currentHasAI) {
-        // AI was used before but is now disabled
         return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
       }
       if (!fileHasAI && currentHasAI) {
-        // AI wasn't used before but is now enabled
         return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
       }
       if (fileHasAI && currentHasAI && meta.enrichment && enrichmentMeta) {
@@ -333,11 +376,16 @@ async function checkAdapter(
         }
       }
 
+      // If quality errors exist for this file, mark as stale
+      if (fileQualityErrors.length > 0) {
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+
       return { outputPath: file.outputPath, status: "up-to-date" as CheckFileStatus };
     }),
   );
 
-  return { agent: adapter.id, label: adapter.label, files };
+  return { agent: adapter.id, label: adapter.label, files, quality };
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -422,14 +470,25 @@ export async function runCreateSkillsCommand(
         }
       }
 
-      const isStale = checkResults.some((r) => r.files.some((f) => f.status !== "up-to-date"));
+      const hasQualityErrors = checkResults.some((r) => r.quality && r.quality.errors > 0);
+      const hasStaleFiles = checkResults.some((r) =>
+        r.files.some((f) => f.status !== "up-to-date"),
+      );
+      const isStale = hasStaleFiles || hasQualityErrors;
       const overallStatus = isStale ? "stale" : "ok";
 
       if (isJson) {
         const out: CheckOutput = { check: checkResults, status: overallStatus };
         console.log(JSON.stringify(out, null, 2));
-      } else if (isStale) {
-        log.warning("Skills are stale or missing. Re-run without --check to regenerate.");
+      } else {
+        if (hasStaleFiles) {
+          log.warning("Skills are stale or missing. Re-run without --check to regenerate.");
+        }
+        if (hasQualityErrors) {
+          log.warning(
+            "Quality gate errors detected. Review the generated skill content for issues.",
+          );
+        }
       }
 
       return isStale ? 1 : 0;
@@ -447,6 +506,7 @@ export async function runCreateSkillsCommand(
           projectRoot,
           force,
           seenPaths,
+          isJson,
           enrichment,
           knowledgeBase,
         );
@@ -489,6 +549,7 @@ export async function runCreateSkillsCommand(
         projectRoot,
         force,
         metaHeader,
+        isJson,
         enrichment,
         knowledgeBase,
       );

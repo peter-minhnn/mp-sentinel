@@ -75,7 +75,7 @@ function buildModuleOwnership(
     // Key files: non-test, sorted by symbol count desc, max 5
     const keyFiles = sourceFiles
       .filter((f) => f.symbols.length > 0)
-      .sort((a, b) => b.symbols.length - a.symbols.length)
+      .sort((a, b) => b.symbols.length - a.symbols.length || a.path.localeCompare(b.path))
       .slice(0, 5)
       .map((f) => f.path);
 
@@ -119,7 +119,9 @@ function buildModuleOwnership(
     });
   }
 
-  return modules.sort((a, b) => b.sourceFileCount - a.sourceFileCount);
+  return modules.sort(
+    (a, b) => b.sourceFileCount - a.sourceFileCount || a.directory.localeCompare(b.directory),
+  );
 }
 
 // ── Entrypoints ────────────────────────────────────────────────────────────
@@ -202,7 +204,7 @@ function buildTestingMap(
   // Most tested modules
   const mostTestedModules = modules
     .filter((m) => m.testFileCount > 0)
-    .sort((a, b) => b.testFileCount - a.testFileCount)
+    .sort((a, b) => b.testFileCount - a.testFileCount || a.directory.localeCompare(b.directory))
     .slice(0, 10);
 
   return { testAssociations, testGaps, mostTestedModules };
@@ -270,7 +272,10 @@ function buildRiskMap(
   // Hub files: imported by >1 other file
   const hubFiles = index.files
     .filter((f) => (f.importedBy?.length ?? 0) > 1)
-    .sort((a, b) => (b.importedBy?.length ?? 0) - (a.importedBy?.length ?? 0))
+    .sort(
+      (a, b) =>
+        (b.importedBy?.length ?? 0) - (a.importedBy?.length ?? 0) || a.path.localeCompare(b.path),
+    )
     .slice(0, 10);
 
   for (const file of hubFiles) {

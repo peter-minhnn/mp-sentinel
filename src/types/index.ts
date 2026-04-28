@@ -600,6 +600,8 @@ export interface SkillsGenerationResult {
   outputPaths: string[];
   skipped: boolean;
   skipReason?: string;
+  /** Quality gate report (v1.0.14+) */
+  quality?: QualityReport | undefined;
 }
 
 // ====================================================================================
@@ -781,6 +783,8 @@ export interface SkillsDryRunResult {
   agent: AgentAdapterId;
   label: string;
   files: SkillsDryRunFile[];
+  /** Quality gate report (v1.0.14+) */
+  quality?: QualityReport | undefined;
 }
 
 // ── Check types ───────────────────────────────────────────────────────────────
@@ -797,4 +801,32 @@ export interface SkillsCheckResult {
   agent: AgentAdapterId;
   label: string;
   files: SkillsCheckFile[];
+  /** Quality gate report (v1.0.14+). Present in all modes. */
+  quality?: QualityReport | undefined;
+}
+
+// ── Quality Gate types ──────────────────────────────────────────────────────
+
+/** A single quality check result from the skill quality gate */
+export interface QualityCheck {
+  /** Check type identifier: max-file-size, required-section, required-references, duplicate-section, empty-section, unknown-path */
+  type: string;
+  /** Error = fails --check; warning = informational only */
+  severity: "error" | "warning";
+  /** The generated file path that triggered the check */
+  file: string;
+  /** Human-readable description of the issue */
+  message: string;
+}
+
+/** Report from the deterministic skill quality gate */
+export interface QualityReport {
+  /** True when there are zero errors (warnings do not cause failure) */
+  passed: boolean;
+  /** All checks performed */
+  checks: QualityCheck[];
+  /** Count of error-severity checks */
+  errors: number;
+  /** Count of warning-severity checks */
+  warnings: number;
 }

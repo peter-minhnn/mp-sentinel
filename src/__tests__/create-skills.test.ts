@@ -1832,3 +1832,213 @@ describe("--all-agents includes new reference files", () => {
     expect(existsSync(join(base, "commands.md"))).toBe(true);
   });
 });
+
+// ── Quality Gate Integration ────────────────────────────────────────────────
+
+import { validateSkillQuality } from "../services/skills-generator/quality-gate.js";
+
+describe("quality gate integration", () => {
+  it("validates generated Claude output passes quality with zero errors", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, "src", "utils.ts"),
+      `import { hello } from "./index.js";\nexport function helper() { return hello(); }`,
+    );
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("claude")!;
+    const kb = (
+      await import("../services/skills-generator/knowledge-base.js")
+    ).buildSkillKnowledgeBase(index!);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    const report = validateSkillQuality(files, "claude", index);
+    expect(report.errors).toBe(0);
+  });
+
+  it("validates generated single-file adapter output passes quality with zero errors", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, "src", "utils.ts"),
+      `import { hello } from "./index.js";\nexport function helper() { return hello(); }`,
+    );
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("cursor")!;
+    const kb = (
+      await import("../services/skills-generator/knowledge-base.js")
+    ).buildSkillKnowledgeBase(index!);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    const report = validateSkillQuality(files, "cursor", index);
+    expect(report.errors).toBe(0);
+  });
+
+  it("--check with JSON output includes quality field", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    // First generate to have files on disk
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": true,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": true,
+      },
+      cwd,
+    );
+
+    // Now check with JSON
+    let jsonOutput: string = "";
+    const origLog = console.log;
+    console.log = (s: string) => {
+      if (s.startsWith("{")) jsonOutput = s;
+    };
+
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": true,
+        "create-skills-no-ai-enrich": true,
+      },
+      cwd,
+    );
+
+    console.log = origLog;
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(jsonOutput);
+    expect(parsed.check[0].quality).toBeDefined();
+    expect(parsed.check[0].quality.passed).toBe(true);
+  });
+
+  it("--dry-run with JSON output includes quality field", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    let jsonOutput: string = "";
+    const origLog = console.log;
+    console.log = (s: string) => {
+      if (s.startsWith("{")) jsonOutput = s;
+    };
+
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": true,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": true,
+      },
+      cwd,
+    );
+
+    console.log = origLog;
+
+    const parsed = JSON.parse(jsonOutput);
+    expect(parsed.dryRun[0].quality).toBeDefined();
+    expect(parsed.dryRun[0].quality.errors).toBeGreaterThanOrEqual(0);
+  });
+
+  it("generated JSON output includes quality in normal mode", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    let jsonOutput: string = "";
+    const origLog = console.log;
+    console.log = (s: string) => {
+      if (s.startsWith("{")) jsonOutput = s;
+    };
+
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": true,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": true,
+      },
+      cwd,
+    );
+
+    console.log = origLog;
+
+    const parsed = JSON.parse(jsonOutput);
+    expect(parsed.results[0].quality).toBeDefined();
+    expect(parsed.results[0].quality.errors).toBeGreaterThanOrEqual(0);
+  });
+});

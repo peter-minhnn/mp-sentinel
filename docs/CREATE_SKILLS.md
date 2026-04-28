@@ -220,6 +220,16 @@ JSON shape:
 }
 ```
 
+### Quality Gate (v1.0.14+)
+
+Every generated file undergoes deterministic quality validation. Quality issues are reported in all modes:
+
+- **Console mode**: Errors logged as warnings, warnings as info
+- **JSON mode**: `quality` field present in all output objects
+- **`--check` mode**: Quality **errors** cause exit code 1 (files are treated as stale). Warnings are informational only.
+
+Quality checks include: max file size, required H2 sections, required references (Claude), duplicate sections, empty sections (warning), and unknown paths (warning).
+
 ---
 
 ## Automation / CI
@@ -260,7 +270,7 @@ On error:
 | Code | Meaning |
 |------|---------|
 | `0` | Success — all selected adapters generated successfully (or all files up-to-date in `--check` mode) |
-| `1` | **Generate mode:** all outputs were skipped (files exist, `--force` not set). **Check mode:** any file is stale, missing, or wrong-agent |
+| `1` | **Generate mode:** all outputs were skipped (files exist, `--force` not set). **Check mode:** any file is stale, missing, wrong-agent, or has quality errors |
 | `2` | Runtime error (bad agent id, missing cache with `--skip-index-refresh`, etc.) |
 
 ---
