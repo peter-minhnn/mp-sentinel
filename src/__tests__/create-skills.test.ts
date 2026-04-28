@@ -483,8 +483,14 @@ describe("runCreateSkillsCommand", () => {
     );
     // Cursor output
     expect(existsSync(join(cwd, ".cursor", "rules", "fixture-best-practices.mdc"))).toBe(true);
-    // Generic output
-    expect(existsSync(join(cwd, ".agents", "rules", "fixture-best-practices.md"))).toBe(true);
+    // Codex output (v1.0.17: moved to .agents/skills/)
+    expect(
+      existsSync(join(cwd, ".agents", "skills", "fixture-codex-best-practices", "SKILL.md")),
+    ).toBe(true);
+    // Antigravity output (v1.0.17: moved to .agents/skills/)
+    expect(
+      existsSync(join(cwd, ".agents", "skills", "fixture-antigravity-best-practices", "SKILL.md")),
+    ).toBe(true);
   });
 
   it("--format json with --agent outputs valid JSON to stdout", async () => {
@@ -1397,10 +1403,10 @@ describe("--check wrong-agent detection", () => {
     // Pre-create .agents/rules so fidelity signals match between generate and check
     await mkdir(join(cwd, ".agents", "rules"), { recursive: true });
 
-    // Generate with codex
+    // Generate with generic
     await runCreateSkillsCommand(
       {
-        agent: "codex",
+        agent: "generic",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
@@ -1411,7 +1417,13 @@ describe("--check wrong-agent detection", () => {
       cwd,
     );
 
-    // Check with generic (same output path, different agent id)
+    // Tamper the metadata header: change agent from generic to codex
+    const genPath = join(cwd, ".agents", "rules", "fixture-best-practices.md");
+    const original = await readFile(genPath, "utf-8");
+    const tampered = original.replace(/agent=generic/g, "agent=codex");
+    await writeFile(genPath, tampered, "utf-8");
+
+    // Check with generic — should see wrong-agent since header says codex
     let output: unknown = null;
     const orig = console.log;
     console.log = (...args: unknown[]) => {
@@ -1636,7 +1648,7 @@ describe("--all-agents generic exclusion", () => {
     expect(agentIds).not.toContain("generic");
   });
 
-  it("--agent codex,generic in dry-run reports conflict for duplicate path", async () => {
+  it("--agent codex,generic in dry-run shows no path conflict (v1.0.17: separate output dirs)", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
 
@@ -1666,13 +1678,11 @@ describe("--all-agents generic exclusion", () => {
     }
 
     const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
-    // codex runs first → create; generic sees same path already claimed → conflict
-    const codexActions = parsed.dryRun.find((r) => r.agent === "codex")!.files.map((f) => f.action);
-    const genericActions = parsed.dryRun
-      .find((r) => r.agent === "generic")!
-      .files.map((f) => f.action);
-    expect(codexActions.every((a) => a === "create")).toBe(true);
-    expect(genericActions.every((a) => a === "conflict")).toBe(true);
+    // codex writes to .agents/skills/, generic writes to .agents/rules/ — no conflict
+    const codexFiles = parsed.dryRun.find((r) => r.agent === "codex")!.files;
+    const genericFiles = parsed.dryRun.find((r) => r.agent === "generic")!.files;
+    expect(codexFiles.every((f) => f.action === "create")).toBe(true);
+    expect(genericFiles.every((f) => f.action === "create")).toBe(true);
   });
 });
 
@@ -2814,5 +2824,249 @@ describe("--check regression (quality gate exit codes)", () => {
     expect(checkParsed.check[0]!.quality.errors).toBe(genQuality.errors);
     expect(checkParsed.check[0]!.quality.warnings).toBe(genQuality.warnings);
     expect(checkParsed.check[0]!.quality.passed).toBe(true);
+  });
+});
+
+// ── Adapter Layout v1.0.17 ──────────────────────────────────────────────────
+
+describe("adapter layout v1.0.17", () => {
+  it("Antigravity adapter generates to .agents/skills/<project>-antigravity-best-practices/SKILL.md", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const adapter = getAdapter("antigravity")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    expect(files).toHaveLength(1);
+    const normalized = files[0]!.outputPath.replace(/\\/g, "/");
+    expect(normalized).toContain(".agents/skills/my-app-antigravity-best-practices/SKILL.md");
+    // Must have YAML frontmatter with description
+    expect(files[0]!.content).toContain("description:");
+    expect(files[0]!.content.startsWith("---")).toBe(true);
+  });
+
+  it("Codex adapter generates to .agents/skills/<project>-codex-best-practices/SKILL.md", async () => {
+    const cwd = await makeTempDir();
+    const adapter = getAdapter("codex")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    expect(files).toHaveLength(1);
+    const normalized = files[0]!.outputPath.replace(/\\/g, "/");
+    expect(normalized).toContain(".agents/skills/my-app-codex-best-practices/SKILL.md");
+    expect(files[0]!.content).toContain("description:");
+  });
+
+  it("Antigravity adapter does not generate to legacy .antigravity/rules/", async () => {
+    const cwd = await makeTempDir();
+    const adapter = getAdapter("antigravity")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const normalized = files[0]!.outputPath.replace(/\\/g, "/");
+    expect(normalized).not.toContain(".antigravity/rules/");
+  });
+
+  it("Codex adapter does not generate to legacy .agents/rules/", async () => {
+    const cwd = await makeTempDir();
+    const adapter = getAdapter("codex")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const normalized = files[0]!.outputPath.replace(/\\/g, "/");
+    expect(normalized).not.toContain(".agents/rules/");
+  });
+
+  it("--all-agents has no output path conflicts (v1.0.17: codex+antigravity use suffixed dirs)", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    let output: unknown = null;
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) output = JSON.parse(text);
+      orig(...args);
+    };
+
+    try {
+      await runCreateSkillsCommand(
+        {
+          "all-agents": true,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": true,
+          "create-skills-check": false,
+        },
+        cwd,
+      );
+    } finally {
+      console.log = orig;
+    }
+
+    const parsed = output as { dryRun: Array<{ files: Array<{ action: string }> }> };
+    // No conflicts across any adapter
+    for (const result of parsed.dryRun) {
+      const conflicts = result.files.filter((f) => f.action === "conflict");
+      expect(conflicts).toHaveLength(0);
+    }
+    // Verify codex and antigravity are both present
+    const agents = parsed.dryRun.map((r) => r.agent);
+    expect(agents).toContain("codex");
+    expect(agents).toContain("antigravity");
+  });
+
+  it("Claude SKILL.md has required frontmatter with description", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const adapter = getAdapter("claude")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"))!;
+    expect(skillMd.content).toContain("name:");
+    expect(skillMd.content).toContain("description:");
+  });
+});
+
+// ── Quality Gate: adapter-layout-contract ────────────────────────────────────
+
+describe("quality gate: adapter-layout-contract", () => {
+  it("Antigravity skill passes adapter-layout-contract with zero errors", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const adapter = getAdapter("antigravity")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const report = validateSkillQuality(files, "antigravity", null, adapter.spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  it("Codex skill passes adapter-layout-contract with zero errors", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const adapter = getAdapter("codex")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const report = validateSkillQuality(files, "codex", null, adapter.spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  it("Claude skill passes adapter-layout-contract with zero errors", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const adapter = getAdapter("claude")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-app",
+      force: false,
+    });
+    const report = validateSkillQuality(files, "claude", null, adapter.spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  it("flags error when skill-style adapter is missing SKILL.md", () => {
+    const spec = {
+      officialDocsUrl: "https://example.com",
+      outputKind: "skill" as const,
+      workspacePath: ".agents/skills/{projectName}-test/",
+      requiredFiles: ["SKILL.md"],
+      frontmatterRules: { required: ["description"] },
+      sizeLimit: 20000,
+    };
+    const files = [{ outputPath: ".agents/skills/my-app-test/README.md", content: "# Wrong file" }];
+    const report = validateSkillQuality(files, "antigravity", null, spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors.length).toBeGreaterThan(0);
+    expect(layoutErrors.some((c) => c.message.includes("SKILL.md"))).toBe(true);
+  });
+
+  it("flags error when SKILL.md is missing required frontmatter description", () => {
+    const spec = {
+      officialDocsUrl: "https://example.com",
+      outputKind: "skill" as const,
+      workspacePath: ".agents/skills/{projectName}-test/",
+      requiredFiles: ["SKILL.md"],
+      frontmatterRules: { required: ["description"] },
+      sizeLimit: 20000,
+    };
+    const files = [
+      {
+        outputPath: ".agents/skills/my-app-test/SKILL.md",
+        content: "---\nname: test\n---\n\n# No description",
+      },
+    ];
+    const report = validateSkillQuality(files, "antigravity", null, spec, "my-app");
+    const missingDesc = report.checks.filter(
+      (c) =>
+        c.type === "adapter-layout-contract" &&
+        c.severity === "error" &&
+        c.message.includes("description"),
+    );
+    expect(missingDesc.length).toBeGreaterThan(0);
+  });
+
+  it("flags error when rule-style adapter writes to wrong path", () => {
+    const spec = {
+      officialDocsUrl: "https://example.com",
+      outputKind: "rule" as const,
+      workspacePath: ".cursor/rules/{projectName}-best-practices.mdc",
+      requiredFiles: [],
+      frontmatterRules: { required: [] },
+      sizeLimit: 20000,
+    };
+    const files = [{ outputPath: ".wrong/path/file.mdc", content: "# Wrong" }];
+    const report = validateSkillQuality(files, "cursor", null, spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors.length).toBeGreaterThan(0);
+  });
+
+  it("passes rule-style adapter when path matches exactly", () => {
+    const spec = {
+      officialDocsUrl: "https://docs.cursor.com/context/rules-for-ai",
+      outputKind: "rule" as const,
+      workspacePath: ".cursor/rules/{projectName}-best-practices.mdc",
+      requiredFiles: [],
+      frontmatterRules: { required: [] },
+      sizeLimit: 20000,
+    };
+    const files = [
+      { outputPath: ".cursor/rules/my-app-best-practices.mdc", content: "# Valid rule" },
+    ];
+    const report = validateSkillQuality(files, "cursor", null, spec, "my-app");
+    const layoutErrors = report.checks.filter(
+      (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+    );
+    expect(layoutErrors).toHaveLength(0);
   });
 });

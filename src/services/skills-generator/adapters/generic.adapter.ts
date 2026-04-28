@@ -12,6 +12,17 @@ export const genericAdapter: AgentAdapter = {
   id: "generic" as AgentAdapterId,
   label: "Generic (.agents/rules/)",
 
+  spec: {
+    officialDocsUrl: "",
+    outputKind: "rule",
+    workspacePath: ".agents/rules/{projectName}-best-practices.md",
+    requiredFiles: [],
+    frontmatterRules: {
+      required: [],
+    },
+    sizeLimit: 20000,
+  },
+
   // Generic is a fallback — never auto-detected; only added explicitly
   detect(_projectRoot: string): boolean {
     return false;

@@ -747,4 +747,139 @@ describe("validateSkillQuality", () => {
       expect(report.warnings).toBe(actualWarnings);
     });
   });
+
+  // ── Adapter layout contract (v1.0.17+) ────────────────────────────────────
+
+  describe("adapter-layout-contract", () => {
+    const skillSpec = {
+      officialDocsUrl: "https://example.com",
+      outputKind: "skill" as const,
+      workspacePath: ".agents/skills/{projectName}-test/",
+      requiredFiles: ["SKILL.md"],
+      frontmatterRules: { required: ["description"] },
+      sizeLimit: 20000,
+    };
+
+    it("passes valid skill layout", () => {
+      const files = [
+        makeFile(
+          ".agents/skills/my-project-test/SKILL.md",
+          "---\ndescription: test desc\n---\n\n# Skill",
+        ),
+      ];
+      const report = validateSkillQuality(files, "antigravity", null, skillSpec, "my-project");
+      const layoutErrors = report.checks.filter(
+        (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+      );
+      expect(layoutErrors).toHaveLength(0);
+    });
+
+    it("errors on missing SKILL.md for skill-style adapter", () => {
+      const files = [makeFile(".agents/skills/my-project-test/README.md", "# No SKILL.md here")];
+      const report = validateSkillQuality(files, "antigravity", null, skillSpec, "my-project");
+      const layoutErrors = report.checks.filter(
+        (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+      );
+      expect(layoutErrors.length).toBeGreaterThan(0);
+      expect(layoutErrors.some((c) => c.message.includes("SKILL.md"))).toBe(true);
+    });
+
+    it("errors on missing description frontmatter in SKILL.md", () => {
+      const files = [
+        makeFile(
+          ".agents/skills/my-project-test/SKILL.md",
+          "---\nname: test\n---\n\n# No description",
+        ),
+      ];
+      const report = validateSkillQuality(files, "antigravity", null, skillSpec, "my-project");
+      const missingDesc = report.checks.filter(
+        (c) =>
+          c.type === "adapter-layout-contract" &&
+          c.severity === "error" &&
+          c.message.includes("description"),
+      );
+      expect(missingDesc.length).toBeGreaterThan(0);
+    });
+
+    it("errors when SKILL.md has no frontmatter at all", () => {
+      const files = [makeFile(".agents/skills/my-project-test/SKILL.md", "# No frontmatter")];
+      const report = validateSkillQuality(files, "antigravity", null, skillSpec, "my-project");
+      const noFm = report.checks.filter(
+        (c) =>
+          c.type === "adapter-layout-contract" &&
+          c.severity === "error" &&
+          c.message.includes("YAML frontmatter"),
+      );
+      expect(noFm.length).toBeGreaterThan(0);
+    });
+
+    it("errors on skill file outside workspace path", () => {
+      const files = [
+        makeFile(
+          ".agents/skills/other-project/SKILL.md",
+          "---\ndescription: test\n---\n\n# Wrong dir",
+        ),
+      ];
+      const report = validateSkillQuality(files, "antigravity", null, skillSpec, "my-project");
+      const layoutErrors = report.checks.filter(
+        (c) =>
+          c.type === "adapter-layout-contract" &&
+          c.severity === "error" &&
+          c.message.includes("must contain workspace"),
+      );
+      expect(layoutErrors.length).toBeGreaterThan(0);
+    });
+
+    it("errors on legacy .antigravity/rules/ path for antigravity adapter", () => {
+      const antigravitySpec = {
+        officialDocsUrl: "https://antigravity.google/docs/skills",
+        outputKind: "skill" as const,
+        workspacePath: ".agents/skills/{projectName}-antigravity-best-practices/",
+        requiredFiles: ["SKILL.md"],
+        frontmatterRules: { required: ["description"] },
+        sizeLimit: 20000,
+      };
+      const files = [
+        makeFile(".antigravity/rules/my-project-best-practices.md", "# Legacy antigravity path"),
+      ];
+      const report = validateSkillQuality(
+        files,
+        "antigravity",
+        null,
+        antigravitySpec,
+        "my-project",
+      );
+      const legacyErrors = report.checks.filter(
+        (c) =>
+          c.type === "adapter-layout-contract" &&
+          c.severity === "error" &&
+          c.message.includes("legacy"),
+      );
+      expect(legacyErrors.length).toBeGreaterThan(0);
+    });
+
+    it("skips adapter-layout-contract when adapterSpec is not provided (backward compat)", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "## Overview\n\ncontent")];
+      const report = validateSkillQuality(files, "claude", null);
+      const layoutChecks = report.checks.filter((c) => c.type === "adapter-layout-contract");
+      expect(layoutChecks).toHaveLength(0);
+    });
+
+    it("passes valid rule-style adapter layout", () => {
+      const ruleSpec = {
+        officialDocsUrl: "https://example.com",
+        outputKind: "rule" as const,
+        workspacePath: ".cursor/rules/{projectName}-best-practices.mdc",
+        requiredFiles: [],
+        frontmatterRules: { required: [] },
+        sizeLimit: 20000,
+      };
+      const files = [makeFile(".cursor/rules/my-app-best-practices.mdc", "# Valid rule")];
+      const report = validateSkillQuality(files, "cursor", null, ruleSpec, "my-app");
+      const layoutErrors = report.checks.filter(
+        (c) => c.type === "adapter-layout-contract" && c.severity === "error",
+      );
+      expect(layoutErrors).toHaveLength(0);
+    });
+  });
 });

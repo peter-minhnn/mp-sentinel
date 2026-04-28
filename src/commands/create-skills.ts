@@ -207,7 +207,7 @@ async function runAdapter(
   const raw = await adapter.generate(index, context);
 
   // ── Quality gate ──
-  const quality = validateSkillQuality(raw, adapter.id, index);
+  const quality = validateSkillQuality(raw, adapter.id, index, adapter.spec, projectName);
   if (!isJson) {
     for (const check of quality.checks) {
       const prefix = `[quality:${adapter.id}]`;
@@ -280,7 +280,7 @@ async function dryRunAdapter(
   const raw = await adapter.generate(index, context);
 
   // ── Quality gate ──
-  const quality = validateSkillQuality(raw, adapter.id, index);
+  const quality = validateSkillQuality(raw, adapter.id, index, adapter.spec, projectName);
   if (!isJson) {
     for (const check of quality.checks) {
       const prefix = `[quality:${adapter.id}]`;
@@ -329,7 +329,7 @@ async function checkAdapter(
   const raw = await adapter.generate(index, context);
 
   // ── Quality gate ──
-  const quality = validateSkillQuality(raw, adapter.id, index);
+  const quality = validateSkillQuality(raw, adapter.id, index, adapter.spec, projectName);
 
   const files = await Promise.all(
     raw.map(async (file) => {

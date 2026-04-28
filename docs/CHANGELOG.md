@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.17] - 2026-04-28
+
+### Changed
+- **Antigravity adapter**: Output moved from `.antigravity/rules/<project>-best-practices.md` to `.agents/skills/<project>-antigravity-best-practices/SKILL.md` with YAML frontmatter (`name`, `description`). Aligned with official [Antigravity Skills docs](https://antigravity.google/docs/skills).
+- **Codex adapter**: Output moved from `.agents/rules/<project>-best-practices.md` to `.agents/skills/<project>-codex-best-practices/SKILL.md` with YAML frontmatter (`name`, `description`). Aligned with official Codex Skills docs.
+- **Adapter labels**: Updated Antigravity label to "Google Antigravity (.agents/skills/)" and Codex label to "Codex / OpenAI (.agents/skills/)".
+
+### Added
+- **`AdapterSpec` type**: Every adapter now declares `officialDocsUrl`, `outputKind` (`"skill"` | `"rule"`), `workspacePath`, `requiredFiles`, `frontmatterRules`, and `sizeLimit`. These are validated by the quality gate.
+- **`adapter-layout-contract` quality check**: Validates output paths match official workspace paths, skill-style adapters produce `SKILL.md`, required YAML frontmatter keys are present. Errors on legacy paths for skill adapters.
+- **`AdapterOutputKind`** and **`AdapterFrontmatterRules`** types in `src/types/index.ts`.
+- **Instruction file detection**: Added `.agents/skills/` to fidelity file detection in `metadata.ts`, `knowledge-base.ts`, and `content.ts`.
+- **Migration notes** in `docs/CREATE_SKILLS.md` documenting the Antigravity and Codex path changes.
+- **New tests**: Adapter layout tests for Antigravity/Codex/Claude paths, adapter-layout-contract quality gate tests (valid skill, missing SKILL.md, missing frontmatter, legacy path rejection, rule path validation), `--all-agents` no-conflict test.
+
+### Fixed
+- **Codex/Generic collision removed**: Codex no longer writes to `.agents/rules/`, so `--all-agents` has no path conflicts between any adapter pair.
+- **`--agent codex,generic` conflict test** updated to verify no-conflict behavior.
+
 ## [1.0.16] - 2026-04-28
 
 ### Added

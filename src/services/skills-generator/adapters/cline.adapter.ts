@@ -13,6 +13,17 @@ export const clineAdapter: AgentAdapter = {
   id: "cline" as AgentAdapterId,
   label: "Cline (.clinerules/)",
 
+  spec: {
+    officialDocsUrl: "https://docs.cline.bot/rules",
+    outputKind: "rule",
+    workspacePath: ".clinerules/{projectName}-best-practices.md",
+    requiredFiles: [],
+    frontmatterRules: {
+      required: [],
+    },
+    sizeLimit: 20000,
+  },
+
   detect(projectRoot: string): boolean {
     return existsSync(join(projectRoot, ".clinerules"));
   },

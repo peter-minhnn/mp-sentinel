@@ -13,6 +13,18 @@ export const claudeAdapter: AgentAdapter = {
   id: "claude" as AgentAdapterId,
   label: "Claude Code (.claude/skills/)",
 
+  spec: {
+    officialDocsUrl: "https://docs.anthropic.com/en/docs/claude-code/skills",
+    outputKind: "skill",
+    workspacePath: ".claude/skills/{projectName}-best-practices/",
+    requiredFiles: ["SKILL.md"],
+    frontmatterRules: {
+      required: ["description"],
+      optional: ["name"],
+    },
+    sizeLimit: 0,
+  },
+
   detect(projectRoot: string): boolean {
     return existsSync(join(projectRoot, ".claude"));
   },

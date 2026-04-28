@@ -578,11 +578,49 @@ export interface GeneratedSkillFile {
 }
 
 /**
+ * Output kind for an adapter — determines layout validation in quality gate.
+ * - `skill`: produces a SKILL.md in a workspace skills directory (e.g. .agents/skills/)
+ * - `rule`: produces a standalone rule file (e.g. .cursor/rules/)
+ */
+export type AdapterOutputKind = "skill" | "rule";
+
+/**
+ * Frontmatter requirements for skill-style adapters.
+ */
+export interface AdapterFrontmatterRules {
+  /** Required top-level YAML keys (e.g. ["description"]) */
+  required: string[];
+  /** Optional but recommended YAML keys */
+  optional?: string[];
+}
+
+/**
+ * Official adapter specification — each adapter must declare these fields
+ * with values sourced from official agent/IDE documentation.
+ */
+export interface AdapterSpec {
+  /** URL to official docs that confirm this layout */
+  officialDocsUrl: string;
+  /** Whether this adapter produces skills or rules */
+  outputKind: AdapterOutputKind;
+  /** Workspace path template. Use {projectName} placeholder. */
+  workspacePath: string;
+  /** Required file names relative to workspace path (e.g. ["SKILL.md"]) */
+  requiredFiles: string[];
+  /** YAML frontmatter validation rules */
+  frontmatterRules: AdapterFrontmatterRules;
+  /** Max total size in characters for all generated files (0 = no limit) */
+  sizeLimit: number;
+}
+
+/**
  * Adapter interface — each supported AI agent/IDE implements this
  */
 export interface AgentAdapter {
   id: AgentAdapterId;
   label: string;
+  /** Official adapter spec for layout validation */
+  spec: AdapterSpec;
   detect(projectRoot: string): boolean;
   getDefaultOutput(projectRoot: string, projectName: string): string;
   generate(
@@ -811,7 +849,7 @@ export interface SkillsCheckResult {
 
 /** A single quality check result from the skill quality gate */
 export interface QualityCheck {
-  /** Check type identifier: max-file-size, required-section, required-references, duplicate-section, empty-section, unknown-path */
+  /** Check type identifier: max-file-size, required-section, required-references, duplicate-section, empty-section, unknown-path, missing-real-signal, agent-workflow-contract, adapter-layout-contract */
   type: string;
   /** Error = fails --check; warning = informational only */
   severity: "error" | "warning";

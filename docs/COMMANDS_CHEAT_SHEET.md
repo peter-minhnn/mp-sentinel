@@ -105,7 +105,7 @@ npx mp-sentinel create-skills --agent claude,cursor
 ```bash
 npx mp-sentinel create-skills --all-agents
 ```
-> `--all-agents` generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. `generic` is excluded (shares an output path with `codex`) — use `--agent generic` to target it explicitly.
+> `--all-agents` generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. `generic` is excluded — use `--agent generic` to target it explicitly. From v1.0.17, `codex` and `antigravity` write to suffixed directories under `.agents/skills/` and no longer collide.
 
 ### Overwrite Existing Files
 By default, `create-skills` refuses to overwrite. Use `--force` to allow it.

@@ -106,7 +106,7 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     const fileList = instructionFiles.map((f) => `\`${f}\``).join(", ");
     instructionFilesLine = `2. **Read local agent instructions**: ${fileList}.`;
   } else {
-    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.cursor/rules/\`, \`.clinerules/\`.`;
+    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.clinerules/\`.`;
   }
 
   // Reference file list from KB entrypoints or static

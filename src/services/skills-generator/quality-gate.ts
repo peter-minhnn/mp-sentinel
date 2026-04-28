@@ -6,6 +6,7 @@
  */
 
 import type {
+  AdapterSpec,
   AgentAdapterId,
   GeneratedSkillFile,
   QualityCheck,
@@ -560,12 +561,175 @@ function checkAgentWorkflowContract(
   return checks;
 }
 
+// ── Adapter Layout Contract (v1.0.17+) ─────────────────────────────────────
+
+/**
+ * Validate that generated files conform to the adapter's official layout spec.
+ * - Skill-style adapters must have a SKILL.md in the correct workspace path.
+ * - Rule-style adapters must write to the correct workspace path.
+ * - SKILL.md must have required YAML frontmatter keys.
+ * - Disallowed legacy paths (e.g. .antigravity/rules/, .agents/rules/ for skill adapters) are hard errors.
+ */
+function checkAdapterLayoutContract(
+  files: GeneratedSkillFile[],
+  adapterId: AgentAdapterId,
+  spec: AdapterSpec,
+  projectName: string,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const resolvedWs = spec.workspacePath.replace(/\{projectName\}/g, projectName);
+
+  // Normalize all output paths for comparison
+  const normalizedFiles = files.map((f) => ({
+    ...f,
+    normalizedPath: f.outputPath.replace(/\\/g, "/"),
+  }));
+
+  // Every file must be under the resolved workspace path (or match it for single-file rules).
+  // Output paths include the project root (absolute), while workspacePath is relative.
+  // We check containment rather than prefix matching.
+  for (const file of normalizedFiles) {
+    if (spec.outputKind === "skill") {
+      // Skill-style: file must be under the workspace directory (contain the resolved ws)
+      if (!file.normalizedPath.includes(resolvedWs)) {
+        checks.push({
+          type: "adapter-layout-contract",
+          severity: "error",
+          file: file.outputPath,
+          message: `File path must contain workspace "${resolvedWs}"`,
+        });
+      }
+    } else {
+      // Rule-style: file path must end with the resolved workspace path
+      if (!file.normalizedPath.endsWith(resolvedWs)) {
+        checks.push({
+          type: "adapter-layout-contract",
+          severity: "error",
+          file: file.outputPath,
+          message: `File path must end with "${resolvedWs}"`,
+        });
+      }
+    }
+  }
+
+  // Skill-style: must have a SKILL.md
+  if (spec.outputKind === "skill") {
+    const skillMdFile = normalizedFiles.find((f) => f.normalizedPath.endsWith("/SKILL.md"));
+    if (!skillMdFile) {
+      checks.push({
+        type: "adapter-layout-contract",
+        severity: "error",
+        file: resolvedWs + "SKILL.md",
+        message: `Skill-style adapter must produce a SKILL.md file in "${resolvedWs}"`,
+      });
+    } else {
+      // Check required YAML frontmatter
+      const requiredKeys = spec.frontmatterRules.required;
+      if (requiredKeys.length > 0) {
+        const content = skillMdFile.content;
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (!fmMatch) {
+          checks.push({
+            type: "adapter-layout-contract",
+            severity: "error",
+            file: skillMdFile.outputPath,
+            message: `SKILL.md must have YAML frontmatter (---) with required keys: ${requiredKeys.join(", ")}`,
+          });
+        } else {
+          const fm = fmMatch[1]!;
+          for (const key of requiredKeys) {
+            const keyRegex = new RegExp(`^${key}:`, "m");
+            if (!keyRegex.test(fm)) {
+              checks.push({
+                type: "adapter-layout-contract",
+                severity: "error",
+                file: skillMdFile.outputPath,
+                message: `SKILL.md frontmatter missing required key: "${key}"`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Check required files from spec
+    for (const reqFile of spec.requiredFiles) {
+      const expectedPath = resolvedWs + reqFile;
+      const found = normalizedFiles.some(
+        (f) => f.normalizedPath === expectedPath || f.normalizedPath.endsWith("/" + reqFile),
+      );
+      if (!found) {
+        checks.push({
+          type: "adapter-layout-contract",
+          severity: "error",
+          file: expectedPath,
+          message: `Required file "${reqFile}" is missing from workspace "${resolvedWs}"`,
+        });
+      }
+    }
+  }
+
+  // Antigravity-specific: reject legacy .antigravity/rules paths
+  if (adapterId === "antigravity") {
+    const hasLegacyAntigravity = normalizedFiles.some((f) =>
+      f.normalizedPath.includes(".antigravity/rules/"),
+    );
+    if (hasLegacyAntigravity) {
+      checks.push({
+        type: "adapter-layout-contract",
+        severity: "error",
+        file: ".antigravity/rules/",
+        message: `Antigravity adapter must use .agents/skills/ layout, not legacy .antigravity/rules/`,
+      });
+    }
+    const hasAgentsRules = normalizedFiles.some((f) => f.normalizedPath.includes(".agents/rules/"));
+    if (hasAgentsRules) {
+      checks.push({
+        type: "adapter-layout-contract",
+        severity: "error",
+        file: ".agents/rules/",
+        message: `Antigravity adapter must use .agents/skills/ layout, not .agents/rules/`,
+      });
+    }
+  }
+
+  // Codex-specific: reject legacy .agents/rules paths
+  if (adapterId === "codex") {
+    const hasAgentsRules = normalizedFiles.some((f) => f.normalizedPath.includes(".agents/rules/"));
+    if (hasAgentsRules) {
+      checks.push({
+        type: "adapter-layout-contract",
+        severity: "error",
+        file: ".agents/rules/",
+        message: `Codex adapter must use .agents/skills/ layout, not .agents/rules/`,
+      });
+    }
+  }
+
+  // Generic-specific: reject .agents/skills/ (it's a rule-style fallback)
+  if (adapterId === "generic") {
+    const hasSkillsPath = normalizedFiles.some((f) => f.normalizedPath.includes(".agents/skills/"));
+    if (hasSkillsPath) {
+      checks.push({
+        type: "adapter-layout-contract",
+        severity: "error",
+        file: ".agents/skills/",
+        message: `Generic adapter must use .agents/rules/ layout, not .agents/skills/`,
+      });
+    }
+  }
+
+  return checks;
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 
 export function validateSkillQuality(
   files: GeneratedSkillFile[],
   adapterId: AgentAdapterId,
   index: SourceIndex | null,
+  adapterSpec?: AdapterSpec,
+  projectName?: string,
 ): QualityReport {
   if (files.length === 0) {
     return { passed: true, checks: [], errors: 0, warnings: 0 };
@@ -582,6 +746,11 @@ export function validateSkillQuality(
   }
 
   const allChecks: QualityCheck[] = [];
+
+  // Adapter layout contract — validate before per-file checks
+  if (adapterSpec && projectName) {
+    allChecks.push(...checkAdapterLayoutContract(files, adapterId, adapterSpec, projectName));
+  }
 
   for (const file of files) {
     allChecks.push(...checkMaxFileSize(file, adapterId));

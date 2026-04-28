@@ -13,6 +13,17 @@ export const cursorAdapter: AgentAdapter = {
   id: "cursor" as AgentAdapterId,
   label: "Cursor (.cursor/rules/)",
 
+  spec: {
+    officialDocsUrl: "https://docs.cursor.com/context/rules-for-ai",
+    outputKind: "rule",
+    workspacePath: ".cursor/rules/{projectName}-best-practices.mdc",
+    requiredFiles: [],
+    frontmatterRules: {
+      required: ["description"],
+    },
+    sizeLimit: 20000,
+  },
+
   detect(projectRoot: string): boolean {
     return existsSync(join(projectRoot, ".cursor"));
   },

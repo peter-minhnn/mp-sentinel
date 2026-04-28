@@ -1,3 +1,48 @@
+# What's New in v1.0.17
+
+## Official Skills Layout Audit & Adapter Layout Contract
+
+### Adapter layout alignment with official docs
+
+Antigravity and Codex adapters now write to the correct official skills directories:
+
+- **Antigravity**: `.antigravity/rules/<project>-best-practices.md` → `.agents/skills/<project>-antigravity-best-practices/SKILL.md`
+- **Codex**: `.agents/rules/<project>-best-practices.md` → `.agents/skills/<project>-codex-best-practices/SKILL.md`
+
+Both now produce a `SKILL.md` with YAML frontmatter (`name`, `description`) following the official Antigravity/Codex skills layout. Old files are not deleted automatically.
+
+### Adapter Specification (AdapterSpec)
+
+Every adapter now declares an `AdapterSpec` with fields verified against official agent/IDE documentation:
+
+- `officialDocsUrl` — source confirming the layout
+- `outputKind` — `"skill"` or `"rule"`
+- `workspacePath` — output path template with `{projectName}`
+- `requiredFiles` — files that must exist (e.g. `["SKILL.md"]` for skills)
+- `frontmatterRules` — required/optional YAML frontmatter keys
+- `sizeLimit` — max total output size
+
+### Adapter Layout Contract (quality gate)
+
+New `adapter-layout-contract` quality check validates:
+
+- Output paths match the official workspace path
+- Skill-style adapters produce a `SKILL.md`
+- `SKILL.md` has required YAML frontmatter (at minimum `description`)
+- Legacy paths (`.antigravity/rules/`, `.agents/rules/` for skill adapters) are hard errors
+
+Errors fail `--check` with exit code 1.
+
+### Cleaner `--all-agents` separation
+
+Codex and Antigravity use suffixed directory names (`-codex-best-practices`, `-antigravity-best-practices`) under `.agents/skills/` to avoid collisions. No adapter pairs share output paths.
+
+### Updated instruction file detection
+
+`computeIndexHash()` and `buildSkillKnowledgeBase()` now include `.agents/skills/` in instruction file detection, ensuring `--check` correctly tracks the new output paths.
+
+---
+
 # What's New in v1.0.16
 
 ## Zero-Warning Skill Generation & Index Fidelity

@@ -11,7 +11,9 @@ Before making code changes to this repo, agents must:
 
 1. **Read the relevant generated skill/rule** for the area being touched:
    - `.claude/skills/mp-sentinel-best-practices/SKILL.md` (Claude Code)
-   - `.agents/rules/mp-sentinel-best-practices.md` (Codex / Generic)
+   - `.agents/skills/mp-sentinel-codex-best-practices/SKILL.md` (Codex)
+   - `.agents/skills/mp-sentinel-antigravity-best-practices/SKILL.md` (Antigravity)
+   - `.agents/rules/mp-sentinel-best-practices.md` (Generic)
    - `.cursor/rules/mp-sentinel-best-practices.mdc` (Cursor)
 2. **Read local agent instructions**: `AGENTS.md` (this file), `CLAUDE.md`.
 3. **Prefer source index commands** before broad repo scans when dependency context is needed:
@@ -103,19 +105,21 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 |---------|---------------------|
 | `claude` | `.claude/skills/<project>-best-practices/SKILL.md` + `references/` |
 | `cursor` | `.cursor/rules/<project>-best-practices.mdc` |
-| `codex` | `.agents/rules/<project>-best-practices.md` |
+| `codex` | `.agents/skills/<project>-codex-best-practices/SKILL.md` |
 | `windsurf` | `.windsurf/rules/<project>-best-practices.md` |
-| `antigravity` | `.antigravity/rules/<project>-best-practices.md` |
+| `antigravity` | `.agents/skills/<project>-antigravity-best-practices/SKILL.md` |
 | `cline` | `.clinerules/<project>-best-practices.md` |
 | `generic` | `.agents/rules/<project>-best-practices.md` |
 
 ### Adding a new adapter
 
-1. Create `src/services/skills-generator/adapters/<name>.adapter.ts` implementing `AgentAdapter`.
-2. Register in `src/services/skills-generator/registry.ts` (append to `ADAPTER_REGISTRY`).
-3. Add `<name>` to the `AgentAdapterId` union in `src/types/index.ts`.
-4. Write detection + output-path tests in `src/__tests__/create-skills.test.ts`.
-5. Update `docs/CREATE_SKILLS.md` and `docs/COMMANDS_CHEAT_SHEET.md`.
+1. Verify the official docs for the target agent/IDE and populate the `spec` field (`officialDocsUrl`, `outputKind`, `workspacePath`, `requiredFiles`, `frontmatterRules`, `sizeLimit`). Never merge adapter layout changes without a verified official source.
+2. Create `src/services/skills-generator/adapters/<name>.adapter.ts` implementing `AgentAdapter` with the `spec` field populated.
+3. Register in `src/services/skills-generator/registry.ts` (append to `ADAPTER_REGISTRY`).
+4. Add `<name>` to the `AgentAdapterId` union in `src/types/index.ts`.
+5. Write adapter-layout-contract quality gate tests, detection + output-path tests in `src/__tests__/create-skills.test.ts` and `src/__tests__/quality-gate.test.ts`.
+6. Update `docs/CREATE_SKILLS.md` with the "Official Adapter Layouts" table and source links.
+7. Update `docs/COMMANDS_CHEAT_SHEET.md`.
 
 ---
 

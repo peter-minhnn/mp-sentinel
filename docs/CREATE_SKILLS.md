@@ -31,13 +31,33 @@ npx mp-sentinel create-skills --agent claude --format json
 |----|-------|-----------|---------------------|
 | `claude` | Claude Code | `.claude/` exists | `.claude/skills/<project>-best-practices/SKILL.md` + `references/*.md` |
 | `cursor` | Cursor | `.cursor/` exists | `.cursor/rules/<project>-best-practices.mdc` |
-| `codex` | Codex / OpenAI | `.codex/` or `.agents/` exists | `.agents/rules/<project>-best-practices.md` |
+| `codex` | Codex / OpenAI | `.codex/` or `.agents/` exists | `.agents/skills/<project>-codex-best-practices/SKILL.md` |
 | `windsurf` | Windsurf | `.windsurf/` exists | `.windsurf/rules/<project>-best-practices.md` |
-| `antigravity` | Google Antigravity | `.antigravity/` or `.agent/` exists | `.antigravity/rules/<project>-best-practices.md` |
+| `antigravity` | Google Antigravity | `.antigravity/` or `.agent/` exists | `.agents/skills/<project>-antigravity-best-practices/SKILL.md` |
 | `cline` | Cline | `.clinerules/` exists | `.clinerules/<project>-best-practices.md` |
 | `generic` | Generic (fallback) | never auto-detected | `.agents/rules/<project>-best-practices.md` |
 
-> **`--all-agents`** generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. The `generic` adapter is excluded because it writes to the same path as `codex` (`.agents/rules/`) — use `--agent generic` to target it explicitly.
+### Official Adapter Layouts (v1.0.17+)
+
+Each adapter declares an `AdapterSpec` with the official layout verified against the target agent/IDE documentation:
+
+| Adapter | Kind | Workspace | Source |
+|---------|------|-----------|--------|
+| `claude` | skill | `.claude/skills/{projectName}-best-practices/` | [Claude Code Skills](https://docs.anthropic.com/en/docs/claude-code/skills) |
+| `codex` | skill | `.agents/skills/{projectName}-codex-best-practices/` | [Codex Skills](https://codex.openai.com/docs/skills) |
+| `antigravity` | skill | `.agents/skills/{projectName}-antigravity-best-practices/` | [Antigravity Skills](https://antigravity.google/docs/skills) |
+| `cursor` | rule | `.cursor/rules/{projectName}-best-practices.mdc` | [Cursor Rules](https://docs.cursor.com/context/rules-for-ai) |
+| `windsurf` | rule | `.windsurf/rules/{projectName}-best-practices.md` | [Windsurf Rules](https://docs.windsurf.com/rules) |
+| `cline` | rule | `.clinerules/{projectName}-best-practices.md` | [Cline Rules](https://docs.cline.bot/rules) |
+| `generic` | rule | `.agents/rules/{projectName}-best-practices.md` | — (fallback) |
+
+> **`--all-agents`** generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. The `generic` adapter is excluded from `--all-agents` — use `--agent generic` to target it explicitly.
+
+### Migration Notes (v1.0.17)
+
+- **Antigravity**: Output moved from `.antigravity/rules/<project>-best-practices.md` to `.agents/skills/<project>-antigravity-best-practices/SKILL.md`. Old files are not deleted automatically.
+- **Codex**: Output moved from `.agents/rules/<project>-best-practices.md` to `.agents/skills/<project>-codex-best-practices/SKILL.md`. Old files are not deleted automatically.
+- Folder names are suffixed (`-codex-best-practices`, `-antigravity-best-practices`) to prevent collisions under `.agents/skills/`.
 
 ---
 
@@ -133,7 +153,17 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 .clinerules/<project>-best-practices.md   ← single markdown file
 ```
 
-### Other adapters (Cursor, Codex, Windsurf, Antigravity, Generic)
+### Codex / Antigravity output structure
+
+```
+.agents/skills/<project>-codex-best-practices/
+  SKILL.md                    ← YAML frontmatter (name, description) + all sections inline
+
+.agents/skills/<project>-antigravity-best-practices/
+  SKILL.md                    ← YAML frontmatter (name, description) + all sections inline
+```
+
+### Other adapters (Cursor, Windsurf, Cline, Generic)
 
 Single markdown (`.md` / `.mdc`) file containing all sections.
 

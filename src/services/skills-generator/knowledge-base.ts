@@ -302,6 +302,7 @@ const KNOWN_INSTRUCTION_FILES = [
   ".cursor/rules",
   ".clinerules",
   ".agents/rules",
+  ".agents/skills",
   ".windsurf/rules",
   ".codex/rules",
   ".antigravity/rules",

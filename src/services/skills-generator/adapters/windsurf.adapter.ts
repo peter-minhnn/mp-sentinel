@@ -13,6 +13,17 @@ export const windsurfAdapter: AgentAdapter = {
   id: "windsurf" as AgentAdapterId,
   label: "Windsurf (.windsurf/rules/)",
 
+  spec: {
+    officialDocsUrl: "https://docs.windsurf.com/rules",
+    outputKind: "rule",
+    workspacePath: ".windsurf/rules/{projectName}-best-practices.md",
+    requiredFiles: [],
+    frontmatterRules: {
+      required: [],
+    },
+    sizeLimit: 20000,
+  },
+
   detect(projectRoot: string): boolean {
     return existsSync(join(projectRoot, ".windsurf"));
   },
