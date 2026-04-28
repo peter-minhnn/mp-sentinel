@@ -1,3 +1,14 @@
+# What's New in v1.1.5
+
+## Release Script Packaging Self-Check
+
+v1.1.5 extends `release:check` to validate its own packaging — no runtime code changes.
+
+- **Packaging self-check**: `release:check` now asserts `scripts/release-check.mjs` is listed in `package.json.files` when referenced by the `release:check` script. Also validates required published entries (`dist`, `README.md`, `docs`, `WHATS_NEW.md`, `examples`) are present. Prevents the v1.1.3 → v1.1.4 packaging gap from recurring.
+- **5 new tests**: Missing release script in files, absent `release:check` script skips check, missing required entry, missing `files` field.
+
+---
+
 # What's New in v1.1.4
 
 ## Release Script Packaging Fix

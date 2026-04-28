@@ -53,11 +53,22 @@ const WHATS_NEW = (v) => `# What's New in v${v}\n\n## Some Feature\n\nDescriptio
 
 const CHANGELOG = (v) => `# Changelog\n\n## [${v}] - 2026-04-28\n\n### Fixed\n- Something.`;
 
-function validFiles(version) {
+function validFiles(version, opts) {
+  const scripts = opts?.scripts ?? { "release:check": "node scripts/release-check.mjs" };
+  const files = opts?.files ?? [
+    "dist",
+    "README.md",
+    "docs",
+    "WHATS_NEW.md",
+    "examples",
+    "scripts/release-check.mjs",
+  ];
   return {
     "package.json": JSON.stringify({
       name: "mp-sentinel",
       version,
+      scripts,
+      files,
     }),
     "package-lock.json": JSON.stringify({
       name: "mp-sentinel",
@@ -206,5 +217,64 @@ describe("release-check", () => {
     const result = run(dir);
     rmSync(dir, { recursive: true, force: true });
     expect(result.code).toBe(2);
+  });
+
+  it("fails when release-check script is missing from files", () => {
+    const dir = fixture(
+      validFiles("1.2.3", {
+        scripts: { "release:check": "node scripts/release-check.mjs" },
+        files: ["dist", "README.md", "docs", "WHATS_NEW.md", "examples"],
+      }),
+    );
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("release:check but missing from files");
+  });
+
+  it("does not require release-check in files when script is absent", () => {
+    const dir = fixture(
+      validFiles("1.2.3", {
+        scripts: { test: "jest" },
+        files: ["dist", "README.md", "docs", "WHATS_NEW.md", "examples"],
+      }),
+    );
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(0);
+  });
+
+  it("fails when a required published entry is missing from files", () => {
+    const dir = fixture(
+      validFiles("1.2.3", {
+        files: [
+          "dist",
+          "README.md",
+          "docs",
+          // WHATS_NEW.md intentionally missing
+          "examples",
+          "scripts/release-check.mjs",
+        ],
+      }),
+    );
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('required entry "WHATS_NEW.md"');
+  });
+
+  it("fails when package.json files field is absent", () => {
+    const dir = fixture({
+      ...validFiles("1.2.3"),
+      "package.json": JSON.stringify({
+        name: "mp-sentinel",
+        version: "1.2.3",
+        scripts: { "release:check": "node scripts/release-check.mjs" },
+      }),
+    });
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('"files" field');
   });
 });

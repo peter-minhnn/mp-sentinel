@@ -7,6 +7,7 @@
  *   - Package version consistency across package.json, package-lock.json,
  *     README badge / "What's New" pointer, WHATS_NEW.md, CHANGELOG.md
  *   - Lockfile dependency integrity (resolved tarball versions match entry versions)
+ *   - Package files coverage (release scripts are published, required entries present)
  *
  * Usage:
  *   node scripts/release-check.mjs
@@ -173,6 +174,40 @@ function checkLockfileIntegrity() {
   }
 }
 
+function checkPackageFiles() {
+  const pkg = readJson("package.json");
+  if (!pkg) return;
+
+  const files = pkg.files;
+  if (!Array.isArray(files)) {
+    fail('package.json "files" field is missing or not an array');
+    return;
+  }
+
+  // If release:check points to scripts/release-check.mjs, it must be in files
+  const releaseCheckCmd = pkg.scripts?.["release:check"];
+  if (releaseCheckCmd && releaseCheckCmd.includes("scripts/release-check.mjs")) {
+    if (!files.includes("scripts/release-check.mjs")) {
+      fail(
+        'package.json files: "scripts/release-check.mjs" is referenced by release:check but missing from files',
+      );
+    } else {
+      ok("package.json files: release-check script is published");
+    }
+  }
+
+  // Required published entries
+  const required = ["dist", "README.md", "docs", "WHATS_NEW.md", "examples"];
+  const missing = required.filter((e) => !files.includes(e));
+  if (missing.length > 0) {
+    for (const entry of missing) {
+      fail(`package.json files: required entry "${entry}" is missing`);
+    }
+  } else {
+    ok("package.json files: required published entries present");
+  }
+}
+
 // --- main --------------------------------------------------------------
 
 const pkg = readJson("package.json");
@@ -191,6 +226,7 @@ checkReadmeWhatsNew(expected);
 checkWhatsNew(expected);
 checkChangelog(expected);
 checkLockfileIntegrity();
+checkPackageFiles();
 
 process.stdout.write("\n");
 
