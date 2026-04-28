@@ -24,10 +24,10 @@ const ROLE_DIR_MAP: Array<[RegExp, FileRole]> = [
   [/^cli\.ts$/, "cli-entry"],
   [/^src\/cli\//, "command"],
   [/^src\/commands\//, "command"],
-  [/^src\/services\//, "service"],
   [/^src\/services\/skills-generator\/adapters\//, "adapter"],
   [/^src\/services\/ai\//, "provider"],
   [/^src\/services\/(.+\/)*provider/, "provider"],
+  [/^src\/services\//, "service"],
   [/^__tests__\//, "test"],
   [/\.test\.(ts|tsx|js|jsx)$/, "test"],
   [/\.spec\.(ts|tsx|js|jsx)$/, "test"],
@@ -208,7 +208,15 @@ function findPublicApiFiles(index: SourceIndex): string[] {
   const publicApiFiles = new Set<string>();
 
   // Look for common public API entry files
-  const entryCandidates = ["src/lib.ts", "src/index.ts", "index.ts", "lib.ts"];
+  const entryCandidates = [
+    "src/lib.ts",
+    "src/index.ts",
+    "src/main.ts",
+    "src/server.ts",
+    "src/app.ts",
+    "index.ts",
+    "lib.ts",
+  ];
 
   for (const entryPath of entryCandidates) {
     const entryFile = index.files.find((f) => f.path === entryPath);
