@@ -1,3 +1,15 @@
+# What's New in v1.1.1
+
+## README Release Metadata Consistency
+
+v1.1.1 is a docs/release metadata patch only — no runtime code changes.
+
+- **README badge**: Updated from `v1.0.19` to `v1.1.1`.
+- **"What's New" pointer**: Updated from `v1.0.19` to `v1.1.1`.
+- **Feature bullets**: Added Shared Repository Intelligence to the top of the feature list.
+
+---
+
 # What's New in v1.1.0
 
 ## Shared Repository Intelligence for Review

@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.0.19-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.1.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,8 +43,9 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.0.19**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.1.1**:
 
+- 🧠 **Shared Repository Intelligence** — review context now surfaces public API risk, hub-file blast radius, test coverage gaps, and dependency-aware signals from the same `SkillKnowledgeBase` that powers `create-skills`
 - 📦 **Legacy File Migration Diagnostics** — detect and advise on old generated skill files
 - 🏷️ **Official Adapter Layouts** — align all adapters with verified IDE/agent docs
 - ✅ **Zero-Warning Generation** — clean output with no spurious diagnostics
