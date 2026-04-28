@@ -54,10 +54,9 @@ export async function readIndex(
     }
 
     return index;
-  } catch (error) {
-    log.debug(
-      `Failed to read source index: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    // readIndex must never write to stdout — JSON mode depends on stdout isolation.
+    // Use stderr for diagnostics so the JSON parse contract is not broken.
     return null;
   }
 }

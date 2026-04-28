@@ -37,12 +37,7 @@ export const log = {
   audit: (msg: string) => write(console.log, `${colors.cyan}🔍${colors.reset} ${msg}`),
   skip: (msg: string) => write(console.log, `${colors.magenta}⏩${colors.reset} ${msg}`),
   file: (msg: string) => write(console.log, `${colors.dim}   ${msg}${colors.reset}`),
-  debug: (msg: string) => {
-    // Debug logs only shown when not in quiet mode and when verbose is enabled (handled by caller)
-    if (!quietMode) {
-      console.log(`${colors.dim}🐛 ${msg}${colors.reset}`);
-    }
-  },
+  debug: (msg: string) => write(console.log, `${colors.dim}🐛 ${msg}${colors.reset}`),
 
   // Issue formatting
   issue: (severity: string, line: number, message: string) => {

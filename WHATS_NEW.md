@@ -1,6 +1,17 @@
-# What's New in v1.6.2
+# What's New in v1.7.0
 
-## ASCII-Safe Script Output
+## Create Skills Doctor
+
+v1.7.0 adds `--doctor` diagnostic mode for `create-skills` — a comprehensive read-only health check.
+
+- **`create-skills --doctor`**: Checks agent detection, source index cache status, generated skill file freshness, quality gate results, legacy/unexpected files, and npm script availability. No file writes, no AI calls, no auto-indexing.
+- **JSON output**: `--format json` produces stable, additive JSON suitable for CI health checks and automated monitoring.
+- **Exit codes**: 0 (healthy or advisories only), 1 (action required — stale/missing skills, quality errors), 2 (runtime error — corrupt index).
+- **Dogfood coverage**: New step in `dogfood.mjs` validates doctor JSON output shape and key fields.
+
+## Previous Releases
+
+### v1.6.2 — ASCII-Safe Script Output
 
 v1.6.2 is a patch hardening release — no new CLI behavior, no new flags.
 

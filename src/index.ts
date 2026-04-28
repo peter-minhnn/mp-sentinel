@@ -87,6 +87,7 @@ const run = async (): Promise<void> => {
         "create-skills-check": values["create-skills-check"],
         "create-skills-no-ai-enrich": values["create-skills-no-ai-enrich"],
         ...(values["explain-agents"] === true && { "explain-agents": true }),
+        ...(values["doctor"] === true && { doctor: true }),
       });
     } catch (error) {
       if (values["create-skills-format"] === "json") {

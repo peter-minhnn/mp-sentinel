@@ -947,3 +947,54 @@ export interface ExplainAgentsOutput {
   defaultSelection: AgentAdapterId[];
   agents: ExplainAgentEntry[];
 }
+
+// ── Doctor Diagnostic types (v1.7.0+) ─────────────────────────────────────────
+
+/** Overall health status for the --doctor diagnostic */
+export type DoctorStatus = "ok" | "action-required" | "error";
+
+/** Source index cache status for the doctor diagnostic */
+export type DoctorIndexStatus = "ok" | "missing" | "unreadable" | "stale";
+
+/** Source index cache info reported by --doctor */
+export interface DoctorIndexInfo {
+  status: DoctorIndexStatus;
+  schemaVersion?: string;
+  totalFiles?: number;
+  manifestHash?: string;
+  reason?: string;
+}
+
+/** Bootstrap script availability status */
+export type DoctorScriptStatus = "available" | "missing";
+
+/** A single bootstrap script entry in the doctor output */
+export interface DoctorScriptInfo {
+  name: string;
+  status: DoctorScriptStatus;
+  description: string;
+}
+
+/** Per-adapter skill file status reported by --doctor */
+export type DoctorSkillStatus = "up-to-date" | "stale" | "missing" | "wrong-agent" | "unverifiable";
+
+/** Per-adapter skills check result in --doctor output */
+export interface DoctorSkillInfo {
+  agent: AgentAdapterId;
+  label: string;
+  status: DoctorSkillStatus;
+  files: SkillsCheckFile[];
+  quality?: QualityReport;
+}
+
+/** Top-level output of the --doctor diagnostic */
+export interface DoctorOutput {
+  status: DoctorStatus;
+  projectName: string;
+  agents: ExplainAgentEntry[];
+  index: DoctorIndexInfo;
+  skills: DoctorSkillInfo[];
+  legacyFiles: LegacyFileInfo[];
+  scripts: DoctorScriptInfo[];
+  recommendedActions: string[];
+}

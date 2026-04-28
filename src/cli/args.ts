@@ -44,6 +44,7 @@ export interface CLIValues {
   "create-skills-check": boolean;
   "create-skills-no-ai-enrich": boolean;
   "explain-agents"?: boolean;
+  doctor?: boolean;
 }
 
 const PACKAGE_VERSION = getToolVersion();
@@ -128,6 +129,11 @@ export const buildProgram = (): Command => {
       "--explain-agents",
       "Diagnostic mode: show which agents/IDEs are detected and why (no file writes)",
       false,
+    )
+    .option(
+      "--doctor",
+      "Diagnostic mode: comprehensive setup health check (read-only, no writes, no AI)",
+      false,
     );
 
   program.addHelpText(
@@ -159,6 +165,9 @@ Examples:
   $ npx mp-sentinel create-skills --agent claude --force  # Overwrite existing files
   $ npx mp-sentinel create-skills --explain-agents        # Show detection diagnostics
   $ npx mp-sentinel create-skills --explain-agents --format json  # JSON detection output
+  $ npx mp-sentinel create-skills --doctor                # Health check (console)
+  $ npx mp-sentinel create-skills --doctor --format json   # Health check (JSON)
+  $ npx mp-sentinel create-skills --doctor --agent claude  # Scoped to Claude
 `,
   );
 
@@ -294,6 +303,8 @@ export const parseCliArgs = (): {
         createSkillsOptions["explainAgents"] === true && {
           "explain-agents": true,
         }),
+      ...(command === "create-skills" &&
+        createSkillsOptions["doctor"] === true && { doctor: true }),
     } as CLIValues;
 
     return {

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-04-28
+
+### Added
+- **`--doctor` diagnostic mode**: `create-skills --doctor` performs a comprehensive read-only health check covering agent detection, source index cache status, generated skill file freshness, quality gate results, legacy/unexpected files, and npm script availability. No file writes, no AI calls, no auto-indexing. JSON output is stable and additive.
+- **Dogfood coverage**: New doctor validation step in `scripts/dogfood.mjs`.
+
 ## [1.6.2] - 2026-04-28
 
 ### Changed

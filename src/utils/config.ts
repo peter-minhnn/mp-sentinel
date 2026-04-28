@@ -218,7 +218,10 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
   }
 
   cachedConfig = mergeConfig(result.data as Partial<ProjectConfig>);
-  log.info(`Loaded project-specific rules from ${configPath}`);
+  // Use process.stderr directly to guarantee stdout isolation for JSON commands.
+  // log.info routes to console.log (stdout), which would break JSON parse contracts
+  // even if setLogQuietMode(true) is called — dynamic imports can create timing gaps.
+  process.stderr.write(`Loaded project-specific rules from ${configPath}\n`);
   return cachedConfig;
 };
 

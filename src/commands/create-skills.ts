@@ -13,11 +13,17 @@ import type {
   AgentAdapter,
   AIEnrichmentOutput,
   CheckFileStatus,
+  DoctorIndexInfo,
+  DoctorOutput,
+  DoctorScriptInfo,
+  DoctorSkillInfo,
+  DoctorSkillStatus,
   DryRunFileAction,
   EnrichmentMetadata,
   ExplainAgentsOutput,
   LegacyFileInfo,
   QualityReport,
+  SkillsCheckFile,
   SkillsCheckResult,
   SkillsDryRunResult,
   SkillsGenerationContext,
@@ -56,6 +62,7 @@ export interface CreateSkillsValues {
   "create-skills-check"?: boolean;
   "create-skills-no-ai-enrich": boolean;
   "explain-agents"?: boolean;
+  doctor?: boolean;
 }
 
 interface RunOutput {
@@ -396,6 +403,332 @@ async function checkAdapter(
   return { agent: adapter.id, label: adapter.label, files, quality };
 }
 
+// ── Doctor diagnostic ─────────────────────────────────────────────────────────
+
+function worstFileStatus(files: SkillsCheckFile[]): DoctorSkillStatus {
+  if (files.length === 0) return "unverifiable";
+  if (files.some((f) => f.status === "missing")) return "missing";
+  if (files.some((f) => f.status === "wrong-agent")) return "wrong-agent";
+  if (files.some((f) => f.status === "stale")) return "stale";
+  return "up-to-date";
+}
+
+const DOCTOR_SCRIPTS = [
+  { name: "agent:skills:check", description: "Checks skill file freshness" },
+  { name: "agent:skills:refresh", description: "Regenerates stale/missing skill files" },
+  { name: "dogfood", description: "Validates end-to-end local workflow" },
+  { name: "release:check", description: "Verifies version consistency and lockfile integrity" },
+];
+
+async function runDoctor(
+  values: CreateSkillsValues,
+  projectRoot: string,
+  isJson: boolean,
+): Promise<number> {
+  // Belt-and-suspenders: ensure quiet mode is set before any logging call,
+  // especially loadProjectConfig which can log config-load messages.
+  if (isJson) setLogQuietMode(true);
+  const recommendedActions: string[] = [];
+
+  // a) Project name + scripts from package.json
+  const pkg = (() => {
+    try {
+      const pkgPath = resolve(projectRoot, "package.json");
+      if (existsSync(pkgPath)) {
+        return JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+          name?: string;
+          scripts?: Record<string, string>;
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return {} as { name?: string; scripts?: Record<string, string> };
+  })();
+  const projectName = pkg.name ? sanitizeProjectName(pkg.name) : "project";
+  const pkgScripts: Record<string, string> = pkg.scripts ?? {};
+
+  // b) Agent detection
+  const explainResult = explainAgentDetection(projectRoot, projectName);
+
+  // c) Adapter selection for skills check
+  let selectedAdapters: AgentAdapter[];
+  if (values.agent) {
+    selectedAdapters = parseAgentFlag(values.agent);
+  } else if (values["all-agents"]) {
+    selectedAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
+  } else {
+    const detected = detectAdapters(projectRoot);
+    if (detected.length > 0) {
+      selectedAdapters = detected;
+    } else {
+      const claude = ADAPTER_REGISTRY.find((a) => a.id === "claude");
+      const generic = ADAPTER_REGISTRY.find((a) => a.id === "generic");
+      selectedAdapters = [claude, generic].filter((a): a is AgentAdapter => a !== undefined);
+    }
+  }
+
+  // d) Index check — respect config.indexing.cachePath
+  // Guard: loadProjectConfig may log when a sentinelrc file exists.
+  if (isJson) setLogQuietMode(true);
+  const config = await loadProjectConfig(projectRoot);
+  const indexingConfig = { ...getIndexingConfig(config), enabled: true };
+  const cachePath = resolve(projectRoot, indexingConfig.cachePath);
+
+  let indexInfo: DoctorIndexInfo;
+  let index: SourceIndex | null = null;
+
+  if (!existsSync(cachePath)) {
+    indexInfo = {
+      status: "missing",
+      reason: `No source index cache found at "${indexingConfig.cachePath}". Run "mp-sentinel indexing" to build it.`,
+    };
+    recommendedActions.push(
+      `Run "mp-sentinel indexing" to build the source index at "${indexingConfig.cachePath}".`,
+    );
+  } else {
+    // Guard: readIndex may log.debug on parse failure (quiet mode must suppress it).
+    if (isJson) setLogQuietMode(true);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const cached = await readIndex(cachePath);
+    if (!cached) {
+      indexInfo = {
+        status: "unreadable",
+        reason: `Source index cache at "${indexingConfig.cachePath}" is corrupt or uses an unsupported schema. Delete it and run "mp-sentinel indexing" to rebuild.`,
+      };
+      recommendedActions.push(
+        `Delete corrupt cache at "${indexingConfig.cachePath}" and run "mp-sentinel indexing" to rebuild.`,
+      );
+    } else {
+      index = cached;
+      if (!index.manifestHash) {
+        indexInfo = {
+          status: "stale",
+          schemaVersion: index.schemaVersion,
+          totalFiles: index.stats.totalFiles,
+          reason:
+            'Source index is missing manifestHash. Rebuild with "mp-sentinel indexing --force".',
+        };
+        recommendedActions.push(
+          'Run "mp-sentinel indexing --force" to rebuild the source index with current manifest hash.',
+        );
+      } else {
+        indexInfo = {
+          status: "ok",
+          schemaVersion: index.schemaVersion,
+          totalFiles: index.stats.totalFiles,
+          manifestHash: index.manifestHash,
+        };
+      }
+    }
+  }
+
+  // e) Skills check
+  const skills: DoctorSkillInfo[] = [];
+
+  if (index && (indexInfo.status === "ok" || indexInfo.status === "stale")) {
+    const currentHash = computeIndexHash(index, projectRoot);
+    const knowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
+    const context: SkillsGenerationContext = {
+      projectRoot,
+      projectName,
+      force: false,
+      knowledgeBase,
+    };
+
+    for (const adapter of selectedAdapters) {
+      const raw = await adapter.generate(index, context);
+      const quality = validateSkillQuality(raw, adapter.id, index, adapter.spec, projectName);
+
+      const files: SkillsCheckFile[] = await Promise.all(
+        raw.map(async (file) => {
+          if (!existsSync(file.outputPath)) {
+            return { outputPath: file.outputPath, status: "missing" as CheckFileStatus };
+          }
+          const content = await readFile(file.outputPath, "utf-8");
+          const meta = parseMetadataFromContent(content);
+          if (!meta || meta.sourceIndexHash !== currentHash) {
+            return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+          }
+          if (meta.agent !== adapter.id) {
+            return { outputPath: file.outputPath, status: "wrong-agent" as CheckFileStatus };
+          }
+          return { outputPath: file.outputPath, status: "up-to-date" as CheckFileStatus };
+        }),
+      );
+
+      skills.push({
+        agent: adapter.id,
+        label: adapter.label,
+        status: worstFileStatus(files),
+        files,
+        quality,
+      });
+    }
+  } else {
+    // Index missing/unreadable — cannot generate, report all selected as unverifiable
+    for (const adapter of selectedAdapters) {
+      skills.push({
+        agent: adapter.id,
+        label: adapter.label,
+        status: "unverifiable",
+        files: [],
+        quality: { passed: true, checks: [], errors: 0, warnings: 0 },
+      });
+    }
+  }
+
+  // f) Legacy / unexpected files
+  const legacyFiles = await detectAllLegacyAndUnexpected(projectRoot, projectName);
+  for (const lf of legacyFiles) {
+    recommendedActions.push(lf.suggestion);
+  }
+
+  // g) Scripts check
+  const scripts: DoctorScriptInfo[] = DOCTOR_SCRIPTS.map((def) => ({
+    name: def.name,
+    status: pkgScripts[def.name] ? "available" : "missing",
+    description: def.description,
+  }));
+
+  const missingScripts = scripts.filter((s) => s.status === "missing");
+  for (const ms of missingScripts) {
+    recommendedActions.push(
+      `Add "${ms.name}" script to package.json for local bootstrap support (${ms.description.toLowerCase()}).`,
+    );
+  }
+
+  // h) Determine overall status
+  const hasQualityErrors = skills.some((s) => s.quality && s.quality.errors > 0);
+  const hasSkillIssues = skills.some((s) => s.status !== "up-to-date");
+  let overallStatus: "ok" | "action-required" | "error";
+
+  if (indexInfo.status === "unreadable") {
+    overallStatus = "error";
+  } else if (
+    indexInfo.status === "missing" ||
+    indexInfo.status === "stale" ||
+    hasSkillIssues ||
+    hasQualityErrors
+  ) {
+    overallStatus = "action-required";
+    if (hasSkillIssues) {
+      recommendedActions.push(
+        'Run "mp-sentinel create-skills --all-agents --force" to regenerate skill files.',
+      );
+    }
+    if (hasQualityErrors) {
+      recommendedActions.push(
+        "Quality errors detected in generated skills. Review adapter quality rules and generated content.",
+      );
+    }
+  } else {
+    overallStatus = "ok";
+  }
+
+  // Deduplicate recommended actions while preserving order
+  const seen = new Set<string>();
+  const dedupedActions = recommendedActions.filter((a) => {
+    if (seen.has(a)) return false;
+    seen.add(a);
+    return true;
+  });
+
+  // i) Output
+  if (isJson) {
+    const out: DoctorOutput = {
+      status: overallStatus,
+      projectName,
+      agents: explainResult.entries,
+      index: indexInfo,
+      skills,
+      legacyFiles,
+      scripts,
+      recommendedActions: dedupedActions,
+    };
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    log.info(`Project: ${projectName}`);
+    log.info(`Status:  ${overallStatus}`);
+    log.info("");
+
+    // Agents
+    log.info("[Agents]");
+    for (const entry of explainResult.entries) {
+      const mark = entry.detected ? "[ok]" : "[x]";
+      const sel = entry.selected ? " [auto-selected]" : "";
+      log.info(`  ${mark} ${entry.id}${sel}`);
+    }
+    log.info("");
+
+    // Index
+    log.info("[Index]");
+    if (indexInfo.status === "ok" || indexInfo.status === "stale") {
+      log.info(`  Status:  ${indexInfo.status}`);
+      log.info(`  Schema:  ${indexInfo.schemaVersion}`);
+      log.info(`  Files:   ${indexInfo.totalFiles}`);
+      if (indexInfo.manifestHash) {
+        log.info(`  Hash:    ${indexInfo.manifestHash}`);
+      }
+    } else {
+      log.info(`  Status:  ${indexInfo.status}`);
+      log.info(`  Reason:  ${indexInfo.reason}`);
+    }
+    log.info("");
+
+    // Skills
+    log.info("[Skills]");
+    if (skills.length === 0) {
+      log.info("  (no adapters selected)");
+    } else {
+      for (const s of skills) {
+        const mark = s.status === "up-to-date" ? "[ok]" : "[x]";
+        log.info(`  ${mark} ${s.agent} - ${s.status}`);
+        for (const f of s.files) {
+          const fm = f.status === "up-to-date" ? "  [ok]" : "  [x]";
+          log.info(`${fm}  ${f.outputPath} (${f.status})`);
+        }
+      }
+    }
+    log.info("");
+
+    // Legacy
+    log.info("[Legacy]");
+    if (legacyFiles.length === 0) {
+      log.info("  (none)");
+    } else {
+      for (const lf of legacyFiles) {
+        log.info(`  [x] ${lf.path}`);
+        log.info(`    -> ${lf.suggestion}`);
+      }
+    }
+    log.info("");
+
+    // Scripts
+    log.info("[Scripts]");
+    for (const s of scripts) {
+      const mark = s.status === "available" ? "[ok]" : "[x]";
+      log.info(`  ${mark} ${s.name}`);
+    }
+    log.info("");
+
+    // Recommended
+    log.info("[Recommended]");
+    if (dedupedActions.length === 0) {
+      log.info("  (none - setup is healthy)");
+    } else {
+      for (let i = 0; i < dedupedActions.length; i++) {
+        log.info(`  ${i + 1}. ${dedupedActions[i]}`);
+      }
+    }
+  }
+
+  // j) Exit code
+  if (overallStatus === "error") return 2;
+  if (overallStatus === "action-required") return 1;
+  return 0;
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function runCreateSkillsCommand(
@@ -443,7 +776,7 @@ export async function runCreateSkillsCommand(
         log.info(`Default selection: ${defaultSelection.join(", ") || "(none)"}`);
         log.info("");
         for (const entry of entries) {
-          const mark = entry.detected ? "✓" : "✗";
+          const mark = entry.detected ? "[ok]" : "[x]";
           const sel = entry.selected ? " [default]" : "";
           log.info(`${mark} ${entry.id}${sel}`);
           log.info(`  Label:       ${entry.label}`);
@@ -451,7 +784,7 @@ export async function runCreateSkillsCommand(
           if (entry.detectionSignals.length > 0) {
             log.info(`  Signals:     ${entry.detectionSignals.join(", ")}`);
           } else {
-            log.info(`  Signals:     (none — not auto-detected)`);
+            log.info(`  Signals:     (none - not auto-detected)`);
           }
           log.info(`  Output:      ${entry.outputKind}`);
           log.info(`  Template:    ${entry.workspacePath}`);
@@ -464,6 +797,11 @@ export async function runCreateSkillsCommand(
       }
 
       return 0;
+    }
+
+    // ── Doctor diagnostic mode ──────────────────────────────────────────────
+    if (values["doctor"]) {
+      return runDoctor(values, projectRoot, isJson);
     }
 
     log.info("Resolving source index...");
@@ -526,10 +864,10 @@ export async function runCreateSkillsCommand(
 
         if (!isJson) {
           const allOk = result.files.every((f) => f.status === "up-to-date");
-          const icon = allOk ? "✓" : "✗";
+          const icon = allOk ? "[ok]" : "[x]";
           log.info(`[${icon}] ${result.agent}:`);
           for (const f of result.files) {
-            const mark = f.status === "up-to-date" ? "  ✓" : "  ✗";
+            const mark = f.status === "up-to-date" ? "  [ok]" : "  [x]";
             log.info(`${mark}  ${f.outputPath} (${f.status})`);
           }
         }
@@ -558,7 +896,7 @@ export async function runCreateSkillsCommand(
         if (legacyFiles.length > 0) {
           log.warning(
             `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
-              `These are advisory only — see --format json for details.`,
+              `These are advisory only - see --format json for details.`,
           );
         }
       }
@@ -600,7 +938,7 @@ export async function runCreateSkillsCommand(
         if (legacyFiles.length > 0) {
           log.warning(
             `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
-              `These are advisory only — see --format json for details.`,
+              `These are advisory only - see --format json for details.`,
           );
         }
       }
@@ -650,7 +988,7 @@ export async function runCreateSkillsCommand(
 
       if (!isJson) {
         if (result.skipped) {
-          log.warning(`[${result.agent}] Skipped — ${result.skipReason}`);
+          log.warning(`[${result.agent}] Skipped - ${result.skipReason}`);
         } else {
           log.success(`[${result.agent}] Generated:`);
           for (const p of result.outputPaths) {
@@ -672,7 +1010,7 @@ export async function runCreateSkillsCommand(
       if (legacyFiles.length > 0) {
         log.warning(
           `Detected ${legacyFiles.length} legacy generated file(s) from pre-v1.0.17 paths. ` +
-            `These are advisory only — see --format json for details.`,
+            `These are advisory only - see --format json for details.`,
         );
       }
     }

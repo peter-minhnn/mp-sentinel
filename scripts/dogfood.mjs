@@ -143,7 +143,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write("\n[5/6] explain-agents\n");
+  process.stdout.write("\n[5/7] explain-agents\n");
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -203,7 +203,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write("\n[6/6] explain-context\n");
+  process.stdout.write("\n[6/7] explain-context\n");
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -231,6 +231,60 @@ function stepExplainContext() {
   return false;
 }
 
+function stepDoctor() {
+  process.stdout.write("\n[7/7] create-skills --doctor\n");
+  let raw;
+  try {
+    raw = execSync(
+      "node dist/index.js create-skills --doctor --format json",
+      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
+    );
+  } catch (e) {
+    // Doctor exits 1 for action-required (e.g. stale skills in dogfood).
+    // That's expected; capture its stdout and validate the JSON regardless.
+    raw = e.stdout || "";
+  }
+  if (!raw.trim()) {
+    fail("create-skills --doctor", "no output from command");
+    return false;
+  }
+
+  const json = parseJson(raw, "create-skills --doctor");
+  if (!json) return false;
+
+  // Assert top-level fields
+  const requiredFields = [
+    "status", "projectName", "agents", "index",
+    "skills", "legacyFiles", "scripts", "recommendedActions",
+  ];
+  for (const field of requiredFields) {
+    if (!(field in json)) {
+      fail("create-skills --doctor", `JSON output missing field '${field}'`);
+      return false;
+    }
+  }
+
+  // index should be present since we built it in step 3
+  if (!json.index || typeof json.index.status !== "string") {
+    fail("create-skills --doctor", "index.status missing or not a string");
+    return false;
+  }
+
+  // skills should include entries for detected adapters
+  if (!Array.isArray(json.skills)) {
+    fail("create-skills --doctor", "skills is not an array");
+    return false;
+  }
+
+  ok(
+    "create-skills --doctor",
+    `status=${json.status}, index=${json.index.status}, ` +
+    `skills=${json.skills.length} agents, ${json.legacyFiles?.length ?? 0} legacy, ` +
+    `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions`,
+  );
+  return true;
+}
+
 // --- main --------------------------------------------------------------
 
 process.stdout.write("\nDogfood validation - mp-sentinel local workflow\n");
@@ -242,6 +296,7 @@ const steps = [
   stepCreateSkills,
   stepExplainAgents,
   stepExplainContext,
+  stepDoctor,
 ];
 
 let passed = 0;
