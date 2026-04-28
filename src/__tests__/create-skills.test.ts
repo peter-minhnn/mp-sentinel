@@ -4289,4 +4289,274 @@ describe("runCreateSkillsCommand --doctor", () => {
     const agUnicodeChecks = agReport.checks.filter((c) => c.type === "risky-unicode");
     expect(agUnicodeChecks).toHaveLength(0);
   });
+
+  // ── v1.9.1 Legacy advisory grouping ──────────────────────────────────────
+
+  it("--doctor --format json groups legacy files by agent in recommendedActions", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".clinerules"), { recursive: true });
+    await mkdir(join(cwd, ".cursor"), { recursive: true });
+
+    // Build index so skills are verifiable and legacy is the focus
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+
+    // Write up-to-date skills for claude so skills are current
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const claudeAdapter = getAdapter("claude")!;
+    const claudeFiles = await claudeAdapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    for (const file of claudeFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    // Create multiple unexpected generated files for the same agent (claude)
+    const unexpectedHeader = `<!-- @mp-sentinel-generated generatorVersion=1.6.2 sourceIndexSchema=1.2 sourceIndexHash=abcdef1234567890 agent=claude projectName=${projectName} -->`;
+    await writeFile(
+      join(cwd, ".clinerules", `${projectName}-best-practices.md`),
+      unexpectedHeader + "\n# Unexpected claude file under .clinerules\n",
+    );
+    await writeFile(
+      join(cwd, ".cursor", `${projectName}-best-practices.md`),
+      unexpectedHeader + "\n# Unexpected claude file under .cursor\n",
+    );
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    // Full per-file list is preserved
+    expect(parsed.legacyFiles.length).toBeGreaterThanOrEqual(2);
+
+    // recommendedActions groups by agent (one claude entry, not two separate actions)
+    const legacyActions = parsed.recommendedActions.filter((a: string) =>
+      a.includes("legacy generated file(s) for claude"),
+    );
+    expect(legacyActions.length).toBe(1);
+    expect(legacyActions[0]).toContain("2 legacy generated file(s) for claude");
+
+    // Status should be ok (advisory-only)
+    expect(parsed.status).toBe("ok");
+    expect(exitCode).toBe(0);
+  });
+
+  it("--doctor --format json legacyFiles keeps all entries while recommendedActions dedupes", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".clinerules"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+
+    // Write up-to-date skills for claude
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const claudeAdapter = getAdapter("claude")!;
+    const claudeFiles = await claudeAdapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    for (const file of claudeFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    // Create 3 unexpected files for claude under different dirs
+    await mkdir(join(cwd, ".cursor"), { recursive: true });
+    const header = `<!-- @mp-sentinel-generated generatorVersion=1.6.2 sourceIndexSchema=1.2 sourceIndexHash=abcdef1234567890 agent=claude projectName=${projectName} -->`;
+    await writeFile(
+      join(cwd, ".clinerules", `${projectName}-best-practices.md`),
+      header + "\n# File 1\n",
+    );
+    await writeFile(
+      join(cwd, ".cursor", `${projectName}-best-practices.md`),
+      header + "\n# File 2\n",
+    );
+    await writeFile(join(cwd, ".clinerules", "extra-generated.md"), header + "\n# File 3\n");
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    // Full legacyFiles has all 3
+    const claudeLegacyFiles = parsed.legacyFiles.filter(
+      (f: { agent: string }) => f.agent === "claude",
+    );
+    expect(claudeLegacyFiles.length).toBeGreaterThanOrEqual(3);
+
+    // recommendedActions has exactly one claude legacy entry
+    const claudeActions = parsed.recommendedActions.filter((a: string) =>
+      a.includes("legacy generated file(s) for claude"),
+    );
+    expect(claudeActions.length).toBe(1);
+
+    // No recommendedCommands for legacy cleanup
+    const legacyCommands = parsed.recommendedCommands.filter(
+      (c: string) => c.includes("legacy") || c.includes("delete") || c.includes("rm"),
+    );
+    expect(legacyCommands.length).toBe(0);
+  });
+
+  it("--doctor warnItems group legacy advisories by agent", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".clinerules"), { recursive: true });
+
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+
+    // Write up-to-date skills for claude
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const claudeAdapter = getAdapter("claude")!;
+    const claudeFiles = await claudeAdapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    for (const file of claudeFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    // Create 2 unexpected files for claude under .clinerules/
+    const header = `<!-- @mp-sentinel-generated generatorVersion=1.6.2 sourceIndexSchema=1.2 sourceIndexHash=abcdef1234567890 agent=claude projectName=${projectName} -->`;
+    await writeFile(
+      join(cwd, ".clinerules", `${projectName}-best-practices.md`),
+      header + "\n# File 1\n",
+    );
+    await writeFile(join(cwd, ".clinerules", "extra.md"), header + "\n# File 2\n");
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        agent: "claude",
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    // Full per-file list preserved in JSON
+    expect(parsed.legacyFiles.length).toBeGreaterThanOrEqual(2);
+
+    // recommendedActions groups by agent (one entry, not two)
+    const legacyActions = parsed.recommendedActions.filter((a: string) =>
+      a.includes("legacy generated file(s) for claude"),
+    );
+    expect(legacyActions.length).toBe(1);
+    expect(legacyActions[0]).toContain("2 legacy generated file(s) for claude at unexpected path");
+
+    // No recommendedCommands for legacy cleanup
+    const legacyCommands = parsed.recommendedCommands.filter(
+      (c: string) => c.includes("legacy") || c.includes("delete") || c.includes("rm"),
+    );
+    expect(legacyCommands.length).toBe(0);
+  });
 });

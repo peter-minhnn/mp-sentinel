@@ -70,6 +70,8 @@ Each adapter declares an `AdapterSpec` with the official layout verified against
 
 Legacy advisories appear in all output modes (console warns, JSON includes `legacyFiles` field) but do **not** cause `--check` to fail. See `--format json` for structured legacy file information.
 
+**v1.9.1+:** Legacy advisories are grouped by agent in `recommendedActions` and console output. The full per-file list is preserved in the JSON `legacyFiles` field. `agent:skills:check` also groups legacy advisories instead of repeating per-file messages.
+
 ---
 
 ## Auto-Detection

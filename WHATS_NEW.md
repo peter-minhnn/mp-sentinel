@@ -1,3 +1,16 @@
+# What's New in v1.9.1
+
+## Legacy Advisory Hygiene
+
+v1.9.1 reduces noise from legacy generated file diagnostics by grouping duplicate advisories instead of repeating per-file messages.
+
+- **Grouped legacy advisories in doctor output**: `recommendedActions` in JSON now has one entry per agent (e.g. "3 legacy generated file(s) for claude at unexpected path") instead of one per file. The full per-file list is preserved in `legacyFiles`. Console `[warn] Advisory` section shows grouped summaries.
+- **Grouped `agent:skills:check` legacy output**: Legacy advisories now print one line per agent instead of one per file. Still exits `0` when only legacy advisories exist.
+- **No `recommendedCommands` for legacy cleanup**: Deletion requires user confirmation, so no automated command is emitted for legacy files. Advisory-only.
+- **Docs synced**: `CREATE_SKILLS.md` notes the grouped behavior. `WHATS_NEW.md` and `CHANGELOG.md` include v1.9.1. README badge/pointer bumped to v1.9.1.
+
+---
+
 # What's New in v1.9.0
 
 ## Skill Encoding Hygiene

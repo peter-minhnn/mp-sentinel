@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-04-29
+
+### Changed
+- **Grouped legacy advisories in doctor**: `recommendedActions` and console `[warn] Advisory` output now group legacy files by agent (one entry per agent) instead of emitting one entry per file. The full per-file list is preserved in the JSON `legacyFiles` field.
+- **Grouped `agent:skills:check` legacy output**: Legacy advisories now print one grouped line per agent instead of one line per file. Exit code remains `0` when only legacy advisories exist.
+- **No `recommendedCommands` for legacy cleanup**: Deletion requires user confirmation, so no automated command is generated. Legacy files remain advisory-only.
+
+### Documentation
+- Updated `docs/CREATE_SKILLS.md`, `WHATS_NEW.md`, and `docs/CHANGELOG.md` (this file) with v1.9.1 details.
+- README badge and "What's New" pointer bumped to v1.9.1.
+
 ## [1.9.0] - 2026-04-29
 
 ### Added

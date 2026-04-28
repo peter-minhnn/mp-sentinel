@@ -499,9 +499,25 @@ function categorizeDoctorFindings(
   }
 
   // ── Legacy files (warn) ───────────────────────────────────────────────────
+  // Group by agent so recommendedActions and console output stay concise.
+  // The full per-file list is preserved in JSON legacyFiles field.
+  const legacyByAgent = new Map<string, LegacyFileInfo[]>();
   for (const lf of legacyFiles) {
-    recommendedActions.push(lf.suggestion);
-    warnItems.push({ label: `Legacy: ${lf.path}`, action: lf.suggestion });
+    const key = lf.agent;
+    if (!legacyByAgent.has(key)) {
+      legacyByAgent.set(key, []);
+    }
+    legacyByAgent.get(key)!.push(lf);
+  }
+
+  for (const [agent, files] of legacyByAgent) {
+    const count = files.length;
+    const summary = `${count} legacy generated file(s) for ${agent} at unexpected path. Review and delete after confirming official output exists.`;
+    recommendedActions.push(summary);
+    warnItems.push({
+      label: `Legacy: ${count} generated file(s) for ${agent} at unexpected path`,
+      action: summary,
+    });
   }
 
   // ── Scripts (warn) ────────────────────────────────────────────────────────

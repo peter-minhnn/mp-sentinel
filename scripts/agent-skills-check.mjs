@@ -99,14 +99,21 @@ for (const agent of data.check) {
   }
 }
 
-// --- legacy advisory ---------------------------------------------------
+// --- legacy advisory (grouped by agent) --------------------------------
 
 if (data.legacyFiles && data.legacyFiles.length > 0) {
-  process.stderr.write(
-    `ADVISORY: ${data.legacyFiles.length} legacy generated file(s) detected:\n`,
-  );
+  // Group by agent for concise output
+  const byAgent = new Map();
   for (const lf of data.legacyFiles) {
-    process.stderr.write(`  - ${lf.path} (agent: ${lf.agent}) -> ${lf.suggestion}\n`);
+    const key = lf.agent;
+    if (!byAgent.has(key)) byAgent.set(key, []);
+    byAgent.get(key).push(lf);
+  }
+  for (const [agent, files] of byAgent) {
+    process.stderr.write(
+      `ADVISORY: ${files.length} legacy generated file(s) for ${agent} at unexpected path. ` +
+        `Review and delete after confirming official output exists.\n`,
+    );
   }
 }
 
