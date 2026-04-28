@@ -8,7 +8,8 @@
  *   2. build                — tsup compile
  *   3. indexing --stats     — source index build + stats (JSON)
  *   4. create-skills --dry-run — all adapters, no writes (JSON)
- *   5. --explain-context    — context diagnostics (JSON)
+ *   5. --explain-agents     — agent detection diagnostics (JSON)
+ *   6. --explain-context    — context diagnostics (JSON)
  *
  * Each JSON step is parsed, not just visually inspected.
  * explain-context "unavailable" due to indexing.enabled=false is expected.
@@ -62,7 +63,7 @@ function parseJson(raw, label) {
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write("\n[1/5] release:check\n");
+  process.stdout.write("\n[1/6] release:check\n");
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -73,7 +74,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write("\n[2/5] build\n");
+  process.stdout.write("\n[2/6] build\n");
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -90,7 +91,7 @@ function stepBuild() {
 }
 
 function stepIndexing() {
-  process.stdout.write("\n[3/5] indexing --stats\n");
+  process.stdout.write("\n[3/6] indexing --stats\n");
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -112,7 +113,7 @@ function stepIndexing() {
 }
 
 function stepCreateSkills() {
-  process.stdout.write("\n[4/5] create-skills --dry-run\n");
+  process.stdout.write("\n[4/6] create-skills --dry-run\n");
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -141,8 +142,68 @@ function stepCreateSkills() {
   return true;
 }
 
+function stepExplainAgents() {
+  process.stdout.write("\n[5/6] explain-agents\n");
+  const out = run(
+    "node dist/index.js create-skills --explain-agents --format json",
+    "explain-agents",
+  );
+  if (out === null) return false;
+
+  const json = parseJson(out, "explain-agents");
+  if (!json) return false;
+
+  // Assert top-level fields
+  if (typeof json.projectName !== "string") {
+    fail("explain-agents", "JSON output missing 'projectName' field");
+    return false;
+  }
+  if (!Array.isArray(json.defaultSelection)) {
+    fail("explain-agents", "JSON output missing or invalid 'defaultSelection' field");
+    return false;
+  }
+  if (!Array.isArray(json.agents)) {
+    fail("explain-agents", "JSON output missing 'agents' array");
+    return false;
+  }
+
+  // Assert each agent has required fields
+  const requiredFields = [
+    "id",
+    "detected",
+    "selected",
+    "detectionSignals",
+    "resolvedOutput",
+    "officialDocsUrl",
+  ];
+  for (const agent of json.agents) {
+    for (const field of requiredFields) {
+      if (!(field in agent)) {
+        fail("explain-agents", `agent '${agent.id ?? "?"}' missing field '${field}'`);
+        return false;
+      }
+    }
+    if (typeof agent.detected !== "boolean") {
+      fail("explain-agents", `agent '${agent.id}' 'detected' is not boolean`);
+      return false;
+    }
+    if (typeof agent.selected !== "boolean") {
+      fail("explain-agents", `agent '${agent.id}' 'selected' is not boolean`);
+      return false;
+    }
+    if (!Array.isArray(agent.detectionSignals)) {
+      fail("explain-agents", `agent '${agent.id}' 'detectionSignals' is not array`);
+      return false;
+    }
+  }
+
+  const detected = json.agents.filter((a) => a.detected).map((a) => a.id).join(", ") || "none";
+  ok("explain-agents", `${json.agents.length} agents, project=${json.projectName}, default=${json.defaultSelection}, detected=[${detected}]`);
+  return true;
+}
+
 function stepExplainContext() {
-  process.stdout.write("\n[5/5] explain-context\n");
+  process.stdout.write("\n[6/6] explain-context\n");
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -179,6 +240,7 @@ const steps = [
   stepBuild,
   stepIndexing,
   stepCreateSkills,
+  stepExplainAgents,
   stepExplainContext,
 ];
 

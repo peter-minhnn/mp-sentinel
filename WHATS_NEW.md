@@ -1,3 +1,14 @@
+# What's New in v1.6.1
+
+## Explain Agents Dogfood Guard
+
+v1.6.1 is a patch hardening release — no new behavior, no new CLI flags.
+
+- **Dogfood `--explain-agents` step**: `npm run dogfood` now includes a `create-skills --explain-agents --format json` smoke test that parses the JSON output and asserts all required fields (`projectName`, `defaultSelection`, `agents`, and per-agent `id`, `detected`, `selected`, `detectionSignals`, `resolvedOutput`, `officialDocsUrl`). Ensures the v1.6.0 diagnostic mode is always validated with the dist build.
+- **Dogfood step count bumped to 6/6**: The workflow now covers release:check → build → indexing → create-skills dry-run → explain-agents → explain-context.
+
+---
+
 # What's New in v1.6.0
 
 ## Explain Agent Detection

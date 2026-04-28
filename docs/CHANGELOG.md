@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-04-28
+
+### Changed
+- **Dogfood `--explain-agents` step**: `npm run dogfood` now includes a `create-skills --explain-agents --format json` smoke test that parses the JSON output and asserts all required fields (`projectName`, `defaultSelection`, `agents`, and per-agent `id`, `detected`, `selected`, `detectionSignals`, `resolvedOutput`, `officialDocsUrl`). Dogfood step count bumped from 5/5 to 6/6.
+- **Docs**: `AGENTS.md` release checklist updated to mention `explain-agents` in the dogfood summary. `README.md` version pointer bumped to v1.6.1.
+
 ## [1.6.0] - 2026-04-28
 
 ### Added
