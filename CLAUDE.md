@@ -28,6 +28,12 @@ Always run the checklist from `AGENTS.md §8` before reporting a task complete. 
 npm run format:check && npm run typecheck && npm test && npm run build
 ```
 
+For release changes, also run `npm run release:check` after version bumps.
+
+### Version bumps
+
+Use `npm version <newversion> --no-git-tag-version` or manual root-only edits (`package.json.version` and `package-lock.json` top-level `version` + `packages[""].version`). **Never** global search/replace `"version"` across the lockfile — it corrupts dependency version fields.
+
 ### File references
 
 Use `src/types/index.ts` as the single source for shared types. Do not redeclare types inline in service files.

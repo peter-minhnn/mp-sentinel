@@ -215,12 +215,16 @@ mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';
 
 Before pushing a release tag, verify:
 
+- [ ] `npm run release:check` — all version references and lockfile integrity pass.
 - [ ] `git tag -l vX.Y.Z` — tag exists and `git rev-parse vX.Y.Z^{commit}` matches the intended release commit.
-- [ ] `node -e "console.log(require('./package-lock.json').version)"` — lockfile version matches.
 - [ ] `npm pack --dry-run` — includes only intended runtime/docs files. No `.env`, cache, or test artifacts.
 - [ ] **Never force-push release tags** (`git push --force origin vX.Y.Z`) without explicit approval.
 - [ ] `git push origin main` before pushing tags so the main branch is current.
 - [ ] `git push origin vX.Y.Z` — push tags individually so you can inspect each one.
+
+### Version bump rules
+
+- **Always use npm tooling** (`npm version <newversion> --no-git-tag-version`) or **root-only manual edits** (`package.json` + `package-lock.json` top-level fields) for version bumps. Do not search/replace across the entire lockfile — prior releases were corrupted by global `"version"` string replacement that overwrote dependency version fields.
 
 ---
 

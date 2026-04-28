@@ -1,3 +1,15 @@
+# What's New in v1.1.3
+
+## Release Automation Guardrails
+
+v1.1.3 adds automated release consistency validation — no runtime code changes.
+
+- **`npm run release:check`**: New script that validates version consistency across `package.json`, `package-lock.json`, README badge, README "What's New" pointer, `WHATS_NEW.md`, and `CHANGELOG.md`.
+- **Lockfile integrity check**: Validates that every `resolved` tarball URL in `package-lock.json` matches the entry's declared version. Prevents the lockfile corruption seen in v1.1.1.
+- **Release checklist updated**: `AGENTS.md` now includes `npm run release:check` as the first verification step. Version bump rules enforce npm tooling or root-only edits — never global search/replace on `"version"` in the lockfile.
+
+---
+
 # What's New in v1.1.2
 
 ## Lockfile Integrity Patch

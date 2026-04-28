@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-04-28
+
+### Added
+- **`npm run release:check`**: Automated release consistency validation script (`scripts/release-check.mjs`) that verifies version alignment across `package.json`, `package-lock.json` (root and `packages[""]`), README badge/pointer, `WHATS_NEW.md`, and `CHANGELOG.md`.
+- **Lockfile integrity guard**: Validates every `resolved` tarball URL in `package-lock.json` ends with `-<version>.tgz`, catching the class of corruption that v1.1.1 suffered from global version-string replacement.
+- **9 focused tests** (`src/__tests__/release-check.test.ts`): Valid fixture passes; badge, What's New, WHATS_NEW, CHANGELOG, lockfile root, and lockfile dependency mismatches all fail correctly; git/link/file deps are skipped; missing package.json exits 2.
+
+### Changed
+- **Release checklist**: Added `npm run release:check` as the first pre-tag verification step in `AGENTS.md`. Added version bump rules requiring npm tooling or root-only edits.
+- **`CLAUDE.md`**: Added release validation guidance and version bump rules.
+
 ## [1.1.2] - 2026-04-28
 
 ### Fixed
