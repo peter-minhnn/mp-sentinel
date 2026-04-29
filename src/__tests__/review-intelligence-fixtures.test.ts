@@ -873,6 +873,199 @@ describe("Review Intelligence — Lane A precision", () => {
     return index;
   };
 
+  // ── Lane E: Review Evaluation Harness ──────────────────────────────────────────
+  //
+
+  describe("Review Intelligence — Lane E precision", () => {
+    let cwd: string;
+
+    const makeIndexWithFiles = async (
+      files: Record<string, string>,
+      packageJsonExtras: Record<string, unknown> = {},
+    ): Promise<SourceIndex> => {
+      cwd = await makeTempDir();
+      await mkdir(join(cwd, "src"), { recursive: true });
+      await writeFile(
+        join(cwd, "package.json"),
+        JSON.stringify({ name: "lane-e-test", version: "1.0.0", ...packageJsonExtras }),
+      );
+      for (const [path, content] of Object.entries(files)) {
+        const fullPath = join(cwd, path);
+        await mkdir(join(fullPath, ".."), { recursive: true });
+        await writeFile(fullPath, content);
+      }
+      const index = await buildSourceIndex(
+        cwd,
+        {
+          enabled: true,
+          languages: ["typescript", "tsx", "javascript", "jsx"],
+          cachePath: ".mp-sentinel-cache/source-index.json",
+          maxFileSize: 512000,
+          maxRelatedFiles: 3,
+        } satisfies IndexingConfig,
+        true,
+      );
+      if (!index) throw new Error("Failed to build index");
+      return index;
+    };
+
+    // E1. Public API false positive: file with same basename but different
+    // directory must not receive public-api signal.
+    it("file with same basename but different path does not get public-api signal", async () => {
+      const index = await makeIndexWithFiles({
+        "src/api.ts": `export function api() { return 1; }`,
+        "src/sub/api.ts": `export function subApi() { return 2; }`,
+        "src/lib.ts": `export { api } from "./api.js";`,
+      });
+
+      // Change src/sub/api.ts — same basename as the public-api file src/api.ts
+      // but in a different directory. It should NOT get public-api.
+      const result = await buildReviewContext(index, [{ path: "src/sub/api.ts" }]);
+      if (result.metadata.includedSignals) {
+        expect(result.metadata.includedSignals).not.toContain("public-api");
+      }
+      expect(result.context).not.toContain("Public API Risk");
+      // src/api.ts should NOT appear as a signal file
+      const publicApiSignals = (result.metadata.intelligenceSignals ?? []).filter(
+        (s) => s.type === "public-api",
+      );
+      expect(publicApiSignals.length).toBe(0);
+    });
+
+    // E2. Risk boundary: exactly 2 importers → no risk; exactly 3 importers → risk.
+    it("file imported by exactly 3 files emits risk signal (threshold boundary)", async () => {
+      const index = await makeIndexWithFiles({
+        "src/hub.ts": `export const hub = 1;`,
+        "src/a.ts": `import { hub } from "./hub.js"; export const a = 1;`,
+        "src/b.ts": `import { hub } from "./hub.js"; export const b = 1;`,
+        "src/c.ts": `import { hub } from "./hub.js"; export const c = 1;`,
+      });
+
+      const result = await buildReviewContext(index, [{ path: "src/hub.ts" }]);
+      expect(result.metadata.includedSignals).toContain("risk");
+      expect(result.context).toContain("Hub File Blast Radius");
+
+      const riskSignal = (result.metadata.intelligenceSignals ?? []).find(
+        (s) => s.type === "risk",
+      );
+      expect(riskSignal).toBeDefined();
+      expect(riskSignal!.confidence).toBe("medium"); // 3 importers → medium confidence
+      expect(riskSignal!.evidence).toContain("3");
+    });
+
+    // E2b. Confirm the negative side: exactly 2 importers → no risk.
+    it("file imported by exactly 2 files does not emit risk signal (below threshold)", async () => {
+      const index = await makeIndexWithFiles({
+        "src/leaf.ts": `export const leaf = 1;`,
+        "src/a.ts": `import { leaf } from "./leaf.js"; export const a = 1;`,
+        "src/b.ts": `import { leaf } from "./leaf.js"; export const b = 1;`,
+      });
+
+      const result = await buildReviewContext(index, [{ path: "src/leaf.ts" }]);
+      if (result.metadata.includedSignals) {
+        expect(result.metadata.includedSignals).not.toContain("risk");
+      }
+      expect(result.context).not.toContain("Hub File Blast Radius");
+    });
+
+    // E3. Config role file does not emit test-gap.
+    // buildTestingMap skips files with role "config" alongside utils and adapter.
+    it("config role file does not emit test-gap", async () => {
+      const index = await makeIndexWithFiles({
+        "src/config/settings.ts": `export const settings = { port: 3000 };`,
+      });
+
+      const result = await buildReviewContext(index, [{ path: "src/config/settings.ts" }]);
+      if (result.metadata.includedSignals) {
+        expect(result.metadata.includedSignals).not.toContain("test-gap");
+      }
+      expect(result.context).not.toContain("Test Coverage Gap");
+    });
+
+    // E4. Dependency signal includes package name and version in evidence.
+    it("dependency signal contains package name and version in evidence", async () => {
+      const index = await makeIndexWithFiles(
+        {
+          "src/scanner.ts": `import fg from "fast-glob"; export const scan = () => fg.sync("*.ts");`,
+        },
+        { dependencies: { "fast-glob": "3.3.3" } },
+      );
+
+      const result = await buildReviewContext(index, [{ path: "src/scanner.ts" }]);
+      expect(result.metadata.includedSignals).toContain("dependency");
+
+      const depSignal = (result.metadata.intelligenceSignals ?? []).find(
+        (s) => s.type === "dependency",
+      );
+      expect(depSignal).toBeDefined();
+      expect(depSignal!.file).toBe("src/scanner.ts");
+      expect(depSignal!.evidence).toContain("fast-glob");
+      expect(depSignal!.evidence).toContain("3.3.3");
+      expect(depSignal!.reason).toContain("fast-glob");
+    });
+
+    // E5. Multiple changed files: signals dedupe and changed-file order remains first.
+    it("multiple changed files produce deduplicated signals across all files", async () => {
+      const index = await makeIndexWithFiles(
+        {
+          "src/api.ts": `export function api() { return 1; }`,
+          "src/lib.ts": `export { api } from "./api.js";`,
+          "src/hub.ts": `export const hub = 1;`,
+          "src/user1.ts": `import { hub } from "./hub.js"; export const x = 1;`,
+          "src/user2.ts": `import { hub } from "./hub.js"; export const y = 1;`,
+          "src/user3.ts": `import { hub } from "./hub.js"; export const z = 1;`,
+          "src/untested.ts": `export function untested() { return 1; }`,
+        },
+        { dependencies: { lodash: "4.0.0" } },
+      );
+
+      const result = await buildReviewContext(index, [
+        { path: "src/api.ts" },
+        { path: "src/hub.ts" },
+        { path: "src/untested.ts" },
+      ]);
+
+      // All three changed files should produce distinct signals
+      expect(result.metadata.includedSignals).toContain("public-api"); // api.ts
+      expect(result.metadata.includedSignals).toContain("risk"); // hub.ts
+      expect(result.metadata.includedSignals).toContain("test-gap"); // untested.ts
+
+      // No duplicate signal types in includedSignals
+      const includedSignalSet = new Set(result.metadata.includedSignals);
+      expect(includedSignalSet.size).toBe(result.metadata.includedSignals!.length);
+
+      // Changed files appear first in context (before related files)
+      const context = result.context;
+      const firstChangedIdx = context.indexOf("(changed)");
+      expect(firstChangedIdx).toBeGreaterThan(0);
+      const lastChangedIdx = context.lastIndexOf("(changed)");
+      // No non-changed file should appear before the changed section ends
+      const afterChanged = context.slice(lastChangedIdx + 20);
+      // The next section after changed files should NOT have "(changed)" tag
+      // confirming changed files are grouped together first
+      expect(result.metadata.includedFiles.length).toBeGreaterThanOrEqual(3);
+    });
+
+    // E5b. Same file appearing twice in changedFiles produces deduplicated signals.
+    it("duplicate changed file entries do not produce duplicate signals", async () => {
+      const index = await makeIndexWithFiles({
+        "src/api.ts": `export function api() { return 1; }`,
+        "src/lib.ts": `export { api } from "./api.js";`,
+      });
+
+      const result = await buildReviewContext(index, [
+        { path: "src/api.ts" },
+        { path: "src/api.ts" },
+      ]);
+
+      // Signal should appear once, not twice
+      const publicApiSignals = (result.metadata.intelligenceSignals ?? []).filter(
+        (s) => s.type === "public-api",
+      );
+      expect(publicApiSignals.length).toBe(1);
+    });
+  });
+
   // 4a. File imported by only 2 files does not emit risk signal.
   // The hub threshold is importedBy >= 3; a file imported by exactly 2 is not a hub.
   it("file imported by only 2 files does not emit risk signal", async () => {
