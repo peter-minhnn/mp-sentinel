@@ -2948,3 +2948,245 @@ describe("suggestedCommands dedup and determinism", () => {
     expect(ctx1.suggestedCommands).toEqual(ctx2.suggestedCommands);
   });
 });
+
+// ── Index Health Check (--health) ─────────────────────────────────────────────
+
+describe("indexing --health", () => {
+  it("reports missing status when no cache exists", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("missing");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports unreadable status for corrupt cache", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await writeFile(join(cwd, ".mp-sentinel-cache", "source-index.json"), "not valid json {{");
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("unreadable");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports stale when manifest changed after index build", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Change manifest (package.json)
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "2.0.0" }),
+    );
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("stale");
+      expect(parsed.staleReasons).toContain("manifest changed");
+      expect(parsed.manifestHash).not.toBe(parsed.currentManifestHash);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports stale when source file changed after index build", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Change source file
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 2;`);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("stale");
+      expect(parsed.staleReasons).toContain("source files changed");
+      expect(parsed.changedFilesSample).toContain("src/index.ts");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports stale when indexed file is deleted", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Delete indexed file
+    await rm(join(cwd, "src", "index.ts"));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("stale");
+      expect(parsed.staleReasons).toContain("indexed files deleted");
+      expect(parsed.missingFilesSample).toContain("src/index.ts");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports ok when index is healthy", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("ok");
+      expect(parsed.schemaVersion).toBeDefined();
+      expect(parsed.totalFiles).toBeGreaterThan(0);
+      expect(parsed.parseErrorRate).toBe(0);
+      expect(parsed.staleReasons).toEqual([]);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("JSON stdout is parseable and logs do not leak into stdout", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const stdoutLines: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      stdoutLines.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+    } finally {
+      console.log = originalLog;
+    }
+
+    // Verify stdout contains exactly one line of valid JSON
+    const jsonLines = stdoutLines.filter((line) => line.trim().startsWith("{"));
+    expect(jsonLines.length).toBe(1);
+    const parsed = JSON.parse(jsonLines[0]!.trim());
+    expect(parsed.status).toBeDefined();
+
+    // Verify no log output leaked into JSON
+    for (const line of stdoutLines) {
+      if (!line.trim().startsWith("{")) {
+        // Non-JSON lines should only appear in console mode, not json mode
+        // In json mode, logs are suppressed via setLogQuietMode
+        expect(line).toBe("");
+      }
+    }
+  });
+});

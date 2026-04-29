@@ -3769,6 +3769,8 @@ describe("runCreateSkillsCommand --doctor", () => {
       "skills",
       "legacyFiles",
       "scripts",
+      "aiEnrichmentCache",
+      "aiEnrichment",
       "recommendedActions",
       "recommendedCommands",
     ];
@@ -3785,6 +3787,10 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.index).toBeDefined();
     expect(typeof parsed.index.status).toBe("string");
     expect(typeof parsed.status).toBe("string");
+    expect(parsed.aiEnrichment).toBeDefined();
+    expect(typeof parsed.aiEnrichment.enabled).toBe("boolean");
+    expect(typeof parsed.aiEnrichment.apiKeyPresent).toBe("boolean");
+    expect(["disabled", "ready", "action-required"]).toContain(parsed.aiEnrichment.status);
     // Missing index → action-required → exit 1
     expect(exitCode).toBe(1);
     expect(parsed.status).toBe("action-required");
@@ -5334,6 +5340,289 @@ describe("runCreateSkillsCommand --doctor", () => {
     // Index status is ok because manifest hasn't changed (skills may be missing though)
     expect(parsed.index.status).toBe("ok");
     expect(parsed.index.manifestHash).toBe(index!.manifestHash);
+  });
+
+  // ── Doctor AI enrichment readiness (v1.19.0+) ─────────────────────────────
+
+  it("--doctor disabled AI enrichment has status=disabled and does not affect exit code", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    // Build index and write up-to-date skills (healthy project)
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    const adapter = getAdapter("claude")!;
+    const projectName = (index!.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(index!, cwd);
+    const genVersion = getToolVersion();
+    const genFiles = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    for (const file of genFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: index!.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+
+    // No AI config → disabled by default
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.status).toBe("ok");
+    expect(exitCode).toBe(0);
+    expect(parsed.aiEnrichment.status).toBe("disabled");
+    expect(parsed.aiEnrichment.enabled).toBe(false);
+    expect(parsed.aiEnrichment.apiKeyPresent).toBe(false);
+    expect(parsed.aiEnrichment.reason).toBeDefined();
+  });
+
+  it("--doctor enabled + missing API key returns status=action-required", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    // Write config with AI enrichment enabled, no API key set
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
+    );
+
+    // Ensure no API key is set
+    const prevKey = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+
+    let exitCode: number;
+    let parsed: Record<string, unknown>;
+    try {
+      const cap = captureStdout();
+      exitCode = await runCreateSkillsCommand(
+        {
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        },
+        cwd,
+      );
+      cap.restore();
+      parsed = JSON.parse(cap.stdout) as Record<string, unknown>;
+    } finally {
+      if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+    }
+
+    const aiEnrich = parsed.aiEnrichment as Record<string, unknown>;
+    expect(aiEnrich.status).toBe("action-required");
+    expect(aiEnrich.enabled).toBe(true);
+    expect(aiEnrich.apiKeyPresent).toBe(false);
+    expect(aiEnrich.provider).toBe("gemini");
+    expect(typeof aiEnrich.reason).toBe("string");
+    expect(parsed.status).toBe("action-required");
+    expect(exitCode).toBe(1);
+  });
+
+  it("--doctor enabled + API key present returns status=ready", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
+    );
+
+    const prevKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-api-key-fake";
+
+    let exitCode: number;
+    let parsed: Record<string, unknown>;
+    try {
+      const cap = captureStdout();
+      exitCode = await runCreateSkillsCommand(
+        {
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        },
+        cwd,
+      );
+      cap.restore();
+      parsed = JSON.parse(cap.stdout) as Record<string, unknown>;
+    } finally {
+      if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+    }
+
+    const aiEnrich = parsed.aiEnrichment as Record<string, unknown>;
+    expect(aiEnrich.status).toBe("ready");
+    expect(aiEnrich.enabled).toBe(true);
+    expect(aiEnrich.apiKeyPresent).toBe(true);
+    expect(aiEnrich.provider).toBe("gemini");
+    // ready should not have a reason
+    expect(aiEnrich.reason).toBeUndefined();
+    // readiness alone doesn't fail the doctor (index is missing though)
+    expect(parsed.status).toBe("action-required"); // due to missing index
+  });
+
+  it("--doctor invalid provider returns status=action-required", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({ createSkills: { ai: { enabled: true, provider: "invalid-provider" } } }),
+    );
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    const aiEnrich = parsed.aiEnrichment;
+    expect(aiEnrich.status).toBe("action-required");
+    expect(aiEnrich.enabled).toBe(true);
+    expect(aiEnrich.apiKeyPresent).toBe(false);
+    expect(aiEnrich.provider).toBe("invalid-provider");
+    expect(typeof aiEnrich.reason).toBe("string");
+    expect(aiEnrich.reason).toContain("invalid-provider");
+    expect(parsed.status).toBe("action-required");
+  });
+
+  it("--doctor --format json AI enrichment readiness fields parse clean", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({
+        createSkills: { ai: { enabled: true, provider: "anthropic", model: "claude-sonnet-4-6" } },
+      }),
+    );
+
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
+
+    let parsed: Record<string, unknown>;
+    try {
+      const cap = captureStdout();
+      await runCreateSkillsCommand(
+        {
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        },
+        cwd,
+      );
+      cap.restore();
+      parsed = JSON.parse(cap.stdout) as Record<string, unknown>;
+      // Verify stdout is directly parseable (no log prefix)
+      expect(cap.stdout.startsWith("{")).toBe(true);
+    } finally {
+      if (prevKey) process.env.ANTHROPIC_API_KEY = prevKey;
+    }
+
+    const aiEnrich = parsed.aiEnrichment as Record<string, unknown>;
+    // All required fields present with correct types
+    expect(typeof aiEnrich.enabled).toBe("boolean");
+    expect(typeof aiEnrich.apiKeyPresent).toBe("boolean");
+    expect(["disabled", "ready", "action-required"]).toContain(aiEnrich.status);
+    expect(aiEnrich.provider).toBe("anthropic");
+    expect(aiEnrich.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("--doctor AI enrichment readiness makes no provider/network call", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    // Enable AI enrichment with a provider that would need a network call
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
+    );
+
+    const prevKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "fake-key";
+
+    try {
+      // Doctor must complete quickly without making any network calls
+      const cap = captureStdout();
+      const start = Date.now();
+      const exitCode = await runCreateSkillsCommand(
+        {
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        },
+        cwd,
+      );
+      const elapsed = Date.now() - start;
+      cap.restore();
+
+      // Doctor should complete quickly (no network I/O)
+      expect(elapsed).toBeLessThan(5000);
+
+      const parsed = JSON.parse(cap.stdout);
+      expect(parsed.aiEnrichment.status).toBe("ready");
+      // Should not crash or throw from attempting network
+      expect(typeof exitCode).toBe("number");
+    } finally {
+      if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+    }
   });
 });
 

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-04-29
+
+### Added
+- **Source index health CLI** (`src/commands/indexing.ts`): New `--health` flag on `mp-sentinel indexing` for read-only cache diagnostic. Reports JSON with `status` (`ok`, `missing`, `unreadable`, `stale`), `schemaVersion`, `totalFiles`, `parseErrorRate`, `manifestHash` vs `currentManifestHash`, `staleReasons`, and samples of changed/missing files. No build, no cache writes, no AI calls. Exit codes: `0` = healthy, `1` = missing/stale/unreadable, `2` = error.
+
+- **Generated skill contract guard** (`src/services/skills-generator/quality-gate.ts`): `checkAgentWorkflowContract()` now enforces strict per-command validation. Each of 5 index commands (`--agent-context`, `--explain-index`, `--find-symbol`, `--find-import`, `--stats`) must be individually present with `--index-format json` on the same line. `--explain-context` must be present with `--format json` on the same line. Replaces the previous fuzzy check that accepted any one of seven patterns.
+- **AI enrichment readiness in doctor** (`src/commands/create-skills.ts`, `src/types/index.ts`): `--doctor` now reports AI enrichment readiness without any network calls. New `DoctorAIEnrichmentReadinessInfo` type with status (`disabled`, `ready`, `action-required`). Validates provider against known list (gemini, openai, anthropic, grok) and checks for the corresponding API key env var. `action-required` status triggers exit 1; `disabled` is informational only.
+
+### Tests
+- 7 new `--health` tests: missing cache, corrupt cache, manifest changed, source file changed, deleted indexed file, healthy index, JSON stdout isolation.
+- 10 new contract guard tests: valid workflow, 6 individual missing-command tests, 2 missing-format-flag tests, 1 regression test for partial compliance.
+- 6 new AI readiness doctor tests: disabled, missing API key, ready, invalid provider, JSON output schema, no-network-call assertion.
+
 ## [1.18.0] - 2026-04-29
 
 ### Added

@@ -1,3 +1,13 @@
+# What's New in v1.19.0
+
+## Source Index Health CLI, Skill Contract Guard & AI Readiness Doctor
+
+v1.19.0 integrates three parallel lanes: Lane A (source index health CLI), Lane B (skill contract guard), and Lane C (AI readiness doctor).
+
+- **Source index health CLI** (`src/commands/indexing.ts`): New `--health` flag on the indexing command performs a read-only diagnostic of the source index cache. Reports status (`ok`, `missing`, `unreadable`, `stale`), schema version, file count, parse error rate, manifest hash comparison, and samples of changed/missing files. Detects staleness from manifest changes, source file SHA256 mismatches, and deleted indexed files. Exit `0` for healthy, `1` for missing/stale/unreadable, `2` for runtime error. JSON mode emits the health payload to stdout; all logs go to stderr. 7 new tests covering missing cache, corrupt cache, manifest change, source file change, deleted file, healthy index, and JSON stdout isolation.
+
+---
+
 # What's New in v1.18.0
 
 ## Positive Explain-Context Dogfood, Doctor Manifest Freshness & Safe Suggested Commands

@@ -1180,6 +1180,228 @@ describe("validateSkillQuality", () => {
     });
   });
 
+  // ── Agent workflow contract (v1.19+) ────────────────────────────────────────
+
+  describe("agent workflow contract (v1.19+)", () => {
+    const VALID_REF_ROUTING = [
+      "| Directory Pattern | Recommended References |",
+      "|---|---|",
+      "| `src/cli/` | commands, testing-map |",
+      "| Other files | architecture, codebase-map |",
+    ].join("\n");
+
+    function makeSingleFileSkillWithWorkflow(workflowBody: string): string {
+      return [
+        "## Required Agent Workflow",
+        "",
+        workflowBody,
+        "",
+        "## Reference Routing",
+        "",
+        VALID_REF_ROUTING,
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "module map",
+        "",
+        "## Codebase Map",
+        "",
+        "codebase map",
+        "",
+        "## Testing Map",
+        "",
+        "testing map",
+        "",
+        "## Dependencies",
+        "",
+        "dependencies",
+        "",
+        "## Public API Surface",
+        "",
+        "public api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+    }
+
+    const VALID_WORKFLOW = [
+      "Before writing any code for **test**, follow these steps in order:",
+      "",
+      "1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.",
+      "2. **Read local agent instructions**: `AGENTS.md`, `CLAUDE.md`.",
+      "3. **Before touching any file**, use source index diagnostics:",
+      "   - `mp-sentinel indexing --agent-context <file> --index-format json` - symbols, imports, dependents",
+      "   - `mp-sentinel indexing --explain-index <file> --index-format json` - imports, dependents, symbols",
+      "   - `mp-sentinel indexing --find-symbol <name> --index-format json` - search for symbols",
+      "   - `mp-sentinel indexing --find-import <pkg> --index-format json` - search for imports",
+      "   - `mp-sentinel indexing --stats --index-format json` - index summary",
+      "   - `mp-sentinel --explain-context --format json --files <file>` - review context enrichment",
+      "4. **Load only the relevant references** for the paths you touch.",
+      "5. **Respect the profile rules** - each profile has specific review pitfalls listed below.",
+    ].join("\n");
+
+    it("returns zero agent-workflow-contract errors for valid workflow", () => {
+      const content = makeSingleFileSkillWithWorkflow(VALID_WORKFLOW);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it("flags missing --agent-context as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --agent-context <file> --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("agent-context");
+    });
+
+    it("flags missing --explain-index as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --explain-index <file> --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("explain-index");
+    });
+
+    it("flags missing --find-symbol as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("find-symbol");
+    });
+
+    it("flags missing --find-import as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --find-import <pkg> --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("find-import");
+    });
+
+    it("flags missing --stats as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --stats --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("stats");
+    });
+
+    it("flags missing --explain-context as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel --explain-context --format json --files <file>`",
+        "`mp-sentinel --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("explain-context");
+    });
+
+    it("flags missing --index-format json on one indexing command as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
+        "`mp-sentinel indexing --find-symbol <name>`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("find-symbol");
+      expect(errors[0]!.message).toContain("index-format json");
+    });
+
+    it("flags missing --format json on --explain-context as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel --explain-context --format json --files <file>`",
+        "`mp-sentinel --explain-context --files <file>`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("explain-context");
+      expect(errors[0]!.message).toContain("format json");
+    });
+
+    it("flags only the indexing command that lacks --index-format json (regression)", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
+        "`mp-sentinel indexing --find-symbol <name>`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("find-symbol");
+      expect(errors[0]!.message).toContain("index-format json");
+      // Other commands still have --index-format json and should not error
+      const otherFailures = errors.filter((c) => !c.message.includes("find-symbol"));
+      expect(otherFailures).toHaveLength(0);
+    });
+  });
+
   // ── Adapter spec completeness (v1.14+) ─────────────────────────────────────
 
   describe("validateAdapterSpec (spec completeness)", () => {

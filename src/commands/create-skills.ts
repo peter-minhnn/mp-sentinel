@@ -15,6 +15,7 @@ import type {
   CheckFileStatus,
   DoctorActionEntry,
   DoctorAIEnrichmentCacheInfo,
+  DoctorAIEnrichmentReadinessInfo,
   DoctorIndexInfo,
   DoctorOutput,
   DoctorScriptInfo,
@@ -431,6 +432,7 @@ function categorizeDoctorFindings(
   scripts: DoctorScriptInfo[],
   cachePath: string,
   hasRefreshScript: boolean,
+  aiEnrichment: DoctorAIEnrichmentReadinessInfo,
 ): CategorizedFindings {
   const recommendedActions: string[] = [];
   const recommendedCommands: string[] = [];
@@ -531,6 +533,18 @@ function categorizeDoctorFindings(
     }
   }
 
+  // ── AI enrichment readiness (fail / warn) ─────────────────────────────────
+  if (aiEnrichment.status === "action-required") {
+    const action = aiEnrichment.reason ?? "AI enrichment requires configuration.";
+    recommendedActions.push(action);
+    failItems.push({ label: "AI enrichment: action-required", action });
+  } else if (aiEnrichment.status === "disabled") {
+    const action =
+      "AI enrichment is disabled. Enable it in .sentinelrc.json (createSkills.ai.enabled) for richer generated skills.";
+    recommendedActions.push(action);
+    warnItems.push({ label: "AI enrichment: disabled", action });
+  }
+
   // ── Dedupe commands while preserving order ────────────────────────────────
   const seen = new Set<string>();
   const dedupedCommands = recommendedCommands.filter((c) => {
@@ -553,6 +567,78 @@ const DOCTOR_SCRIPTS = [
   { name: "dogfood", description: "Validates end-to-end local workflow" },
   { name: "release:check", description: "Verifies version consistency and lockfile integrity" },
 ];
+
+const VALID_AI_PROVIDERS = ["gemini", "openai", "anthropic", "grok"] as const;
+
+function getApiKeyForProviderName(provider: string): string | undefined {
+  switch (provider) {
+    case "gemini":
+      return process.env.GEMINI_API_KEY;
+    case "openai":
+      return process.env.OPENAI_API_KEY;
+    case "anthropic":
+      return process.env.ANTHROPIC_API_KEY;
+    case "grok":
+      return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    default:
+      return undefined;
+  }
+}
+
+function computeAIEnrichmentReadiness(
+  config: Awaited<ReturnType<typeof loadProjectConfig>>,
+): DoctorAIEnrichmentReadinessInfo {
+  const aiConfig = config.createSkills?.ai;
+  const enabled = Boolean(aiConfig?.enabled);
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      apiKeyPresent: false,
+      status: "disabled",
+      reason: "AI enrichment is disabled in config (createSkills.ai.enabled).",
+    };
+  }
+
+  const provider = (aiConfig?.provider ?? process.env.AI_PROVIDER ?? "gemini").toLowerCase();
+  const model = aiConfig?.model;
+
+  if (!(VALID_AI_PROVIDERS as readonly string[]).includes(provider)) {
+    const result: DoctorAIEnrichmentReadinessInfo = {
+      enabled: true,
+      apiKeyPresent: false,
+      status: "action-required",
+      reason: `Unsupported AI provider "${aiConfig?.provider ?? "unspecified"}". Supported: ${VALID_AI_PROVIDERS.join(", ")}.`,
+    };
+    if (aiConfig?.provider) result.provider = aiConfig.provider;
+    if (model) result.model = model;
+    return result;
+  }
+
+  const apiKey = getApiKeyForProviderName(provider);
+  if (!apiKey) {
+    const envVar =
+      provider === "grok" ? "GROK_API_KEY or XAI_API_KEY" : `${provider.toUpperCase()}_API_KEY`;
+    const result: DoctorAIEnrichmentReadinessInfo = {
+      enabled: true,
+      provider,
+      apiKeyPresent: false,
+      status: "action-required",
+      reason: `AI enrichment enabled but no API key found for provider "${provider}". Set the ${envVar} environment variable.`,
+    };
+    if (model) result.model = model;
+    return result;
+  }
+
+  const result: DoctorAIEnrichmentReadinessInfo = {
+    enabled: true,
+    provider,
+    apiKeyPresent: true,
+    status: "ready",
+  };
+  if (model) result.model = model;
+  return result;
+}
 
 async function runDoctor(
   values: CreateSkillsValues,
@@ -757,7 +843,10 @@ async function runDoctor(
     description: def.description,
   }));
 
-  // j) Categorize all findings
+  // j) AI enrichment readiness (read-only — no provider call, no network, no cache write)
+  const aiEnrichment = computeAIEnrichmentReadiness(config);
+
+  // k) Categorize all findings
   const findings = categorizeDoctorFindings(
     indexInfo,
     skills,
@@ -765,9 +854,10 @@ async function runDoctor(
     scripts,
     indexingConfig.cachePath,
     hasRefreshScript,
+    aiEnrichment,
   );
 
-  // k) Determine overall status
+  // l) Determine overall status
   let overallStatus: DoctorStatus;
   if (indexInfo.status === "unreadable") {
     overallStatus = "error";
@@ -777,7 +867,7 @@ async function runDoctor(
     overallStatus = "ok";
   }
 
-  // l) Output
+  // m) Output
   if (isJson) {
     const out: DoctorOutput = {
       status: overallStatus,
@@ -788,6 +878,7 @@ async function runDoctor(
       legacyFiles,
       scripts,
       aiEnrichmentCache,
+      aiEnrichment,
       recommendedActions: findings.recommendedActions,
       recommendedCommands: findings.recommendedCommands,
     };
@@ -868,13 +959,21 @@ async function runDoctor(
       log.info(`  AI enrichment cache: ${aiEnrichmentCache.entries} entries`);
     }
 
+    // AI enrichment readiness
+    if (aiEnrichment.status === "ready") {
+      const prov = aiEnrichment.provider ?? "default";
+      const mod = aiEnrichment.model ? ` (${aiEnrichment.model})` : "";
+      log.info(`  AI enrichment: ready (${prov}${mod})`);
+    }
+
     if (
       explainResult.entries.length === 0 &&
       indexInfo.status !== "ok" &&
       indexInfo.status !== "stale" &&
       skills.filter((s) => s.status === "up-to-date").length === 0 &&
       scripts.filter((s) => s.status === "available").length === 0 &&
-      aiEnrichmentCache.status !== "available"
+      aiEnrichmentCache.status !== "available" &&
+      aiEnrichment.status !== "ready"
     ) {
       log.info("  (no items)");
     }
@@ -891,7 +990,7 @@ async function runDoctor(
     }
   }
 
-  // m) Exit code
+  // n) Exit code
   if (overallStatus === "error") return 2;
   if (overallStatus === "action-required") return 1;
   return 0;

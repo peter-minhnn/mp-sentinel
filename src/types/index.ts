@@ -1029,6 +1029,21 @@ export interface DoctorAIEnrichmentCacheInfo {
   reason?: string;
 }
 
+// ── Doctor AI Enrichment Readiness types (v1.19.0+) ──────────────────────────
+
+/** AI enrichment readiness status for the doctor diagnostic */
+export type DoctorAIEnrichmentReadinessStatus = "disabled" | "ready" | "action-required";
+
+/** AI enrichment readiness info reported by --doctor */
+export interface DoctorAIEnrichmentReadinessInfo {
+  enabled: boolean;
+  provider?: string;
+  model?: string;
+  apiKeyPresent: boolean;
+  status: DoctorAIEnrichmentReadinessStatus;
+  reason?: string;
+}
+
 /** Top-level output of the --doctor diagnostic */
 export interface DoctorOutput {
   status: DoctorStatus;
@@ -1039,6 +1054,7 @@ export interface DoctorOutput {
   legacyFiles: LegacyFileInfo[];
   scripts: DoctorScriptInfo[];
   aiEnrichmentCache: DoctorAIEnrichmentCacheInfo;
+  aiEnrichment: DoctorAIEnrichmentReadinessInfo;
   recommendedActions: string[];
   recommendedCommands: string[];
 }

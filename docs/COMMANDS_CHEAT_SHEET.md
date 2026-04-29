@@ -66,10 +66,15 @@ npx mp-sentinel indexing --find-import zod --index-format json
 # AI-agent context pack: symbols, imports, dependents, hub files, suggested commands (v1.15.0+):
 npx mp-sentinel indexing --agent-context src/commands/indexing.ts --index-format json
 
+# Index health check — read-only diagnostic (v1.19.0+):
+npx mp-sentinel indexing --health --index-format json
+
 # JSON output with import classification (v1.11.0+):
 npx mp-sentinel indexing --explain-index src/commands/indexing.ts --index-format json
 ```
 Imports are classified as `internal` (resolved to another source file in the index), `local` (unresolved but with a local-looking path), or `external` (package/remote). The `--explain` alias is preserved for backward compatibility.
+
+`--health` is a read-only diagnostic that examines cache integrity without building or calling AI. It reports cache status (`ok`, `missing`, `unreadable`, `stale`), schema version, file count, parse error rate, manifest hash comparison, and samples of changed or missing files. Exit codes: `0` = healthy, `1` = missing/stale/unreadable, `2` = error. JSON mode emits the health payload to stdout; all logs go to stderr.
 
 `--find-symbol`, `--find-import`, and `--agent-context` are read-only queries that use the existing source index cache (building/updating it only if absent). `--find-symbol` searches for functions, classes, interfaces, types, enums, variables, methods, and arrow functions by exact or partial name. `--find-import` searches for files that import a given package or local path. Both return results capped at 20 entries, sorted by match score (exact > case-insensitive > starts-with > contains).
 

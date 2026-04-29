@@ -48,6 +48,7 @@ export interface CLIValues {
   "create-skills-no-ai-enrich": boolean;
   "explain-agents"?: boolean;
   doctor?: boolean;
+  health?: boolean;
 }
 
 const PACKAGE_VERSION = getToolVersion();
@@ -114,6 +115,11 @@ export const buildProgram = (): Command => {
     .option(
       "--agent-context <file>",
       "AI-agent-friendly context pack: symbols, imports, dependents, hub files, suggested next commands",
+    )
+    .option(
+      "--health",
+      "Read-only index health check: status, staleness, file integrity (no build, no AI)",
+      false,
     );
 
   program
@@ -169,6 +175,7 @@ Examples:
   $ npx mp-sentinel --quiet --format json                 # CI-friendly JSON output
   $ npx mp-sentinel indexing                              # Build source index cache
   $ npx mp-sentinel indexing --index-format json          # Output index as JSON
+  $ npx mp-sentinel indexing --health --index-format json  # Index health check (read-only)
   $ npx mp-sentinel indexing --force                      # Force rebuild cache
   $ npx mp-sentinel create-skills                         # Interactive agent picker
   $ npx mp-sentinel create-skills --agent claude,cursor   # Generate for specific agents
@@ -303,6 +310,7 @@ export const parseCliArgs = (): {
         agentContext: indexingOptions["agentContext"] as string,
       }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
+      health: command === "indexing" ? Boolean(indexingOptions["health"] ?? false) : false,
       ...(typeof createSkillsOptions["agent"] === "string" && {
         agent: createSkillsOptions["agent"],
       }),

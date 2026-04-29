@@ -552,12 +552,21 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
   return checks;
 }
 
-// ── Agent Workflow Contract (v1.0.16+) ───────────────────────────────────────
+// ── Agent Workflow Contract (v1.0.16+, tightened v1.19.0) ─────────────────────
+
+const INDEX_COMMANDS = [
+  { flag: "--agent-context", label: "agent-context" },
+  { flag: "--explain-index", label: "explain-index" },
+  { flag: "--find-symbol", label: "find-symbol" },
+  { flag: "--find-import", label: "find-import" },
+  { flag: "--stats", label: "stats" },
+] as const;
 
 /**
  * Verify that the Required Agent Workflow section contains mandatory instructions:
  * 1. Read skill/rules before writing code
- * 2. Use indexing diagnostics before broad scans
+ * 2. All 5 index query commands present with --index-format json
+ * 3. Explain-context present with --format json
  */
 function checkAgentWorkflowContract(
   file: GeneratedSkillFile,
@@ -588,23 +597,53 @@ function checkAgentWorkflowContract(
     });
   }
 
-  // Check 2: Must mention using indexing diagnostics before broad scans
-  const hasIndexDiag =
-    workflowBody.includes("--agent-context") ||
-    workflowBody.includes("--explain-index") ||
-    workflowBody.includes("--find-symbol") ||
-    workflowBody.includes("--find-import") ||
-    workflowBody.includes("indexing --stats") ||
-    workflowBody.includes("explain-context") ||
-    workflowBody.includes("source index diagnostics");
-  if (!hasIndexDiag) {
+  // Check 2: Each index query command must be individually present with --index-format json
+  const lines = workflowBody.split("\n");
+
+  for (const { flag, label } of INDEX_COMMANDS) {
+    if (!workflowBody.includes(flag)) {
+      checks.push({
+        type: "agent-workflow-contract",
+        severity: "error",
+        file: file.outputPath,
+        message: `Required Agent Workflow must include \`mp-sentinel indexing --${label}\` diagnostic command`,
+      });
+      continue;
+    }
+    // --index-format json must appear on the same line as the command flag
+    const hasIndexFormatOnLine = lines.some(
+      (line) => line.includes(flag) && line.includes("--index-format json"),
+    );
+    if (!hasIndexFormatOnLine) {
+      checks.push({
+        type: "agent-workflow-contract",
+        severity: "error",
+        file: file.outputPath,
+        message: `\`mp-sentinel indexing --${label}\` command must include --index-format json`,
+      });
+    }
+  }
+
+  // Check 3: --explain-context must be present with --format json
+  if (!workflowBody.includes("--explain-context")) {
     checks.push({
       type: "agent-workflow-contract",
       severity: "error",
       file: file.outputPath,
-      message:
-        "Required Agent Workflow must instruct agent to use indexing diagnostics before scanning broadly",
+      message: "Required Agent Workflow must include --explain-context diagnostic command",
     });
+  } else {
+    const hasFormatJsonOnLine = lines.some(
+      (line) => line.includes("--explain-context") && line.includes("--format json"),
+    );
+    if (!hasFormatJsonOnLine) {
+      checks.push({
+        type: "agent-workflow-contract",
+        severity: "error",
+        file: file.outputPath,
+        message: "Required Agent Workflow --explain-context command must include --format json",
+      });
+    }
   }
 
   return checks;

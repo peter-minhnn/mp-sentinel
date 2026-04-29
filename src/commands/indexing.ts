@@ -440,6 +440,180 @@ export async function buildSourceIndex(
 }
 
 /**
+ * Health check output shape
+ */
+interface HealthOutput {
+  status: "ok" | "missing" | "unreadable" | "stale";
+  schemaVersion: string;
+  totalFiles: number;
+  parseErrorRate: number;
+  manifestHash: string;
+  currentManifestHash: string;
+  staleReasons: string[];
+  changedFilesSample: string[];
+  missingFilesSample: string[];
+}
+
+/**
+ * Read-only source index health check.
+ * Examines cache integrity without building, writing, or calling AI.
+ */
+async function handleHealth(
+  projectRoot: string,
+  format: "console" | "json",
+  indexingConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  >,
+): Promise<number> {
+  const cachePath = resolve(projectRoot, indexingConfig.cachePath);
+
+  // ── Missing cache ──────────────────────────────────────────────────────────
+  if (!existsSync(cachePath)) {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "missing" }, null, 2));
+    } else {
+      console.log(`Index health: MISSING`);
+      console.log(`  Cache not found at: ${cachePath}`);
+    }
+    return 1;
+  }
+
+  // ── Read raw cache (distinguish unreadable from missing) ───────────────────
+  let raw: string;
+  try {
+    raw = await readFile(cachePath, "utf-8");
+  } catch {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+    } else {
+      console.log(`Index health: UNREADABLE`);
+      console.log(`  Cache exists but cannot be read at: ${cachePath}`);
+    }
+    return 1;
+  }
+
+  // ── Unparseable cache ──────────────────────────────────────────────────────
+  let index: SourceIndex;
+  try {
+    index = JSON.parse(raw) as SourceIndex;
+  } catch {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+    } else {
+      console.log(`Index health: UNREADABLE`);
+      console.log(`  Cache exists but contains invalid JSON at: ${cachePath}`);
+    }
+    return 1;
+  }
+
+  // ── Compute current manifest hash ──────────────────────────────────────────
+  let currentManifestHash: string;
+  try {
+    currentManifestHash = await computeManifestHash(projectRoot);
+  } catch {
+    if (format === "json") {
+      console.log(
+        JSON.stringify({ status: "ERROR", error: "Failed to compute manifest hash" }, null, 2),
+      );
+    } else {
+      console.log(`Index health check failed: could not compute manifest hash`);
+    }
+    return 2;
+  }
+
+  const cachedHash = index.manifestHash;
+  const parseErrorRate = getIndexParseErrorRate(index);
+  const staleReasons: string[] = [];
+  const changedFilesSample: string[] = [];
+  const missingFilesSample: string[] = [];
+
+  // ── Manifest hash staleness ────────────────────────────────────────────────
+  if (cachedHash === undefined) {
+    staleReasons.push("manifest fingerprint missing");
+  } else if (cachedHash !== currentManifestHash) {
+    staleReasons.push("manifest changed");
+  }
+
+  // ── File integrity check ───────────────────────────────────────────────────
+  const MAX_SAMPLES = 10;
+  for (const file of index.files) {
+    const absPath = resolve(projectRoot, file.path);
+    if (!existsSync(absPath)) {
+      staleReasons.push("indexed files deleted");
+      if (missingFilesSample.length < MAX_SAMPLES) {
+        missingFilesSample.push(file.path);
+      }
+      continue;
+    }
+    try {
+      const content = await readFile(absPath, "utf-8");
+      const currentSha = await calculateSHA256(content);
+      if (currentSha !== file.sha256) {
+        staleReasons.push("source files changed");
+        if (changedFilesSample.length < MAX_SAMPLES) {
+          changedFilesSample.push(file.path);
+        }
+      }
+    } catch {
+      staleReasons.push("indexed files deleted");
+      if (missingFilesSample.length < MAX_SAMPLES) {
+        missingFilesSample.push(file.path);
+      }
+    }
+  }
+
+  // Deduplicate stale reasons
+  const uniqueReasons = [...new Set(staleReasons)];
+
+  const status = uniqueReasons.length === 0 ? "ok" : "stale";
+
+  const output: HealthOutput = {
+    status,
+    schemaVersion: index.schemaVersion,
+    totalFiles: index.files.length,
+    parseErrorRate,
+    manifestHash: cachedHash ?? "",
+    currentManifestHash,
+    staleReasons: uniqueReasons,
+    changedFilesSample,
+    missingFilesSample,
+  };
+
+  if (format === "json") {
+    console.log(JSON.stringify(output, null, 2));
+  } else {
+    console.log();
+    console.log(`Index health: ${status.toUpperCase()}`);
+    console.log(`  Schema version:  ${index.schemaVersion}`);
+    console.log(`  Total files:     ${index.files.length}`);
+    console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
+    console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
+    console.log(`  Current manifest: ${currentManifestHash}`);
+    if (uniqueReasons.length > 0) {
+      console.log(`  Stale reasons:`);
+      for (const reason of uniqueReasons) {
+        console.log(`    - ${reason}`);
+      }
+    }
+    if (changedFilesSample.length > 0) {
+      console.log(`  Changed files (sample):`);
+      for (const f of changedFilesSample) {
+        console.log(`    - ${f}`);
+      }
+    }
+    if (missingFilesSample.length > 0) {
+      console.log(`  Missing files (sample):`);
+      for (const f of missingFilesSample) {
+        console.log(`    - ${f}`);
+      }
+    }
+    console.log();
+  }
+
+  return status === "ok" ? 0 : 1;
+}
+
+/**
  * Run the indexing command
  */
 export async function runIndexingCommand(
@@ -459,6 +633,35 @@ export async function runIndexingCommand(
   // --find-symbol, --find-import, and --agent-context are read-only queries: they use the existing index only.
   // Build/update the index if absent, but don't force rebuild.
   const isReadOnlyQuery = !!(values.findSymbol || values.findImport || values.agentContext);
+
+  // --health is a read-only diagnostic: examine cache integrity, no build/write/AI.
+  if (values.health) {
+    // Suppress informational logs when emitting structured JSON so stdout contains only valid JSON.
+    if (format === "json") setLogQuietMode(true);
+    try {
+      const config = await loadProjectConfig(projectRoot);
+      const indexingConfig = {
+        ...getIndexingConfig(config),
+        enabled: true,
+      };
+      return await handleHealth(projectRoot, format, indexingConfig);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Health check failed with unknown error";
+      if (format === "json") {
+        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+      } else {
+        if (error instanceof Error) {
+          log.critical(`Health check failed: ${error.message}`);
+        } else {
+          log.critical("Health check failed with unknown error");
+        }
+      }
+      return 2;
+    } finally {
+      if (format === "json") setLogQuietMode(false);
+    }
+  }
 
   // Validate query strings are non-empty
   if (values.findSymbol !== undefined && values.findSymbol.trim() === "") {
