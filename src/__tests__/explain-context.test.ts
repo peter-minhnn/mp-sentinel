@@ -33,7 +33,7 @@ afterEach(async () => {
   process.exitCode = undefined;
 });
 
-describe("parseCliArgs — explain-context", () => {
+describe("parseCliArgs \u2014 explain-context", () => {
   it("parses --explain-context flag", () => {
     process.argv = ["node", "mp-sentinel", "--explain-context"];
     const { values, command } = parseCliArgs();
@@ -308,7 +308,7 @@ describe("renderExplainContext", () => {
       });
 
       const calls = logSpy.mock.calls.map((c) => c[0]).join("\n");
-      const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+      const riskyUnicode = ["\u2014", "\u2192", "\u2190", "\u2026", "\u2713", "\u2717"];
       for (const r of riskyUnicode) {
         expect(calls).not.toContain(r);
       }
@@ -505,7 +505,7 @@ describe("renderExplainContext", () => {
       expect(calls).toContain("Suggested commands:");
       expect(calls).toContain("--agent-context");
       // ASCII-safe: no risky Unicode in command output
-      const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+      const riskyUnicode = ["\u2014", "\u2192", "\u2190", "\u2026", "\u2713", "\u2717"];
       for (const r of riskyUnicode) {
         expect(calls).not.toContain(r);
       }

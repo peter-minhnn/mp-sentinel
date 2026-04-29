@@ -16,8 +16,9 @@
  * Exit: 0 = clean, 1 = one or more checks failed.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { execSync } from "node:child_process";
 
 // --- helpers -----------------------------------------------------------
 
@@ -248,6 +249,46 @@ function checkScriptAsciiSafety() {
   }
 }
 
+function checkDistFreshness(expected) {
+  if (!existsSync("dist/index.js")) return;
+
+  // Verify --version matches package.json
+  try {
+    const versionOut = execSync("node dist/index.js --version", {
+      encoding: "utf-8",
+      timeout: 30000,
+      stdio: "pipe",
+    }).trim();
+    if (versionOut !== expected) {
+      fail(`dist/index.js --version "${versionOut}" does not match expected "${expected}"`);
+    } else {
+      ok("dist/index.js --version matches package.json");
+    }
+  } catch (e) {
+    fail(`dist/index.js --version failed: ${e.stderr?.trim() || e.message}`);
+  }
+
+  // Verify indexing --help contains required flags
+  try {
+    const helpOut = execSync("node dist/index.js indexing --help", {
+      encoding: "utf-8",
+      timeout: 30000,
+      stdio: "pipe",
+    });
+    const requiredFlags = ["--health", "--agent-context", "--find-symbol", "--find-import"];
+    const missing = requiredFlags.filter((f) => !helpOut.includes(f));
+    if (missing.length > 0) {
+      for (const flag of missing) {
+        fail(`dist/index.js indexing --help missing flag: ${flag}`);
+      }
+    } else {
+      ok("dist/index.js indexing --help contains all required flags");
+    }
+  } catch (e) {
+    fail(`dist/index.js indexing --help failed: ${e.stderr?.trim() || e.message}`);
+  }
+}
+
 // --- main --------------------------------------------------------------
 
 const pkg = readJson("package.json");
@@ -268,6 +309,7 @@ checkChangelog(expected);
 checkLockfileIntegrity();
 checkPackageFiles();
 checkScriptAsciiSafety();
+checkDistFreshness(expected);
 
 process.stdout.write("\n");
 

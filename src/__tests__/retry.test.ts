@@ -5,7 +5,7 @@
 import { describe, it, expect, jest } from "@jest/globals";
 import { withRetry, isRetryableError } from "../utils/retry.js";
 
-// ── isRetryableError ──────────────────────────────────────────────────────────
+// -- isRetryableError ----------------------------------------------------------
 
 describe("isRetryableError", () => {
   it("returns true for 429 errors", () => {
@@ -36,7 +36,7 @@ describe("isRetryableError", () => {
   });
 });
 
-// ── withRetry ─────────────────────────────────────────────────────────────────
+// -- withRetry -----------------------------------------------------------------
 
 describe("withRetry", () => {
   it("returns result on first success", async () => {

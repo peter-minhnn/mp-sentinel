@@ -1,5 +1,5 @@
 /**
- * Unit tests for AI service — tests parseAuditResponse integration
+ * Unit tests for AI service \u2014 tests parseAuditResponse integration
  * and the error-handling contract of auditFile.
  *
  * NOTE: Full provider mocking with ESM jest.mock() requires careful path
@@ -10,7 +10,7 @@
 import { describe, it, expect } from "@jest/globals";
 import { parseAuditResponse } from "../utils/parser.js";
 
-// ── Integration-style tests for the AI response parsing pipeline ──────────────
+// -- Integration-style tests for the AI response parsing pipeline --------------
 // These test the same code path that auditFile uses internally.
 
 describe("AI response parsing pipeline", () => {

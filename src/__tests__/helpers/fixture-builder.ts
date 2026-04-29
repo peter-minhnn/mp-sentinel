@@ -1,5 +1,5 @@
 /**
- * Fixture builder for review intelligence tests — creates real mini-projects
+ * Fixture builder for review intelligence tests \u2014 creates real mini-projects
  * for each profile and builds source indexes via the real pipeline.
  */
 

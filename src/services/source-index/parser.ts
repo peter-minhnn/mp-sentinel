@@ -307,6 +307,328 @@ function walkAST(
   }
 }
 
+// Characters that can cause Tree-sitter "Invalid argument" errors on Windows.
+// Replace with ASCII equivalents in-memory only — never touch source files.
+const RISKY_CHAR_MAP: Array<[RegExp, string]> = [
+  // Box drawing
+  [/[─-╿]/g, "-"],
+  // Dashes
+  [/—/g, "--"], // em dash
+  [/–/g, "-"], // en dash
+  // Arrows
+  [/→/g, "->"], // right arrow
+  [/←/g, "<-"], // left arrow
+  [/↑/g, "^"], // up arrow
+  [/↓/g, "v"], // down arrow
+  // Typographic
+  [/…/g, "..."], // ellipsis
+  [/‘/g, "'"], // left single quote
+  [/’/g, "'"], // right single quote
+  [/“/g, '"'], // left double quote
+  [/”/g, '"'], // right double quote
+];
+
+function asciiNormalize(content: string): string {
+  let result = content;
+  for (const [regex, replacement] of RISKY_CHAR_MAP) {
+    result = result.replace(regex, replacement);
+  }
+  return result;
+}
+
+/**
+ * Replace comments and template literals with spaces (preserving newlines).
+ * Regular string literals are NOT stripped — import statements need their
+ * `from "..."` strings for regex matching.  False positives from regular
+ * strings are caught by {@link isInsideStringLiteral} during lexical parse.
+ *
+ * Never mutates source files — operates on a copy in memory.
+ */
+function sanitizeContent(content: string): string {
+  const chars = [...content];
+  let i = 0;
+
+  const peek = (offset = 0): string => chars[i + offset] ?? "";
+
+  function skipLineComment(): void {
+    chars[i] = " ";
+    chars[i + 1] = " ";
+    i += 2;
+    while (i < chars.length && chars[i] !== "\n") {
+      chars[i] = " ";
+      i++;
+    }
+  }
+
+  function skipBlockComment(): void {
+    chars[i] = " ";
+    chars[i + 1] = " ";
+    i += 2;
+    while (i < chars.length) {
+      if (chars[i] === "*" && peek(1) === "/") {
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i += 2;
+        return;
+      }
+      if (chars[i] !== "\n") chars[i] = " ";
+      i++;
+    }
+  }
+
+  function skipTemplate(): void {
+    chars[i] = " ";
+    i++;
+    while (i < chars.length) {
+      if (chars[i] === "\\") {
+        chars[i] = " ";
+        if (i + 1 < chars.length) chars[i + 1] = " ";
+        i += 2;
+      } else if (chars[i] === "`") {
+        chars[i] = " ";
+        i++;
+        return;
+      } else if (chars[i] === "$" && peek(1) === "{") {
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i += 2;
+        skipTemplateExpression();
+      } else {
+        if (chars[i] !== "\n") chars[i] = " ";
+        i++;
+      }
+    }
+  }
+
+  function skipTemplateExpression(): void {
+    let depth = 1;
+    while (i < chars.length && depth > 0) {
+      const ch = chars[i]!;
+      const nx = peek(1);
+
+      if (ch === "{") {
+        chars[i] = " ";
+        i++;
+        depth++;
+      } else if (ch === "}") {
+        chars[i] = " ";
+        i++;
+        depth--;
+      } else if (ch === "`") {
+        skipTemplate();
+      } else if (ch === "/" && nx === "/") {
+        skipLineComment();
+      } else if (ch === "/" && nx === "*") {
+        skipBlockComment();
+      } else {
+        if (ch !== "\n") chars[i] = " ";
+        i++;
+      }
+    }
+  }
+
+  while (i < chars.length) {
+    const ch = chars[i]!;
+    const nx = peek(1);
+
+    if (ch === "/" && nx === "/") {
+      skipLineComment();
+    } else if (ch === "/" && nx === "*") {
+      skipBlockComment();
+    } else if (ch === "`") {
+      skipTemplate();
+    } else {
+      i++;
+    }
+  }
+
+  return chars.join("");
+}
+
+/**
+ * Check whether a position in the original content falls inside a regular
+ * string literal (single- or double-quoted).  Used to reject regex matches
+ * that landed on fixture strings.
+ */
+function isInsideStringLiteral(content: string, position: number): boolean {
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < position && i < content.length; i++) {
+    const ch = content[i]!;
+    // Count preceding backslashes; odd = escaped
+    let bs = 0;
+    let j = i - 1;
+    while (j >= 0 && content[j] === "\\") {
+      bs++;
+      j--;
+    }
+    const escaped = bs % 2 === 1;
+
+    if (ch === "'" && !escaped && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !escaped && !inSingle) {
+      inDouble = !inDouble;
+    }
+  }
+
+  return inSingle || inDouble;
+}
+
+/**
+ * Lexical fallback: extract imports, exports, and symbols without Tree-sitter.
+ * Used when Tree-sitter throws "Invalid argument" and ASCII normalization also fails.
+ *
+ * Sanitizes the content first — strips comments and template literals so that
+ * regexes only see real code tokens.  Regex matches that fall inside regular
+ * string literals are rejected via {@link isInsideStringLiteral}.
+ */
+function lexicalParse(content: string): {
+  imports: ImportInfo[];
+  exports: ExportInfo[];
+  symbols: SymbolInfo[];
+} {
+  const sanitized = sanitizeContent(content);
+  const lines = sanitized.split("\n");
+  const originalLines = content.split("\n");
+  const imports: ImportInfo[] = [];
+  const exports: ExportInfo[] = [];
+  const symbols: SymbolInfo[] = [];
+
+  const importFromRe =
+    /import\s+(?:(?:type\s+)?(\{[^}]*\})|(\*\s+as\s+\w+)|(\w+))\s*(?:,\s*(?:(\{[^}]*\})|(\*\s+as\s+\w+)|(\w+)))*\s*from\s*["']([^"']+)["']/g;
+  const importSideEffectRe = /import\s+["']([^"']+)["']/g;
+  const importDynamicRe = /import\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const originalLine = originalLines[i] ?? "";
+    const lineNum = i + 1;
+
+    // Side-effect imports: import "x"
+    let m: RegExpExecArray | null;
+    importSideEffectRe.lastIndex = 0;
+    while ((m = importSideEffectRe.exec(line)) !== null) {
+      if (!isInsideStringLiteral(originalLine, m.index)) {
+        imports.push({
+          source: m[1]!,
+          kind: "named",
+          names: [],
+          line: lineNum,
+        });
+      }
+    }
+
+    // Dynamic imports
+    importDynamicRe.lastIndex = 0;
+    while ((m = importDynamicRe.exec(line)) !== null) {
+      if (!isInsideStringLiteral(originalLine, m.index)) {
+        imports.push({
+          source: m[1]!,
+          kind: "dynamic",
+          names: [],
+          line: lineNum,
+        });
+      }
+    }
+
+    // Named/default/namespace imports
+    importFromRe.lastIndex = 0;
+    while ((m = importFromRe.exec(line)) !== null) {
+      if (isInsideStringLiteral(originalLine, m.index)) continue;
+      const source = m[7];
+      if (!source) continue;
+      const names: string[] = [];
+      let kind: ImportInfo["kind"] = "default";
+      for (let g = 1; g <= 6; g++) {
+        const cap = m[g];
+        if (!cap) continue;
+        if (cap.startsWith("* as ")) {
+          names.push(cap.slice(5).trim());
+          kind = "namespace";
+        } else if (cap.startsWith("{")) {
+          const inner = cap.slice(1, -1);
+          const innerNames = inner.split(",").map((s) => {
+            const trimmed = s.trim();
+            const asIdx = trimmed.lastIndexOf(" as ");
+            return asIdx >= 0 ? trimmed.slice(asIdx + 4).trim() : trimmed;
+          });
+          names.push(...innerNames);
+          kind = "named";
+        } else {
+          names.push(cap.trim());
+        }
+      }
+      imports.push({ source, kind, names, line: lineNum });
+    }
+
+    // Exports and symbols (supports optional async before function)
+    const exportDeclRe =
+      /export\s+(default\s+)?(async\s+)?(function|class|interface|type|enum|const|let|var)\s+(\w+)/g;
+    exportDeclRe.lastIndex = 0;
+    while ((m = exportDeclRe.exec(line)) !== null) {
+      if (isInsideStringLiteral(originalLine, m.index)) continue;
+      const name = m[4]!;
+      const kw = m[3]!;
+      exports.push({ kind: "named", names: [name], line: lineNum });
+      const symType = keywordToSymbolType(kw);
+      symbols.push({ name, type: symType, line: lineNum, column: m.index });
+    }
+
+    // Non-exported declarations
+    const declRe = /(?<!\bexport\s+)(?:function|class|interface|type|enum|const|let|var)\s+(\w+)/g;
+    declRe.lastIndex = 0;
+    while ((m = declRe.exec(line)) !== null) {
+      if (isInsideStringLiteral(originalLine, m.index)) continue;
+      const name = m[1]!;
+      // Avoid duplicates with exports already found on same line
+      if (!symbols.some((s) => s.name === name && s.line === lineNum)) {
+        const fullMatch = m[0];
+        let kw = "";
+        if (fullMatch.startsWith("function")) kw = "function";
+        else if (fullMatch.startsWith("class")) kw = "class";
+        else if (fullMatch.startsWith("interface")) kw = "interface";
+        else if (fullMatch.startsWith("type")) kw = "type";
+        else if (fullMatch.startsWith("enum")) kw = "enum";
+        else if (
+          fullMatch.startsWith("const") ||
+          fullMatch.startsWith("let") ||
+          fullMatch.startsWith("var")
+        )
+          kw = "variable";
+        if (kw) {
+          const symType = keywordToSymbolType(kw);
+          symbols.push({ name, type: symType, line: lineNum, column: m.index });
+        }
+      }
+    }
+  }
+
+  return { imports, exports, symbols };
+}
+
+function keywordToSymbolType(kw: string): SymbolInfo["type"] {
+  switch (kw) {
+    case "function":
+      return "function";
+    case "class":
+      return "class";
+    case "interface":
+      return "interface";
+    case "type":
+      return "type";
+    case "enum":
+      return "enum";
+    case "const":
+    case "let":
+    case "var":
+    case "variable":
+      return "variable";
+    default:
+      return "function";
+  }
+}
+
 /**
  * Parse a single file and extract AST information
  */
@@ -315,11 +637,30 @@ export async function parseFile(
   content: string,
   language: IndexableLanguage,
 ): Promise<SourceIndexFile | null> {
-  try {
+  const doParse = async (parseContent: string): Promise<{ tree: any; parseErrors: string[] }> => {
     const parser = await getParser(language);
-    const tree = parser.parse(content);
+    const tree = parser.parse(parseContent);
+    const errors: string[] = [];
 
     if (!tree || !tree.rootNode) {
+      return { tree: null, parseErrors: ["Failed to parse: no tree generated"] };
+    }
+
+    const hasError =
+      typeof tree.rootNode.hasError === "function"
+        ? tree.rootNode.hasError()
+        : Boolean(tree.rootNode.hasError);
+    if (hasError) {
+      errors.push("Tree has syntax errors");
+    }
+
+    return { tree, parseErrors: errors };
+  };
+
+  try {
+    const { tree, parseErrors } = await doParse(content);
+
+    if (!tree) {
       return {
         path: filePath,
         language,
@@ -329,7 +670,7 @@ export async function parseFile(
         imports: [],
         exports: [],
         symbols: [],
-        parseErrors: ["Failed to parse: no tree generated"],
+        parseErrors,
       };
     }
 
@@ -338,16 +679,6 @@ export async function parseFile(
     const exports: ExportInfo[] = [];
 
     walkAST(tree.rootNode, symbols, imports, exports);
-
-    // Check for errors
-    const parseErrors: string[] = [];
-    const hasError =
-      typeof tree.rootNode.hasError === "function"
-        ? tree.rootNode.hasError()
-        : Boolean(tree.rootNode.hasError);
-    if (hasError) {
-      parseErrors.push("Tree has syntax errors");
-    }
 
     const result: SourceIndexFile = {
       path: filePath,
@@ -364,9 +695,94 @@ export async function parseFile(
     }
     return result;
   } catch (error) {
-    log.warning(
-      `Parse error in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+
+    // Tree-sitter can throw "Invalid argument" on Windows when content contains
+    // certain Unicode characters (box-drawing, smart quotes, em dashes, etc.).
+    // Retry with an in-memory ASCII-normalized copy — never mutate the source file.
+    if (message.includes("Invalid argument")) {
+      // Step 1: Retry with ASCII-normalized content (in-memory only).
+      const normalized = asciiNormalize(content);
+      if (normalized !== content) {
+        try {
+          const { tree, parseErrors: normErrors } = await doParse(normalized);
+          if (tree) {
+            const symbols: SymbolInfo[] = [];
+            const imports: ImportInfo[] = [];
+            const exports: ExportInfo[] = [];
+
+            walkAST(tree.rootNode, symbols, imports, exports);
+
+            const allErrors = ["Invalid argument; parsed with ASCII fallback"];
+            if (normErrors.length > 0) {
+              allErrors.push(...normErrors);
+            }
+
+            return {
+              path: filePath,
+              language,
+              sha256: "",
+              sizeBytes: content.length,
+              mtimeMs: Date.now(),
+              imports,
+              exports,
+              symbols,
+              parseErrors: allErrors,
+            };
+          }
+        } catch {
+          // ASCII fallback also failed — try lexical fallback below.
+        }
+      } else {
+        // Content is already ASCII but Tree-sitter still threw. Retry once with
+        // tree-sitter on the same content in case it was a transient issue.
+        try {
+          const { tree, parseErrors: retryErrors } = await doParse(content);
+          if (tree) {
+            const symbols: SymbolInfo[] = [];
+            const imports: ImportInfo[] = [];
+            const exports: ExportInfo[] = [];
+
+            walkAST(tree.rootNode, symbols, imports, exports);
+
+            const allErrors = ["Invalid argument; parsed with retry"];
+            if (retryErrors.length > 0) {
+              allErrors.push(...retryErrors);
+            }
+
+            return {
+              path: filePath,
+              language,
+              sha256: "",
+              sizeBytes: content.length,
+              mtimeMs: Date.now(),
+              imports,
+              exports,
+              symbols,
+              parseErrors: allErrors,
+            };
+          }
+        } catch {
+          // Retry also failed — use lexical fallback below.
+        }
+      }
+
+      // Step 2: Tree-sitter failed entirely — use lexical regex-based fallback.
+      const lexical = lexicalParse(content);
+      return {
+        path: filePath,
+        language,
+        sha256: "",
+        sizeBytes: content.length,
+        mtimeMs: Date.now(),
+        imports: lexical.imports,
+        exports: lexical.exports,
+        symbols: lexical.symbols,
+        parseErrors: ["Invalid argument; parsed with lexical fallback"],
+      };
+    }
+
+    log.warning(`Parse error in ${filePath}: ${message}`);
     return {
       path: filePath,
       language,
@@ -376,7 +792,7 @@ export async function parseFile(
       imports: [],
       exports: [],
       symbols: [],
-      parseErrors: [`${error instanceof Error ? error.message : String(error)}`],
+      parseErrors: [message],
     };
   }
 }
@@ -387,3 +803,6 @@ export async function parseFile(
 export function isLanguageSupported(path: string): IndexableLanguage | null {
   return getLanguageForFile(path);
 }
+
+export { sanitizeContent, lexicalParse };
+export type { ImportInfo, ExportInfo, SymbolInfo, SourceIndexFile };

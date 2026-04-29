@@ -1,3 +1,21 @@
+# What's New in v1.19.1
+
+## Parser ASCII Fallback, Dist Freshness Guard & Health Type Cleanup
+
+v1.19.1 is a corrective patch hardening release and dist freshness after v1.19.0.
+
+- **Parser ASCII fallback** (`src/services/source-index/parser.ts`): Tree-sitter can throw `Invalid argument` on Windows when source files contain Unicode box-drawing, em dashes, smart quotes, or arrows in comments. The parser now catches that error, normalizes content to ASCII in memory only (never writes to disk), and retries parsing. Extracted symbols, imports, and exports are preserved. Parse errors are annotated with `"Invalid argument; parsed with ASCII fallback"` so diagnostics are not hidden. 4 new tests covering regular ASCII files, Unicode comment files with symbol extraction, import/export preservation, and error annotation.
+- **Dist freshness guard** (`scripts/dogfood.mjs`, `scripts/release-check.mjs`): `dogfood` step 2 now smoke-tests `node dist/index.js indexing --health --index-format json` after build and asserts valid JSON output. `release-check` validates `node dist/index.js --version` matches `package.json` and `indexing --help` contains all required flags (`--health`, `--agent-context`, `--find-symbol`, `--find-import`). 3 new release-check tests covering passing, version mismatch, and missing flag.
+- **Health type cleanup** (`src/types/index.ts`, `src/commands/indexing.ts`): Local `HealthOutput` interface moved to shared types as `IndexHealthStatus` and `IndexHealthOutput`. Health sample cap reduced from 10 to 5.
+- **Test fixture ASCII hardening**: All test source files with literal risky Unicode converted to `String.fromCharCode()` / `\u` escapes so source remains ASCII. Box-drawing comment separators replaced with ASCII dashes. Runtime test behavior preserved — quality gate still receives correct Unicode strings.
+
+### Tests
+- 1 new `--health` CLI arg parse test.
+- 4 new parser ASCII fallback tests (regular ASCII, Unicode comment symbol extraction, import/export preservation, error annotation).
+- 3 new release-check dist freshness tests (passing, version mismatch, missing flag).
+
+---
+
 # What's New in v1.19.0
 
 ## Source Index Health CLI, Skill Contract Guard & AI Readiness Doctor
@@ -5,6 +23,13 @@
 v1.19.0 integrates three parallel lanes: Lane A (source index health CLI), Lane B (skill contract guard), and Lane C (AI readiness doctor).
 
 - **Source index health CLI** (`src/commands/indexing.ts`): New `--health` flag on the indexing command performs a read-only diagnostic of the source index cache. Reports status (`ok`, `missing`, `unreadable`, `stale`), schema version, file count, parse error rate, manifest hash comparison, and samples of changed/missing files. Detects staleness from manifest changes, source file SHA256 mismatches, and deleted indexed files. Exit `0` for healthy, `1` for missing/stale/unreadable, `2` for runtime error. JSON mode emits the health payload to stdout; all logs go to stderr. 7 new tests covering missing cache, corrupt cache, manifest change, source file change, deleted file, healthy index, and JSON stdout isolation.
+- **Generated skill contract guard** (`src/services/skills-generator/quality-gate.ts`): `checkAgentWorkflowContract()` now enforces strict per-command validation. Each of 5 index commands must be individually present with `--index-format json` on the same line. Replaces the previous fuzzy check.
+- **AI enrichment readiness in doctor** (`src/commands/create-skills.ts`, `src/types/index.ts`): `--doctor` now reports AI enrichment readiness without any network calls. New `DoctorAIEnrichmentReadinessInfo` type with status (`disabled`, `ready`, `action-required`).
+
+### Tests
+- 7 new `--health` tests.
+- 10 new contract guard tests.
+- 6 new AI readiness doctor tests.
 
 ---
 

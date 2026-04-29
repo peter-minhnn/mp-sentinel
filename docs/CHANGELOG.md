@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-04-29
+
+### Fixed
+- **Parser ASCII fallback** (`src/services/source-index/parser.ts`): Tree-sitter `Invalid argument` errors on Windows (caused by Unicode box-drawing, em dashes, smart quotes in source comments) are now caught and retried with in-memory ASCII normalization. Symbols, imports, and exports are preserved. Errors are annotated with `"Invalid argument; parsed with ASCII fallback"`.
+- **Dist freshness guard** (`scripts/dogfood.mjs`, `scripts/release-check.mjs`): Dogfood step 2 smoke-tests `dist/index.js indexing --health --index-format json`. Release-check validates `dist/index.js --version` matches `package.json` and `indexing --help` contains required flags.
+- **Health type cleanup** (`src/types/index.ts`, `src/commands/indexing.ts`): Local `HealthOutput` interface moved to shared types as `IndexHealthStatus` and `IndexHealthOutput`. Health sample cap reduced from 10 to 5.
+- **Test fixture ASCII hardening**: All test source files with literal risky Unicode converted to `\u` escapes so source remains ASCII. Box-drawing comment separators replaced with ASCII dashes.
+
+### Tests
+- 1 new `--health` CLI arg parse test.
+- 4 new parser ASCII fallback tests.
+- 3 new release-check dist freshness tests.
+
 ## [1.19.0] - 2026-04-29
 
 ### Added

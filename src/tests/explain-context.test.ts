@@ -289,7 +289,7 @@ describe("backward compatibility", () => {
       // Should not reach here
       expect(false).toBe(true);
     }
-    // No crash — test passes
+    // No crash \u2014 test passes
     expect(true).toBe(true);
   });
 });

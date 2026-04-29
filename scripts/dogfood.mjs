@@ -94,7 +94,28 @@ function stepBuild() {
     fail("build", "dist/lib.js missing after build");
     return false;
   }
-  ok("build", "dist/index.js + dist/lib.js produced");
+
+  // Dist freshness smoke: dist must be parseable and match current source.
+  // --health exits non-zero for non-"ok" statuses (e.g. "stale" during dev),
+  // so capture stdout/stderr ourselves instead of using run().
+  let healthOut;
+  try {
+    healthOut = execSync(
+      "node dist/index.js indexing --health --index-format json",
+      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
+    );
+  } catch (e) {
+    healthOut = e.stdout || "";
+  }
+
+  const healthJson = parseJson(healthOut, "dist indexing --health");
+  if (!healthJson) return false;
+  if (typeof healthJson.status !== "string") {
+    fail("dist indexing --health", "JSON output missing 'status' field");
+    return false;
+  }
+
+  ok("build", `dist/index.js + dist/lib.js produced, --health status=${healthJson.status}`);
   return true;
 }
 

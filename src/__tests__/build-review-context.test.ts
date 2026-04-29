@@ -112,7 +112,7 @@ describe("buildReviewContext", () => {
     expect(result.metadata.profile).toBe("library");
   });
 
-  it("orders files: changed → imports → dependents → hub", async () => {
+  it("orders files: changed \u2192 imports \u2192 dependents \u2192 hub", async () => {
     const cwd = await makeTempDir();
     await mkdir(join(cwd, "src"));
     await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "test", version: "1.0.0" }));
@@ -672,7 +672,7 @@ describe("buildReviewContext", () => {
       true,
     );
 
-    // Both hub1 and hub2 are changed — each triggers a "risk" push
+    // Both hub1 and hub2 are changed \u2014 each triggers a "risk" push
     const result = await buildReviewContext(index!, [
       { path: "src/hub1.ts" },
       { path: "src/hub2.ts" },

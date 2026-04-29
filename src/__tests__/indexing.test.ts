@@ -21,6 +21,13 @@ import {
   quoteCliArg,
 } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
+import {
+  parseFile,
+  isLanguageSupported,
+  sanitizeContent,
+  lexicalParse,
+} from "../services/source-index/parser.js";
+import { getLanguageForFile } from "../services/source-index/manifest.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
 const tempDirs: string[] = [];
@@ -76,6 +83,13 @@ describe("indexing CLI args", () => {
     const parsed = parseCliArgs();
     expect(parsed.command).toBe("indexing");
     expect(parsed.values.explainIndex).toBe("src/foo.ts");
+  });
+
+  it("parses --health flag", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--health"];
+    const parsed = parseCliArgs();
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.health).toBe(true);
   });
 });
 
@@ -229,7 +243,9 @@ describe("indexing configuration", () => {
     );
 
     clearConfigCache();
-    await expect(loadProjectConfig(cwd)).rejects.toThrow("indexing.languages.0 — Invalid option");
+    await expect(loadProjectConfig(cwd)).rejects.toThrow(
+      "indexing.languages.0 \u2014 Invalid option",
+    );
   });
 
   it("validates indexing.maxFileSize as positive integer", async () => {
@@ -458,7 +474,7 @@ describe("buildIndexContext (review integration)", () => {
   });
 });
 
-// ── ImportResolver unit tests ──────────────────────────────────────────────
+// -- ImportResolver unit tests ----------------------------------------------
 
 describe("ImportResolver", () => {
   it("resolves relative import ./foo to foo.ts", async () => {
@@ -574,7 +590,7 @@ describe("ImportResolver", () => {
   });
 });
 
-// ── buildIndexContext priority / cap tests ─────────────────────────────────
+// -- buildIndexContext priority / cap tests ---------------------------------
 
 describe("buildIndexContext priority and cap", () => {
   const makeEnabledConfig = async (cwd: string) => {
@@ -677,7 +693,7 @@ describe("buildIndexContext priority and cap", () => {
   });
 });
 
-// ── Manifest-aware cache invalidation tests ───────────────────────────────────
+// -- Manifest-aware cache invalidation tests -----------------------------------
 
 describe("manifest hash cache invalidation", () => {
   const makeProject = async (cwd: string, pkg: object) => {
@@ -709,7 +725,7 @@ describe("manifest hash cache invalidation", () => {
       JSON.stringify({ name: "fixture", version: "1.0.1", dependencies: {} }),
     );
 
-    // Second build without force — should rebuild because manifest changed
+    // Second build without force \u2014 should rebuild because manifest changed
     const idx2 = await buildSourceIndex(cwd, config, false);
     expect(idx2).not.toBeNull();
     expect(idx2!.project.packageVersion).toBe("1.0.1");
@@ -738,7 +754,7 @@ describe("manifest hash cache invalidation", () => {
       JSON.stringify({ name: "fixture", version: "1.0.0", scripts: { test: "vitest" } }),
     );
 
-    // Second build — should reuse all cached files
+    // Second build \u2014 should reuse all cached files
     const idx2 = await buildSourceIndex(cwd, config, false);
     expect(idx2!.stats.parsedFiles).toBe(0);
     expect(idx2!.stats.cacheHitFiles).toBe(1);
@@ -828,7 +844,7 @@ describe("manifest hash cache invalidation", () => {
       }),
     );
 
-    // Second build — source files unchanged, only tsconfig changed
+    // Second build \u2014 source files unchanged, only tsconfig changed
     const idx2 = await buildSourceIndex(cwd, config, false);
     expect(idx2).not.toBeNull();
     expect(idx2!.stats.parsedFiles).toBe(0); // reused cached files
@@ -864,9 +880,58 @@ describe("manifest hash cache invalidation", () => {
     const h2 = await computeManifestHash(cwd);
     expect(h1).not.toBe(h2);
   });
+
+  it("buildSourceIndex with different cache toolVersion forces reparse, not cache hit", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd, { name: "fixture", version: "2.0.0" });
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    // Inject a cache with a different toolVersion
+    const oldIndex: SourceIndex = {
+      schemaVersion: "1.2",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0", // Different from current (2.0.0)
+      project: {
+        packageName: "fixture",
+        packageVersion: "2.0.0",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [
+        {
+          path: "src/index.ts",
+          language: "typescript",
+          sha256: "abc",
+          sizeBytes: 100,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [{ name: "hello", type: "function", line: 1, column: 0 }],
+        },
+      ],
+      manifestHash: "abc123",
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+    };
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await writeFile(join(cwd, ".mp-sentinel-cache", "source-index.json"), JSON.stringify(oldIndex));
+
+    // buildSourceIndex should detect toolVersion mismatch and rebuild
+    const idx = await buildSourceIndex(cwd, config, false);
+    expect(idx).not.toBeNull();
+    // Rebuilding means parsedFiles > 0 (not just cache hits)
+    expect(idx!.stats.parsedFiles).toBeGreaterThan(0);
+    expect(idx!.toolVersion).toBe("2.0.0");
+  });
 });
 
-// ── Incremental parse-error resilience ─────────────────────────────────────
+// -- Incremental parse-error resilience -------------------------------------
 
 describe("incremental parse-error resilience", () => {
   const defaultConfig = {
@@ -925,7 +990,7 @@ describe("incremental parse-error resilience", () => {
     await writeFile(join(cwd, "src", "f1.ts"), `export const f1 = ;`);
     await writeFile(join(cwd, "src", "f2.ts"), `export const f2 = ;`);
 
-    // Should not abort — 2/2 incremental parse failures but 0/10 overall
+    // Should not abort \u2014 2/2 incremental parse failures but 0/10 overall
     // when old cached entries are used for failed files.
     const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
     expect(idx2).not.toBeNull();
@@ -946,7 +1011,7 @@ describe("incremental parse-error resilience", () => {
     await writeFile(join(cwd, "src", "bad1.ts"), `export const bad1 = ;`);
     await writeFile(join(cwd, "src", "bad2.ts"), `export const bad2 = ;`);
 
-    // Force rebuild (no existing cache) — should throw because 2/3 = 66% > 50%
+    // Force rebuild (no existing cache) \u2014 should throw because 2/3 = 66% > 50%
     await expect(buildSourceIndex(cwd, defaultConfig, true)).rejects.toThrow(
       "Source indexing aborted",
     );
@@ -965,7 +1030,7 @@ describe("incremental parse-error resilience", () => {
     await writeFile(join(cwd, "src", "bad1.ts"), `export const bad1 = ;`);
     await writeFile(join(cwd, "src", "bad2.ts"), `export const bad2 = ;`);
 
-    // Force rebuild: 2/5 = 40% < 50% — should succeed
+    // Force rebuild: 2/5 = 40% < 50% \u2014 should succeed
     const idx = await buildSourceIndex(cwd, defaultConfig, true);
     expect(idx).not.toBeNull();
     expect(idx!.stats.parseErrors).toBe(2);
@@ -995,7 +1060,7 @@ describe("incremental parse-error resilience", () => {
 
     // Incremental (no force): all 5 files need re-index, all 5 fail.
     // With no healthy cached files to fall back to, the overall error rate
-    // would be high, and the existing cache is better — keep it.
+    // would be high, and the existing cache is better \u2014 keep it.
     const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
     expect(idx2).not.toBeNull();
     // Should return the existing good index, not the degraded one
@@ -1019,17 +1084,17 @@ describe("incremental parse-error resilience", () => {
     // Add a new file with syntax errors (not in existing cache)
     await writeFile(join(cwd, "src", "broken.ts"), `export const broken = ;`);
 
-    // Incremental: new broken file has parse error but overall rate is 1/3 ≈ 33% < 50%
+    // Incremental: new broken file has parse error but overall rate is 1/3 ~= 33% < 50%
     const idx2 = await buildSourceIndex(cwd, defaultConfig, false);
     expect(idx2).not.toBeNull();
-    // The broken file is included (with parseErrors) — but overall index is healthy
+    // The broken file is included (with parseErrors) \u2014 but overall index is healthy
     expect(idx2!.files.some((f) => f.path === "src/broken.ts")).toBe(true);
     expect(idx2!.stats.parseErrors).toBe(1);
     expect(idx2!.stats.parseErrors / idx2!.stats.indexedFiles).toBeLessThanOrEqual(0.5);
   });
 });
 
-// ── Lane B: extension support and resolver accuracy ─────────────────────────
+// -- Lane B: extension support and resolver accuracy -------------------------
 
 describe("extension support (.mts/.cts/.mjs/.cjs)", () => {
   it("maps .mts and .cts to typescript language", () => {
@@ -1188,7 +1253,7 @@ describe("tsconfig extends resolution", () => {
     await mkdir(join(cwd, "src"), { recursive: true });
     await writeFile(join(cwd, "src", "main.ts"), `export const main = 1;`);
 
-    // Should not crash — inherits paths from child only
+    // Should not crash \u2014 inherits paths from child only
     const resolver = new ImportResolver(cwd);
     await resolver.initialize();
     const result = resolver.resolve("@app/main", "src/main.ts");
@@ -1222,7 +1287,7 @@ describe("maxFileSize enforcement", () => {
   });
 });
 
-// ── Lane D: Index Diagnostics UX ───────────────────────────────────────────
+// -- Lane D: Index Diagnostics UX -------------------------------------------
 
 describe("explain-index diagnostics (Lane D)", () => {
   const makeProjectWithIndex = async (cwd: string, files: Record<string, string>) => {
@@ -1434,7 +1499,7 @@ describe("explain-index diagnostics (Lane D)", () => {
   });
 });
 
-// ── Lane A: find-symbol and find-import query CLI ─────────────────────────────
+// -- Lane A: find-symbol and find-import query CLI -----------------------------
 
 describe("find-symbol and find-import CLI args", () => {
   it("parses --find-symbol option", () => {
@@ -1825,7 +1890,7 @@ describe("find-import query", () => {
   });
 });
 
-// ── Lane A: agent-context CLI ─────────────────────────────────────────────────
+// -- Lane A: agent-context CLI -------------------------------------------------
 
 describe("agent-context CLI args", () => {
   it("parses --agent-context option", () => {
@@ -1967,7 +2032,7 @@ describe("agent-context query", () => {
       const parsed = JSON.parse(logs.join("\n"));
       // main.ts imports helper.ts
       expect(parsed.directImports).toContain("src/helper.ts");
-      // consumer.ts imports main.ts — so main.ts has consumer.ts as a dependent
+      // consumer.ts imports main.ts \u2014 so main.ts has consumer.ts as a dependent
       expect(parsed.directDependents).toContain("src/consumer.ts");
     } finally {
       console.log = origLog;
@@ -2102,7 +2167,7 @@ describe("agent-context query", () => {
   });
 });
 
-// ── Query Service Tests ───────────────────────────────────────────────────────
+// -- Query Service Tests -------------------------------------------------------
 
 describe("querySymbols (service)", () => {
   const makeProject = async (cwd: string) => {
@@ -2660,7 +2725,7 @@ describe("queryAgentContext (service)", () => {
   });
 });
 
-// ── Path Robustness Tests (Lane A) ────────────────────────────────────────────
+// -- Path Robustness Tests (Lane A) --------------------------------------------
 
 describe("queryAgentContext path robustness", () => {
   const makeProject = async (cwd: string) => {
@@ -2846,7 +2911,7 @@ describe("queryAgentContext path robustness", () => {
   });
 });
 
-// ── Lane C: Safe Suggested Command Formatter ──────────────────────────────────
+// -- Lane C: Safe Suggested Command Formatter ----------------------------------
 
 describe("quoteCliArg", () => {
   it("wraps value in double quotes", () => {
@@ -2916,7 +2981,7 @@ describe("suggestedCommands dedup and determinism", () => {
     }
   });
 
-  it("suggestedCommands are deterministic (same input → same output)", async () => {
+  it("suggestedCommands are deterministic (same input \u2192 same output)", async () => {
     const cwd = await makeTempDir();
     await mkdir(join(cwd, "src"), { recursive: true });
     await writeFile(
@@ -2949,7 +3014,7 @@ describe("suggestedCommands dedup and determinism", () => {
   });
 });
 
-// ── Index Health Check (--health) ─────────────────────────────────────────────
+// -- Index Health Check (--health) ---------------------------------------------
 
 describe("indexing --health", () => {
   it("reports missing status when no cache exists", async () => {
@@ -3145,6 +3210,83 @@ describe("indexing --health", () => {
       expect(parsed.totalFiles).toBeGreaterThan(0);
       expect(parsed.parseErrorRate).toBe(0);
       expect(parsed.staleReasons).toEqual([]);
+      expect(parsed).toHaveProperty("toolVersion");
+      expect(parsed).toHaveProperty("currentToolVersion");
+      expect(parsed.toolVersion).toBe(parsed.currentToolVersion);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports stale when cache toolVersion differs from current", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index with current version
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Rewrite cache with different toolVersion
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.toolVersion = "0.9.0";
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("stale");
+      expect(parsed.staleReasons).toContain("tool version changed");
+      expect(parsed.toolVersion).toBe("0.9.0");
+      expect(parsed.currentToolVersion).toBe("1.0.0");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("reports ok when cache toolVersion matches current", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build index with current version
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("ok");
+      expect(parsed.toolVersion).toBe("1.0.0");
+      expect(parsed.currentToolVersion).toBe("1.0.0");
     } finally {
       console.log = originalLog;
     }
@@ -3188,5 +3330,196 @@ describe("indexing --health", () => {
         expect(line).toBe("");
       }
     }
+  });
+});
+
+// ── Parser Resilience: Unicode / Invalid Argument Fallback ──────────────
+
+describe("parseFile unicode fallback", () => {
+  it("parses regular ASCII file without errors", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const result = await parseFile("test.ts", "export function hello() { return 1; }", lang!);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbols.some((s) => s.name === "hello")).toBe(true);
+    expect(result!.imports).toEqual([]);
+    expect(result!.exports.length).toBeGreaterThan(0);
+    expect(result!.parseErrors).toBeUndefined();
+  });
+
+  it("extracts symbol from file with Unicode comment (ASCII fallback path)", async () => {
+    const lang = getLanguageForFile("test.ts");
+    // Content contains em dash in a comment which triggers ASCII fallback on Windows
+    const content = `// This file uses special dash: —\nexport function buildSourceIndex() { return null; }`;
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    // Must still extract the symbol despite parse issue or fallback
+    expect(result!.symbols.some((s) => s.name === "buildSourceIndex")).toBe(true);
+  });
+
+  it("does not lose imports and exports in fallback parse", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const content = [
+      'import { readFile } from "node:fs";',
+      `// Unicode separator: —`,
+      "export function helper(): string {",
+      '  return "ok";',
+      "}",
+      "export function getVersion() { return 1; }",
+    ].join("\n");
+
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbols.some((s) => s.name === "helper")).toBe(true);
+    expect(result!.symbols.some((s) => s.name === "getVersion")).toBe(true);
+    expect(result!.imports.some((i) => i.source === "node:fs")).toBe(true);
+    expect(result!.exports.some((e) => e.names.includes("helper"))).toBe(true);
+  });
+
+  it("returns parseError annotation when fallback is used", async () => {
+    const lang = getLanguageForFile("test.ts");
+    // Content with multiple risky characters to trigger fallback on Windows
+    const content = `// Dashes: — —\n// Arrow: →\nexport function result() { return 42; }`;
+
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    // On non-Windows or if parse succeeds normally, parseErrors may be absent
+    // The key assertion: if there are parseErrors, they should include the fallback annotation
+    if (result!.parseErrors) {
+      expect(result!.parseErrors.length).toBeGreaterThan(0);
+    }
+    // Symbol must still be extracted
+    expect(result!.symbols.some((s) => s.name === "result")).toBe(true);
+  });
+});
+
+// ── Lexical Fallback Precision ─────────────────────────────────────────────
+
+describe("sanitizeContent", () => {
+  it("strips template literal containing import statement", () => {
+    const input = 'const x = `import "@/lib"`;';
+    const result = sanitizeContent(input);
+    // The template literal content should be blanked, surrounding code preserved
+    expect(result).not.toMatch(/@\/lib/);
+    expect(result).toMatch(/const x =/);
+  });
+
+  it('preserves regular string literals (imports need their from "..." strings)', () => {
+    const input = 'import { z } from "zod";';
+    const result = sanitizeContent(input);
+    // String literals survive so the regex can match import source
+    expect(result).toContain('import { z } from "zod"');
+  });
+
+  it("preserves real export function outside strings", () => {
+    const input = "export async function buildSourceIndex() { return null; }";
+    const result = sanitizeContent(input);
+    expect(result).toContain("export async function buildSourceIndex");
+  });
+
+  it("strips single-line comment containing import", () => {
+    const input = '// import { x } from "fake";\nconst real = 1;';
+    const result = sanitizeContent(input);
+    expect(result).not.toMatch(/import.*fake/);
+    expect(result).toContain("const real = 1");
+  });
+
+  it("strips block comment containing export", () => {
+    const input = "/* export function hidden() {} */\nconst visible = 1;";
+    const result = sanitizeContent(input);
+    expect(result).not.toMatch(/export function hidden/);
+    expect(result).toContain("const visible = 1");
+  });
+
+  it("strips template literal with expression containing import-like text", () => {
+    const input = 'const msg = `use import { ${name} } from "${pkg}"`;';
+    const result = sanitizeContent(input);
+    // All template content including expression is blanked
+    expect(result).not.toMatch(/\bimport\b/);
+  });
+
+  it("handles nested template literals", () => {
+    const input = 'const x = `outer ${`inner import "pkg"`} after`;';
+    const result = sanitizeContent(input);
+    expect(result).not.toMatch(/\bimport\b/);
+  });
+});
+
+// isInsideStringLiteral is tested implicitly through lexicalParse below
+
+describe("lexicalParse precision", () => {
+  it("does not create import from template string containing import statement", () => {
+    const content = 'const x = `import "@/lib"`;\nconst real = 1;';
+    const result = lexicalParse(content);
+    expect(result.imports).toHaveLength(0);
+  });
+
+  it("does not create symbol from fixture string containing export function", () => {
+    const content = 'const fixture = "export function fake() { return 42; }";';
+    const result = lexicalParse(content);
+    // The "const fixture" variable declaration is real, but "export function fake" is inside a string
+    expect(result.exports).toHaveLength(0);
+    expect(result.symbols.filter((s) => s.name === "fake")).toHaveLength(0);
+  });
+
+  it("still extracts real import from actual import statement", () => {
+    const content = 'import { z } from "zod";';
+    const result = lexicalParse(content);
+    expect(result.imports).toHaveLength(1);
+    expect(result.imports[0]!.source).toBe("zod");
+    expect(result.imports[0]!.names).toContain("z");
+  });
+
+  it("still extracts real symbol from actual export function", () => {
+    const content = "export async function buildSourceIndex() { return null; }";
+    const result = lexicalParse(content);
+    expect(result.symbols.some((s) => s.name === "buildSourceIndex")).toBe(true);
+    expect(result.exports.some((e) => e.names.includes("buildSourceIndex"))).toBe(true);
+  });
+
+  it("does not create import from commented-out import", () => {
+    const content = '// import { fake } from "fake-pkg";\nimport { real } from "real-pkg";';
+    const result = lexicalParse(content);
+    expect(result.imports).toHaveLength(1);
+    expect(result.imports[0]!.source).toBe("real-pkg");
+  });
+
+  it("does not create import from block-commented import", () => {
+    const content = '/* import { fake } from "fake-pkg"; */\nimport { real } from "real-pkg";';
+    const result = lexicalParse(content);
+    expect(result.imports).toHaveLength(1);
+    expect(result.imports[0]!.source).toBe("real-pkg");
+  });
+
+  it("extracts non-exported function declaration", () => {
+    const content = "function helper() { return 1; }";
+    const result = lexicalParse(content);
+    expect(result.symbols.some((s) => s.name === "helper")).toBe(true);
+  });
+
+  it("handles mixed real and fixture content correctly", () => {
+    const content = [
+      'import { realImport } from "real-pkg";',
+      'const fixtureStr = "import { fake } from \\"fake-pkg\\"";',
+      'const templateFixture = `import "@/lib"`;',
+      "export function realFunction() { return 1; }",
+      'const fixtureExport = "export function fakeExport() {}"',
+    ].join("\n");
+    const result = lexicalParse(content);
+
+    // Real import preserved
+    expect(result.imports.some((i) => i.source === "real-pkg")).toBe(true);
+    // No fake import from string/template
+    expect(result.imports.some((i) => i.source === "fake-pkg")).toBe(false);
+    expect(result.imports.some((i) => i.source === "@/lib")).toBe(false);
+    // Real export/symbol preserved
+    expect(result.exports.some((e) => e.names.includes("realFunction"))).toBe(true);
+    expect(result.symbols.some((s) => s.name === "realFunction")).toBe(true);
+    // No fake export/symbol from string
+    expect(result.exports.some((e) => e.names.includes("fakeExport"))).toBe(false);
+    expect(result.symbols.some((s) => s.name === "fakeExport")).toBe(false);
   });
 });

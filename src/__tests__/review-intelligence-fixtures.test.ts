@@ -24,7 +24,7 @@ import {
 import type { CLIValues, SkillProfile } from "../types/index.js";
 import type { IndexingConfig, SourceIndex } from "../types/index.js";
 
-// ── Setup ───────────────────────────────────────────────────────────────────────
+// -- Setup -----------------------------------------------------------------------
 
 const tempDirs: string[] = [];
 
@@ -50,11 +50,11 @@ const createFixtureMap = new Map<SkillProfile, (cwd: string) => Promise<IndexedF
 ]);
 
 // Rely on the real pipeline (no mocks). Fixtures build the index the same way
-// users do — via buildSourceIndex + readIndex.
+// users do \u2014 via buildSourceIndex + readIndex.
 
-// ── Fixture Profiles: signal precision per profile ─────────────────────────────
+// -- Fixture Profiles: signal precision per profile -----------------------------
 
-describe("Review Intelligence Fixtures — profile coverage", () => {
+describe("Review Intelligence Fixtures \u2014 profile coverage", () => {
   for (const profile of PROFILES) {
     describe(`${profile} fixture`, () => {
       let fixture: IndexedFixture;
@@ -120,9 +120,9 @@ describe("Review Intelligence Fixtures — profile coverage", () => {
   }
 });
 
-// ── Signal Precision Tests ─────────────────────────────────────────────────────
+// -- Signal Precision Tests -----------------------------------------------------
 
-describe("Review Intelligence — signal precision", () => {
+describe("Review Intelligence \u2014 signal precision", () => {
   let cwd: string;
 
   const makeIndexWithFiles = async (
@@ -155,7 +155,7 @@ describe("Review Intelligence — signal precision", () => {
     return index;
   };
 
-  // ── public-api signal ──────────────────────────────────────────────────
+  // -- public-api signal --------------------------------------------------
 
   it("includes public-api signal when changed file is re-exported from entrypoint", async () => {
     const index = await makeIndexWithFiles({
@@ -181,7 +181,7 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.context).not.toContain("Public API Risk");
   });
 
-  // ── risk signal (hub-file) ─────────────────────────────────────────────
+  // -- risk signal (hub-file) ---------------------------------------------
 
   it("includes risk signal when changed file is imported by many files", async () => {
     const index = await makeIndexWithFiles({
@@ -209,7 +209,7 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.context).not.toContain("Hub File Blast Radius");
   });
 
-  // ── test-gap signal ────────────────────────────────────────────────────
+  // -- test-gap signal ----------------------------------------------------
 
   it("includes test-gap signal when changed file has no associated tests", async () => {
     const index = await makeIndexWithFiles({
@@ -234,7 +234,7 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.context).not.toContain("Test Coverage Gap");
   });
 
-  // ── dependency signal ──────────────────────────────────────────────────
+  // -- dependency signal --------------------------------------------------
 
   it("includes dependency signal when changed file uses external package", async () => {
     const index = await makeIndexWithFiles(
@@ -262,7 +262,7 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.context).not.toContain("Key Dependencies Used");
   });
 
-  // ── Missing/disabled index → graceful unavailable, no throw ────────────
+  // -- Missing/disabled index \u2192 graceful unavailable, no throw ------------
 
   it("returns empty context when index is null (no throw)", async () => {
     const result = await buildReviewContext(null, [{ path: "src/any.ts" }]);
@@ -282,7 +282,7 @@ describe("Review Intelligence — signal precision", () => {
     expect(result.context).toBe("");
   });
 
-  // ── Multiple signals ───────────────────────────────────────────────────
+  // -- Multiple signals ---------------------------------------------------
 
   it("can produce multiple signals for a single changed file", async () => {
     const index = await makeIndexWithFiles(
@@ -299,14 +299,14 @@ describe("Review Intelligence — signal precision", () => {
     const result = await buildReviewContext(index, [{ path: "src/pivot.ts" }]);
     expect(result.metadata.includedSignals).toBeDefined();
     // pivot.ts is public API (re-exported from lib.ts), a hub (imported by 3 files),
-    // untested, and uses lodash → all 4 signals
+    // untested, and uses lodash \u2192 all 4 signals
     expect(result.metadata.includedSignals).toContain("public-api");
     expect(result.metadata.includedSignals).toContain("risk");
     expect(result.metadata.includedSignals).toContain("test-gap");
     expect(result.metadata.includedSignals).toContain("dependency");
   });
 
-  // ── intelligenceSignals structured metadata (v1.4.0) ─────────────────────
+  // -- intelligenceSignals structured metadata (v1.4.0) ---------------------
 
   it("includes intelligenceSignals when signals are present", async () => {
     const index = await makeIndexWithFiles({
@@ -382,9 +382,9 @@ describe("Review Intelligence — signal precision", () => {
   });
 });
 
-// ── Quality Assertions ─────────────────────────────────────────────────────────
+// -- Quality Assertions ---------------------------------------------------------
 
-describe("Review Intelligence — quality assertions", () => {
+describe("Review Intelligence \u2014 quality assertions", () => {
   let cwd: string;
   let index: SourceIndex;
 
@@ -446,7 +446,7 @@ describe("Review Intelligence — quality assertions", () => {
     const result = await buildReviewContext(index, [{ path: "src/hub.ts" }]);
     const context = result.context;
 
-    // Find first "File:" line — must be the changed file
+    // Find first "File:" line \u2014 must be the changed file
     const firstFileMatch = context.match(/^File: /m);
     expect(firstFileMatch).not.toBeNull();
     const firstIdx = firstFileMatch!.index!;
@@ -498,9 +498,9 @@ describe("Review Intelligence — quality assertions", () => {
   });
 });
 
-// ── explain-context JSON Output Shape ──────────────────────────────────────────
+// -- explain-context JSON Output Shape ------------------------------------------
 
-describe("Review Intelligence — explain-context JSON output shape", () => {
+describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
   const baseIndexingConfig: IndexingConfig = {
     enabled: true,
     languages: ["typescript", "tsx", "javascript", "jsx"],
@@ -741,9 +741,9 @@ describe("Review Intelligence — explain-context JSON output shape", () => {
   });
 });
 
-// ── Edge Cases ─────────────────────────────────────────────────────────────────
+// -- Edge Cases -----------------------------------------------------------------
 
-describe("Review Intelligence — edge cases", () => {
+describe("Review Intelligence \u2014 edge cases", () => {
   const makeIndexWithFiles = async (
     files: Record<string, string>,
     packageJsonExtras: Record<string, unknown> = {},
@@ -842,9 +842,9 @@ describe("Review Intelligence — edge cases", () => {
   });
 });
 
-// ── Lane A: Review Intelligence Precision ───────────────────────────────────────
+// -- Lane A: Review Intelligence Precision ---------------------------------------
 
-describe("Review Intelligence — Lane A precision", () => {
+describe("Review Intelligence \u2014 Lane A precision", () => {
   let cwd: string;
 
   const makeIndexWithFiles = async (
@@ -877,10 +877,10 @@ describe("Review Intelligence — Lane A precision", () => {
     return index;
   };
 
-  // ── Lane E: Review Evaluation Harness ──────────────────────────────────────────
+  // -- Lane E: Review Evaluation Harness ------------------------------------------
   //
 
-  describe("Review Intelligence — Lane E precision", () => {
+  describe("Review Intelligence \u2014 Lane E precision", () => {
     let cwd: string;
 
     const makeIndexWithFiles = async (
@@ -922,7 +922,7 @@ describe("Review Intelligence — Lane A precision", () => {
         "src/lib.ts": `export { api } from "./api.js";`,
       });
 
-      // Change src/sub/api.ts — same basename as the public-api file src/api.ts
+      // Change src/sub/api.ts \u2014 same basename as the public-api file src/api.ts
       // but in a different directory. It should NOT get public-api.
       const result = await buildReviewContext(index, [{ path: "src/sub/api.ts" }]);
       if (result.metadata.includedSignals) {
@@ -936,7 +936,7 @@ describe("Review Intelligence — Lane A precision", () => {
       expect(publicApiSignals.length).toBe(0);
     });
 
-    // E2. Risk boundary: exactly 2 importers → no risk; exactly 3 importers → risk.
+    // E2. Risk boundary: exactly 2 importers \u2192 no risk; exactly 3 importers \u2192 risk.
     it("file imported by exactly 3 files emits risk signal (threshold boundary)", async () => {
       const index = await makeIndexWithFiles({
         "src/hub.ts": `export const hub = 1;`,
@@ -951,11 +951,11 @@ describe("Review Intelligence — Lane A precision", () => {
 
       const riskSignal = (result.metadata.intelligenceSignals ?? []).find((s) => s.type === "risk");
       expect(riskSignal).toBeDefined();
-      expect(riskSignal!.confidence).toBe("medium"); // 3 importers → medium confidence
+      expect(riskSignal!.confidence).toBe("medium"); // 3 importers \u2192 medium confidence
       expect(riskSignal!.evidence).toContain("3");
     });
 
-    // E2b. Confirm the negative side: exactly 2 importers → no risk.
+    // E2b. Confirm the negative side: exactly 2 importers \u2192 no risk.
     it("file imported by exactly 2 files does not emit risk signal (below threshold)", async () => {
       const index = await makeIndexWithFiles({
         "src/leaf.ts": `export const leaf = 1;`,
@@ -1154,7 +1154,7 @@ describe("Review Intelligence — Lane A precision", () => {
       { path: "src/hub.ts" },
     ]);
 
-    // Both signal types should appear independently — api.ts produces public-api,
+    // Both signal types should appear independently \u2014 api.ts produces public-api,
     // hub.ts produces risk; neither suppresses the other.
     expect(result.metadata.includedSignals).toContain("public-api");
     expect(result.metadata.includedSignals).toContain("risk");

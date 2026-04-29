@@ -21,7 +21,7 @@ import { buildSourceIndex } from "../commands/indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { clearConfigCache } from "../utils/config.js";
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// -- Fixtures ------------------------------------------------------------------
 
 const tempDirs: string[] = [];
 
@@ -49,7 +49,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-// ── CLI args ──────────────────────────────────────────────────────────────────
+// -- CLI args ------------------------------------------------------------------
 
 describe("create-skills CLI args", () => {
   it("parses create-skills subcommand", () => {
@@ -99,7 +99,7 @@ describe("create-skills CLI args", () => {
   });
 });
 
-// ── Registry ──────────────────────────────────────────────────────────────────
+// -- Registry ------------------------------------------------------------------
 
 describe("adapter registry", () => {
   it("has 7 adapters", () => {
@@ -131,7 +131,7 @@ describe("adapter registry", () => {
   });
 });
 
-// ── Detection ─────────────────────────────────────────────────────────────────
+// -- Detection -----------------------------------------------------------------
 
 describe("detectAdapters", () => {
   it("detects claude when .claude/ exists", async () => {
@@ -190,7 +190,7 @@ describe("detectAdapters", () => {
   });
 });
 
-// ── Content generation ────────────────────────────────────────────────────────
+// -- Content generation --------------------------------------------------------
 
 describe("generateContent", () => {
   it("returns fallback content when index is null", () => {
@@ -254,7 +254,7 @@ describe("generateContent", () => {
   });
 });
 
-// ── Adapter output ────────────────────────────────────────────────────────────
+// -- Adapter output ------------------------------------------------------------
 
 describe("Claude adapter generate()", () => {
   it("creates SKILL.md + 7 reference files", async () => {
@@ -340,7 +340,7 @@ describe("Generic adapter generate()", () => {
   });
 });
 
-// ── runCreateSkillsCommand ────────────────────────────────────────────────────
+// -- runCreateSkillsCommand ----------------------------------------------------
 
 describe("runCreateSkillsCommand", () => {
   it("generates files for --agent claude and returns exit code 0", async () => {
@@ -401,7 +401,7 @@ describe("runCreateSkillsCommand", () => {
       cwd,
     );
 
-    // Second run without --force — should return 1 (all skipped)
+    // Second run without --force \u2014 should return 1 (all skipped)
     const exitCode = await runCreateSkillsCommand(
       {
         agent: "claude",
@@ -676,7 +676,7 @@ describe("runCreateSkillsCommand", () => {
   });
 });
 
-// ── Metadata ──────────────────────────────────────────────────────────────────
+// -- Metadata ------------------------------------------------------------------
 
 import {
   computeIndexHash,
@@ -845,7 +845,7 @@ describe("metadata utilities", () => {
   });
 });
 
-// ── Metadata header placement ─────────────────────────────────────────────────
+// -- Metadata header placement -------------------------------------------------
 
 describe("applyMetadataHeader", () => {
   it("inserts metadata after YAML frontmatter", () => {
@@ -877,7 +877,7 @@ describe("applyMetadataHeader", () => {
   });
 });
 
-// ── Dry-run mode ──────────────────────────────────────────────────────────────
+// -- Dry-run mode --------------------------------------------------------------
 
 describe("runCreateSkillsCommand --dry-run", () => {
   it("does not create any files", async () => {
@@ -956,7 +956,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
       cwd,
     );
 
-    // Dry-run again — should report skip
+    // Dry-run again \u2014 should report skip
     let output: unknown = null;
     const orig = console.log;
     console.log = (...args: unknown[]) => {
@@ -1035,7 +1035,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
   });
 });
 
-// ── Check mode ────────────────────────────────────────────────────────────────
+// -- Check mode ----------------------------------------------------------------
 
 describe("runCreateSkillsCommand --check", () => {
   it("returns exit 0 when all files are up-to-date", async () => {
@@ -1056,7 +1056,7 @@ describe("runCreateSkillsCommand --check", () => {
       cwd,
     );
 
-    // Check — same index, should be up-to-date
+    // Check \u2014 same index, should be up-to-date
     const exitCode = await runCreateSkillsCommand(
       {
         agent: "claude",
@@ -1197,7 +1197,7 @@ describe("runCreateSkillsCommand --check", () => {
   });
 });
 
-// ── CLI arg parsing for new flags ─────────────────────────────────────────────
+// -- CLI arg parsing for new flags ---------------------------------------------
 
 describe("create-skills new CLI flags", () => {
   it("parses --dry-run flag", () => {
@@ -1220,7 +1220,7 @@ describe("create-skills new CLI flags", () => {
   });
 });
 
-// ── Hash correctness ──────────────────────────────────────────────────────────
+// -- Hash correctness ----------------------------------------------------------
 
 import type { SourceIndex, ProjectManifest } from "../types/index.js";
 
@@ -1316,7 +1316,7 @@ describe("computeIndexHash correctness", () => {
         },
       ],
     };
-    // ./utils.js vs ./utils — changes ESM convention detection
+    // ./utils.js vs ./utils \u2014 changes ESM convention detection
     expect(computeIndexHash(base)).not.toBe(computeIndexHash(modified));
   });
 
@@ -1397,7 +1397,7 @@ describe("computeIndexHash correctness", () => {
   });
 });
 
-// ── wrong-agent detection ─────────────────────────────────────────────────────
+// -- wrong-agent detection -----------------------------------------------------
 
 describe("--check wrong-agent detection", () => {
   it("returns wrong-agent when file hash matches but adapter id differs", async () => {
@@ -1426,7 +1426,7 @@ describe("--check wrong-agent detection", () => {
     const tampered = original.replace(/agent=generic/g, "agent=codex");
     await writeFile(genPath, tampered, "utf-8");
 
-    // Check with generic — should see wrong-agent since header says codex
+    // Check with generic \u2014 should see wrong-agent since header says codex
     let output: unknown = null;
     const orig = console.log;
     console.log = (...args: unknown[]) => {
@@ -1460,7 +1460,7 @@ describe("--check wrong-agent detection", () => {
   });
 });
 
-// ── Profile detection ─────────────────────────────────────────────────────────
+// -- Profile detection ---------------------------------------------------------
 
 describe("detectProfile", () => {
   it("detects library by default when index is null", () => {
@@ -1488,7 +1488,7 @@ describe("detectProfile", () => {
   });
 });
 
-// ── Profile content generation ────────────────────────────────────────────────
+// -- Profile content generation ------------------------------------------------
 
 describe("profileRules content", () => {
   it("includes real commands from package.json scripts", () => {
@@ -1615,7 +1615,7 @@ describe("profileRules content", () => {
   });
 });
 
-// ── --all-agents generic exclusion ────────────────────────────────────────────
+// -- --all-agents generic exclusion --------------------------------------------
 
 describe("--all-agents generic exclusion", () => {
   it("--all-agents does not include generic adapter", async () => {
@@ -1681,7 +1681,7 @@ describe("--all-agents generic exclusion", () => {
     }
 
     const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
-    // codex writes to .agents/skills/, generic writes to .agents/rules/ — no conflict
+    // codex writes to .agents/skills/, generic writes to .agents/rules/ \u2014 no conflict
     const codexFiles = parsed.dryRun.find((r) => r.agent === "codex")!.files;
     const genericFiles = parsed.dryRun.find((r) => r.agent === "generic")!.files;
     expect(codexFiles.every((f) => f.action === "create")).toBe(true);
@@ -1689,7 +1689,7 @@ describe("--all-agents generic exclusion", () => {
   });
 });
 
-// ── SkillKnowledgeBase ──────────────────────────────────────────────────────
+// -- SkillKnowledgeBase ------------------------------------------------------
 
 import { buildSkillKnowledgeBase } from "../services/skills-generator/knowledge-base.js";
 
@@ -1793,7 +1793,7 @@ describe("buildSkillKnowledgeBase", () => {
   });
 });
 
-// ── Agent Workflow v2 ──────────────────────────────────────────────────────
+// -- Agent Workflow v2 ------------------------------------------------------
 
 describe("agentWorkflow v2 content", () => {
   it("enforces mandatory index-first diagnostics", () => {
@@ -1837,7 +1837,7 @@ describe("agentWorkflow v2 content", () => {
   });
 });
 
-// ── Reference Routing ──────────────────────────────────────────────────────
+// -- Reference Routing ------------------------------------------------------
 
 describe("referenceRouting section", () => {
   it("is present in generateContent output with ## Reference Routing heading", () => {
@@ -1979,7 +1979,7 @@ describe("referenceRouting section", () => {
     expect(content.sections.referenceRouting).toContain("No source index available");
   });
 
-  it("is deterministic — same index produces byte-identical routing", () => {
+  it("is deterministic \u2014 same index produces byte-identical routing", () => {
     const idx = makeMinimalIndex();
     idx.files.push({
       path: "src/cli/main.ts",
@@ -2007,7 +2007,7 @@ describe("referenceRouting section", () => {
     expect(a.sections.referenceRouting).toBe(b.sections.referenceRouting);
   });
 
-  it("is ASCII-safe — no risky Unicode characters", () => {
+  it("is ASCII-safe \u2014 no risky Unicode characters", () => {
     const idx = makeMinimalIndex();
     idx.files.push({
       path: "src/cli/main.ts",
@@ -2031,7 +2031,7 @@ describe("referenceRouting section", () => {
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
-    const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+    const riskyUnicode = ["\u2014", "\u2192", "\u2190", "\u2026", "\u2713", "\u2717"];
     for (const r of riskyUnicode) {
       expect(content.sections.referenceRouting).not.toContain(r);
     }
@@ -2099,7 +2099,7 @@ describe("referenceRouting section", () => {
   });
 });
 
-// ── New reference file existence checks ─────────────────────────────────────
+// -- New reference file existence checks -------------------------------------
 
 describe("--all-agents includes new reference files", () => {
   it("writes all 7 Claude reference files", async () => {
@@ -2140,7 +2140,7 @@ describe("--all-agents includes new reference files", () => {
   });
 });
 
-// ── Quality Gate Integration ────────────────────────────────────────────────
+// -- Quality Gate Integration ------------------------------------------------
 
 import { validateSkillQuality } from "../services/skills-generator/quality-gate.js";
 
@@ -2350,7 +2350,7 @@ describe("quality gate integration", () => {
   });
 });
 
-// ── Quality Gate: Reference Routing ────────────────────────────────────────
+// -- Quality Gate: Reference Routing ----------------------------------------
 
 describe("quality gate: reference routing", () => {
   it("Claude SKILL.md includes Reference Routing after Required Agent Workflow", async () => {
@@ -2481,7 +2481,7 @@ describe("quality gate: reference routing", () => {
   });
 });
 
-// ── Richer fixture projects (v1.0.16+) ──────────────────────────────────────
+// -- Richer fixture projects (v1.0.16+) --------------------------------------
 
 async function makeCliToolingProject(cwd: string): Promise<void> {
   await mkdir(join(cwd, "src", "cli"), { recursive: true });
@@ -2882,7 +2882,7 @@ const PROJECT_MAKERS = {
   "react-next": makeReactNextProject,
 } as const;
 
-// ── Zero-warning fixture tests ──────────────────────────────────────────────
+// -- Zero-warning fixture tests ----------------------------------------------
 
 describe("fixture project quality gate (zero errors, zero warnings)", () => {
   const profiles = ["cli-tooling", "library", "node-service", "react-next"] as const;
@@ -3012,7 +3012,7 @@ describe("fixture project quality gate (zero errors, zero warnings)", () => {
   }
 });
 
-// ── Determinism test ────────────────────────────────────────────────────────
+// -- Determinism test --------------------------------------------------------
 
 describe("adapter output determinism", () => {
   it("Claude adapter produces byte-identical output for same index", async () => {
@@ -3072,7 +3072,7 @@ describe("adapter output determinism", () => {
   });
 });
 
-// ── --check regression tests ────────────────────────────────────────────────
+// -- --check regression tests ------------------------------------------------
 
 describe("--check regression (quality gate exit codes)", () => {
   it("returns exit 0 when quality passes and files are up-to-date", async () => {
@@ -3094,7 +3094,7 @@ describe("--check regression (quality gate exit codes)", () => {
       cwd,
     );
 
-    // Check immediately — should be up-to-date with zero quality errors
+    // Check immediately \u2014 should be up-to-date with zero quality errors
     const exitCode = await runCreateSkillsCommand(
       {
         agent: "claude",
@@ -3253,7 +3253,7 @@ describe("--check regression (quality gate exit codes)", () => {
   });
 });
 
-// ── Adapter Layout v1.0.17 ──────────────────────────────────────────────────
+// -- Adapter Layout v1.0.17 --------------------------------------------------
 
 describe("adapter layout v1.0.17", () => {
   it("Antigravity adapter generates to .agents/skills/<project>-antigravity-best-practices/SKILL.md", async () => {
@@ -3366,7 +3366,7 @@ describe("adapter layout v1.0.17", () => {
   });
 });
 
-// ── Quality Gate: adapter-layout-contract ────────────────────────────────────
+// -- Quality Gate: adapter-layout-contract ------------------------------------
 
 describe("quality gate: adapter-layout-contract", () => {
   it("Antigravity skill passes adapter-layout-contract with zero errors", async () => {
@@ -3497,7 +3497,7 @@ describe("quality gate: adapter-layout-contract", () => {
   });
 });
 
-// ── Legacy migration diagnostics (v1.0.18+) ────────────────────────────────────
+// -- Legacy migration diagnostics (v1.0.18+) ------------------------------------
 
 describe("detectLegacyGeneratedFiles", () => {
   const createLegacyFile = async (
@@ -3613,7 +3613,7 @@ describe("runCreateSkillsCommand --check with legacy files", () => {
       },
       cwd,
     );
-    // Run --check — legacy files should not affect exit code
+    // Run --check \u2014 legacy files should not affect exit code
     const exitCode = await runCreateSkillsCommand(
       {
         agent: "codex",
@@ -3642,7 +3642,7 @@ describe("runCreateSkillsCommand --check with legacy files", () => {
     });
     const legacyContent = header + "\n# Legacy generated file\n";
     await writeFile(join(cwd, ".agents", "rules", "fixture-best-practices.md"), legacyContent);
-    // --check without generating current files → missing → exit 1
+    // --check without generating current files \u2192 missing \u2192 exit 1
     const exitCode = await runCreateSkillsCommand(
       {
         agent: "codex",
@@ -3714,7 +3714,7 @@ describe("runCreateSkillsCommand --dry-run with legacy files", () => {
   });
 });
 
-// ── Doctor diagnostic tests (v1.7.0+) ─────────────────────────────────────────
+// -- Doctor diagnostic tests (v1.7.0+) -----------------------------------------
 
 function captureStdout() {
   let stdout = "";
@@ -3791,7 +3791,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(typeof parsed.aiEnrichment.enabled).toBe("boolean");
     expect(typeof parsed.aiEnrichment.apiKeyPresent).toBe("boolean");
     expect(["disabled", "ready", "action-required"]).toContain(parsed.aiEnrichment.status);
-    // Missing index → action-required → exit 1
+    // Missing index \u2192 action-required \u2192 exit 1
     expect(exitCode).toBe(1);
     expect(parsed.status).toBe("action-required");
     // recommendedCommands must be an array of non-empty trimmed strings
@@ -4228,9 +4228,9 @@ describe("runCreateSkillsCommand --doctor", () => {
       cwd,
     );
     cap.restore();
-    // JSON must be parseable directly — no workaround needed
+    // JSON must be parseable directly \u2014 no workaround needed
     expect(() => JSON.parse(cap.stdout)).not.toThrow();
-    // stdout must start with '{' — no log prefix, no ANSI noise
+    // stdout must start with '{' \u2014 no log prefix, no ANSI noise
     expect(cap.stdout.trim().startsWith("{")).toBe(true);
   });
 
@@ -4254,7 +4254,7 @@ describe("runCreateSkillsCommand --doctor", () => {
       cwd,
     );
     cap.restore();
-    // JSON must be parseable directly — no workaround needed, even with a config file
+    // JSON must be parseable directly \u2014 no workaround needed, even with a config file
     // that triggers loadProjectConfig logging (quiet mode must suppress it).
     expect(() => JSON.parse(cap.stdout)).not.toThrow();
     expect(cap.stdout.trim().startsWith("{")).toBe(true);
@@ -4340,12 +4340,12 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(out).toContain("(none - no automated commands recommended)");
 
     const risky = [
-      { char: "—", name: "em dash (--)" },
-      { char: "→", name: "right arrow (->)" },
-      { char: "←", name: "left arrow (<-)" },
-      { char: "…", name: "ellipsis (...)" },
-      { char: "✓", name: "checkmark" },
-      { char: "✗", name: "ballot x" },
+      { char: "\u2014", name: "em dash (--)" },
+      { char: "\u2192", name: "right arrow (->)" },
+      { char: "\u2190", name: "left arrow (<-)" },
+      { char: "\u2026", name: "ellipsis (...)" },
+      { char: "\u2713", name: "checkmark" },
+      { char: "\u2717", name: "ballot x" },
     ];
     for (const r of risky) {
       expect(out).not.toContain(r.char);
@@ -4606,7 +4606,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     }
   });
 
-  // ── v1.9.0 Skill encoding hygiene ────────────────────────────────────────
+  // -- v1.9.0 Skill encoding hygiene ----------------------------------------
 
   it("--all-agents --dry-run reports zero risky-unicode quality errors", async () => {
     const cwd = await makeTempDir();
@@ -4720,7 +4720,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(agUnicodeChecks).toHaveLength(0);
   });
 
-  // ── v1.9.1 Legacy advisory grouping ──────────────────────────────────────
+  // -- v1.9.1 Legacy advisory grouping --------------------------------------
 
   it("--doctor --format json groups legacy files by agent in recommendedActions", async () => {
     const cwd = await makeTempDir();
@@ -4990,7 +4990,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(legacyCommands.length).toBe(0);
   });
 
-  // ── Doctor AI enrichment cache (v1.13.0+) ──────────────────────────────────
+  // -- Doctor AI enrichment cache (v1.13.0+) ----------------------------------
 
   it("--doctor --format json includes aiEnrichmentCache with required fields", async () => {
     const cwd = await makeTempDir();
@@ -5045,8 +5045,8 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.aiEnrichmentCache.status).toBe("missing");
     expect(parsed.aiEnrichmentCache.entries).toBe(0);
     expect(parsed.aiEnrichmentCache.bytes).toBe(0);
-    // Cache is advisory — exit code depends on index, not cache
-    expect(exitCode).toBe(1); // missing index → action-required
+    // Cache is advisory \u2014 exit code depends on index, not cache
+    expect(exitCode).toBe(1); // missing index \u2192 action-required
   });
 
   it("--doctor valid AI enrichment cache files return correct entries and bytes", async () => {
@@ -5078,7 +5078,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.aiEnrichmentCache.status).toBe("available");
     expect(parsed.aiEnrichmentCache.entries).toBe(3);
     expect(parsed.aiEnrichmentCache.bytes).toBeGreaterThan(0);
-    // Cache is advisory — exit code unchanged by cache presence
+    // Cache is advisory \u2014 exit code unchanged by cache presence
     expect(exitCode).toBe(1); // missing index, not affected by cache
   });
 
@@ -5182,7 +5182,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(out).toContain("AI enrichment cache: 1 entries");
 
     // Must not contain risky unicode
-    const risky = ["—", "→", "←", "…", "✓", "✗"];
+    const risky = ["\u2014", "\u2192", "\u2190", "\u2026", "\u2713", "\u2717"];
     for (const r of risky) {
       expect(out).not.toContain(r);
     }
@@ -5222,7 +5222,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         },
       ],
       stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
-      // manifestHash intentionally absent — legacy index
+      // manifestHash intentionally absent \u2014 legacy index
     };
     await writeFile(
       join(cwd, ".mp-sentinel-cache", "source-index.json"),
@@ -5320,7 +5320,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(index).not.toBeNull();
     expect(index!.manifestHash).toBeDefined();
 
-    // Do NOT modify package.json — manifest should still match
+    // Do NOT modify package.json \u2014 manifest should still match
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
       {
@@ -5342,7 +5342,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.index.manifestHash).toBe(index!.manifestHash);
   });
 
-  // ── Doctor AI enrichment readiness (v1.19.0+) ─────────────────────────────
+  // -- Doctor AI enrichment readiness (v1.19.0+) -----------------------------
 
   it("--doctor disabled AI enrichment has status=disabled and does not affect exit code", async () => {
     const cwd = await makeTempDir();
@@ -5385,7 +5385,7 @@ describe("runCreateSkillsCommand --doctor", () => {
       await writeFile(file.outputPath, header + "\n" + file.content);
     }
 
-    // No AI config → disabled by default
+    // No AI config \u2192 disabled by default
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
       {
@@ -5626,7 +5626,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   });
 });
 
-// ── Adapter spec path contract (v1.14+) ────────────────────────────────────
+// -- Adapter spec path contract (v1.14+) ------------------------------------
 
 describe("adapter spec path contract", () => {
   it("every primary adapter generated output matches its spec workspacePath", async () => {

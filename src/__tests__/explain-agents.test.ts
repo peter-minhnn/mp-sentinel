@@ -12,7 +12,7 @@ import {
 } from "../services/skills-generator/index.js";
 import type { ExplainAgentEntry } from "../types/index.js";
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// -- Fixtures ------------------------------------------------------------------
 
 const tempDirs: string[] = [];
 
@@ -35,7 +35,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-// ── Registry detection edge cases ─────────────────────────────────────────────
+// -- Registry detection edge cases ---------------------------------------------
 
 describe("registry detection edge cases", () => {
   it("detects claude when .claude/ exists", async () => {
@@ -96,7 +96,7 @@ describe("registry detection edge cases", () => {
 
   it("generic is never auto-detected", async () => {
     const cwd = await makeTempDir();
-    // Create all known folders — generic should still not be detected
+    // Create all known folders \u2014 generic should still not be detected
     await mkdir(join(cwd, ".claude"), { recursive: true });
     await mkdir(join(cwd, ".cursor"), { recursive: true });
     await mkdir(join(cwd, ".agents"), { recursive: true });
@@ -106,7 +106,7 @@ describe("registry detection edge cases", () => {
   });
 });
 
-// ── explainAgentDetection ─────────────────────────────────────────────────────
+// -- explainAgentDetection -----------------------------------------------------
 
 describe("explainAgentDetection", () => {
   it("returns entries for all adapters except generic", () => {
@@ -165,7 +165,7 @@ describe("explainAgentDetection", () => {
     expect(antigravityEntry.detected).toBe(true);
     expect(antigravityEntry.detectionSignals).toContain(".antigravity/ exists");
 
-    // Not created — should not be detected
+    // Not created \u2014 should not be detected
     const cursorEntry = entries.find((e) => e.id === "cursor")!;
     expect(cursorEntry.detected).toBe(false);
     expect(cursorEntry.detectionSignals).toHaveLength(0);
@@ -263,7 +263,7 @@ describe("explainAgentDetection", () => {
   });
 });
 
-// ── CLI: create-skills --explain-agents ───────────────────────────────────────
+// -- CLI: create-skills --explain-agents ---------------------------------------
 
 describe("create-skills --explain-agents CLI", () => {
   it("--format json outputs valid JSON without --agent or --all-agents", async () => {
@@ -462,7 +462,7 @@ describe("create-skills --explain-agents CLI", () => {
 
   it("works even without package.json (projectName falls back to 'project')", async () => {
     const cwd = await makeTempDir();
-    // No package.json — just a bare directory
+    // No package.json \u2014 just a bare directory
 
     let captured: string | null = null;
     const originalLog = console.log;

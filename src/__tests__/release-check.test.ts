@@ -200,7 +200,7 @@ describe("release-check", () => {
           },
           "node_modules/git-dep": {
             version: "2.0.0",
-            // no resolved field — git dep
+            // no resolved field \u2014 git dep
           },
         },
       }),
@@ -276,5 +276,57 @@ describe("release-check", () => {
     rmSync(dir, { recursive: true, force: true });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('"files" field');
+  });
+
+  // ── Dist CLI freshness ──────────────────────────────────────────────
+
+  function distFixture(version, opts) {
+    const helpFlags = opts?.helpFlags ?? [
+      "--health",
+      "--agent-context",
+      "--find-symbol",
+      "--find-import",
+    ];
+    const distVersion = opts?.distVersion ?? version;
+    const distContent = [
+      "#!/usr/bin/env node",
+      "const arg = process.argv[2] || '';",
+      `if (arg === '--version') { console.log('${distVersion}'); process.exit(0); }`,
+      `if (arg === 'indexing' && process.argv.includes('--help')) {`,
+      `  console.log('${helpFlags.join(" ")}');`,
+      "  process.exit(0);",
+      "}",
+      "console.log('unknown');",
+      "process.exit(1);",
+    ].join("\n");
+
+    const files = validFiles(version, opts);
+    files["dist/index.js"] = distContent;
+    return files;
+  }
+
+  it("passes dist freshness when dist CLI matches package version and help flags", () => {
+    const dir = fixture(distFixture("1.2.3"));
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("dist/index.js --version");
+    expect(result.stdout).toContain("dist/index.js indexing --help");
+  });
+
+  it("fails when dist/index.js --version does not match package.json", () => {
+    const dir = fixture(distFixture("1.2.3", { distVersion: "1.2.4" }));
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('--version "1.2.4" does not match expected');
+  });
+
+  it("fails when dist/index.js indexing --help is missing a required flag", () => {
+    const dir = fixture(distFixture("1.2.3", { helpFlags: ["--health", "--agent-context"] }));
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("missing flag");
   });
 });

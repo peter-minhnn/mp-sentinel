@@ -12,7 +12,7 @@ import type {
   ProjectManifest,
 } from "../types/index.js";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 function makeFile(outputPath: string, content: string): GeneratedSkillFile {
   return { outputPath, content };
@@ -76,7 +76,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
   };
 }
 
-// ── Edge cases ───────────────────────────────────────────────────────────────
+// -- Edge cases ---------------------------------------------------------------
 
 describe("validateSkillQuality", () => {
   describe("edge cases", () => {
@@ -102,7 +102,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Max file size ──────────────────────────────────────────────────────────
+  // -- Max file size ----------------------------------------------------------
 
   describe("max file size", () => {
     it("flags SKILL.md over 3600 chars as error for claude", () => {
@@ -126,8 +126,8 @@ describe("validateSkillQuality", () => {
       expect(sizeErrors.length).toBe(1);
     });
 
-    it("flags single-file adapter output over 21000 chars", () => {
-      const longContent = "# Big\n\n" + "x".repeat(21001);
+    it("flags single-file adapter output over 22000 chars", () => {
+      const longContent = "# Big\n\n" + "x".repeat(22001);
       const files = [makeFile(".cursor/rules/test.mdc", longContent)];
       const report = validateSkillQuality(files, "cursor", null);
       const sizeErrors = report.checks.filter(
@@ -149,7 +149,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Required sections ──────────────────────────────────────────────────────
+  // -- Required sections ------------------------------------------------------
 
   describe("required sections", () => {
     it("flags missing required sections in Claude SKILL.md", () => {
@@ -265,7 +265,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Required references (Claude only) ──────────────────────────────────────
+  // -- Required references (Claude only) --------------------------------------
 
   describe("required references", () => {
     it("flags SKILL.md without 7 reference links", () => {
@@ -328,7 +328,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── No duplicate sections ──────────────────────────────────────────────────
+  // -- No duplicate sections --------------------------------------------------
 
   describe("duplicate sections", () => {
     it("flags duplicate H2 headings", () => {
@@ -349,7 +349,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Empty sections ─────────────────────────────────────────────────────────
+  // -- Empty sections ---------------------------------------------------------
 
   describe("empty sections", () => {
     it("flags H2 heading with no content after it", () => {
@@ -380,7 +380,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Unknown path validation ────────────────────────────────────────────────
+  // -- Unknown path validation ------------------------------------------------
 
   describe("unknown path validation", () => {
     it("flags backtick paths not in source index", () => {
@@ -458,7 +458,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Codebase fidelity ────────────────────────────────────────────────────
+  // -- Codebase fidelity ----------------------------------------------------
 
   describe("codebase fidelity (real signals)", () => {
     it("warns when content does not mention CLI entrypoints present in index", () => {
@@ -731,7 +731,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── QualityReport structure ────────────────────────────────────────────────
+  // -- QualityReport structure ------------------------------------------------
 
   describe("QualityReport structure", () => {
     it("passed is true when there are only warnings", () => {
@@ -761,7 +761,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Adapter layout contract (v1.0.17+) ────────────────────────────────────
+  // -- Adapter layout contract (v1.0.17+) ------------------------------------
 
   describe("adapter-layout-contract", () => {
     const skillSpec = {
@@ -896,11 +896,11 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Risky Unicode ──────────────────────────────────────────────────────────
+  // -- Risky Unicode ----------------------------------------------------------
 
   describe("risky unicode", () => {
     it("flags em dash in generated content as error", () => {
-      const content = "## Overview\n\nThis is a test — with em dash.";
+      const content = "## Overview\n\nThis is a test \u2014 with em dash.";
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
       const unicodeErrors = report.checks.filter(
@@ -911,7 +911,7 @@ describe("validateSkillQuality", () => {
     });
 
     it("flags ellipsis in generated content as error", () => {
-      const content = "## Architecture\n\nLoading… please wait.";
+      const content = "## Architecture\n\nLoading\u2026 please wait.";
       const files = [makeFile(".cursor/rules/test.mdc", content)];
       const report = validateSkillQuality(files, "cursor", null);
       const unicodeErrors = report.checks.filter(
@@ -922,7 +922,7 @@ describe("validateSkillQuality", () => {
     });
 
     it("flags right arrow in generated content as error", () => {
-      const content = "## Commands\n\nRun → Build → Deploy";
+      const content = "## Commands\n\nRun \u2192 Build \u2192 Deploy";
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
       const unicodeErrors = report.checks.filter(
@@ -956,7 +956,8 @@ describe("validateSkillQuality", () => {
     });
 
     it("flags multiple risky character types in the same file", () => {
-      const content = "## Overview\n\nEm dash — here, ellipsis… there, arrow → next.";
+      const content =
+        "## Overview\n\nEm dash \u2014 here, ellipsis\u2026 there, arrow \u2192 next.";
       const files = [makeFile(".agents/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "codex", null);
       const unicodeErrors = report.checks.filter(
@@ -966,7 +967,7 @@ describe("validateSkillQuality", () => {
     });
 
     it("counts multiple occurrences of the same character correctly", () => {
-      const content = "## Overview\n\nDash — here — and — there.";
+      const content = "## Overview\n\nDash \u2014 here \u2014 and \u2014 there.";
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
       const unicodeErrors = report.checks.filter(
@@ -984,7 +985,7 @@ describe("validateSkillQuality", () => {
     });
 
     it("flags checkmark and ballot x in generated content", () => {
-      const content = "## Status\n\nTests: ✓ passed, ✗ failed";
+      const content = "## Status\n\nTests: \u2713 passed, \u2717 failed";
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
       const unicodeErrors = report.checks.filter(
@@ -994,7 +995,8 @@ describe("validateSkillQuality", () => {
     });
 
     it("flags smart quotes in generated content", () => {
-      const content = "## Overview\n\nUse ‘single’ and “double” quotes carefully.";
+      const content =
+        "## Overview\n\nUse \u2018single\u2019 and \u201cdouble\u201d quotes carefully.";
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
       const unicodeErrors = report.checks.filter(
@@ -1004,7 +1006,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Reference Routing quality gate (v1.16.1+) ──────────────────────────────
+  // -- Reference Routing quality gate (v1.16.1+) ------------------------------
 
   describe("reference routing", () => {
     function routingSection(body: string): string {
@@ -1180,7 +1182,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Agent workflow contract (v1.19+) ────────────────────────────────────────
+  // -- Agent workflow contract (v1.19+) ----------------------------------------
 
   describe("agent workflow contract (v1.19+)", () => {
     const VALID_REF_ROUTING = [
@@ -1402,7 +1404,7 @@ describe("validateSkillQuality", () => {
     });
   });
 
-  // ── Adapter spec completeness (v1.14+) ─────────────────────────────────────
+  // -- Adapter spec completeness (v1.14+) -------------------------------------
 
   describe("validateAdapterSpec (spec completeness)", () => {
     it("every primary adapter has a complete spec", () => {

@@ -12,7 +12,7 @@ import {
   generatePayloadSummary,
 } from "../utils/tokens.js";
 
-// ── resolveTokenLimit ─────────────────────────────────────────────────────────
+// -- resolveTokenLimit ---------------------------------------------------------
 
 describe("resolveTokenLimit", () => {
   it("returns Gemini limit for gemini provider", () => {
@@ -52,7 +52,7 @@ describe("resolveTokenLimit", () => {
   });
 });
 
-// ── warnIfTokenLimitExceeded ──────────────────────────────────────────────────
+// -- warnIfTokenLimitExceeded --------------------------------------------------
 
 describe("warnIfTokenLimitExceeded", () => {
   it("returns false when well under limit", () => {
@@ -74,7 +74,7 @@ describe("warnIfTokenLimitExceeded", () => {
   });
 });
 
-// ── chunkFileContent ──────────────────────────────────────────────────────────
+// -- chunkFileContent ----------------------------------------------------------
 
 describe("chunkFileContent", () => {
   it("returns single chunk when content fits", () => {
@@ -112,7 +112,7 @@ describe("chunkFileContent", () => {
   });
 });
 
-// ── estimatePayloadTokens ─────────────────────────────────────────────────────
+// -- estimatePayloadTokens -----------------------------------------------------
 
 describe("estimatePayloadTokens", () => {
   it("returns zero total for empty files array", async () => {
@@ -143,7 +143,7 @@ describe("estimatePayloadTokens", () => {
   });
 });
 
-// ── generatePayloadSummary ────────────────────────────────────────────────────
+// -- generatePayloadSummary ----------------------------------------------------
 
 describe("generatePayloadSummary", () => {
   it("returns perFile breakdown", async () => {

@@ -6,7 +6,7 @@ import { describe, it, expect } from "@jest/globals";
 import { matchCommitPattern, shouldSkipCommit, getFilesFromCommits } from "../utils/git.js";
 import type { CommitInfo, CommitPattern } from "../types/index.js";
 
-// ── matchCommitPattern ────────────────────────────────────────────────────────
+// -- matchCommitPattern --------------------------------------------------------
 
 describe("matchCommitPattern", () => {
   const patterns: CommitPattern[] = [
@@ -75,7 +75,7 @@ describe("matchCommitPattern", () => {
   });
 });
 
-// ── shouldSkipCommit ──────────────────────────────────────────────────────────
+// -- shouldSkipCommit ----------------------------------------------------------
 
 describe("shouldSkipCommit", () => {
   it("returns true when message contains a skip pattern", () => {
@@ -95,7 +95,7 @@ describe("shouldSkipCommit", () => {
   });
 });
 
-// ── getFilesFromCommits ───────────────────────────────────────────────────────
+// -- getFilesFromCommits -------------------------------------------------------
 
 describe("getFilesFromCommits", () => {
   it("returns unique files across multiple commits", () => {
@@ -127,9 +127,9 @@ describe("getFilesFromCommits", () => {
   });
 });
 
-// ── exclude-first mode ────────────────────────────────────────────────────────
+// -- exclude-first mode --------------------------------------------------------
 
-describe("matchCommitPattern — exclude-first mode", () => {
+describe("matchCommitPattern \u2014 exclude-first mode", () => {
   const patterns: CommitPattern[] = [
     { type: "feat", pattern: "^feat" },
     { type: "fix", pattern: "^fix" },

@@ -34,7 +34,7 @@ import type {
   CreateSkillsAIConfig,
 } from "../types/index.js";
 
-// ── Fixture helpers ──────────────────────────────────────────────────────────
+// -- Fixture helpers ----------------------------------------------------------
 
 function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
   const project: ProjectManifest = {
@@ -86,7 +86,7 @@ function repeat<T>(value: T, count: number): T[] {
   return Array.from({ length: count }, () => value);
 }
 
-// ── validateAIEnrichmentOutput ──────────────────────────────────────────────
+// -- validateAIEnrichmentOutput ----------------------------------------------
 
 describe("validateAIEnrichmentOutput", () => {
   it("valid output with all fields passes validation", () => {
@@ -136,7 +136,7 @@ describe("validateAIEnrichmentOutput", () => {
   });
 });
 
-// ── computeEnrichmentInputHash ──────────────────────────────────────────────
+// -- computeEnrichmentInputHash ----------------------------------------------
 
 describe("computeEnrichmentInputHash", () => {
   it("same input produces same hash", () => {
@@ -162,7 +162,7 @@ describe("computeEnrichmentInputHash", () => {
   });
 });
 
-// ── computeEnrichmentOutputHash ─────────────────────────────────────────────
+// -- computeEnrichmentOutputHash ---------------------------------------------
 
 describe("computeEnrichmentOutputHash", () => {
   it("same output produces same hash", () => {
@@ -177,7 +177,7 @@ describe("computeEnrichmentOutputHash", () => {
   });
 });
 
-// ── buildEnrichmentInput ────────────────────────────────────────────────────
+// -- buildEnrichmentInput ----------------------------------------------------
 
 describe("buildEnrichmentInput", () => {
   it("does not include generatedAt, mtimeMs, or stats fields", () => {
@@ -249,7 +249,7 @@ describe("buildEnrichmentInput", () => {
   });
 });
 
-// ── buildEnrichmentPrompt ───────────────────────────────────────────────────
+// -- buildEnrichmentPrompt ---------------------------------------------------
 
 describe("buildEnrichmentPrompt", () => {
   it("produces identical output for identical input", () => {
@@ -280,7 +280,7 @@ describe("buildEnrichmentPrompt", () => {
   });
 });
 
-// ── resolveAIEnrichmentConfig ───────────────────────────────────────────────
+// -- resolveAIEnrichmentConfig -----------------------------------------------
 
 describe("resolveAIEnrichmentConfig", () => {
   it("normalizes provider name to lowercase", () => {
@@ -304,7 +304,7 @@ describe("resolveAIEnrichmentConfig", () => {
   });
 });
 
-// ── deepSortForHash ─────────────────────────────────────────────────────────
+// -- deepSortForHash ---------------------------------------------------------
 
 describe("deepSortForHash", () => {
   it("sorts object keys", () => {
@@ -334,7 +334,7 @@ describe("deepSortForHash", () => {
   });
 });
 
-// ── Determinism property test ───────────────────────────────────────────────
+// -- Determinism property test -----------------------------------------------
 
 describe("Determinism property test", () => {
   it("buildEnrichmentInput then computeEnrichmentInputHash returns same hash for two SourceIndexes that differ only in non-meaningful fields", () => {
@@ -402,7 +402,7 @@ describe("Determinism property test", () => {
   });
 });
 
-// ── computeEnrichmentCacheKey ────────────────────────────────────────────────
+// -- computeEnrichmentCacheKey ------------------------------------------------
 
 describe("computeEnrichmentCacheKey", () => {
   it("same inputs produce same key", () => {
@@ -447,7 +447,7 @@ describe("computeEnrichmentCacheKey", () => {
   });
 });
 
-// ── Cache read/write ─────────────────────────────────────────────────────────
+// -- Cache read/write ---------------------------------------------------------
 
 describe("readEnrichmentCache / writeEnrichmentCache", () => {
   let tmpDir: string;
@@ -572,7 +572,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
     const { mkdir: mkdirAsync } = await import("node:fs/promises");
     await mkdirAsync(cacheDir, { recursive: true });
 
-    // Valid JSON but output is a string instead of an object — fails Zod schema
+    // Valid JSON but output is a string instead of an object \u2014 fails Zod schema
     const wrongShape = JSON.stringify({
       cacheKey,
       createdAt: new Date().toISOString(),
@@ -598,7 +598,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
     const { mkdir: mkdirAsync } = await import("node:fs/promises");
     await mkdirAsync(cacheDir, { recursive: true });
 
-    // Valid JSON but missing metadata.model field — fails Zod schema
+    // Valid JSON but missing metadata.model field \u2014 fails Zod schema
     const missingFields = JSON.stringify({
       cacheKey,
       createdAt: new Date().toISOString(),
@@ -642,7 +642,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
       recommendedChecks: [],
     };
 
-    // Must not throw — cache write failure is non-blocking
+    // Must not throw \u2014 cache write failure is non-blocking
     await expect(writeEnrichmentCache(tmpDir, cacheKey, metadata, output)).resolves.toBeUndefined();
   });
 
@@ -675,13 +675,13 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
     });
     await writeFile(tmpPath, validEnvelope, "utf-8");
 
-    // The tmp file should NOT be found — only the final .json path is checked
+    // The tmp file should NOT be found \u2014 only the final .json path is checked
     const cached = await readEnrichmentCache(tmpDir, cacheKey);
     expect(cached).toBeNull();
   });
 });
 
-// ── enrichIndex cache integration ─────────────────────────────────────────────
+// -- enrichIndex cache integration ---------------------------------------------
 
 describe("enrichIndex cache integration", () => {
   let tmpDir: string;
@@ -777,7 +777,7 @@ describe("enrichIndex cache integration", () => {
     // Pre-populate cache
     await writeEnrichmentCache(tmpDir, cacheKey, cachedMetadata, cachedOutput);
 
-    // Mock provider — should NOT be called
+    // Mock provider \u2014 should NOT be called
     const createProviderSpy = jest.spyOn(AIProviderFactory, "createProvider");
     const getDefaultModelSpy = jest
       .spyOn(AIProviderFactory, "getDefaultModel")
@@ -902,7 +902,7 @@ describe("enrichIndex cache integration", () => {
     // No cache directory should be created
     const cacheDir = join(tmpDir, ".mp-sentinel-cache");
     const { existsSync } = await import("node:fs");
-    // The tmpDir is empty — no cache was written here
+    // The tmpDir is empty \u2014 no cache was written here
     // (but also the test tmpDir was never passed to enrichIndex, so cacheDir won't exist)
     expect(existsSync(cacheDir)).toBe(false);
 

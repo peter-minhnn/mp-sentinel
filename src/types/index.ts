@@ -484,6 +484,28 @@ export interface ProjectConfigWithIndexing extends ProjectConfig {
 }
 
 /**
+ * Index health status returned by --health diagnostic
+ */
+export type IndexHealthStatus = "ok" | "missing" | "unreadable" | "stale";
+
+/**
+ * Index health output emitted by --health in JSON mode
+ */
+export interface IndexHealthOutput {
+  status: IndexHealthStatus;
+  schemaVersion: string;
+  totalFiles: number;
+  parseErrorRate: number;
+  manifestHash: string;
+  currentManifestHash: string;
+  toolVersion: string;
+  currentToolVersion: string;
+  staleReasons: string[];
+  changedFilesSample: string[];
+  missingFilesSample: string[];
+}
+
+/**
  * Cache validity information
  */
 export interface CacheValidity {

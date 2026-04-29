@@ -6,7 +6,12 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
-import type { IndexingConfig, SourceIndex, SourceIndexFile } from "../types/index.js";
+import type {
+  IndexingConfig,
+  SourceIndex,
+  SourceIndexFile,
+  IndexHealthOutput,
+} from "../types/index.js";
 import { querySymbols, queryImports, queryAgentContext } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
@@ -187,13 +192,24 @@ export async function buildSourceIndex(
         );
       }
 
-      if (validity.valid && !manifestChanged) {
+      // Tool version check: if the cache was built by a different tool version, rebuild.
+      const currentToolVersion = manifest.toolVersion ?? manifest.packageVersion ?? "unknown";
+      const cacheToolVersion = existingIndex?.toolVersion;
+      if (cacheToolVersion && cacheToolVersion !== currentToolVersion) {
+        log.info(
+          `Tool version changed (${cacheToolVersion} → ${currentToolVersion}) — rebuilding source index`,
+        );
+        // Force full rebuild by treating all files as needing re-indexing.
+        filesToIndex = indexableFiles;
+        cachedFiles = [];
+        manifestChanged = true;
+      } else if (validity.valid && !manifestChanged) {
         log.info("Cache is up-to-date, skipping re-index");
         return existingIndex!;
+      } else {
+        filesToIndex = toIndex;
+        cachedFiles = fromCache;
       }
-
-      filesToIndex = toIndex;
-      cachedFiles = fromCache;
 
       if (filesToIndex.length === 0 && manifestChanged) {
         // Source files unchanged but manifest changed: reuse all cached parsed files,
@@ -440,21 +456,6 @@ export async function buildSourceIndex(
 }
 
 /**
- * Health check output shape
- */
-interface HealthOutput {
-  status: "ok" | "missing" | "unreadable" | "stale";
-  schemaVersion: string;
-  totalFiles: number;
-  parseErrorRate: number;
-  manifestHash: string;
-  currentManifestHash: string;
-  staleReasons: string[];
-  changedFilesSample: string[];
-  missingFilesSample: string[];
-}
-
-/**
  * Read-only source index health check.
  * Examines cache integrity without building, writing, or calling AI.
  */
@@ -534,8 +535,15 @@ async function handleHealth(
     staleReasons.push("manifest changed");
   }
 
+  // ── Tool version staleness ─────────────────────────────────────────────────
+  const currentToolVersion = (await readManifest(projectRoot)).toolVersion ?? "unknown";
+  const cacheToolVersion = index.toolVersion;
+  if (cacheToolVersion !== currentToolVersion) {
+    staleReasons.push("tool version changed");
+  }
+
   // ── File integrity check ───────────────────────────────────────────────────
-  const MAX_SAMPLES = 10;
+  const MAX_SAMPLES = 5;
   for (const file of index.files) {
     const absPath = resolve(projectRoot, file.path);
     if (!existsSync(absPath)) {
@@ -567,13 +575,15 @@ async function handleHealth(
 
   const status = uniqueReasons.length === 0 ? "ok" : "stale";
 
-  const output: HealthOutput = {
+  const output: IndexHealthOutput = {
     status,
     schemaVersion: index.schemaVersion,
     totalFiles: index.files.length,
     parseErrorRate,
     manifestHash: cachedHash ?? "",
     currentManifestHash,
+    toolVersion: cacheToolVersion,
+    currentToolVersion,
     staleReasons: uniqueReasons,
     changedFilesSample,
     missingFilesSample,
@@ -589,6 +599,8 @@ async function handleHealth(
     console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
     console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
     console.log(`  Current manifest: ${currentManifestHash}`);
+    console.log(`  Tool version (cache):  ${cacheToolVersion}`);
+    console.log(`  Tool version (current): ${currentToolVersion}`);
     if (uniqueReasons.length > 0) {
       console.log(`  Stale reasons:`);
       for (const reason of uniqueReasons) {
