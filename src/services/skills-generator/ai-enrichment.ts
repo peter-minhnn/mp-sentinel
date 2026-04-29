@@ -103,6 +103,12 @@ export function buildEnrichmentInput(
     }
   }
 
+  // Sort moduleRoles keys for determinism
+  const sortedModuleRoles: Record<string, string[]> = {};
+  for (const key of Object.keys(moduleRoles).sort()) {
+    sortedModuleRoles[key] = (moduleRoles[key] ?? []).slice().sort();
+  }
+
   // Top dependencies by usage count
   const topDependencies: string[] = [];
   const depUsage = index.insights?.dependencyUsage ?? {};
@@ -132,10 +138,10 @@ export function buildEnrichmentInput(
     detectedFrameworks: project.detectedFrameworks,
     profile,
     fileCount: index.files.length,
-    moduleRoles,
-    publicApiFiles: index.insights?.publicApiFiles ?? [],
+    moduleRoles: sortedModuleRoles,
+    publicApiFiles: (index.insights?.publicApiFiles ?? []).slice().sort(),
     testFileCount: index.insights ? Object.keys(index.insights.testMap).length : 0,
-    topDependencies,
+    topDependencies: topDependencies.slice().sort(),
     testGapCount: kb.testing.testGaps.length,
     topDependenciesWithVersions,
     defaultExportCount: kb.risks.filter((r) => r.type === "default-export").length,
@@ -170,7 +176,7 @@ function roleToCategory(role: FileRole): string {
 
 const ENRICHMENT_PROMPT_VERSION = "2026-04-28";
 
-function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
+export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
   const { projectName, packageVersion, packageManager, dependencies, devDependencies } = input;
   const allDeps = { ...dependencies, ...devDependencies };
 
@@ -251,7 +257,7 @@ Base all recommendations on actual dependency versions, not generic advice. Do N
  * Deep-sort an object for deterministic JSON serialization.
  * Recursively sorts object keys; preserves array element order.
  */
-function deepSortForHash(obj: unknown): unknown {
+export function deepSortForHash(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) return obj.map(deepSortForHash);
   const sorted: Record<string, unknown> = {};

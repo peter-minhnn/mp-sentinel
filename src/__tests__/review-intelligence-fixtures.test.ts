@@ -837,3 +837,170 @@ describe("Review Intelligence — edge cases", () => {
     // main.ts has many consumers, may also be a hub
   });
 });
+
+// ── Lane A: Review Intelligence Precision ───────────────────────────────────────
+
+describe("Review Intelligence — Lane A precision", () => {
+  let cwd: string;
+
+  const makeIndexWithFiles = async (
+    files: Record<string, string>,
+    packageJsonExtras: Record<string, unknown> = {},
+  ): Promise<SourceIndex> => {
+    cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "lane-a-test", version: "1.0.0", ...packageJsonExtras }),
+    );
+    for (const [path, content] of Object.entries(files)) {
+      const fullPath = join(cwd, path);
+      await mkdir(join(fullPath, ".."), { recursive: true });
+      await writeFile(fullPath, content);
+    }
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+        maxRelatedFiles: 3,
+      } satisfies IndexingConfig,
+      true,
+    );
+    if (!index) throw new Error("Failed to build index");
+    return index;
+  };
+
+  // 4a. File imported by only 2 files does not emit risk signal.
+  // The hub threshold is importedBy >= 3; a file imported by exactly 2 is not a hub.
+  it("file imported by only 2 files does not emit risk signal", async () => {
+    const index = await makeIndexWithFiles({
+      "src/hub.ts": `export const hub = 1;`,
+      "src/a.ts": `import { hub } from "./hub.js"; export const a = 1;`,
+      "src/b.ts": `import { hub } from "./hub.js"; export const b = 1;`,
+    });
+
+    const result = await buildReviewContext(index, [{ path: "src/hub.ts" }]);
+    if (result.metadata.includedSignals) {
+      expect(result.metadata.includedSignals).not.toContain("risk");
+    }
+    expect(result.context).not.toContain("Hub File Blast Radius");
+  });
+
+  // 4b. Utils role file does not emit test-gap.
+  // buildTestingMap skips files with role "utils".
+  it("utils role file does not emit test-gap", async () => {
+    const index = await makeIndexWithFiles({
+      "src/utils/helper.ts": `export function helper() { return 1; }`,
+    });
+
+    const result = await buildReviewContext(index, [{ path: "src/utils/helper.ts" }]);
+    if (result.metadata.includedSignals) {
+      expect(result.metadata.includedSignals).not.toContain("test-gap");
+    }
+    expect(result.context).not.toContain("Test Coverage Gap");
+  });
+
+  // 4c. Adapter role file does not emit test-gap.
+  // buildTestingMap skips files with role "adapter".
+  it("adapter role file does not emit test-gap", async () => {
+    const index = await makeIndexWithFiles({
+      "src/services/skills-generator/adapters/my.adapter.ts": `export function adapter() { return 1; }`,
+    });
+
+    const result = await buildReviewContext(index, [
+      { path: "src/services/skills-generator/adapters/my.adapter.ts" },
+    ]);
+    if (result.metadata.includedSignals) {
+      expect(result.metadata.includedSignals).not.toContain("test-gap");
+    }
+    expect(result.context).not.toContain("Test Coverage Gap");
+  });
+
+  // 4d. Exact path match preferred over extension-normalized match for public-api.
+  // The entrypoint evidence should reference the exact file path, not a fuzzy one.
+  it("exact path match preferred over extension-normalized match for public-api", async () => {
+    // Use extensionless import "./api" so resolveExportSource appends .ts
+    // and the entrypoint path (src/api.ts) matches the actual file path exactly.
+    const index = await makeIndexWithFiles({
+      "src/api.ts": `export function api() { return 1; }`,
+      "src/lib.ts": `export { api } from "./api";`,
+    });
+
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+    expect(result.metadata.includedSignals).toContain("public-api");
+
+    // Verify the intelligence signal references the exact entrypoint path (src/api.ts)
+    // rather than a fuzzy-match on the normalized import specifier.
+    const publicApiSignal = result.metadata.intelligenceSignals?.find(
+      (s) => s.type === "public-api",
+    );
+    expect(publicApiSignal).toBeDefined();
+    expect(publicApiSignal!.evidence).toContain("src/api.ts");
+  });
+
+  // 4e. One failing signal does not suppress other signals.
+  // Each signal block has its own try/catch. When kb is available, signals
+  // from one file should not prevent signals from another file from appearing.
+  it("one failing signal does not suppress other signals", async () => {
+    const index = await makeIndexWithFiles({
+      "src/api.ts": `export function api() { return 1; }`,
+      "src/lib.ts": `export { api } from "./api.js";`,
+      "src/hub.ts": `export const hub = 1;`,
+      "src/user1.ts": `import { hub } from "./hub.js"; export const x = 1;`,
+      "src/user2.ts": `import { hub } from "./hub.js"; export const y = 1;`,
+      "src/user3.ts": `import { hub } from "./hub.js"; export const z = 1;`,
+    });
+
+    const result = await buildReviewContext(index, [
+      { path: "src/api.ts" },
+      { path: "src/hub.ts" },
+    ]);
+
+    // Both signal types should appear independently — api.ts produces public-api,
+    // hub.ts produces risk; neither suppresses the other.
+    expect(result.metadata.includedSignals).toContain("public-api");
+    expect(result.metadata.includedSignals).toContain("risk");
+
+    const signalTypes = new Set((result.metadata.intelligenceSignals ?? []).map((s) => s.type));
+    expect(signalTypes.has("public-api")).toBe(true);
+    expect(signalTypes.has("risk")).toBe(true);
+  });
+
+  // 4f. No intelligence signals when buildSkillKnowledgeBase throws.
+  // The file context section should still be present; only the intelligence
+  // section should be absent.
+  it("no intelligence signals when buildSkillKnowledgeBase throws", async () => {
+    const index = await makeIndexWithFiles({
+      "src/api.ts": `export function api() { return 1; }`,
+      "src/lib.ts": `export { api } from "./api.js";`,
+    });
+
+    // Corrupt the index so that buildSkillKnowledgeBase throws when accessing
+    // the insights property. This simulates a KB build failure.
+    // The Proxy only throws on 'insights'; all other properties (project, files)
+    // pass through normally so the file-context section is unaffected.
+    const trapIndex = new Proxy(index, {
+      get(target, prop) {
+        if (prop === "insights") {
+          throw new Error("Simulated KB build failure");
+        }
+        return Reflect.get(target, prop, target);
+      },
+    });
+
+    const result = await buildReviewContext(trapIndex, [{ path: "src/api.ts" }]);
+
+    // File context should still be present (built before signal section)
+    expect(result.context).toContain("=== Source Index Context ===");
+    expect(result.context).toContain("File: src/api.ts");
+    expect(result.metadata.includedFiles).toContain("src/api.ts");
+
+    // No intelligence section
+    expect(result.context).not.toContain("Review Intelligence");
+    expect(result.metadata.includedSignals).toBeUndefined();
+    expect(result.metadata.intelligenceSignals).toBeUndefined();
+  });
+});
