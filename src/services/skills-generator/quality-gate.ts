@@ -589,7 +589,10 @@ function checkAgentWorkflowContract(
 
   // Check 2: Must mention using indexing diagnostics before broad scans
   const hasIndexDiag =
-    workflowBody.includes("explain-index") ||
+    workflowBody.includes("--agent-context") ||
+    workflowBody.includes("--explain-index") ||
+    workflowBody.includes("--find-symbol") ||
+    workflowBody.includes("--find-import") ||
     workflowBody.includes("indexing --stats") ||
     workflowBody.includes("explain-context") ||
     workflowBody.includes("source index diagnostics");

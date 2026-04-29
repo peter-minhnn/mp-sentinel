@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.14.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.15.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,11 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.14.1**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.15.0**:
 
-- 🔎 **Source Index Query CLI** — `--find-symbol` and `--find-import` for fast cache-based codebase search
-- 📋 **Adapter Spec Contract Guard** — quality gate validates adapter specs against official IDE/agent docs
-- 🧪 **Script Workflow Regression Harness** — deterministic tests for release-check, dogfood, and agent-skills-check
+- 📦 **Agent Context Pack CLI** — `--agent-context <file>` outputs capped JSON context packs for AI agents
+- 🔍 **Skills Search Workflow Upgrade** — generated agent skills teach `--find-symbol` and `--find-import`
+- 📋 **Review Context Evidence Tightening** — structured `evidenceSummary` in review context and explain-context
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines

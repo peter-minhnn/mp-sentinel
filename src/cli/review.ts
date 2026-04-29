@@ -3,6 +3,7 @@
  */
 
 import type {
+  EvidenceSummary,
   ExplainContextOutput,
   FileAuditResult,
   ProjectConfig,
@@ -498,6 +499,7 @@ export async function renderExplainContext(opts: {
   let includedFiles: string[] = [];
   let includedSignals: string[] | undefined;
   let intelligenceSignals: ReviewIntelligenceSignal[] | undefined;
+  let evidenceSummary: EvidenceSummary[] | undefined;
   const budgetChars = 12000;
 
   try {
@@ -524,6 +526,7 @@ export async function renderExplainContext(opts: {
           includedFiles = result.metadata.includedFiles;
           includedSignals = result.metadata.includedSignals;
           intelligenceSignals = result.metadata.intelligenceSignals;
+          evidenceSummary = result.metadata.evidenceSummary;
         } else {
           unavailableReason = "Source index found but context generation produced no content.";
         }
@@ -555,6 +558,9 @@ export async function renderExplainContext(opts: {
     if (intelligenceSignals && intelligenceSignals.length > 0) {
       output.intelligenceSignals = intelligenceSignals;
     }
+    if (evidenceSummary && evidenceSummary.length > 0) {
+      output.evidenceSummary = evidenceSummary;
+    }
   }
 
   // Output
@@ -582,6 +588,12 @@ export async function renderExplainContext(opts: {
         }
         const typeSummary = [...countByType.entries()].map(([t, c]) => `${t}(${c})`).join(", ");
         console.log(`Signal details: ${typeSummary}`);
+      }
+      if (output.evidenceSummary && output.evidenceSummary.length > 0) {
+        console.log(`Evidence summary: ${output.evidenceSummary.length} entries`);
+        for (const e of output.evidenceSummary) {
+          console.log(`  [${e.signalType}] ${e.sourceFile} — ${e.evidence}`);
+        }
       }
       console.log("\nIncluded files:");
       for (const file of output.includedFiles || []) {

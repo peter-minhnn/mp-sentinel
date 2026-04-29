@@ -1818,3 +1818,280 @@ describe("find-import query", () => {
     ).rejects.toThrow("--find-import query must not be empty");
   });
 });
+
+// ── Lane A: agent-context CLI ─────────────────────────────────────────────────
+
+describe("agent-context CLI args", () => {
+  it("parses --agent-context option", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--agent-context", "src/foo.ts"];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.agentContext).toBe("src/foo.ts");
+  });
+
+  it("parses --agent-context with --index-format json", () => {
+    process.argv = [
+      "node",
+      "mp-sentinel",
+      "indexing",
+      "--agent-context",
+      "src/foo.ts",
+      "--index-format",
+      "json",
+    ];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.values.agentContext).toBe("src/foo.ts");
+    expect(parsed.values["index-format"]).toBe("json");
+  });
+});
+
+describe("agent-context query", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "agent-context-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `import { helper } from "./helper.js";\n` +
+        `import { z } from "zod";\n` +
+        `export function main() { return helper(); }\n` +
+        `export class MainClass { }\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "helper.ts"),
+      `export function helper() { return "hello"; }\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "consumer.ts"),
+      `import { main } from "./main.js";\n` + `export const result = main();\n`,
+    );
+  };
+
+  it("JSON output is parseable and has expected shape", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ agentContext: "src/main.ts", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      // Top-level keys
+      expect(parsed).toHaveProperty("file");
+      expect(parsed).toHaveProperty("directImports");
+      expect(parsed).toHaveProperty("directDependents");
+      expect(parsed).toHaveProperty("hubFiles");
+      expect(parsed).toHaveProperty("suggestedCommands");
+
+      // File info
+      expect(parsed.file.path).toBe("src/main.ts");
+      expect(parsed.file.language).toBe("typescript");
+      expect(Array.isArray(parsed.file.symbols)).toBe(true);
+      expect(Array.isArray(parsed.file.imports)).toBe(true);
+      expect(Array.isArray(parsed.file.exports)).toBe(true);
+      expect(typeof parsed.file.symbolsTruncated).toBe("number");
+      expect(typeof parsed.file.importsTruncated).toBe("number");
+      expect(typeof parsed.file.exportsTruncated).toBe("number");
+
+      // Direct imports and dependents
+      expect(Array.isArray(parsed.directImports)).toBe(true);
+      expect(Array.isArray(parsed.directDependents)).toBe(true);
+      expect(typeof parsed.directImportsTruncated).toBe("number");
+      expect(typeof parsed.directDependentsTruncated).toBe("number");
+
+      // Hub files
+      expect(Array.isArray(parsed.hubFiles)).toBe(true);
+      expect(typeof parsed.hubFilesTruncated).toBe("number");
+
+      // Suggested commands
+      expect(Array.isArray(parsed.suggestedCommands)).toBe(true);
+      for (const cmd of parsed.suggestedCommands) {
+        expect(typeof cmd).toBe("string");
+      }
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("missing file returns error in JSON", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ agentContext: "src/nonexistent.ts", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed).toHaveProperty("error");
+      expect(parsed.error).toContain("not found");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("known file returns direct imports and dependents", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ agentContext: "src/main.ts", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      // main.ts imports helper.ts
+      expect(parsed.directImports).toContain("src/helper.ts");
+      // consumer.ts imports main.ts — so main.ts has consumer.ts as a dependent
+      expect(parsed.directDependents).toContain("src/consumer.ts");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("known file returns hub files imported by >1 file", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    // Make helper.ts a hub by adding another consumer
+    await writeFile(
+      join(cwd, "src", "consumer2.ts"),
+      `import { helper } from "./helper.js";\n` + `export const result = helper();\n`,
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand(
+        { agentContext: "src/main.ts", "index-format": "json", force: true },
+        cwd,
+      );
+
+      const parsed = JSON.parse(logs.join("\n"));
+      // helper.ts is imported by both main.ts and consumer2.ts -> hub file
+      const hubPaths = parsed.hubFiles.map((h: { path: string }) => h.path);
+      expect(hubPaths).toContain("src/helper.ts");
+      const helperHub = parsed.hubFiles.find((h: { path: string }) => h.path === "src/helper.ts");
+      expect(helperHub.importedByCount).toBeGreaterThanOrEqual(2);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("suggested commands include diagnostic follow-ups", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ agentContext: "src/main.ts", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.suggestedCommands.length).toBeGreaterThan(0);
+
+      // Should suggest find-symbol for main function or MainClass
+      const hasFindSymbol = parsed.suggestedCommands.some((cmd: string) =>
+        cmd.includes("--find-symbol"),
+      );
+      expect(hasFindSymbol).toBe(true);
+
+      // Should suggest find-import for zod
+      const hasFindImport = parsed.suggestedCommands.some(
+        (cmd: string) => cmd.includes("--find-import") && cmd.includes("zod"),
+      );
+      expect(hasFindImport).toBe(true);
+
+      // Should suggest agent-context for helper or consumer
+      const hasAgentContext = parsed.suggestedCommands.some((cmd: string) =>
+        cmd.includes("--agent-context"),
+      );
+      expect(hasAgentContext).toBe(true);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("JSON output has no logs mixed into stdout", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ agentContext: "src/main.ts", "index-format": "json" }, cwd);
+
+      const jsonStr = logs.join("\n");
+      const parsed = JSON.parse(jsonStr);
+      expect(parsed).toBeDefined();
+      expect(jsonStr).not.toContain("[info]");
+      expect(jsonStr).not.toContain("[warning]");
+      expect(jsonStr).not.toContain("[error]");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("console output is ASCII-safe", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      setLogQuietMode(true);
+      await runIndexingCommand({ agentContext: "src/main.ts", "index-format": "console" }, cwd);
+      setLogQuietMode(false);
+
+      const allOutput = logs.join("\n");
+      // eslint-disable-next-line no-control-regex
+      const nonAscii = allOutput.replace(/[\x00-\x7F]/g, "");
+      expect(nonAscii.length).toBe(0);
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
+  });
+
+  it("empty query string throws UserError", async () => {
+    const cwd = await makeTempDir();
+    await expect(
+      runIndexingCommand({ agentContext: "   ", "index-format": "json" }, cwd),
+    ).rejects.toThrow("--agent-context file path must not be empty");
+  });
+});

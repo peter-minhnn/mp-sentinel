@@ -1,3 +1,15 @@
+# What's New in v1.15.0
+
+## Agent Context Pack CLI, Skills Search Workflow & Review Evidence Tightening
+
+v1.15.0 integrates three parallel lanes: Lane A (agent context pack CLI), Lane B (skills search workflow upgrade), and Lane C (review context evidence tightening).
+
+- **Agent context pack CLI**: `indexing --agent-context <file>` outputs a capped, read-only JSON context pack for AI agents containing symbols (cap 30), imports/exports (cap 20), direct imports/dependents (cap 10), hub files (cap 5), and suggested follow-up commands. No file contents — index metadata only. 9 new tests covering JSON shape, error handling, and log-free JSON stdout.
+- **Skills search workflow upgrade**: Generated agent skills now teach three indexing diagnostics (`--agent-context`, `--find-symbol`, `--find-import`) in the Required Agent Workflow. New `buildSearchExamples()` generates codebase-specific examples from real index data (top hub file, top dependency, representative symbol). Quality gate expanded to recognize all three diagnostics. Deterministic output preserved.
+- **Review context evidence tightening**: New `EvidenceSummary` type adds structured `sourceFile`, `signalType`, and `evidence` fields to review context metadata and `--explain-context` output. 24 new tests (18 fixture + 6 explain-context) covering all signal types, legacy graceful degradation, and JSON round-trip. Backward compatible — no budget or string-context changes.
+
+---
+
 # What's New in v1.14.1
 
 ## Encoding Consistency Patch

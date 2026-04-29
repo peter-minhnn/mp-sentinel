@@ -448,15 +448,16 @@ export async function runIndexingCommand(
     explainIndex?: string;
     findSymbol?: string;
     findImport?: string;
+    agentContext?: string;
   },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
   const startTime = performance.now();
   const format = resolveIndexFormat(values["index-format"]);
 
-  // --find-symbol and --find-import are read-only queries: they use the existing index only.
+  // --find-symbol, --find-import, and --agent-context are read-only queries: they use the existing index only.
   // Build/update the index if absent, but don't force rebuild.
-  const isReadOnlyQuery = !!(values.findSymbol || values.findImport);
+  const isReadOnlyQuery = !!(values.findSymbol || values.findImport || values.agentContext);
 
   // Validate query strings are non-empty
   if (values.findSymbol !== undefined && values.findSymbol.trim() === "") {
@@ -464,6 +465,9 @@ export async function runIndexingCommand(
   }
   if (values.findImport !== undefined && values.findImport.trim() === "") {
     throw new UserError("--find-import query must not be empty");
+  }
+  if (values.agentContext !== undefined && values.agentContext.trim() === "") {
+    throw new UserError("--agent-context file path must not be empty");
   }
 
   // Suppress informational logs when emitting structured JSON so stdout contains only valid JSON.
@@ -491,6 +495,11 @@ export async function runIndexingCommand(
     // Handle --find-import query
     if (values.findImport) {
       return handleFindImport(values.findImport, index, format);
+    }
+
+    // Handle --agent-context query
+    if (values.agentContext) {
+      return handleAgentContext(values.agentContext, index, format, projectRoot);
     }
 
     // Handle --explain-index option
@@ -1018,6 +1027,222 @@ function handleFindImport(
         console.log(`  ... and ${results.length - 20} more`);
       }
     }
+    console.log();
+  }
+
+  return 0;
+}
+
+/**
+ * Handle --agent-context query: AI-agent-friendly context pack.
+ *
+ * Read-only — uses the existing index; builds/updates only if absent.
+ * Output (JSON):
+ *   - file: path, language, role, symbols (capped), imports (capped), exports (capped)
+ *   - directImports: files this file imports from (capped)
+ *   - directDependents: files that import this file (capped)
+ *   - hubFiles: top hub files among direct imports/dependents
+ *   - suggestedCommands: next diagnostic commands for deeper exploration
+ *
+ * Caps:
+ *   - symbols: 30
+ *   - imports: 20
+ *   - exports: 20
+ *   - directImports: 10
+ *   - directDependents: 10
+ *   - hubFiles: 5
+ */
+function handleAgentContext(
+  filePath: string,
+  index: SourceIndex | null,
+  format: "console" | "json",
+  _projectRoot: string,
+): number {
+  if (!index) {
+    if (format === "json") {
+      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+    } else {
+      console.log("No index available. Run 'mp-sentinel indexing' first.");
+    }
+    return 1;
+  }
+
+  const normalizedPath =
+    filePath.startsWith("/") || filePath.startsWith("\\")
+      ? filePath.replace(/^[/\\]+/, "")
+      : filePath;
+
+  const file = index.files.find((f) => f.path === normalizedPath || f.path === filePath);
+
+  if (!file) {
+    if (format === "json") {
+      console.log(JSON.stringify({ error: `File not found in index: ${filePath}` }, null, 2));
+    } else {
+      console.log(`File not found in index: ${filePath}`);
+    }
+    return 1;
+  }
+
+  const MAX_SYMBOLS = 30;
+  const MAX_IMPORTS = 20;
+  const MAX_EXPORTS = 20;
+  const MAX_DIRECT_IMPORTS = 10;
+  const MAX_DIRECT_DEPENDENTS = 10;
+  const MAX_HUB_FILES = 5;
+
+  const fileInfo = {
+    path: file.path,
+    language: file.language,
+    ...(file.role && { role: file.role }),
+    symbols: file.symbols.slice(0, MAX_SYMBOLS).map((s) => ({
+      name: s.name,
+      type: s.type,
+      line: s.line,
+      column: s.column,
+      ...(s.parent && { parent: s.parent }),
+    })),
+    symbolsTruncated: file.symbols.length > MAX_SYMBOLS ? file.symbols.length - MAX_SYMBOLS : 0,
+    imports: file.imports.slice(0, MAX_IMPORTS).map((imp) => ({
+      source: imp.source,
+      kind: imp.kind,
+      names: imp.names,
+      line: imp.line,
+      ...(imp.typeOnly && { typeOnly: imp.typeOnly }),
+    })),
+    importsTruncated: file.imports.length > MAX_IMPORTS ? file.imports.length - MAX_IMPORTS : 0,
+    exports: file.exports.slice(0, MAX_EXPORTS).map((exp) => ({
+      kind: exp.kind,
+      names: exp.names,
+      line: exp.line,
+      ...(exp.source && { source: exp.source }),
+      ...(exp.typeOnly && { typeOnly: exp.typeOnly }),
+      ...(exp.isDefault && { isDefault: exp.isDefault }),
+    })),
+    exportsTruncated: file.exports.length > MAX_EXPORTS ? file.exports.length - MAX_EXPORTS : 0,
+    ...(file.parseErrors &&
+      file.parseErrors.length > 0 && { parseErrors: file.parseErrors.length }),
+  };
+
+  const importsFrom = file.importsFrom ?? [];
+  const importedBy = file.importedBy ?? [];
+
+  const directImports = importsFrom.slice(0, MAX_DIRECT_IMPORTS);
+  const directImportsTruncated =
+    importsFrom.length > MAX_DIRECT_IMPORTS ? importsFrom.length - MAX_DIRECT_IMPORTS : 0;
+
+  const directDependents = importedBy.slice(0, MAX_DIRECT_DEPENDENTS);
+  const directDependentsTruncated =
+    importedBy.length > MAX_DIRECT_DEPENDENTS ? importedBy.length - MAX_DIRECT_DEPENDENTS : 0;
+
+  const relatedPaths = new Set([...importsFrom, ...importedBy]);
+  const hubCandidates: Array<{ path: string; importedByCount: number }> = [];
+  for (const relatedPath of relatedPaths) {
+    const relatedFile = index.files.find((f) => f.path === relatedPath);
+    if (relatedFile && (relatedFile.importedBy?.length ?? 0) > 1) {
+      hubCandidates.push({
+        path: relatedPath,
+        importedByCount: relatedFile.importedBy!.length,
+      });
+    }
+  }
+  hubCandidates.sort((a, b) => b.importedByCount - a.importedByCount);
+  const hubFiles = hubCandidates.slice(0, MAX_HUB_FILES);
+  const hubFilesTruncated =
+    hubCandidates.length > MAX_HUB_FILES ? hubCandidates.length - MAX_HUB_FILES : 0;
+
+  const suggestedCommands: string[] = [];
+
+  const prioritySymbols = file.symbols
+    .filter((s) => ["function", "class", "interface", "type"].includes(s.type))
+    .slice(0, 3);
+  for (const sym of prioritySymbols) {
+    suggestedCommands.push(`mp-sentinel indexing --find-symbol "${sym.name}" --index-format json`);
+  }
+
+  const externalImportSources = [
+    ...new Set(
+      file.imports
+        .filter(
+          (imp) =>
+            !imp.source.startsWith(".") &&
+            !imp.source.startsWith("/") &&
+            !imp.source.startsWith("node:"),
+        )
+        .map((imp) => imp.source),
+    ),
+  ].slice(0, 3);
+  for (const pkg of externalImportSources) {
+    suggestedCommands.push(`mp-sentinel indexing --find-import "${pkg}" --index-format json`);
+  }
+
+  for (const relatedPath of directImports.slice(0, 3)) {
+    suggestedCommands.push(
+      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
+    );
+  }
+
+  for (const relatedPath of directDependents.slice(0, 3)) {
+    suggestedCommands.push(
+      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
+    );
+  }
+
+  const uniqueCommands = [...new Set(suggestedCommands)];
+
+  const output = {
+    file: fileInfo,
+    directImports,
+    directImportsTruncated,
+    directDependents,
+    directDependentsTruncated,
+    hubFiles,
+    hubFilesTruncated,
+    suggestedCommands: uniqueCommands,
+  };
+
+  if (format === "json") {
+    console.log(JSON.stringify(output, null, 2));
+  } else {
+    console.log();
+    log.header(`Agent Context: ${file.path}`);
+    console.log(`  Language: ${file.language}`);
+    if (file.role) console.log(`  Role: ${file.role}`);
+
+    console.log(
+      `\n  Symbols (${fileInfo.symbols.length}${fileInfo.symbolsTruncated > 0 ? `, ${fileInfo.symbolsTruncated} more not shown` : ""}):`,
+    );
+    for (const s of fileInfo.symbols) {
+      console.log(`    ${s.type} ${s.name} @ ${s.line}${s.parent ? ` (in ${s.parent})` : ""}`);
+    }
+
+    if (directImports.length > 0) {
+      console.log(
+        `\n  Direct imports (${directImports.length}${directImportsTruncated > 0 ? `, ${directImportsTruncated} more not shown` : ""}):`,
+      );
+      for (const p of directImports) console.log(`    - ${p}`);
+    }
+
+    if (directDependents.length > 0) {
+      console.log(
+        `\n  Direct dependents (${directDependents.length}${directDependentsTruncated > 0 ? `, ${directDependentsTruncated} more not shown` : ""}):`,
+      );
+      for (const p of directDependents) console.log(`    - ${p}`);
+    }
+
+    if (hubFiles.length > 0) {
+      console.log(
+        `\n  Hub files (${hubFiles.length}${hubFilesTruncated > 0 ? `, ${hubFilesTruncated} more not shown` : ""}):`,
+      );
+      for (const h of hubFiles) {
+        console.log(`    - ${h.path} (imported by ${h.importedByCount} files)`);
+      }
+    }
+
+    if (uniqueCommands.length > 0) {
+      console.log("\n  Suggested next commands:");
+      for (const cmd of uniqueCommands) console.log(`    $ ${cmd}`);
+    }
+
     console.log();
   }
 

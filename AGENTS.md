@@ -29,6 +29,7 @@ Generated skills are **local bootstrap** — never committed to the repo. Before
 4. **Prefer source index commands** before broad repo scans when dependency context is needed:
    - `mp-sentinel indexing --stats --index-format json`
    - `mp-sentinel indexing --explain-index <file> --index-format json`
+   - `mp-sentinel indexing --agent-context <file> --index-format json`
    - `mp-sentinel --explain-context --format json --files <file>`
 5. **For skills work**, use the `skill-creator` skill (`mp-sentinel`'s own generated skill).
 6. **Load only relevant references** for the paths you touch: architecture, modules, testing, dependencies.

@@ -517,6 +517,19 @@ export interface ReviewIntelligenceSignal {
 }
 
 /**
+ * Compact evidence summary for each intelligence signal.
+ * Designed for auditability without adding token-heavy context.
+ */
+export interface EvidenceSummary {
+  /** File path that triggered the signal */
+  sourceFile: string;
+  /** Signal type */
+  signalType: "public-api" | "risk" | "test-gap" | "dependency";
+  /** Compact evidence (path, package, or count) */
+  evidence: string;
+}
+
+/**
  * Metadata about the review context generation (for testing/debug)
  */
 export interface ReviewContextMetadata {
@@ -530,6 +543,8 @@ export interface ReviewContextMetadata {
   includedSignals?: string[];
   /** Structured intelligence signal metadata (v1.4.0+) */
   intelligenceSignals?: ReviewIntelligenceSignal[];
+  /** Compact evidence summaries for auditability (v1.15.0+) */
+  evidenceSummary?: EvidenceSummary[];
 }
 
 /**
@@ -572,6 +587,8 @@ export interface ExplainContextOutput {
   includedSignals?: string[];
   /** Structured intelligence signal metadata (v1.4.0+) */
   intelligenceSignals?: ReviewIntelligenceSignal[];
+  /** Compact evidence summaries for auditability (v1.15.0+) */
+  evidenceSummary?: EvidenceSummary[];
 }
 
 // ====================================================================================

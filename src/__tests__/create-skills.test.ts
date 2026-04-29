@@ -1798,11 +1798,37 @@ describe("agentWorkflow v2 content", () => {
   it("enforces mandatory index-first diagnostics", () => {
     const content = generateContent(null, "test", null);
     expect(content.sections.agentWorkflow).toContain("Before touching any file");
+    expect(content.sections.agentWorkflow).toContain("--agent-context");
     expect(content.sections.agentWorkflow).toContain("--explain-index");
+    expect(content.sections.agentWorkflow).toContain("--find-symbol");
+    expect(content.sections.agentWorkflow).toContain("--find-import");
     expect(content.sections.agentWorkflow).toContain("codebase-map.md");
     expect(content.sections.agentWorkflow).toContain("testing-map.md");
     expect(content.sections.agentWorkflow).toContain("dependencies.md");
     expect(content.sections.agentWorkflow).toContain("public-api.md");
+  });
+
+  it("includes codebase-specific search examples when KB is available", () => {
+    const index = makeMinimalIndex({ dependencies: { commander: "^12.0.0" } });
+    const kb = buildSkillKnowledgeBase(index);
+
+    // Add a hub file to the KB's risks
+    kb.risks.push({
+      file: "src/types/index.ts",
+      type: "hub-file",
+      detail: "Imported by 15 file(s) - high blast radius",
+      importCount: 15,
+    });
+
+    const content = generateContent(index, "test", null, kb);
+    expect(content.sections.agentWorkflow).toContain("Quick-start search examples");
+    expect(content.sections.agentWorkflow).toContain("--agent-context src/types/index.ts");
+    expect(content.sections.agentWorkflow).toContain("imported by 15 files");
+  });
+
+  it("omits search examples when KB is null", () => {
+    const content = generateContent(null, "test", null, null);
+    expect(content.sections.agentWorkflow).not.toContain("Quick-start search examples");
   });
 });
 

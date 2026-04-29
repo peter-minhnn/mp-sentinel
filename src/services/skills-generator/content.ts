@@ -124,7 +124,10 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
         `   - \`references/public-api.md\` - public API surface and risks`,
       ];
 
-  return [
+  // Build quick-start examples from real index data
+  const examples = buildSearchExamples(kb);
+
+  const lines = [
     `## Required Agent Workflow`,
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
@@ -132,13 +135,87 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     `1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.`,
     instructionFilesLine,
     `3. **Before touching any file**, use source index diagnostics:`,
+    `   - \`mp-sentinel indexing --agent-context <file>\` - symbols, imports, dependents, suggested next commands`,
     `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols for the file`,
+    `   - \`mp-sentinel indexing --find-symbol <name>\` - search index for symbols (functions, classes, interfaces)`,
+    `   - \`mp-sentinel indexing --find-import <package-or-path>\` - search index for files importing a package or path`,
     `   - \`mp-sentinel indexing --stats --index-format json\` - index summary with insight counts`,
     `   - \`mp-sentinel --explain-context --format json --files <file>\` - review context enrichment`,
     `4. **Load only the relevant references** for the paths you touch:`,
     ...refFiles,
     `5. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
-  ].join("\n");
+  ];
+
+  if (examples.length > 0) {
+    lines.push(``, examples);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Build codebase-specific search examples from real index data.
+ * Returns an empty string if KB is unavailable or no examples can be derived.
+ */
+function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
+  if (!kb) return "";
+
+  const exampleLines: string[] = [];
+  exampleLines.push(`**Quick-start search examples (from this codebase):**`);
+
+  // Top hub file — use --agent-context to explore it
+  const topHub = kb.risks
+    .filter((r) => r.type === "hub-file")
+    .sort((a, b) => (b.importCount ?? 0) - (a.importCount ?? 0))[0];
+  if (topHub) {
+    exampleLines.push(
+      `   - \`mp-sentinel indexing --agent-context ${topHub.file}\` - top hub file (imported by ${topHub.importCount} files)`,
+    );
+  }
+
+  // Top dependency — use --find-import to see usage
+  const topDep = kb.dependencies[0];
+  if (topDep) {
+    exampleLines.push(
+      `   - \`mp-sentinel indexing --find-import ${topDep.packageName}\` - top dependency (used by ${topDep.fileCount} files)`,
+    );
+  }
+
+  // Representative command/source module — use --find-symbol for a key symbol
+  // Try CLI entries first, then command entries, then any entrypoint
+  const candidateEntries = [
+    ...kb.entrypoints.filter((e) => e.type === "cli"),
+    ...kb.entrypoints.filter((e) => e.type === "command"),
+    ...kb.entrypoints,
+  ];
+  for (const entry of candidateEntries) {
+    const mod = kb.modules.find(
+      (m) =>
+        entry.path.startsWith(m.directory + "/") ||
+        entry.path === m.directory ||
+        m.directory === "(root)",
+    );
+    const keySym = mod?.keySymbols[0];
+    if (keySym) {
+      exampleLines.push(
+        `   - \`mp-sentinel indexing --find-symbol ${keySym.name}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+      );
+      break;
+    }
+  }
+
+  // Fallback: if no entrypoint-based symbol example, use largest module's first symbol
+  if (exampleLines.length <= 2 && kb.modules.length > 0) {
+    const largestModule = kb.modules[0]!;
+    const keySym = largestModule.keySymbols[0];
+    if (keySym) {
+      exampleLines.push(
+        `   - \`mp-sentinel indexing --find-symbol ${keySym.name}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+      );
+    }
+  }
+
+  return exampleLines.length > 1 ? exampleLines.join("\n") : "";
 }
 
 function buildOverview(

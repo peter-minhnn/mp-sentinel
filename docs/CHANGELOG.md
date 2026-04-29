@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-04-29
+
+### Added
+- **Agent context pack CLI**: `indexing --agent-context <file>` flag outputs a capped JSON context pack with file symbols (30), imports/exports (20), direct imports/dependents (10), hub files (5), and suggested follow-up commands. Read-only (uses existing cache). Console output is ASCII-only; JSON output writes only valid JSON to stdout.
+- **Skills search workflow upgrade**: Generated agent skills now include `--agent-context`, `--find-symbol`, and `--find-import` in the Required Agent Workflow. New `buildSearchExamples()` function generates codebase-specific examples from real index data (top hub file, top dependency, representative symbol). Quality gate `checkAgentWorkflowContract()` expanded to recognize all three diagnostics.
+- **Review context evidence tightening**: New `EvidenceSummary` type (`{ sourceFile, signalType, evidence }`) added to `ReviewContextMetadata` and `ExplainContextOutput`. `buildReviewContext()` derives compact `evidenceSummary` from deduplicated `intelligenceSignals`. `renderExplainContext` surfaces it in JSON and console output. Backward compatible — no budget or context-string changes.
+
+### Tests
+- **Agent context CLI**: 9 new tests in `indexing.test.ts` covering JSON shape, missing file, imports/dependents, hub files, suggested commands, log-free stdout, ASCII-safe console, and empty query validation.
+- **Skills search workflow**: Updated assertions in `create-skills.test.ts` for new diagnostics; tests for codebase-specific search examples.
+- **Review evidence**: 18 new tests in `review-intelligence-fixtures.test.ts` + 6 new tests in `src/tests/explain-context.test.ts` covering all signal types, graceful degradation, and backward compat.
+
 ## [1.14.1] - 2026-04-29
 
 ### Fixed

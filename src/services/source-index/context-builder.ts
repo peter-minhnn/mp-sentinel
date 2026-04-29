@@ -7,6 +7,7 @@ import type {
   SourceIndexFile,
   ReviewContextMetadata,
   ReviewIntelligenceSignal,
+  EvidenceSummary,
   RelationType,
   SkillKnowledgeBase,
 } from "../../types/index.js";
@@ -504,6 +505,13 @@ export async function buildReviewContext(
     );
   }
 
+  // Build compact evidenceSummary from deduplicated intelligence signals
+  const evidenceSummary: EvidenceSummary[] = dedupedIntelligenceSignals.map((s) => ({
+    sourceFile: s.file,
+    signalType: s.type,
+    evidence: s.evidence,
+  }));
+
   return {
     context,
     metadata: {
@@ -517,6 +525,7 @@ export async function buildReviewContext(
       ...(dedupedIntelligenceSignals.length > 0 && {
         intelligenceSignals: dedupedIntelligenceSignals,
       }),
+      ...(evidenceSummary.length > 0 && { evidenceSummary }),
     },
   };
 }
