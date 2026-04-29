@@ -43,7 +43,7 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.15.1**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.16.0**:
 
 - 📦 **Agent Context Pack CLI** — `--agent-context <file>` outputs capped JSON context packs for AI agents
 - 🔍 **Skills Search Workflow Upgrade** — generated agent skills teach `--find-symbol` and `--find-import`
