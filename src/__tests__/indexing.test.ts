@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
 import { buildSourceIndex, getIndexingConfig, runIndexingCommand } from "../commands/indexing.js";
+import { setLogQuietMode } from "../utils/logger.js";
 import { clearConfigCache, loadProjectConfig } from "../utils/config.js";
 import {
   detectPackageManager,
@@ -1212,5 +1213,217 @@ describe("maxFileSize enforcement", () => {
     });
     const result = handler.filterPaths(["package.json"]);
     expect(result.stats.accepted).toBe(1);
+  });
+});
+
+// ── Lane D: Index Diagnostics UX ───────────────────────────────────────────
+
+describe("explain-index diagnostics (Lane D)", () => {
+  const makeProjectWithIndex = async (cwd: string, files: Record<string, string>) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "lane-d-test", version: "1.0.0" }),
+    );
+    for (const [relPath, content] of Object.entries(files)) {
+      const fullPath = join(cwd, relPath);
+      await mkdir(join(fullPath, ".."), { recursive: true });
+      await writeFile(fullPath, content);
+    }
+    return buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+  };
+
+  it("JSON explain output is parseable", async () => {
+    const cwd = await makeTempDir();
+    const index = await makeProjectWithIndex(cwd, {
+      "src/main.ts": `import { dep } from "./dep.js"; export const main = 1;`,
+      "src/dep.ts": `export const dep = 1;`,
+    });
+    expect(index).not.toBeNull();
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      const code = await runIndexingCommand(
+        { explainIndex: "src/main.ts", "index-format": "json", force: false },
+        cwd,
+      );
+
+      expect(code).toBe(0);
+      const jsonStr = logs.join("\n");
+      const parsed = JSON.parse(jsonStr);
+      expect(parsed).toBeDefined();
+      expect(parsed.path).toBe("src/main.ts");
+      expect(parsed.resolvedImports).toBeDefined();
+      expect(parsed.unresolvedImports).toBeDefined();
+      expect(parsed.externalImports).toBeDefined();
+      expect(parsed.importedByCount).toBeDefined();
+      expect(Array.isArray(parsed.resolvedImports)).toBe(true);
+      expect(Array.isArray(parsed.unresolvedImports)).toBe(true);
+      expect(Array.isArray(parsed.externalImports)).toBe(true);
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
+  });
+
+  it("resolved internal imports and unresolved local imports shown separately", async () => {
+    const cwd = await makeTempDir();
+    const index = await makeProjectWithIndex(cwd, {
+      "src/main.ts": [
+        `import { dep } from "./dep.js";          // resolved internal`,
+        `import { missing } from "./nonexistent.js"; // unresolved local`,
+        `export const main = 1;`,
+      ].join("\n"),
+      "src/dep.ts": `export const dep = 1;`,
+    });
+    expect(index).not.toBeNull();
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      setLogQuietMode(true);
+      await runIndexingCommand(
+        { explainIndex: "src/main.ts", "index-format": "json", force: false },
+        cwd,
+      );
+      setLogQuietMode(false);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      // resolvedImports contains original import specifiers
+      expect(parsed.resolvedImports).toContain("./dep.js");
+      // importsFrom contains actual resolved file paths
+      expect(parsed.importsFrom).toContain("src/dep.ts");
+      // unresolved local import
+      expect(parsed.unresolvedImports).toContain("./nonexistent.js");
+      // The resolved specifier should NOT appear in unresolvedImports
+      expect(parsed.unresolvedImports).not.toContain("./dep.js");
+      // The unresolved specifier should NOT appear in resolvedImports
+      expect(parsed.resolvedImports).not.toContain("./nonexistent.js");
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
+  });
+
+  it("external package import reported as external, not internal graph edge", async () => {
+    const cwd = await makeTempDir();
+    const index = await makeProjectWithIndex(cwd, {
+      "src/main.ts": `import _ from "lodash"; export const main = 1;`,
+    });
+    expect(index).not.toBeNull();
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      setLogQuietMode(true);
+      await runIndexingCommand(
+        { explainIndex: "src/main.ts", "index-format": "json", force: false },
+        cwd,
+      );
+      setLogQuietMode(false);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.externalImports).toContain("lodash");
+      // "lodash" should NOT appear as resolved internal import
+      expect(parsed.resolvedImports).not.toContain("lodash");
+      // importsFrom should NOT include lodash (it's external)
+      expect(parsed.importsFrom).not.toContain("lodash");
+      // importedByCount should be a number
+      expect(typeof parsed.importedByCount).toBe("number");
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
+  });
+
+  it("file with parse errors includes parse error summary in explain output", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "lane-d-test", version: "1.0.0" }),
+    );
+    // One valid file to keep error rate <= 50%, one file with a syntax error
+    await writeFile(join(cwd, "src", "ok.ts"), `export const ok = 1;`);
+    await writeFile(join(cwd, "src", "bad.ts"), `export const bad = ;`);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      setLogQuietMode(true);
+      await runIndexingCommand(
+        { explainIndex: "src/bad.ts", "index-format": "json", force: true },
+        cwd,
+      );
+      setLogQuietMode(false);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.path).toBe("src/bad.ts");
+      expect(parsed.parseErrors).toBeDefined();
+      expect(Array.isArray(parsed.parseErrors)).toBe(true);
+      expect(parsed.parseErrors.length).toBeGreaterThan(0);
+      expect(typeof parsed.parseErrors[0]).toBe("string");
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
+  });
+
+  it("console output is ASCII-safe", async () => {
+    const cwd = await makeTempDir();
+    const index = await makeProjectWithIndex(cwd, {
+      "src/main.ts": `import { dep } from "./dep.js"; export const main = 1;`,
+      "src/dep.ts": `export const dep = 1;`,
+    });
+    expect(index).not.toBeNull();
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      setLogQuietMode(true);
+      await runIndexingCommand(
+        { explainIndex: "src/main.ts", "index-format": "console", force: false },
+        cwd,
+      );
+      setLogQuietMode(false);
+
+      const allOutput = logs.join("\n");
+      // eslint-disable-next-line no-control-regex -- ASCII range 0x00-0x7F
+      const nonAscii = allOutput.replace(/[\x00-\x7F]/g, "");
+      expect(nonAscii.length).toBe(0);
+    } finally {
+      console.log = origLog;
+      setLogQuietMode(false);
+    }
   });
 });

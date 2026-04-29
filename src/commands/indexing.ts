@@ -604,7 +604,15 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
 }
 
 /**
- * Handle --explain option
+ * Handle --explain-index option with import classification.
+ *
+ * Classifies each import specifier into:
+ * - resolvedImports: specifiers resolved to internal project files (in importsFrom)
+ * - unresolvedImports: local-looking specifiers (./, ../, /, @/) NOT resolved
+ * - externalImports: package imports (npm, node: builtins, URLs) NOT resolved
+ *
+ * Does NOT call the resolver directly — uses file.imports and file.importsFrom
+ * already populated during index build.
  */
 async function handleExplain(
   filePath: string,
@@ -640,16 +648,69 @@ async function handleExplain(
     return 1;
   }
 
+  // Classify imports: resolved internal vs unresolved local vs external.
+  // Normalize import specifiers and resolved paths to strip extensions so that
+  // ESM .js → .ts mapping works correctly when matching.
+  const stripExt = (p: string): string =>
+    p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
+
+  const resolvedPaths = file.importsFrom ?? [];
+  const resolvedNormSet = new Set(resolvedPaths.map((p) => stripExt(p)));
+
+  const resolvedImports: string[] = [];
+  const unresolvedImports: string[] = [];
+  const externalImports: string[] = [];
+
+  for (const imp of file.imports) {
+    const source = imp.source;
+    const isNodeBuiltin = source.startsWith("node:");
+    const isUrl = source.startsWith("http://") || source.startsWith("https://");
+    const isLocalLike = source.startsWith(".") || source.startsWith("/");
+
+    // Bare specifiers, node: builtins, and URLs are external packages
+    if (!isLocalLike || isNodeBuiltin || isUrl) {
+      externalImports.push(source);
+      continue;
+    }
+
+    // Try to match local import against resolved paths (extension-normalized)
+    const fileDir = file.path.includes("/")
+      ? file.path.slice(0, file.path.lastIndexOf("/"))
+      : "";
+    const joined = fileDir ? `${fileDir}/${source}` : source;
+    const parts = joined.split("/");
+    const resolved: string[] = [];
+    for (const seg of parts) {
+      if (seg === "..") {
+        resolved.pop();
+      } else if (seg !== "." && seg !== "") {
+        resolved.push(seg);
+      }
+    }
+    const normalized = stripExt(resolved.join("/"));
+
+    if (resolvedNormSet.has(normalized)) {
+      resolvedImports.push(source);
+    } else {
+      unresolvedImports.push(source);
+    }
+  }
+
   const info = {
     path: file.path,
     language: file.language,
     symbols: file.symbols,
     imports: file.imports,
     exports: file.exports,
+    resolvedImports,
+    unresolvedImports,
+    externalImports,
     importsFrom: file.importsFrom,
     importedBy: file.importedBy,
+    importedByCount: file.importedBy?.length ?? 0,
     exportedSymbols: file.exportedSymbols,
     role: file.role,
+    ...(file.parseErrors && file.parseErrors.length > 0 && { parseErrors: file.parseErrors }),
   };
 
   if (format === "json") {
@@ -662,16 +723,31 @@ async function handleExplain(
       console.log(`  Role: ${file.role}`);
     }
 
-    if (file.importsFrom && file.importsFrom.length > 0) {
-      console.log(`\n  Imports from:`);
-      file.importsFrom.forEach((p) => console.log(`    ${p}`));
+    // Resolved internal imports
+    if (resolvedImports.length > 0) {
+      console.log(`\n  Resolved internal imports (${resolvedImports.length}):`);
+      resolvedImports.forEach((p) => console.log(`    - ${p}`));
     }
 
+    // Unresolved local imports
+    if (unresolvedImports.length > 0) {
+      console.log(`\n  Unresolved local imports (${unresolvedImports.length}):`);
+      unresolvedImports.forEach((p) => console.log(`    - ${p}`));
+    }
+
+    // External imports
+    if (externalImports.length > 0) {
+      console.log(`\n  External imports (${externalImports.length}):`);
+      externalImports.forEach((p) => console.log(`    - ${p}`));
+    }
+
+    // Imported-by
     if (file.importedBy && file.importedBy.length > 0) {
-      console.log(`\n  Imported by:`);
-      file.importedBy.forEach((p) => console.log(`    ${p}`));
+      console.log(`\n  Imported by (${file.importedBy.length}):`);
+      file.importedBy.forEach((p) => console.log(`    - ${p}`));
     }
 
+    // Symbols
     if (file.symbols.length > 0) {
       console.log(`\n  Symbols (${file.symbols.length}):`);
       file.symbols.slice(0, 20).forEach((s) => {
@@ -682,11 +758,21 @@ async function handleExplain(
       }
     }
 
+    // Exported symbols
     if (file.exportedSymbols && file.exportedSymbols.length > 0) {
       console.log(`\n  Exported symbols:`);
-      file.exportedSymbols.slice(0, 20).forEach((e) => console.log(`    ${e}`));
+      file.exportedSymbols.slice(0, 20).forEach((e) => console.log(`    - ${e}`));
       if (file.exportedSymbols.length > 20) {
         console.log(`    ... and ${file.exportedSymbols.length - 20} more`);
+      }
+    }
+
+    // Parse errors
+    if (file.parseErrors && file.parseErrors.length > 0) {
+      console.log(`\n  Parse errors (${file.parseErrors.length}):`);
+      file.parseErrors.slice(0, 10).forEach((e) => console.log(`    - ${e}`));
+      if (file.parseErrors.length > 10) {
+        console.log(`    ... and ${file.parseErrors.length - 10} more`);
       }
     }
 
