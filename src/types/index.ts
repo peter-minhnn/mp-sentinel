@@ -994,6 +994,20 @@ export interface DoctorActionEntry {
   commands?: string[];
 }
 
+// ── Doctor AI Enrichment Cache types (v1.13.0+) ──────────────────────────────
+
+/** AI enrichment cache status for the doctor diagnostic */
+export type DoctorAIEnrichmentCacheStatus = "available" | "missing" | "unreadable";
+
+/** AI enrichment cache info reported by --doctor */
+export interface DoctorAIEnrichmentCacheInfo {
+  status: DoctorAIEnrichmentCacheStatus;
+  path: string;
+  entries: number;
+  bytes: number;
+  reason?: string;
+}
+
 /** Top-level output of the --doctor diagnostic */
 export interface DoctorOutput {
   status: DoctorStatus;
@@ -1003,6 +1017,7 @@ export interface DoctorOutput {
   skills: DoctorSkillInfo[];
   legacyFiles: LegacyFileInfo[];
   scripts: DoctorScriptInfo[];
+  aiEnrichmentCache: DoctorAIEnrichmentCacheInfo;
   recommendedActions: string[];
   recommendedCommands: string[];
 }

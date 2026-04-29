@@ -3,8 +3,8 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
@@ -14,6 +14,7 @@ import type {
   AIEnrichmentOutput,
   CheckFileStatus,
   DoctorActionEntry,
+  DoctorAIEnrichmentCacheInfo,
   DoctorIndexInfo,
   DoctorOutput,
   DoctorScriptInfo,
@@ -696,17 +697,55 @@ async function runDoctor(
     }
   }
 
-  // f) Legacy / unexpected files
+  // f) AI enrichment cache check (advisory only — never affects status or exit code)
+  const aiCacheDir = resolve(projectRoot, ".mp-sentinel-cache", "ai-enrichment");
+  let aiEnrichmentCache: DoctorAIEnrichmentCacheInfo;
+
+  if (!existsSync(aiCacheDir)) {
+    aiEnrichmentCache = {
+      status: "missing",
+      path: aiCacheDir,
+      entries: 0,
+      bytes: 0,
+    };
+  } else {
+    try {
+      const dirents = await readdir(aiCacheDir);
+      const jsonFiles = dirents.filter((f) => f.endsWith(".json"));
+      const entries = jsonFiles.length;
+      let bytes = 0;
+      for (const f of jsonFiles) {
+        const s = await stat(join(aiCacheDir, f));
+        bytes += s.size;
+      }
+      aiEnrichmentCache = {
+        status: "available",
+        path: aiCacheDir,
+        entries,
+        bytes,
+      };
+    } catch {
+      aiEnrichmentCache = {
+        status: "unreadable",
+        path: aiCacheDir,
+        entries: 0,
+        bytes: 0,
+        reason: `Cannot read AI enrichment cache directory.`,
+      };
+    }
+  }
+
+  // h) Legacy / unexpected files
   const legacyFiles = await detectAllLegacyAndUnexpected(projectRoot, projectName);
 
-  // g) Scripts check
+  // i) Scripts check
   const scripts: DoctorScriptInfo[] = DOCTOR_SCRIPTS.map((def) => ({
     name: def.name,
     status: pkgScripts[def.name] ? "available" : "missing",
     description: def.description,
   }));
 
-  // h) Categorize all findings
+  // j) Categorize all findings
   const findings = categorizeDoctorFindings(
     indexInfo,
     skills,
@@ -716,7 +755,7 @@ async function runDoctor(
     hasRefreshScript,
   );
 
-  // i) Determine overall status
+  // k) Determine overall status
   let overallStatus: DoctorStatus;
   if (indexInfo.status === "unreadable") {
     overallStatus = "error";
@@ -726,7 +765,7 @@ async function runDoctor(
     overallStatus = "ok";
   }
 
-  // j) Output
+  // l) Output
   if (isJson) {
     const out: DoctorOutput = {
       status: overallStatus,
@@ -736,6 +775,7 @@ async function runDoctor(
       skills,
       legacyFiles,
       scripts,
+      aiEnrichmentCache,
       recommendedActions: findings.recommendedActions,
       recommendedCommands: findings.recommendedCommands,
     };
@@ -759,13 +799,19 @@ async function runDoctor(
 
     // ── [warn] Advisory ─────────────────────────────────────────────────
     log.info("[warn] Advisory");
-    if (findings.warnItems.length === 0) {
+    if (findings.warnItems.length === 0 && aiEnrichmentCache.status === "available") {
       log.info("  (none)");
     } else {
       for (const item of findings.warnItems) {
         log.info(`  ${item.label}`);
         log.info(`    -> ${item.action}`);
       }
+    }
+    if (aiEnrichmentCache.status === "missing") {
+      log.info("  AI enrichment cache: missing");
+    }
+    if (aiEnrichmentCache.status === "unreadable") {
+      log.info("  AI enrichment cache: unreadable");
     }
     log.info("");
 
@@ -805,12 +851,18 @@ async function runDoctor(
       }
     }
 
+    // AI enrichment cache
+    if (aiEnrichmentCache.status === "available") {
+      log.info(`  AI enrichment cache: ${aiEnrichmentCache.entries} entries`);
+    }
+
     if (
       explainResult.entries.length === 0 &&
       indexInfo.status !== "ok" &&
       indexInfo.status !== "stale" &&
       skills.filter((s) => s.status === "up-to-date").length === 0 &&
-      scripts.filter((s) => s.status === "available").length === 0
+      scripts.filter((s) => s.status === "available").length === 0 &&
+      aiEnrichmentCache.status !== "available"
     ) {
       log.info("  (no items)");
     }
@@ -827,7 +879,7 @@ async function runDoctor(
     }
   }
 
-  // k) Exit code
+  // m) Exit code
   if (overallStatus === "error") return 2;
   if (overallStatus === "action-required") return 1;
   return 0;

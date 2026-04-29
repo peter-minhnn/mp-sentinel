@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-04-29
+
+### Added
+- **Doctor AI enrichment cache diagnostics**: `create-skills --doctor` now reports AI enrichment cache status with entry count and total bytes. New types: `DoctorAIEnrichmentCacheStatus` (`"available" | "missing" | "unreadable"`) and `DoctorAIEnrichmentCacheInfo` (`{ status, path, entries, bytes, reason? }`). New `aiEnrichmentCache` field in `DoctorOutput`. Console output shows cache health under `[ok]` or `[warn]` sections. Cache issues are advisory-only — no impact on exit code, status, or recommended actions.
+- **Dogfood agent:skills:check gate**: `scripts/dogfood.mjs` step 8 validates `npm run agent:skills:check --silent` as a release gate, ensuring generated agent skill files are verified before every release.
+
+### Changed
+- **AGENTS.md release checklist**: Dogfood step description now includes doctor and `agent:skills:check` in the documented step list.
+- **Dogfood step renumbering**: Bumped `TOTAL_STEPS` from 7 to 8; all step labels updated from `[1/7]..[7/7]` to `[1/8]..[8/8]`.
+
+### Fixed
+- **`create-skills.ts`**: Missing `aiEnrichmentCache` field in doctor JSON output object — was computed but not included, causing `tsc` failure. Missing `join` import from `node:path`.
+
+### Tests
+- **AI enrichment cache hardening**: 4 new tests in `ai-enrichment.test.ts` covering schema mismatch rejection (wrong shape, missing fields), cache write failure non-blocking, and temp/partial file exclusion.
+- **Doctor cache diagnostics**: 6 new tests in `create-skills.test.ts` covering JSON output shape, missing cache dir, valid cache counting, ASCII-only console output, and exit code independence.
+
 ## [1.12.1] - 2026-04-29
 
 ### Changed

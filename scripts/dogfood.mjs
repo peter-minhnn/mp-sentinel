@@ -10,6 +10,8 @@
  *   4. create-skills --dry-run - all adapters, no writes (JSON)
  *   5. --explain-agents     - agent detection diagnostics (JSON)
  *   6. --explain-context    - context diagnostics (JSON)
+ *   7. create-skills --doctor - doctor diagnostics (JSON)
+ *   8. agent:skills:check   - generated skills freshness gate
  *
  * Each JSON step is parsed, not just visually inspected.
  * explain-context "unavailable" due to indexing.enabled=false is expected.
@@ -26,7 +28,7 @@ import { existsSync } from "node:fs";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -64,7 +66,7 @@ function parseJson(raw, label) {
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write(`\n[1/${TOTAL_STEPS}] release:check\n`);
+  process.stdout.write(`\n[1/8] release:check\n`);
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -75,7 +77,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write(`\n[2/${TOTAL_STEPS}] build\n`);
+  process.stdout.write(`\n[2/8] build\n`);
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -92,7 +94,7 @@ function stepBuild() {
 }
 
 function stepIndexing() {
-  process.stdout.write(`\n[3/${TOTAL_STEPS}] indexing --stats\n`);
+  process.stdout.write(`\n[3/8] indexing --stats\n`);
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -114,7 +116,7 @@ function stepIndexing() {
 }
 
 function stepCreateSkills() {
-  process.stdout.write(`\n[4/${TOTAL_STEPS}] create-skills --dry-run\n`);
+  process.stdout.write(`\n[4/8] create-skills --dry-run\n`);
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -144,7 +146,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write(`\n[5/${TOTAL_STEPS}] explain-agents\n`);
+  process.stdout.write(`\n[5/8] explain-agents\n`);
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -204,7 +206,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write(`\n[6/${TOTAL_STEPS}] explain-context\n`);
+  process.stdout.write(`\n[6/8] explain-context\n`);
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -233,7 +235,7 @@ function stepExplainContext() {
 }
 
 function stepDoctor() {
-  process.stdout.write(`\n[7/${TOTAL_STEPS}] create-skills --doctor\n`);
+  process.stdout.write(`\n[7/8] create-skills --doctor\n`);
   let raw;
   try {
     raw = execSync(
@@ -300,6 +302,29 @@ function stepDoctor() {
   return true;
 }
 
+function stepAgentSkillsCheck() {
+  process.stdout.write(`\n[8/8] agent:skills:check\n`);
+  let raw;
+  try {
+    raw = execSync(
+      "npm run agent:skills:check --silent",
+      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
+    );
+  } catch (e) {
+    // Exit 1 = stale/missing/wrong-agent, exit 2 = runtime error. Both fail dogfood.
+    const detail =
+      e.stdout?.match(/\[agent:skills:check\] (.+)$/m)?.[1]?.trim() ||
+      e.stderr?.trim() ||
+      `exit code ${e.status}`;
+    fail("agent:skills:check", detail);
+    return false;
+  }
+
+  const detail = raw.match(/\[agent:skills:check\] (.+)$/m)?.[1]?.trim() || "all files up-to-date";
+  ok("agent:skills:check", detail);
+  return true;
+}
+
 // --- main --------------------------------------------------------------
 
 process.stdout.write("\nDogfood validation - mp-sentinel local workflow\n");
@@ -312,6 +337,7 @@ const steps = [
   stepExplainAgents,
   stepExplainContext,
   stepDoctor,
+  stepAgentSkillsCheck,
 ];
 
 let passed = 0;

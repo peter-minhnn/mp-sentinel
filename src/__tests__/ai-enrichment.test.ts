@@ -565,6 +565,120 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
     const readResult = await readEnrichmentCache(tmpDir, wrongKey);
     expect(readResult).toBeNull();
   });
+
+  it("read returns null when cache envelope has wrong schema (valid JSON, wrong shape)", async () => {
+    const cacheKey = "schemamismatch";
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(cacheDir, { recursive: true });
+
+    // Valid JSON but output is a string instead of an object — fails Zod schema
+    const wrongShape = JSON.stringify({
+      cacheKey,
+      createdAt: new Date().toISOString(),
+      metadata: {
+        mode: "ai",
+        provider: "gemini",
+        model: "g",
+        promptVersion: "v1",
+        inputHash: "abc",
+        outputHash: "def",
+      },
+      output: "this should be an object, not a string",
+    });
+    await writeFile(join(cacheDir, `${cacheKey}.json`), wrongShape, "utf-8");
+
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+    expect(cached).toBeNull();
+  });
+
+  it("read returns null when envelope is missing required fields", async () => {
+    const cacheKey = "missingfields";
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(cacheDir, { recursive: true });
+
+    // Valid JSON but missing metadata.model field — fails Zod schema
+    const missingFields = JSON.stringify({
+      cacheKey,
+      createdAt: new Date().toISOString(),
+      metadata: { mode: "ai", provider: "gemini" },
+      output: {
+        languageRules: [],
+        libraryRules: [],
+        versionNotes: [],
+        riskWarnings: [],
+        recommendedChecks: [],
+      },
+    });
+    await writeFile(join(cacheDir, `${cacheKey}.json`), missingFields, "utf-8");
+
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+    expect(cached).toBeNull();
+  });
+
+  it("writeEnrichmentCache does not throw when directory is blocked by a file (cache write failure is non-blocking)", async () => {
+    // Create a regular file where the cache directory would be created
+    const cacheKey = "writefailtest1";
+    const blockPath = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(join(tmpDir, ".mp-sentinel-cache"), { recursive: true });
+    // Write a file at the ai-enrichment path to block mkdir(dir, { recursive: true })
+    await writeFile(blockPath, "blocking file", "utf-8");
+
+    const metadata = {
+      mode: "ai" as const,
+      provider: "gemini",
+      model: "g",
+      promptVersion: "v1",
+      inputHash: "abc1234567890abc",
+      outputHash: "def1234567890def",
+    };
+    const output = {
+      languageRules: [],
+      libraryRules: [],
+      versionNotes: [],
+      riskWarnings: [],
+      recommendedChecks: [],
+    };
+
+    // Must not throw — cache write failure is non-blocking
+    await expect(writeEnrichmentCache(tmpDir, cacheKey, metadata, output)).resolves.toBeUndefined();
+  });
+
+  it("temp/partial .tmp.* files are not treated as cache hits", async () => {
+    const cacheKey = "tempfiletest1";
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(cacheDir, { recursive: true });
+
+    // Write a .tmp.* file (simulating partial write before rename)
+    const tmpPath = join(cacheDir, `${cacheKey}.json.tmp.1234567890`);
+    const validEnvelope = JSON.stringify({
+      cacheKey,
+      createdAt: new Date().toISOString(),
+      metadata: {
+        mode: "ai",
+        provider: "gemini",
+        model: "g",
+        promptVersion: "v1",
+        inputHash: "abc",
+        outputHash: "def",
+      },
+      output: {
+        languageRules: [],
+        libraryRules: [],
+        versionNotes: [],
+        riskWarnings: [],
+        recommendedChecks: [],
+      },
+    });
+    await writeFile(tmpPath, validEnvelope, "utf-8");
+
+    // The tmp file should NOT be found — only the final .json path is checked
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+    expect(cached).toBeNull();
+  });
 });
 
 // ── enrichIndex cache integration ─────────────────────────────────────────────

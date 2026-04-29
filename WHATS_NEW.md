@@ -1,3 +1,16 @@
+# What's New in v1.13.0
+
+## Doctor AI Enrichment Cache, Cache Hardening & Dogfood Agent Guard
+
+v1.13.0 integrates three parallel lanes: Lane A (doctor cache diagnostics), Lane B (cache hardening), and Lane C (dogfood agent skills guard).
+
+- **Doctor AI enrichment cache diagnostics**: `create-skills --doctor` now reports AI enrichment cache status (`available`, `missing`, or `unreadable`) with entry count and total bytes in both JSON (`aiEnrichmentCache` field) and console output. Cache issues are advisory-only — they do not affect doctor exit code or recommended actions.
+- **Cache hardening tests**: Comprehensive tests for schema mismatch rejection (wrong JSON shape, missing envelope fields), cache write failure non-blocking behavior (mkdir blocked by file), and temp/partial file exclusion. All 4 new tests pass; no production bugs found.
+- **Dogfood agent:skills:check gate**: `npm run dogfood` now includes `agent:skills:check` as step 8, ensuring generated agent skill files are verified before release. `AGENTS.md` release checklist updated accordingly.
+- **create-skills bug fixes**: Fixed missing `aiEnrichmentCache` field in doctor JSON output and missing `join` import from `node:path` — both were pre-existing issues caught by `tsc`.
+
+---
+
 # What's New in v1.12.1
 
 ## Docs Consistency & Local Skill Freshness
