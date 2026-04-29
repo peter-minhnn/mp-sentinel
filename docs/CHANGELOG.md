@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-04-29
+
+### Fixed
+- **ASCII-only test comments**: Replaced box-drawing characters (U+2500) and em dashes (U+2014) with ASCII hyphens in `src/tests/script-workflows.test.ts` comment separators and prose. No runtime or production code changes.
+
 ## [1.14.0] - 2026-04-29
 
 ### Added

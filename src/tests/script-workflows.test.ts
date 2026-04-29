@@ -2,7 +2,7 @@
  * Lane C: Script Workflow Regression Harness
  *
  * Validates local automation scripts (release-check, dogfood, agent-skills-check)
- * with fixture tests. Offline and deterministic — no network calls.
+ * with fixture tests. Offline and deterministic -- no network calls.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
@@ -12,7 +12,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { readFileSync, readdirSync } from "node:fs";
 
-// ── Paths ────────────────────────────────────────────────────────────────────
+// --- Paths --------------------------------------------------------
 
 const REPO_ROOT = resolve(join(import.meta.dirname, "..", ".."));
 const SCRIPTS_DIR = join(REPO_ROOT, "scripts");
@@ -21,7 +21,7 @@ function scriptPath(name: string): string {
   return join(SCRIPTS_DIR, name);
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------
 
 function runScript(script: string, cwd: string, args: string[] = []) {
   const result = spawnSync("node", [script, ...args], {
@@ -116,7 +116,7 @@ See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v${readmeWN}**:
   );
 }
 
-// ── release-check.mjs ──────────────────────────────────────────────────────
+// --- release-check.mjs --------------------------------------------
 
 describe("release-check.mjs", () => {
   let tmpDir: string;
@@ -210,7 +210,7 @@ describe("release-check.mjs", () => {
   });
 });
 
-// ── dogfood.mjs ────────────────────────────────────────────────────────────
+// --- dogfood.mjs --------------------------------------------------
 
 describe("dogfood.mjs", () => {
   it("reports the correct total step count (TOTAL_STEPS matches steps array)", () => {
@@ -250,13 +250,13 @@ describe("dogfood.mjs", () => {
   });
 });
 
-// ── agent-skills-check.mjs ─────────────────────────────────────────────────
+// --- agent-skills-check.mjs ---------------------------------------
 
 describe("agent-skills-check.mjs", () => {
   const agentCheck = scriptPath("agent-skills-check.mjs");
 
   it("exits 0 when only legacy advisories exist (current project state)", () => {
-    // Run for real — generated skills are current, legacy advisories are non-blocking
+    // Run for real -- generated skills are current, legacy advisories are non-blocking
     const result = runScript(agentCheck, REPO_ROOT);
 
     expect(result.exitCode).toBe(0);
@@ -299,7 +299,7 @@ describe("agent-skills-check.mjs", () => {
   });
 });
 
-// ── Risky Unicode safety ───────────────────────────────────────────────────
+// --- Risky Unicode safety -----------------------------------------
 
 describe("Script unicode safety", () => {
   const RISKY_CHARS = [
@@ -335,7 +335,7 @@ describe("Script unicode safety", () => {
 
   it("release-check.mjs ASCII safety check self-passes on its own source", () => {
     // The release-check script has a checkScriptAsciiSafety() that scans scripts/*.mjs
-    // This test verifies it self-passes — i.e., no risky Unicode in any script
+    // This test verifies it self-passes -- i.e., no risky Unicode in any script
     const result = runScript(scriptPath("release-check.mjs"), REPO_ROOT);
     // May pass or fail depending on project state, but the ASCII safety check
     // itself should at least not crash

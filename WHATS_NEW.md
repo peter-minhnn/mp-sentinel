@@ -1,3 +1,13 @@
+# What's New in v1.14.1
+
+## Encoding Consistency Patch
+
+v1.14.1 is a test-only encoding hygiene patch -- no runtime or production code changes.
+
+- **ASCII-only test comments**: `src/tests/script-workflows.test.ts` comment separators and prose now use ASCII hyphens instead of box-drawing characters (U+2500) and em dashes (U+2014). Prevents mojibake rendering on Windows/CI terminals.
+
+---
+
 # What's New in v1.14.0
 
 ## Source Index Query CLI, Adapter Spec Guard & Script Workflow Harness
