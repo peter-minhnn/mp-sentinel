@@ -945,9 +945,7 @@ describe("Review Intelligence — Lane A precision", () => {
       expect(result.metadata.includedSignals).toContain("risk");
       expect(result.context).toContain("Hub File Blast Radius");
 
-      const riskSignal = (result.metadata.intelligenceSignals ?? []).find(
-        (s) => s.type === "risk",
-      );
+      const riskSignal = (result.metadata.intelligenceSignals ?? []).find((s) => s.type === "risk");
       expect(riskSignal).toBeDefined();
       expect(riskSignal!.confidence).toBe("medium"); // 3 importers → medium confidence
       expect(riskSignal!.evidence).toContain("3");

@@ -651,8 +651,7 @@ async function handleExplain(
   // Classify imports: resolved internal vs unresolved local vs external.
   // Normalize import specifiers and resolved paths to strip extensions so that
   // ESM .js → .ts mapping works correctly when matching.
-  const stripExt = (p: string): string =>
-    p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
+  const stripExt = (p: string): string => p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
 
   const resolvedPaths = file.importsFrom ?? [];
   const resolvedNormSet = new Set(resolvedPaths.map((p) => stripExt(p)));
@@ -674,9 +673,7 @@ async function handleExplain(
     }
 
     // Try to match local import against resolved paths (extension-normalized)
-    const fileDir = file.path.includes("/")
-      ? file.path.slice(0, file.path.lastIndexOf("/"))
-      : "";
+    const fileDir = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
     const joined = fileDir ? `${fileDir}/${source}` : source;
     const parts = joined.split("/");
     const resolved: string[] = [];
