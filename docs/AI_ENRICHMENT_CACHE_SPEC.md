@@ -1,7 +1,17 @@
 # AI Enrichment Cache Spec
 
-**Status:** design doc -- no runtime implementation yet
-**Target:** after v1.10.0, before any cache implementation touches runtime
+**Status:** Implemented in v1.12.0
+**Target:** shipped in v1.12.0
+
+## Implemented behavior (v1.12.0)
+
+The runtime implementation follows this spec. Key behaviors:
+
+- **Cache hit skips provider**: When a cached enrichment result exists for the current composite key, `enrichIndex()` returns the cached output without calling the AI provider.
+- **Corrupt cache falls back**: Invalid JSON, Zod validation failure, or cacheKey mismatch deletes the corrupt file and proceeds to a fresh provider call. Cache failure never blocks enrichment.
+- **Warnings stay off JSON stdout**: Cache warnings go to stderr via `log.warning`. JSON stdout (`--format json`) is never polluted with cache status lines.
+- **Atomic writes**: Cache files are written to a temp file then renamed, preventing corruption on crash mid-write.
+- **`projectRoot` absent skips cache**: When `enrichIndex()` is called without `projectRoot` in config, cache is neither read nor written — behavior is unchanged from pre-cache versions.
 
 ---
 

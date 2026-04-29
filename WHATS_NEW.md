@@ -1,3 +1,14 @@
+# What's New in v1.12.1
+
+## Docs Consistency & Local Skill Freshness
+
+v1.12.1 is a patch release syncing docs and local generated skills after the v1.12.0 runtime cache ship.
+
+- **Cache spec status updated**: `docs/AI_ENRICHMENT_CACHE_SPEC.md` now reflects implemented status (was still marked "design doc -- no runtime implementation yet"). Added "Implemented behavior" section documenting cache hit, corrupt fallback, warning isolation, and atomic write behavior.
+- **Local skill freshness**: `npm run agent:skills:refresh` regenerated all stale local skill files. `npm run agent:skills:check` passes clean.
+
+---
+
 # What's New in v1.12.0
 
 ## AI Enrichment Cache Runtime
