@@ -1,3 +1,17 @@
+# What's New in v1.10.0
+
+## Parallel Lane Integration — Indexing, Review Precision & AI Enrichment Tests
+
+v1.10.0 integrates three parallel development lanes into a single release: Lane B (indexing expansion), Lane C (review precision), and Lane A/C (test coverage completion).
+
+- **.mts/.cts support**: Source indexing now parses `.mts` (ESM TypeScript) and `.cts` (CJS TypeScript) file extensions, alongside existing `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` support.
+- **tsconfig extends resolution**: `tsconfig.json` base configs referenced via `extends` are now resolved and merged when computing path aliases and compiler options, improving import resolution accuracy in monorepos and layered configs.
+- **maxFileSize enforcement**: `indexing.maxFileSize` (default 512 KB) now correctly skips oversized files during both full and incremental indexing, preventing tree-sitter parse hangs on large generated/vendor files.
+- **Review intelligence signal precision**: `public-api`, `risk`, `test-gap`, and `dependency` signals now have improved precision with edge-case handling and error isolation — false positives reduced when source index is healthy but sparse.
+- **AI enrichment determinism tests**: Comprehensive determinism and validation unit tests for `ai-enrichment.ts` covering cache key stability, input/output shape, error handling, and no-network behavior. Lane C enrichment logic is now fully regression-protected.
+
+---
+
 # What's New in v1.9.2
 
 ## Incremental Indexing Resilience
