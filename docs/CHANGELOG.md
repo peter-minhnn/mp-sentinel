@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-04-29
+
+### Added
+- **Source index query service** (`src/services/source-index/query.ts`): Extracted `querySymbols()`, `queryImports()`, and `queryAgentContext()` pure functions from the indexing command layer. Multi-tier scoring (exact=100, case-insensitive=90, starts-with=70, contains=50). `indexing.ts` command handlers now delegate to the query service for data; console/JSON rendering stays in the command layer.
+- **Skill reference routing** (`src/services/skills-generator/content.ts`): New `buildReferenceRouting(index, kb)` generates a data-driven "Reference Routing" section in generated agent skills. Routes cover source index references (symbols, imports, hub files) with concrete file paths. Added to all 7 adapters. Quality gate max sizes raised (SKILL_MD 3000→3600, SINGLE_FILE 20000→21000).
+- **Dogfood query guard**: New `stepIndexQuery` (step 4 in `dogfood.mjs`) smoke-tests `--agent-context`, `--find-symbol`, and `--find-import` diagnostics. Validates JSON shape and non-empty results. Total steps 8→9.
+
+### Tests
+- 22 new unit tests for source index query service (null/empty index, scoring accuracy, sort order, result capping, missing target errors, agent context shape).
+- 12 new tests for skill reference routing (7 routing content + 4 quality gate integration + 1 quality gate section fixture).
+- Dogfood-related tests updated for new step count (8→9).
+
 ## [1.15.1] - 2026-04-29
 
 ### Fixed

@@ -59,6 +59,8 @@ export const codexAdapter: AgentAdapter = {
       ``,
       content.sections.agentWorkflow,
       ``,
+      content.sections.referenceRouting,
+      ``,
       content.sections.overview,
       ``,
       content.sections.architecture,

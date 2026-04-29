@@ -105,8 +105,8 @@ describe("validateSkillQuality", () => {
   // ── Max file size ──────────────────────────────────────────────────────────
 
   describe("max file size", () => {
-    it("flags SKILL.md over 3000 chars as error for claude", () => {
-      const longContent = "# Header\n\n" + "x".repeat(3001);
+    it("flags SKILL.md over 3600 chars as error for claude", () => {
+      const longContent = "# Header\n\n" + "x".repeat(3601);
       const files = [makeFile(".claude/skills/test/SKILL.md", longContent)];
       const report = validateSkillQuality(files, "claude", null);
       const sizeErrors = report.checks.filter(
@@ -126,8 +126,8 @@ describe("validateSkillQuality", () => {
       expect(sizeErrors.length).toBe(1);
     });
 
-    it("flags single-file adapter output over 20000 chars", () => {
-      const longContent = "# Big\n\n" + "x".repeat(20001);
+    it("flags single-file adapter output over 21000 chars", () => {
+      const longContent = "# Big\n\n" + "x".repeat(21001);
       const files = [makeFile(".cursor/rules/test.mdc", longContent)];
       const report = validateSkillQuality(files, "cursor", null);
       const sizeErrors = report.checks.filter(
@@ -165,6 +165,10 @@ describe("validateSkillQuality", () => {
         "## Required Agent Workflow",
         "",
         "step 1",
+        "",
+        "## Reference Routing",
+        "",
+        "routing",
         "",
         "## Overview",
         "",
@@ -215,6 +219,10 @@ describe("validateSkillQuality", () => {
         "## Required Agent Workflow",
         "",
         "step",
+        "",
+        "## Reference Routing",
+        "",
+        "routing",
         "",
         "## Overview",
         "",

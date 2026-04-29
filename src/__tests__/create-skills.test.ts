@@ -1836,6 +1836,207 @@ describe("agentWorkflow v2 content", () => {
   });
 });
 
+// ── Reference Routing ──────────────────────────────────────────────────────
+
+describe("referenceRouting section", () => {
+  it("is present in generateContent output with ## Reference Routing heading", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push({
+      path: "src/cli/main.ts",
+      language: "typescript",
+      imports: [],
+      exports: [],
+      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+      importsFrom: [],
+      importedBy: [],
+    });
+    idx.insights = {
+      fileRoles: { "src/cli/main.ts": "cli-entry" },
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+    expect(content.sections.referenceRouting).toContain("## Reference Routing");
+    expect(content.sections.referenceRouting).toContain("When touching files");
+    expect(content.sections.referenceRouting).toContain("Directory Pattern");
+    expect(content.sections.referenceRouting).toContain("Recommended References");
+    expect(content.sections.referenceRouting).toContain("Other files");
+  });
+
+  it("routes CLI/command dirs to commands, testing-map", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push(
+      {
+        path: "src/cli/main.ts",
+        language: "typescript",
+        imports: [],
+        exports: [],
+        symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      },
+      {
+        path: "src/commands/build.ts",
+        language: "typescript",
+        imports: [],
+        exports: [],
+        symbols: [{ name: "build", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      },
+    );
+    idx.insights = {
+      fileRoles: { "src/cli/main.ts": "cli-entry", "src/commands/build.ts": "command" },
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+    expect(content.sections.referenceRouting).toContain("commands, testing-map");
+    expect(content.sections.referenceRouting).toContain("src/cli/");
+    expect(content.sections.referenceRouting).toContain("src/commands/");
+  });
+
+  it("routes public API dirs to public-api, codebase-map", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push({
+      path: "src/types/public.ts",
+      language: "typescript",
+      imports: [],
+      exports: [{ name: "ApiType", type: "type", line: 1, column: 1 }],
+      symbols: [{ name: "ApiType", type: "type", line: 1, column: 1 }],
+      importsFrom: [],
+      importedBy: ["src/cli/main.ts"],
+    });
+    idx.insights = {
+      fileRoles: { "src/types/public.ts": "type" },
+      publicApiFiles: ["src/types/public.ts"],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+    expect(content.sections.referenceRouting).toContain("public-api, codebase-map");
+    expect(content.sections.referenceRouting).toContain("src/types/");
+  });
+
+  it("routes hub files (imported by >= 3) to architecture, codebase-map", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push({
+      path: "src/services/hub.ts",
+      language: "typescript",
+      imports: [],
+      exports: [{ name: "core", type: "function", line: 1, column: 1 }],
+      symbols: [{ name: "core", type: "function", line: 1, column: 1 }],
+      importsFrom: [],
+      importedBy: ["a.ts", "b.ts", "c.ts"],
+    });
+    idx.insights = {
+      fileRoles: { "src/services/hub.ts": "core" },
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+    expect(content.sections.referenceRouting).toContain("architecture, codebase-map");
+    expect(content.sections.referenceRouting).toContain("src/services/");
+  });
+
+  it("returns fallback section when index is null", () => {
+    const content = generateContent(null, "test", null, null);
+    expect(content.sections.referenceRouting).toContain("## Reference Routing");
+    expect(content.sections.referenceRouting).toContain("No source index available");
+  });
+
+  it("returns fallback section when KB is null", () => {
+    const content = generateContent(null, "test", null, null);
+    expect(content.sections.referenceRouting).toContain("## Reference Routing");
+    expect(content.sections.referenceRouting).toContain("No source index available");
+  });
+
+  it("is deterministic — same index produces byte-identical routing", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push({
+      path: "src/cli/main.ts",
+      language: "typescript",
+      imports: [],
+      exports: [],
+      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+      importsFrom: [],
+      importedBy: [],
+    });
+    idx.insights = {
+      fileRoles: { "src/cli/main.ts": "cli-entry" },
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const a = generateContent(idx, "test", null, kb);
+    const b = generateContent(idx, "test", null, kb);
+    expect(a.sections.referenceRouting).toBe(b.sections.referenceRouting);
+  });
+
+  it("is ASCII-safe — no risky Unicode characters", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push({
+      path: "src/cli/main.ts",
+      language: "typescript",
+      imports: [],
+      exports: [],
+      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+      importsFrom: [],
+      importedBy: [],
+    });
+    idx.insights = {
+      fileRoles: { "src/cli/main.ts": "cli-entry" },
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+    const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+    for (const r of riskyUnicode) {
+      expect(content.sections.referenceRouting).not.toContain(r);
+    }
+  });
+});
+
 // ── New reference file existence checks ─────────────────────────────────────
 
 describe("--all-agents includes new reference files", () => {
@@ -2084,6 +2285,137 @@ describe("quality gate integration", () => {
     const parsed = JSON.parse(jsonOutput);
     expect(parsed.results[0].quality).toBeDefined();
     expect(parsed.results[0].quality.errors).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── Quality Gate: Reference Routing ────────────────────────────────────────
+
+describe("quality gate: reference routing", () => {
+  it("Claude SKILL.md includes Reference Routing after Required Agent Workflow", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await mkdir(join(cwd, "src", "cli"), { recursive: true });
+    await writeFile(join(cwd, "src", "cli", "main.ts"), `export function main() {}`);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("claude")!;
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"))!;
+    expect(skillMd).toBeDefined();
+
+    // Reference Routing comes after Required Agent Workflow
+    const awfIdx = skillMd.content.indexOf("## Required Agent Workflow");
+    const rrIdx = skillMd.content.indexOf("## Reference Routing");
+    expect(awfIdx).toBeGreaterThan(-1);
+    expect(rrIdx).toBeGreaterThan(awfIdx);
+
+    // Quality gate passes with routing section
+    const report = validateSkillQuality(files, "claude", index);
+    expect(report.errors).toBe(0);
+  });
+
+  it("Claude SKILL.md still has exactly 7 reference links after routing added", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("claude")!;
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    const report = validateSkillQuality(files, "claude", index);
+    const refCheck = report.checks.filter((c) => c.type === "required-references");
+    expect(refCheck).toHaveLength(0);
+  });
+
+  it("single-file adapter output includes Reference Routing section", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("cursor")!;
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    expect(files[0]!.content).toContain("## Reference Routing");
+
+    const report = validateSkillQuality(files, "cursor", index);
+    expect(report.errors).toBe(0);
+  });
+
+  it("directory tokens like src/cli/ do not trigger unknown-path warnings", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await mkdir(join(cwd, "src", "cli"), { recursive: true });
+    await writeFile(join(cwd, "src", "cli", "main.ts"), `export function main() {}`);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+
+    const adapter = getAdapter("claude")!;
+    const kb = buildSkillKnowledgeBase(index!, cwd);
+    const files = await adapter.generate(index!, {
+      projectRoot: cwd,
+      projectName: "fixture",
+      force: false,
+      knowledgeBase: kb,
+    });
+    const report = validateSkillQuality(files, "claude", index);
+    const unknownPathWarnings = report.checks.filter(
+      (c) => c.type === "unknown-path" && c.severity === "warning",
+    );
+    // Directory tokens ending with / are auto-skipped by extractPathTokens
+    for (const w of unknownPathWarnings) {
+      expect(w.message).not.toContain("src/cli/");
+    }
   });
 });
 

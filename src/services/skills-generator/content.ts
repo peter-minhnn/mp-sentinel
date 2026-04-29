@@ -42,6 +42,7 @@ function cleanDisplayVersion(version: string): string {
 
 export interface SkillSections {
   agentWorkflow: string;
+  referenceRouting: string;
   overview: string;
   architecture: string;
   hubFiles: string;
@@ -81,6 +82,7 @@ export function generateContent(
 
   const sections: SkillSections = {
     agentWorkflow: buildAgentWorkflow(name, kb),
+    referenceRouting: buildReferenceRouting(index, kb),
     overview: buildOverview(name, version, frameworks, index, profile),
     architecture: buildArchitecture(index),
     hubFiles: buildHubFiles(index),
@@ -149,6 +151,181 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
   if (examples.length > 0) {
     lines.push(``, examples);
   }
+
+  return lines.join("\n");
+}
+
+// ── Reference Routing ──────────────────────────────────────────────────────
+
+const MAX_ROUTING_ROWS = 15;
+
+/**
+ * Build a compact Reference Routing table that maps directories to recommended
+ * reference files. Agents use this to load only the references relevant to the
+ * files they are touching, instead of reading all generated docs.
+ *
+ * Routing is data-driven from actual indexed file paths — no hardcoded paths.
+ * Same index produces byte-identical output (deterministic sort, no timestamps).
+ */
+function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase | null): string {
+  if (!index || !kb) {
+    return "## Reference Routing\n\nNo source index available. Run `mp-sentinel indexing` first.";
+  }
+
+  // ── Extract directory candidates from indexed file paths ────────────────
+  const srcLevels = new Set<string>();
+  const srcDeepCounts = new Map<string, number>();
+  const topLevels = new Set<string>();
+
+  for (const file of index.files) {
+    const parts = file.path.split("/");
+    if (parts.length < 2) continue;
+
+    if (parts[0] === "src") {
+      // src/<top>/
+      srcLevels.add(`${parts[0]}/${parts[1]}/`);
+      // src/<top>/<sub>/ — deeper service domains
+      if (parts.length >= 3) {
+        const deep = `${parts[0]}/${parts[1]}/${parts[2]}/`;
+        srcDeepCounts.set(deep, (srcDeepCounts.get(deep) ?? 0) + 1);
+      }
+    } else if (!parts[0]!.startsWith(".")) {
+      topLevels.add(`${parts[0]}/`);
+    }
+  }
+
+  // Promote deeper patterns with sufficient file count
+  for (const [deep, count] of srcDeepCounts) {
+    if (count >= 3) {
+      const parent = deep.split("/").slice(0, 2).join("/") + "/";
+      // Remove parent if a child is promoted (child is more specific)
+      srcLevels.delete(parent);
+      srcLevels.add(deep);
+    }
+  }
+
+  const allCandidates = [...srcLevels, ...topLevels].sort();
+
+  // ── Classify each candidate ─────────────────────────────────────────────
+
+  interface RoutingRow {
+    dirs: string[];
+    refs: string;
+  }
+
+  const rows: RoutingRow[] = [];
+  const fileRoles = index.insights?.fileRoles ?? {};
+  const publicApiFiles = index.insights?.publicApiFiles ?? [];
+  const depUsage = index.insights?.dependencyUsage ?? {};
+
+  for (const dir of allCandidates) {
+    const prefix = dir.endsWith("/") ? dir.slice(0, -1) : dir;
+    const filesInDir = index.files.filter(
+      (f) => f.path.startsWith(prefix + "/") || f.path === prefix,
+    );
+
+    if (filesInDir.length === 0) continue;
+
+    // Priority 1: CLI / command entrypoints
+    const hasCliOrCmd = kb.entrypoints.some(
+      (ep) =>
+        (ep.type === "cli" || ep.type === "command") &&
+        (ep.path.startsWith(prefix + "/") || ep.path === prefix),
+    );
+    if (hasCliOrCmd) {
+      rows.push({ dirs: [dir], refs: "commands, testing-map" });
+      continue;
+    }
+
+    // Priority 2: public API entrypoints or type/public API surface
+    const hasPublicApi = kb.entrypoints.some(
+      (ep) => ep.type === "public-api" && (ep.path.startsWith(prefix + "/") || ep.path === prefix),
+    );
+    const dirHasPublicApiFile = publicApiFiles.some(
+      (p) => p.startsWith(prefix + "/") || p === prefix,
+    );
+    if (hasPublicApi || dirHasPublicApiFile) {
+      rows.push({ dirs: [dir], refs: "public-api, codebase-map" });
+      continue;
+    }
+
+    // Priority 3: hub / risk files imported by >= 3 files
+    const hasHub = kb.risks.some(
+      (r) =>
+        r.type === "hub-file" &&
+        (r.importCount ?? 0) >= 3 &&
+        (r.file.startsWith(prefix + "/") || r.file === prefix),
+    );
+    if (hasHub) {
+      rows.push({ dirs: [dir], refs: "architecture, codebase-map" });
+      continue;
+    }
+
+    // Priority 4: dependency-heavy and cross-module
+    const depPkgs = new Set<string>();
+    const crossDirs = new Set<string>();
+    for (const file of filesInDir) {
+      for (const [pkg, pkgFiles] of Object.entries(depUsage)) {
+        if (pkgFiles.includes(file.path)) depPkgs.add(pkg);
+      }
+      for (const imp of file.importsFrom ?? []) {
+        const impTop = imp.includes("/") ? imp.slice(0, imp.indexOf("/")) : "(root)";
+        if (impTop !== prefix.split("/")[0]) crossDirs.add(impTop);
+      }
+    }
+    if (depPkgs.size >= 2 && crossDirs.size >= 2) {
+      rows.push({ dirs: [dir], refs: "architecture, dependencies" });
+      continue;
+    }
+
+    // Priority 5: scripts/ directory
+    if (dir === "scripts/") {
+      rows.push({ dirs: [dir], refs: "commands, testing-map" });
+      continue;
+    }
+
+    // Fallback
+    rows.push({ dirs: [dir], refs: "architecture, codebase-map" });
+  }
+
+  // ── Merge rows with the same reference set ──────────────────────────────
+  const merged: RoutingRow[] = [];
+  const refIndex = new Map<string, number>();
+  for (const row of rows) {
+    const existing = refIndex.get(row.refs);
+    if (existing !== undefined) {
+      merged[existing]!.dirs.push(...row.dirs);
+    } else {
+      refIndex.set(row.refs, merged.length);
+      merged.push(row);
+    }
+  }
+
+  // Sort: non-fallback rows first (by first dir name), fallback last
+  const fallback = merged.find((r) => r.dirs.length === 1 && r.dirs[0] === "#fallback");
+  const sorted = merged
+    .filter((r) => r !== fallback)
+    .sort((a, b) => a.dirs[0]!.localeCompare(b.dirs[0]!));
+
+  // Always add an "Other files" fallback row with the default ref set
+  const fallbackRefs = "architecture, codebase-map";
+
+  // ── Build markdown table ────────────────────────────────────────────────
+  const lines = [
+    `## Reference Routing`,
+    ``,
+    `When touching files, load only the relevant references:`,
+    ``,
+    `| Directory Pattern | Recommended References |`,
+    `|---|---|`,
+  ];
+
+  for (const row of sorted.slice(0, MAX_ROUTING_ROWS)) {
+    const dirCell = row.dirs.map((d) => `\`${d}\``).join(", ");
+    lines.push(`| ${dirCell} | ${row.refs} |`);
+  }
+
+  lines.push(`| Other files | ${fallbackRefs} |`);
 
   return lines.join("\n");
 }

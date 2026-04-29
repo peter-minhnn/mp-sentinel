@@ -64,6 +64,8 @@ export const claudeAdapter: AgentAdapter = {
       ``,
       content.sections.agentWorkflow,
       ``,
+      content.sections.referenceRouting,
+      ``,
       content.sections.overview,
       ``,
       `## References`,

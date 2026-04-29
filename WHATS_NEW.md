@@ -1,3 +1,15 @@
+# What's New in v1.16.0
+
+## Source Index Query Service, Skill Reference Router & Dogfood Query Guard
+
+v1.16.0 integrates three parallel post-1.15.0 lanes: Lane A (source index query service refactor), Lane B (skill reference routing), and Lane C (dogfood query guard).
+
+- **Source index query service** (`src/services/source-index/query.ts`): Extracted three pure query functions -- `querySymbols(index, query)`, `queryImports(index, query)`, `queryAgentContext(index, filePath)` -- from the indexing command layer. Multi-tier scoring (exact 100 > case-insensitive 90 > starts-with 70 > contains 50) for both symbol and import search. Command handlers in `indexing.ts` delegate to the query service for data; console/JSON rendering stays in the command layer. 22 new unit tests covering null/empty index, scoring accuracy, sort order, result capping, missing target errors, and agent context shape validation.
+- **Skill reference routing** (`src/services/skills-generator/content.ts`): New `buildReferenceRouting(index, kb)` generates a data-driven "Reference Routing" section in generated agent skills. Routes cover source index references (symbols, imports, hub files) with concrete file paths and line counts. Added to all 7 adapters (Claude, Cursor, Windsurf, Cline, Codex, Antigravity, Generic). Quality gate max sizes raised (SKILL_MD 3000→3600, SINGLE_FILE 20000→21000); new "Reference Routing" H2 required for Claude + single-file adapters. 12 new tests (7 routing content + 4 quality gate integration).
+- **Dogfood query guard**: New `stepIndexQuery` (step 4 of 9 in `dogfood.mjs`) smoke-tests all three v1.15+ indexing diagnostics: `--agent-context <file>`, `--find-symbol <query>`, `--find-import <query>`. Validates JSON shape and non-empty results. AGENTS.md checklist updated.
+
+---
+
 # What's New in v1.15.1
 
 ## Agent Consistency & Windows Console ASCII Patch

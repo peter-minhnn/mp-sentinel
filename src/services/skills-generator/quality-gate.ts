@@ -17,9 +17,9 @@ import type {
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
-const SKILL_MD_MAX = 3000;
+const SKILL_MD_MAX = 3600;
 const REF_MD_MAX = 6000;
-const SINGLE_FILE_MAX = 20000;
+const SINGLE_FILE_MAX = 21000;
 
 // ── Unknown-path allowlist ──────────────────────────────────────────────────
 // These paths are valid references in generated skills but are not source files
@@ -65,7 +65,7 @@ const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude"]);
 // ── Required H2 sections per Claude reference file ──────────────────────────
 
 const CLAUDE_REQUIRED_SECTIONS: Record<string, string[]> = {
-  "SKILL.md": ["Required Agent Workflow", "Overview", "References"],
+  "SKILL.md": ["Required Agent Workflow", "Reference Routing", "Overview", "References"],
   "architecture.md": ["Architecture"], // "Hub Files" is content-dependent, not invariant
   "modules.md": ["Module Map"],
   "commands.md": [], // "Project Profile: *" matched by prefix below
@@ -82,6 +82,7 @@ const PREFIX_MATCH_SECTIONS: Record<string, string[]> = {
 
 const SINGLE_FILE_REQUIRED_SECTIONS = [
   "Required Agent Workflow",
+  "Reference Routing",
   "Overview",
   "Architecture",
   "Module Map",
