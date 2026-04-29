@@ -1,3 +1,16 @@
+# What's New in v1.11.0
+
+## Phase 2 Closeout — Diagnostics, Fixtures & Cache Spec
+
+v1.11.0 closes out Phase 2 with import classification diagnostics (Lane D), fixture regression coverage (Lane E), and the AI enrichment cache design spec (Lane F).
+
+- **Import classification in --explain-index**: The `indexing --explain-index <file>` output now classifies each import as `internal` (resolved to another source file in the index), `local` (unresolved but with a local-looking path), or `external` (package/remote). This makes dependency graph analysis more actionable.
+- **Lane E fixture regression harness**: Comprehensive `review-intelligence-fixtures.test.ts` covers all 4 project profiles (cli-tooling, library, node-service, react-next) with 47+ tests validating signal precision, graceful degradation, quality assertions, and JSON output shape.
+- **AI enrichment cache spec**: `docs/AI_ENRICHMENT_CACHE_SPEC.md` defines a deterministic file-based cache for AI enrichment results, keyed by composite hash of source index + provider + model + prompt version + input. Design-only — no runtime implementation yet.
+- **ASCII-safe documentation**: All spec docs use ASCII-safe punctuation for terminal readability.
+
+---
+
 # What's New in v1.10.0
 
 ## Parallel Lane Integration — Indexing, Review Precision & AI Enrichment Tests

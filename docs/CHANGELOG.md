@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-04-29
+
+### Added
+- **Import classification in --explain-index**: The `indexing --explain-index <file>` output now classifies each import as `internal` (resolved to another source file in the index), `local` (unresolved but with a local-looking path), or `external` (package/remote). Import specifiers and resolved paths are extension-normalized so ESM `.js` → `.ts` mapping works correctly.
+- **Lane E fixture regression harness**: `review-intelligence-fixtures.test.ts` now covers all 4 project profiles with 47+ tests validating signal precision (`public-api`, `risk`, `test-gap`, `dependency`), graceful degradation (null index, parse errors, empty lists), quality assertions (ordering, dedup, budget), and `--explain-context --format json` output shape.
+- **AI enrichment cache spec**: `docs/AI_ENRICHMENT_CACHE_SPEC.md` defines a deterministic file-based cache for AI enrichment results. The cache key is a SHA256 composite of source index hash, provider, model, prompt version, and input hash. Spec covers cache path, read/write flow, invalidation policy, failure policy, and JSON/doctor/check interaction contracts. Design-only — no runtime implementation.
+
+### Changed
+- **ASCII-safe spec docs**: All documentation uses ASCII-safe punctuation (hyphens instead of em/en dashes, `->` instead of arrows) for terminal readability.
+
 ## [1.10.0] - 2026-04-29
 
 ### Added

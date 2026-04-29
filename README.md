@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.10.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.11.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,12 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.10.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.11.0**:
 
-- 🧬 **.mts/.cts Support** — source indexing now parses ESM and CJS TypeScript extensions
-- 🎯 **Review Signal Precision** — reduced false positives in public-api, risk, test-gap, and dependency signals
-- 🧪 **AI Enrichment Determinism** — comprehensive test coverage for cache stability and validation
-- 🔗 **tsconfig extends Resolution** — path aliases from extended configs now resolve correctly
+- 🏷️ **Import Classification** — --explain-index now classifies imports as internal, local, or external
+- 🧪 **Lane E Fixture Regression** — comprehensive fixture coverage for all 4 project profiles
+- 📐 **AI Enrichment Cache Spec** — design document for deterministic, file-based enrichment caching
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines

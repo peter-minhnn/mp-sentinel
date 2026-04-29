@@ -54,8 +54,13 @@ npx mp-sentinel indexing --index-format json
 # Show index statistics (builds or updates index first):
 npx mp-sentinel indexing --stats
 
-# Show symbol and dependency info for a specific file:
-npx mp-sentinel indexing --explain src/utils/git.ts
+# Show per-file symbols, imports, and dependency edges:
+npx mp-sentinel indexing --explain-index src/utils/git.ts
+
+# JSON output with import classification (v1.11.0+):
+npx mp-sentinel indexing --explain-index src/commands/indexing.ts --index-format json
+```
+Imports are classified as `internal` (resolved to another source file in the index), `local` (unresolved but with a local-looking path), or `external` (package/remote). The `--explain` alias is preserved for backward compatibility.
 ```
 
 ### Automation-Friendly Usage
