@@ -1798,10 +1798,12 @@ describe("agentWorkflow v2 content", () => {
   it("enforces mandatory index-first diagnostics", () => {
     const content = generateContent(null, "test", null);
     expect(content.sections.agentWorkflow).toContain("Before touching any file");
-    expect(content.sections.agentWorkflow).toContain("--agent-context");
-    expect(content.sections.agentWorkflow).toContain("--explain-index");
-    expect(content.sections.agentWorkflow).toContain("--find-symbol");
-    expect(content.sections.agentWorkflow).toContain("--find-import");
+    expect(content.sections.agentWorkflow).toContain("--agent-context <file> --index-format json");
+    expect(content.sections.agentWorkflow).toContain("--explain-index <file> --index-format json");
+    expect(content.sections.agentWorkflow).toContain("--find-symbol <name> --index-format json");
+    expect(content.sections.agentWorkflow).toContain(
+      "--find-import <package-or-path> --index-format json",
+    );
     expect(content.sections.agentWorkflow).toContain("codebase-map.md");
     expect(content.sections.agentWorkflow).toContain("testing-map.md");
     expect(content.sections.agentWorkflow).toContain("dependencies.md");
@@ -1822,7 +1824,9 @@ describe("agentWorkflow v2 content", () => {
 
     const content = generateContent(index, "test", null, kb);
     expect(content.sections.agentWorkflow).toContain("Quick-start search examples");
-    expect(content.sections.agentWorkflow).toContain("--agent-context src/types/index.ts");
+    expect(content.sections.agentWorkflow).toContain(
+      "--agent-context src/types/index.ts --index-format json",
+    );
     expect(content.sections.agentWorkflow).toContain("imported by 15 files");
   });
 

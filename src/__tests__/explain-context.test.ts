@@ -286,6 +286,38 @@ describe("renderExplainContext", () => {
     }
   });
 
+  it("console output with signals is ASCII-safe (no em dash, no risky Unicode)", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "api.ts"), `export const api = 1;`);
+    await writeFile(join(cwd, "src", "lib.ts"), `export { api } from "./api.js";`);
+    await buildSourceIndex(cwd, baseIndexingConfig, true);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "console", files: ["src/api.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const calls = logSpy.mock.calls.map((c) => c[0]).join("\n");
+      const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+      for (const r of riskyUnicode) {
+        expect(calls).not.toContain(r);
+      }
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
   it("returns JSON with includedSignals when intelligence signals are present", async () => {
     const cwd = await makeTempDir();
     const config = await makeConfig(cwd, true);

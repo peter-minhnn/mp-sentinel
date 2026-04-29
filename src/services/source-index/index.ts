@@ -18,3 +18,5 @@ export {
   getFilesToIndex,
   calculateSHA256,
 } from "./storage.js";
+export { querySymbols, queryImports, queryAgentContext } from "./query.js";
+export type { SymbolResult, ImportResult, AgentContextResult } from "./query.js";

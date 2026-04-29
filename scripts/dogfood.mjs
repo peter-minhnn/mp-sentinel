@@ -7,11 +7,12 @@
  *   1. release:check        - version consistency + lockfile integrity
  *   2. build                - tsup compile
  *   3. indexing --stats     - source index build + stats (JSON)
- *   4. create-skills --dry-run - all adapters, no writes (JSON)
- *   5. --explain-agents     - agent detection diagnostics (JSON)
- *   6. --explain-context    - context diagnostics (JSON)
- *   7. create-skills --doctor - doctor diagnostics (JSON)
- *   8. agent:skills:check   - generated skills freshness gate
+ *   4. index queries        - agent-context, find-symbol, find-import (JSON)
+ *   5. create-skills --dry-run - all adapters, no writes (JSON)
+ *   6. --explain-agents     - agent detection diagnostics (JSON)
+ *   7. --explain-context    - context diagnostics (JSON)
+ *   8. create-skills --doctor - doctor diagnostics (JSON)
+ *   9. agent:skills:check   - generated skills freshness gate
  *
  * Each JSON step is parsed, not just visually inspected.
  * explain-context "unavailable" due to indexing.enabled=false is expected.
@@ -28,7 +29,7 @@ import { existsSync } from "node:fs";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -66,7 +67,7 @@ function parseJson(raw, label) {
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write(`\n[1/8] release:check\n`);
+  process.stdout.write(`\n[1/9] release:check\n`);
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -77,7 +78,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write(`\n[2/8] build\n`);
+  process.stdout.write(`\n[2/9] build\n`);
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -94,7 +95,7 @@ function stepBuild() {
 }
 
 function stepIndexing() {
-  process.stdout.write(`\n[3/8] indexing --stats\n`);
+  process.stdout.write(`\n[3/9] indexing --stats\n`);
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -115,8 +116,112 @@ function stepIndexing() {
   return true;
 }
 
+function stepIndexQuery() {
+  process.stdout.write(`\n[4/9] index queries\n`);
+
+  // --agent-context
+  const acOut = run(
+    "node dist/index.js indexing --agent-context src/types/index.ts --index-format json",
+    "indexing --agent-context",
+  );
+  if (acOut === null) return false;
+
+  const acJson = parseJson(acOut, "indexing --agent-context");
+  if (!acJson) return false;
+
+  if (!acJson.file || typeof acJson.file !== "object") {
+    fail("indexing --agent-context", "JSON output missing 'file' object");
+    return false;
+  }
+  if (typeof acJson.file.path !== "string") {
+    fail("indexing --agent-context", "file.path missing or not a string");
+    return false;
+  }
+  if (typeof acJson.file.language !== "string") {
+    fail("indexing --agent-context", "file.language missing or not a string");
+    return false;
+  }
+  if (!Array.isArray(acJson.file.symbols)) {
+    fail("indexing --agent-context", "file.symbols is not an array");
+    return false;
+  }
+  if (!Array.isArray(acJson.file.imports)) {
+    fail("indexing --agent-context", "file.imports is not an array");
+    return false;
+  }
+  if (!Array.isArray(acJson.directImports)) {
+    fail("indexing --agent-context", "directImports is not an array");
+    return false;
+  }
+  if (!Array.isArray(acJson.directDependents)) {
+    fail("indexing --agent-context", "directDependents is not an array");
+    return false;
+  }
+  if (!Array.isArray(acJson.hubFiles)) {
+    fail("indexing --agent-context", "hubFiles is not an array");
+    return false;
+  }
+  if (!Array.isArray(acJson.suggestedCommands)) {
+    fail("indexing --agent-context", "suggestedCommands is not an array");
+    return false;
+  }
+  const acSymbols = acJson.file.symbolsTruncated ? `${acJson.file.symbols.length}+` : acJson.file.symbols.length;
+
+  // --find-symbol
+  const fsOut = run(
+    "node dist/index.js indexing --find-symbol buildSourceIndex --index-format json",
+    "indexing --find-symbol",
+  );
+  if (fsOut === null) return false;
+
+  const fsJson = parseJson(fsOut, "indexing --find-symbol");
+  if (!fsJson) return false;
+
+  if (typeof fsJson.query !== "string") {
+    fail("indexing --find-symbol", "JSON output missing 'query' field");
+    return false;
+  }
+  if (!Array.isArray(fsJson.results)) {
+    fail("indexing --find-symbol", "results is not an array");
+    return false;
+  }
+  if (fsJson.results.length === 0) {
+    fail("indexing --find-symbol", "expected results for 'buildSourceIndex', got 0");
+    return false;
+  }
+
+  // --find-import
+  const fiOut = run(
+    "node dist/index.js indexing --find-import zod --index-format json",
+    "indexing --find-import",
+  );
+  if (fiOut === null) return false;
+
+  const fiJson = parseJson(fiOut, "indexing --find-import");
+  if (!fiJson) return false;
+
+  if (typeof fiJson.query !== "string") {
+    fail("indexing --find-import", "JSON output missing 'query' field");
+    return false;
+  }
+  if (!Array.isArray(fiJson.results)) {
+    fail("indexing --find-import", "results is not an array");
+    return false;
+  }
+  if (fiJson.results.length === 0) {
+    fail("indexing --find-import", "expected results for 'zod', got 0");
+    return false;
+  }
+
+  ok(
+    "index queries",
+    `agent-context ${acSymbols} symbols, find-symbol ${fsJson.results.length} hits, find-import ${fiJson.results.length} hits`,
+  );
+  return true;
+}
+
 function stepCreateSkills() {
-  process.stdout.write(`\n[4/8] create-skills --dry-run\n`);
+  process.stdout.write(`\n[5/9] create-skills --dry-run\n`);
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -146,7 +251,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write(`\n[5/8] explain-agents\n`);
+  process.stdout.write(`\n[6/9] explain-agents\n`);
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -206,7 +311,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write(`\n[6/8] explain-context\n`);
+  process.stdout.write(`\n[7/9] explain-context\n`);
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -235,7 +340,7 @@ function stepExplainContext() {
 }
 
 function stepDoctor() {
-  process.stdout.write(`\n[7/8] create-skills --doctor\n`);
+  process.stdout.write(`\n[8/9] create-skills --doctor\n`);
   let raw;
   try {
     raw = execSync(
@@ -303,7 +408,7 @@ function stepDoctor() {
 }
 
 function stepAgentSkillsCheck() {
-  process.stdout.write(`\n[8/8] agent:skills:check\n`);
+  process.stdout.write(`\n[9/9] agent:skills:check\n`);
   let raw;
   try {
     raw = execSync(
@@ -333,6 +438,7 @@ const steps = [
   stepReleaseCheck,
   stepBuild,
   stepIndexing,
+  stepIndexQuery,
   stepCreateSkills,
   stepExplainAgents,
   stepExplainContext,

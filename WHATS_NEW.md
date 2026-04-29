@@ -1,3 +1,15 @@
+# What's New in v1.15.1
+
+## Agent Consistency & Windows Console ASCII Patch
+
+v1.15.1 is a consistency patch for agent automation and Windows console safety — no behavioral changes.
+
+- **Agent skill `--index-format json` consistency**: Generated agent skills now include `--index-format json` on all indexing diagnostic commands (`--agent-context`, `--find-symbol`, `--find-import`). Previously only `--explain-index` and `--stats` had the JSON format flag; the three new Lane A/B diagnostics were missing it. Quick-start search examples in generated skills also now include `--index-format json`. Deterministic output preserved.
+- **Windows console ASCII safety**: Removed em dashes (U+2014) from console output lines: `--explain-context` evidence summary (`[signalType] sourceFile - evidence`), review context intelligence signal lines (Public API Risk, Hub File Blast Radius), and profile-specific review pitfalls. All replaced with ASCII hyphens per the existing "ASCII only, no emoji" console contract.
+- **Test hardening**: New `--index-format json` assertions in `create-skills.test.ts` agent workflow tests; new ASCII safety test in `explain-context.test.ts` covering console output with intelligence signals.
+
+---
+
 # What's New in v1.15.0
 
 ## Agent Context Pack CLI, Skills Search Workflow & Review Evidence Tightening

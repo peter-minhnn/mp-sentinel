@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-04-29
+
+### Fixed
+- **Agent skill `--index-format json` consistency**: All indexing diagnostic commands in generated agent skills now include `--index-format json` (`--agent-context`, `--find-symbol`, `--find-import`). Quick-start search examples also include the JSON format flag. Previously inconsistent with `--explain-index` and `--stats` which already had it.
+- **Windows console ASCII safety**: Replaced em dashes (U+2014) with ASCII hyphens in `--explain-context` console evidence lines, review context intelligence signal lines, and profile-specific review pitfalls. Conforms to the existing "ASCII only, no emoji" console output contract.
+
+### Tests
+- Updated `create-skills.test.ts` agent workflow assertions to verify `--index-format json` on all diagnostic commands.
+- New ASCII safety test in `explain-context.test.ts` verifying console output with intelligence signals contains no risky Unicode.
+
 ## [1.15.0] - 2026-04-29
 
 ### Added

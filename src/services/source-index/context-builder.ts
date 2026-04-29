@@ -24,32 +24,32 @@ export function getProfileReviewPitfalls(profile: SkillProfile): string[] {
   switch (profile) {
     case "cli-tooling":
       return [
-        "Exit codes are a contract — never change 0/1/2 semantics without a breaking-change note",
-        "Diff-first review — do not send full file content when diff + context is sufficient",
-        "Keep CLI parsing separate — argument parsing belongs in src/cli/, not inside command implementations",
-        "No business logic in src/index.ts — entry files should only route, never contain core logic",
+        "Exit codes are a contract - never change 0/1/2 semantics without a breaking-change note",
+        "Diff-first review - do not send full file content when diff + context is sufficient",
+        "Keep CLI parsing separate - argument parsing belongs in src/cli/, not inside command implementations",
+        "No business logic in src/index.ts - entry files should only route, never contain core logic",
       ];
     case "node-service":
       return [
-        "Handler purity — ensure request handlers are stateless and side-effect free",
-        "Error middleware — centralized error handling with proper status codes",
-        "Environment validation — validate required env vars on startup, fail fast",
-        "Async boundaries — avoid mixing async/await and .then() in same code path",
-        "Health checks — implement /health and /ready endpoints for orchestration",
+        "Handler purity - ensure request handlers are stateless and side-effect free",
+        "Error middleware - centralized error handling with proper status codes",
+        "Environment validation - validate required env vars on startup, fail fast",
+        "Async boundaries - avoid mixing async/await and .then() in same code path",
+        "Health checks - implement /health and /ready endpoints for orchestration",
       ];
     case "react-next":
       return [
-        "Server/Client boundary — respect 'use client' directive, avoid client logic in server components",
-        "Data fetching colocation — fetch data as close as possible to where it's used",
-        "next/image optimization — always use next/image for external images with proper domains",
-        "Bundle vigilance — avoid large dependencies in client bundles, use dynamic imports",
+        "Server/Client boundary - respect 'use client' directive, avoid client logic in server components",
+        "Data fetching colocation - fetch data as close as possible to where it's used",
+        "next/image optimization - always use next/image for external images with proper domains",
+        "Bundle vigilance - avoid large dependencies in client bundles, use dynamic imports",
       ];
     case "library":
       return [
-        "Public API surface — consider semver impact of every exported symbol",
-        "Type definitions — ensure .d.ts files are accurate and complete",
-        "Peer dependencies — declare peerDependencies, not dependencies, for react, typescript, etc.",
-        "Tree-shakeability — avoid side effects in module initialization, use __esModule interop",
+        "Public API surface - consider semver impact of every exported symbol",
+        "Type definitions - ensure .d.ts files are accurate and complete",
+        "Peer dependencies - declare peerDependencies, not dependencies, for react, typescript, etc.",
+        "Tree-shakeability - avoid side effects in module initialization, use __esModule interop",
       ];
     default:
       return [
@@ -375,7 +375,7 @@ export async function buildReviewContext(
       if (publicApiChanged.length > 0) {
         writeHeader();
         signalLines.push(
-          `Public API Risk: ${publicApiChanged.join(", ")} — part of the public API surface; changes may be breaking.`,
+          `Public API Risk: ${publicApiChanged.join(", ")} - part of the public API surface; changes may be breaking.`,
         );
         includedSignals.push("public-api");
         for (const p of publicApiChanged) {
@@ -405,13 +405,13 @@ export async function buildReviewContext(
         const hubRisk = kb.risks.find((r) => r.file === cp && r.type === "hub-file");
         if (hubRisk) {
           writeHeader();
-          signalLines.push(`Hub File Blast Radius: ${cp} — ${hubRisk.detail}`);
+          signalLines.push(`Hub File Blast Radius: ${cp} - ${hubRisk.detail}`);
           includedSignals.push("risk");
           const importCount = hubRisk.importCount ?? 0;
           intelligenceSignals.push({
             type: "risk",
             file: cp,
-            reason: `File has high blast radius — imported by ${importCount} other file(s).`,
+            reason: `File has high blast radius - imported by ${importCount} other file(s).`,
             evidence: `importedBy count: ${importCount}`,
             confidence: importCount >= 5 ? "high" : importCount >= 3 ? "medium" : "low",
           });

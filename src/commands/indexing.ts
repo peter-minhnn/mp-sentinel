@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import type { IndexingConfig, SourceIndex, SourceIndexFile } from "../types/index.js";
+import { querySymbols, queryImports, queryAgentContext } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
   readManifest,
@@ -823,20 +824,14 @@ async function handleExplain(
 /**
  * Handle --find-symbol query: search index for symbols matching the query.
  * Read-only — uses the existing index; builds/updates only if absent.
- *
- * Scoring:
- * - Exact name match: 100
- * - Case-insensitive exact: 90
- * - Name starts with query: 70
- * - Name contains query: 50
- *
- * Results capped at 20.
  */
 function handleFindSymbol(
   query: string,
   index: SourceIndex | null,
   format: "console" | "json",
 ): number {
+  const results = querySymbols(index, query);
+
   if (!index) {
     if (format === "json") {
       console.log(JSON.stringify({ query, results: [] }));
@@ -846,78 +841,18 @@ function handleFindSymbol(
     return 0;
   }
 
-  const lowerQuery = query.toLowerCase();
-  const results: Array<{
-    file: string;
-    language: string;
-    symbol: {
-      name: string;
-      type: string;
-      line: number;
-      column: number;
-      parent?: string;
-    };
-    score: number;
-    reason: string;
-  }> = [];
-
-  for (const file of index.files) {
-    for (const sym of file.symbols) {
-      const lowerName = sym.name.toLowerCase();
-      let score = 0;
-      let reason = "";
-
-      if (sym.name === query) {
-        score = 100;
-        reason = "exact name match";
-      } else if (lowerName === lowerQuery) {
-        score = 90;
-        reason = "case-insensitive name match";
-      } else if (lowerName.startsWith(lowerQuery)) {
-        score = 70;
-        reason = "name starts with query";
-      } else if (lowerName.includes(lowerQuery)) {
-        score = 50;
-        reason = "name contains query";
-      }
-
-      if (score > 0) {
-        results.push({
-          file: file.path,
-          language: file.language,
-          symbol: {
-            name: sym.name,
-            type: sym.type,
-            line: sym.line,
-            column: sym.column,
-            ...(sym.parent && { parent: sym.parent }),
-          },
-          score,
-          reason,
-        });
-      }
-    }
-  }
-
-  // Sort by score descending, then by file path for deterministic output
-  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
-  const capped = results.slice(0, 20);
-
   if (format === "json") {
-    console.log(JSON.stringify({ query, results: capped }, null, 2));
+    console.log(JSON.stringify({ query, results }, null, 2));
   } else {
     console.log();
-    if (capped.length === 0) {
+    if (results.length === 0) {
       console.log(`No symbols found matching "${query}".`);
     } else {
-      console.log(`Symbols matching "${query}" (${capped.length} results):`);
-      for (const r of capped) {
+      console.log(`Symbols matching "${query}" (${results.length} results):`);
+      for (const r of results) {
         const detail =
           `${r.symbol.type} ${r.symbol.name}` + (r.symbol.parent ? ` (in ${r.symbol.parent})` : "");
         console.log(`  ${r.file}:${r.symbol.line}  ${detail}  [score=${r.score}, ${r.reason}]`);
-      }
-      if (results.length > 20) {
-        console.log(`  ... and ${results.length - 20} more`);
       }
     }
     console.log();
@@ -929,19 +864,14 @@ function handleFindSymbol(
 /**
  * Handle --find-import query: search index for files importing a package or path.
  * Read-only — uses the existing index; builds/updates only if absent.
- *
- * Scoring:
- * - Exact package/path match: 100
- * - Source contains query: 70
- * - Imported name matches query: 60
- *
- * Results capped at 20.
  */
 function handleFindImport(
   query: string,
   index: SourceIndex | null,
   format: "console" | "json",
 ): number {
+  const results = queryImports(index, query);
+
   if (!index) {
     if (format === "json") {
       console.log(JSON.stringify({ query, results: [] }));
@@ -951,80 +881,20 @@ function handleFindImport(
     return 0;
   }
 
-  const lowerQuery = query.toLowerCase();
-  const results: Array<{
-    file: string;
-    language: string;
-    importInfo: {
-      source: string;
-      kind: string;
-      names: string[];
-      line: number;
-      typeOnly?: boolean;
-    };
-    score: number;
-    reason: string;
-  }> = [];
-
-  for (const file of index.files) {
-    for (const imp of file.imports) {
-      const lowerSource = imp.source.toLowerCase();
-      let score = 0;
-      let reason = "";
-
-      if (imp.source === query) {
-        score = 100;
-        reason = "exact source match";
-      } else if (lowerSource === lowerQuery) {
-        score = 90;
-        reason = "case-insensitive source match";
-      } else if (lowerSource.includes(lowerQuery)) {
-        score = 70;
-        reason = "source contains query";
-      } else if (imp.names.some((n) => n.toLowerCase().includes(lowerQuery))) {
-        score = 60;
-        reason = "imported name matches query";
-      }
-
-      if (score > 0) {
-        results.push({
-          file: file.path,
-          language: file.language,
-          importInfo: {
-            source: imp.source,
-            kind: imp.kind,
-            names: imp.names,
-            line: imp.line,
-            ...(imp.typeOnly && { typeOnly: imp.typeOnly }),
-          },
-          score,
-          reason,
-        });
-      }
-    }
-  }
-
-  // Sort by score descending, then by file path for deterministic output
-  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
-  const capped = results.slice(0, 20);
-
   if (format === "json") {
-    console.log(JSON.stringify({ query, results: capped }, null, 2));
+    console.log(JSON.stringify({ query, results }, null, 2));
   } else {
     console.log();
-    if (capped.length === 0) {
+    if (results.length === 0) {
       console.log(`No imports found matching "${query}".`);
     } else {
-      console.log(`Imports matching "${query}" (${capped.length} results):`);
-      for (const r of capped) {
+      console.log(`Imports matching "${query}" (${results.length} results):`);
+      for (const r of results) {
         const kindTag = r.importInfo.kind !== "named" ? `[${r.importInfo.kind}] ` : "";
         const nameStr = r.importInfo.names.length > 0 ? ` (${r.importInfo.names.join(", ")})` : "";
         console.log(
           `  ${r.file}:${r.importInfo.line}  ${kindTag}"${r.importInfo.source}"${nameStr}  [score=${r.score}, ${r.reason}]`,
         );
-      }
-      if (results.length > 20) {
-        console.log(`  ... and ${results.length - 20} more`);
       }
     }
     console.log();
@@ -1035,22 +905,7 @@ function handleFindImport(
 
 /**
  * Handle --agent-context query: AI-agent-friendly context pack.
- *
  * Read-only — uses the existing index; builds/updates only if absent.
- * Output (JSON):
- *   - file: path, language, role, symbols (capped), imports (capped), exports (capped)
- *   - directImports: files this file imports from (capped)
- *   - directDependents: files that import this file (capped)
- *   - hubFiles: top hub files among direct imports/dependents
- *   - suggestedCommands: next diagnostic commands for deeper exploration
- *
- * Caps:
- *   - symbols: 30
- *   - imports: 20
- *   - exports: 20
- *   - directImports: 10
- *   - directDependents: 10
- *   - hubFiles: 5
  */
 function handleAgentContext(
   filePath: string,
@@ -1058,6 +913,8 @@ function handleAgentContext(
   format: "console" | "json",
   _projectRoot: string,
 ): number {
+  const ctx = queryAgentContext(index, filePath);
+
   if (!index) {
     if (format === "json") {
       console.log(JSON.stringify({ error: "No index available" }, null, 2));
@@ -1067,146 +924,34 @@ function handleAgentContext(
     return 1;
   }
 
-  const normalizedPath =
-    filePath.startsWith("/") || filePath.startsWith("\\")
-      ? filePath.replace(/^[/\\]+/, "")
-      : filePath;
-
-  const file = index.files.find((f) => f.path === normalizedPath || f.path === filePath);
-
-  if (!file) {
+  if (ctx.error) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: `File not found in index: ${filePath}` }, null, 2));
+      console.log(JSON.stringify({ error: ctx.error }, null, 2));
     } else {
-      console.log(`File not found in index: ${filePath}`);
+      console.log(ctx.error);
     }
     return 1;
   }
 
-  const MAX_SYMBOLS = 30;
-  const MAX_IMPORTS = 20;
-  const MAX_EXPORTS = 20;
-  const MAX_DIRECT_IMPORTS = 10;
-  const MAX_DIRECT_DEPENDENTS = 10;
-  const MAX_HUB_FILES = 5;
-
-  const fileInfo = {
-    path: file.path,
-    language: file.language,
-    ...(file.role && { role: file.role }),
-    symbols: file.symbols.slice(0, MAX_SYMBOLS).map((s) => ({
-      name: s.name,
-      type: s.type,
-      line: s.line,
-      column: s.column,
-      ...(s.parent && { parent: s.parent }),
-    })),
-    symbolsTruncated: file.symbols.length > MAX_SYMBOLS ? file.symbols.length - MAX_SYMBOLS : 0,
-    imports: file.imports.slice(0, MAX_IMPORTS).map((imp) => ({
-      source: imp.source,
-      kind: imp.kind,
-      names: imp.names,
-      line: imp.line,
-      ...(imp.typeOnly && { typeOnly: imp.typeOnly }),
-    })),
-    importsTruncated: file.imports.length > MAX_IMPORTS ? file.imports.length - MAX_IMPORTS : 0,
-    exports: file.exports.slice(0, MAX_EXPORTS).map((exp) => ({
-      kind: exp.kind,
-      names: exp.names,
-      line: exp.line,
-      ...(exp.source && { source: exp.source }),
-      ...(exp.typeOnly && { typeOnly: exp.typeOnly }),
-      ...(exp.isDefault && { isDefault: exp.isDefault }),
-    })),
-    exportsTruncated: file.exports.length > MAX_EXPORTS ? file.exports.length - MAX_EXPORTS : 0,
-    ...(file.parseErrors &&
-      file.parseErrors.length > 0 && { parseErrors: file.parseErrors.length }),
-  };
-
-  const importsFrom = file.importsFrom ?? [];
-  const importedBy = file.importedBy ?? [];
-
-  const directImports = importsFrom.slice(0, MAX_DIRECT_IMPORTS);
-  const directImportsTruncated =
-    importsFrom.length > MAX_DIRECT_IMPORTS ? importsFrom.length - MAX_DIRECT_IMPORTS : 0;
-
-  const directDependents = importedBy.slice(0, MAX_DIRECT_DEPENDENTS);
-  const directDependentsTruncated =
-    importedBy.length > MAX_DIRECT_DEPENDENTS ? importedBy.length - MAX_DIRECT_DEPENDENTS : 0;
-
-  const relatedPaths = new Set([...importsFrom, ...importedBy]);
-  const hubCandidates: Array<{ path: string; importedByCount: number }> = [];
-  for (const relatedPath of relatedPaths) {
-    const relatedFile = index.files.find((f) => f.path === relatedPath);
-    if (relatedFile && (relatedFile.importedBy?.length ?? 0) > 1) {
-      hubCandidates.push({
-        path: relatedPath,
-        importedByCount: relatedFile.importedBy!.length,
-      });
-    }
-  }
-  hubCandidates.sort((a, b) => b.importedByCount - a.importedByCount);
-  const hubFiles = hubCandidates.slice(0, MAX_HUB_FILES);
-  const hubFilesTruncated =
-    hubCandidates.length > MAX_HUB_FILES ? hubCandidates.length - MAX_HUB_FILES : 0;
-
-  const suggestedCommands: string[] = [];
-
-  const prioritySymbols = file.symbols
-    .filter((s) => ["function", "class", "interface", "type"].includes(s.type))
-    .slice(0, 3);
-  for (const sym of prioritySymbols) {
-    suggestedCommands.push(`mp-sentinel indexing --find-symbol "${sym.name}" --index-format json`);
-  }
-
-  const externalImportSources = [
-    ...new Set(
-      file.imports
-        .filter(
-          (imp) =>
-            !imp.source.startsWith(".") &&
-            !imp.source.startsWith("/") &&
-            !imp.source.startsWith("node:"),
-        )
-        .map((imp) => imp.source),
-    ),
-  ].slice(0, 3);
-  for (const pkg of externalImportSources) {
-    suggestedCommands.push(`mp-sentinel indexing --find-import "${pkg}" --index-format json`);
-  }
-
-  for (const relatedPath of directImports.slice(0, 3)) {
-    suggestedCommands.push(
-      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
-    );
-  }
-
-  for (const relatedPath of directDependents.slice(0, 3)) {
-    suggestedCommands.push(
-      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
-    );
-  }
-
-  const uniqueCommands = [...new Set(suggestedCommands)];
-
   const output = {
-    file: fileInfo,
-    directImports,
-    directImportsTruncated,
-    directDependents,
-    directDependentsTruncated,
-    hubFiles,
-    hubFilesTruncated,
-    suggestedCommands: uniqueCommands,
+    file: ctx.file,
+    directImports: ctx.directImports,
+    directImportsTruncated: ctx.directImportsTruncated,
+    directDependents: ctx.directDependents,
+    directDependentsTruncated: ctx.directDependentsTruncated,
+    hubFiles: ctx.hubFiles,
+    hubFilesTruncated: ctx.hubFilesTruncated,
+    suggestedCommands: ctx.suggestedCommands,
   };
 
   if (format === "json") {
     console.log(JSON.stringify(output, null, 2));
   } else {
+    const fileInfo = ctx.file!;
     console.log();
-    log.header(`Agent Context: ${file.path}`);
-    console.log(`  Language: ${file.language}`);
-    if (file.role) console.log(`  Role: ${file.role}`);
+    log.header(`Agent Context: ${fileInfo.path}`);
+    console.log(`  Language: ${fileInfo.language}`);
+    if (fileInfo.role) console.log(`  Role: ${fileInfo.role}`);
 
     console.log(
       `\n  Symbols (${fileInfo.symbols.length}${fileInfo.symbolsTruncated > 0 ? `, ${fileInfo.symbolsTruncated} more not shown` : ""}):`,
@@ -1215,32 +960,32 @@ function handleAgentContext(
       console.log(`    ${s.type} ${s.name} @ ${s.line}${s.parent ? ` (in ${s.parent})` : ""}`);
     }
 
-    if (directImports.length > 0) {
+    if (ctx.directImports.length > 0) {
       console.log(
-        `\n  Direct imports (${directImports.length}${directImportsTruncated > 0 ? `, ${directImportsTruncated} more not shown` : ""}):`,
+        `\n  Direct imports (${ctx.directImports.length}${ctx.directImportsTruncated > 0 ? `, ${ctx.directImportsTruncated} more not shown` : ""}):`,
       );
-      for (const p of directImports) console.log(`    - ${p}`);
+      for (const p of ctx.directImports) console.log(`    - ${p}`);
     }
 
-    if (directDependents.length > 0) {
+    if (ctx.directDependents.length > 0) {
       console.log(
-        `\n  Direct dependents (${directDependents.length}${directDependentsTruncated > 0 ? `, ${directDependentsTruncated} more not shown` : ""}):`,
+        `\n  Direct dependents (${ctx.directDependents.length}${ctx.directDependentsTruncated > 0 ? `, ${ctx.directDependentsTruncated} more not shown` : ""}):`,
       );
-      for (const p of directDependents) console.log(`    - ${p}`);
+      for (const p of ctx.directDependents) console.log(`    - ${p}`);
     }
 
-    if (hubFiles.length > 0) {
+    if (ctx.hubFiles.length > 0) {
       console.log(
-        `\n  Hub files (${hubFiles.length}${hubFilesTruncated > 0 ? `, ${hubFilesTruncated} more not shown` : ""}):`,
+        `\n  Hub files (${ctx.hubFiles.length}${ctx.hubFilesTruncated > 0 ? `, ${ctx.hubFilesTruncated} more not shown` : ""}):`,
       );
-      for (const h of hubFiles) {
+      for (const h of ctx.hubFiles) {
         console.log(`    - ${h.path} (imported by ${h.importedByCount} files)`);
       }
     }
 
-    if (uniqueCommands.length > 0) {
+    if (ctx.suggestedCommands.length > 0) {
       console.log("\n  Suggested next commands:");
-      for (const cmd of uniqueCommands) console.log(`    $ ${cmd}`);
+      for (const cmd of ctx.suggestedCommands) console.log(`    $ ${cmd}`);
     }
 
     console.log();

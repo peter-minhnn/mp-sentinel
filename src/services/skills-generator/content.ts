@@ -135,10 +135,10 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     `1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.`,
     instructionFilesLine,
     `3. **Before touching any file**, use source index diagnostics:`,
-    `   - \`mp-sentinel indexing --agent-context <file>\` - symbols, imports, dependents, suggested next commands`,
+    `   - \`mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, suggested next commands`,
     `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols for the file`,
-    `   - \`mp-sentinel indexing --find-symbol <name>\` - search index for symbols (functions, classes, interfaces)`,
-    `   - \`mp-sentinel indexing --find-import <package-or-path>\` - search index for files importing a package or path`,
+    `   - \`mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols (functions, classes, interfaces)`,
+    `   - \`mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for files importing a package or path`,
     `   - \`mp-sentinel indexing --stats --index-format json\` - index summary with insight counts`,
     `   - \`mp-sentinel --explain-context --format json --files <file>\` - review context enrichment`,
     `4. **Load only the relevant references** for the paths you touch:`,
@@ -169,7 +169,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     .sort((a, b) => (b.importCount ?? 0) - (a.importCount ?? 0))[0];
   if (topHub) {
     exampleLines.push(
-      `   - \`mp-sentinel indexing --agent-context ${topHub.file}\` - top hub file (imported by ${topHub.importCount} files)`,
+      `   - \`mp-sentinel indexing --agent-context ${topHub.file} --index-format json\` - top hub file (imported by ${topHub.importCount} files)`,
     );
   }
 
@@ -177,7 +177,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
   const topDep = kb.dependencies[0];
   if (topDep) {
     exampleLines.push(
-      `   - \`mp-sentinel indexing --find-import ${topDep.packageName}\` - top dependency (used by ${topDep.fileCount} files)`,
+      `   - \`mp-sentinel indexing --find-import ${topDep.packageName} --index-format json\` - top dependency (used by ${topDep.fileCount} files)`,
     );
   }
 
@@ -198,7 +198,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = mod?.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`mp-sentinel indexing --find-symbol ${keySym.name}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
       break;
     }
@@ -210,7 +210,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = largestModule.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`mp-sentinel indexing --find-symbol ${keySym.name}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
     }
   }

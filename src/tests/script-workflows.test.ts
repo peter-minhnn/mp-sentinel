@@ -232,7 +232,7 @@ describe("dogfood.mjs", () => {
     const actualStepCount = stepRefs!.length;
 
     expect(actualStepCount).toBe(declaredTotal);
-    expect(declaredTotal).toBe(8); // Per dogfood.mjs spec
+    expect(declaredTotal).toBe(9); // Per dogfood.mjs spec
   });
 
   it("step function names match the declared steps order", () => {

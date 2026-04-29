@@ -592,7 +592,7 @@ export async function renderExplainContext(opts: {
       if (output.evidenceSummary && output.evidenceSummary.length > 0) {
         console.log(`Evidence summary: ${output.evidenceSummary.length} entries`);
         for (const e of output.evidenceSummary) {
-          console.log(`  [${e.signalType}] ${e.sourceFile} — ${e.evidence}`);
+          console.log(`  [${e.signalType}] ${e.sourceFile} - ${e.evidence}`);
         }
       }
       console.log("\nIncluded files:");

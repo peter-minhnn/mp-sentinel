@@ -14,6 +14,7 @@ import {
 } from "../services/source-index/manifest.js";
 import { buildIndexContext } from "../cli/review.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
+import { querySymbols, queryImports, queryAgentContext } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
@@ -2093,5 +2094,563 @@ describe("agent-context query", () => {
     await expect(
       runIndexingCommand({ agentContext: "   ", "index-format": "json" }, cwd),
     ).rejects.toThrow("--agent-context file path must not be empty");
+  });
+});
+
+// ── Query Service Tests ───────────────────────────────────────────────────────
+
+describe("querySymbols (service)", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "query-symbol-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "index.ts"),
+      `export function hello() { return "hi"; }\n` +
+        `export class HelloWorld { }\n` +
+        `export interface IHello { }\n` +
+        `export const helloConst = 1;\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "utils.ts"),
+      `export function HelloHelper() { return true; }\n` +
+        `export function goodbye() { return false; }\n`,
+    );
+  };
+
+  it("returns empty results for null index", () => {
+    const results = querySymbols(null, "hello");
+    expect(results).toEqual([]);
+  });
+
+  it("returns empty results for empty index", () => {
+    const emptyIndex: SourceIndex = {
+      schemaVersion: "1.2",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "test",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [],
+      stats: { totalFiles: 0, indexedFiles: 0, skippedFiles: 0, parseErrors: 0 },
+    };
+    const results = querySymbols(emptyIndex, "hello");
+    expect(results).toEqual([]);
+  });
+
+  it("returns results sorted by score descending", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = querySymbols(index, "hello");
+    expect(results.length).toBeGreaterThan(1);
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i - 1]!.score).toBeGreaterThanOrEqual(results[i]!.score);
+    }
+  });
+
+  it("caps results at 20", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "cap-test", version: "1.0.0" }),
+    );
+    let content = "";
+    for (let i = 0; i < 50; i++) {
+      content += `export const foo${i} = ${i};\n`;
+    }
+    await writeFile(join(cwd, "src", "many.ts"), content);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = querySymbols(index!, "foo");
+    expect(results.length).toBeLessThanOrEqual(20);
+  });
+
+  it("exact name match gives score 100", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = querySymbols(index!, "hello");
+    const exact = results.find((r) => r.symbol.name === "hello");
+    expect(exact).toBeDefined();
+    expect(exact!.score).toBe(100);
+    expect(exact!.reason).toBe("exact name match");
+  });
+
+  it("case-insensitive match gives score 90", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = querySymbols(index!, "Hello");
+    const ciMatch = results.find((r) => r.symbol.name === "hello");
+    expect(ciMatch).toBeDefined();
+    expect(ciMatch!.score).toBe(90);
+  });
+
+  it("returns empty for nonexistent symbol", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = querySymbols(index!, "nonexistent_xyz_abc");
+    expect(results).toEqual([]);
+  });
+});
+
+describe("queryImports (service)", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "query-import-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `import { z } from "zod";\n` +
+        `import { helper } from "./helper.js";\n` +
+        `import lodash from "lodash";\n` +
+        `export const main = z.string();\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "helper.ts"),
+      `export function helper() { return "hello"; }\n`,
+    );
+  };
+
+  it("returns empty results for null index", () => {
+    const results = queryImports(null, "zod");
+    expect(results).toEqual([]);
+  });
+
+  it("returns empty results for empty index", () => {
+    const emptyIndex: SourceIndex = {
+      schemaVersion: "1.2",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "test",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [],
+      stats: { totalFiles: 0, indexedFiles: 0, skippedFiles: 0, parseErrors: 0 },
+    };
+    const results = queryImports(emptyIndex, "zod");
+    expect(results).toEqual([]);
+  });
+
+  it("exact source match gives score 100", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "zod");
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const exact = results.find((r) => r.importInfo.source === "zod");
+    expect(exact).toBeDefined();
+    expect(exact!.score).toBe(100);
+  });
+
+  it("case-insensitive source match gives score 90", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "Zod");
+    const ciMatch = results.find((r) => r.importInfo.source === "zod");
+    expect(ciMatch).toBeDefined();
+    expect(ciMatch!.score).toBe(90);
+  });
+
+  it("partial source match gives score 70", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "lod");
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const partial = results.find((r) => r.importInfo.source === "lodash");
+    expect(partial).toBeDefined();
+    expect(partial!.score).toBe(70);
+  });
+
+  it("results sorted by score descending", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "o");
+    expect(results.length).toBeGreaterThan(1);
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i - 1]!.score).toBeGreaterThanOrEqual(results[i]!.score);
+    }
+  });
+
+  it("caps results at 20", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "import-cap-test", version: "1.0.0" }),
+    );
+    let content = "";
+    for (let i = 0; i < 30; i++) {
+      content += `import { foo } from "pkg-${i}";\n`;
+    }
+    content += `export const x = 1;\n`;
+    await writeFile(join(cwd, "src", "many-imports.ts"), content);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "pkg");
+    expect(results.length).toBeLessThanOrEqual(20);
+  });
+
+  it("returns empty for nonexistent import", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryImports(index!, "nonexistent-pkg-xyz");
+    expect(results).toEqual([]);
+  });
+});
+
+describe("queryAgentContext (service)", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "query-agent-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `import { helper } from "./helper.js";\n` +
+        `import { z } from "zod";\n` +
+        `export function main() { return helper(); }\n` +
+        `export class MainClass { }\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "helper.ts"),
+      `export function helper() { return "hello"; }\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "consumer.ts"),
+      `import { main } from "./main.js";\n` + `export const result = main();\n`,
+    );
+  };
+
+  it("returns error for null index", () => {
+    const ctx = queryAgentContext(null, "src/main.ts");
+    expect(ctx.error).toBeDefined();
+    expect(ctx.error).toBe("No index available");
+    expect(ctx.file).toBeNull();
+  });
+
+  it("returns error for missing target file", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/nonexistent.ts");
+    expect(ctx.error).toBeDefined();
+    expect(ctx.error).toContain("not found");
+    expect(ctx.file).toBeNull();
+  });
+
+  it("has expected shape for known file", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/main.ts");
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file).not.toBeNull();
+    expect(ctx.file!.path).toBe("src/main.ts");
+    expect(ctx.file!.language).toBe("typescript");
+    expect(Array.isArray(ctx.file!.symbols)).toBe(true);
+    expect(Array.isArray(ctx.file!.imports)).toBe(true);
+    expect(Array.isArray(ctx.file!.exports)).toBe(true);
+    expect(typeof ctx.file!.symbolsTruncated).toBe("number");
+    expect(typeof ctx.file!.importsTruncated).toBe("number");
+    expect(typeof ctx.file!.exportsTruncated).toBe("number");
+    expect(Array.isArray(ctx.directImports)).toBe(true);
+    expect(Array.isArray(ctx.directDependents)).toBe(true);
+    expect(Array.isArray(ctx.hubFiles)).toBe(true);
+    expect(Array.isArray(ctx.suggestedCommands)).toBe(true);
+  });
+
+  it("includes direct imports and dependents", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/main.ts");
+    // main.ts imports helper.ts
+    expect(ctx.directImports).toContain("src/helper.ts");
+    // consumer.ts imports main.ts
+    expect(ctx.directDependents).toContain("src/consumer.ts");
+  });
+
+  it("suggested commands include diagnostic follow-ups", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/main.ts");
+    expect(ctx.suggestedCommands.length).toBeGreaterThan(0);
+
+    const hasFindSymbol = ctx.suggestedCommands.some((cmd) => cmd.includes("--find-symbol"));
+    expect(hasFindSymbol).toBe(true);
+
+    const hasFindImport = ctx.suggestedCommands.some(
+      (cmd) => cmd.includes("--find-import") && cmd.includes("zod"),
+    );
+    expect(hasFindImport).toBe(true);
+
+    const hasAgentContext = ctx.suggestedCommands.some((cmd) => cmd.includes("--agent-context"));
+    expect(hasAgentContext).toBe(true);
+  });
+
+  it("caps symbols at 30", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "agent-cap-test", version: "1.0.0" }),
+    );
+    let content = "";
+    for (let i = 0; i < 50; i++) {
+      content += `export function sym${i}() { return ${i}; }\n`;
+    }
+    await writeFile(join(cwd, "src", "huge.ts"), content);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/huge.ts");
+    expect(ctx.file!.symbols.length).toBeLessThanOrEqual(30);
+    expect(ctx.file!.symbolsTruncated).toBeGreaterThan(0);
+  });
+
+  it("caps direct imports at 10 and direct dependents at 10", () => {
+    const files: SourceIndex["files"] = [];
+    // Create a file with 15 imports and 15 importedBy
+    const mainFile = {
+      path: "src/main.ts",
+      language: "typescript" as const,
+      sha256: "abc",
+      sizeBytes: 100,
+      mtimeMs: Date.now(),
+      imports: [
+        { source: "./a.js", kind: "named" as const, names: ["a"], line: 1 },
+        { source: "./b.js", kind: "named" as const, names: ["b"], line: 2 },
+        { source: "./c.js", kind: "named" as const, names: ["c"], line: 3 },
+        { source: "./d.js", kind: "named" as const, names: ["d"], line: 4 },
+        { source: "./e.js", kind: "named" as const, names: ["e"], line: 5 },
+        { source: "./f.js", kind: "named" as const, names: ["f"], line: 6 },
+        { source: "./g.js", kind: "named" as const, names: ["g"], line: 7 },
+        { source: "./h.js", kind: "named" as const, names: ["h"], line: 8 },
+        { source: "./i.js", kind: "named" as const, names: ["i"], line: 9 },
+        { source: "./j.js", kind: "named" as const, names: ["j"], line: 10 },
+        { source: "./k.js", kind: "named" as const, names: ["k"], line: 11 },
+        { source: "./l.js", kind: "named" as const, names: ["l"], line: 12 },
+        { source: "./m.js", kind: "named" as const, names: ["m"], line: 13 },
+        { source: "./n.js", kind: "named" as const, names: ["n"], line: 14 },
+        { source: "./o.js", kind: "named" as const, names: ["o"], line: 15 },
+      ],
+      exports: [],
+      symbols: [],
+      importsFrom: Array.from({ length: 15 }, (_, i) => `src/${String.fromCharCode(97 + i)}.ts`),
+      importedBy: Array.from({ length: 15 }, (_, i) => `src/consumer${i + 1}.ts`),
+    };
+    files.push(mainFile);
+
+    const index: SourceIndex = {
+      schemaVersion: "1.2",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "cap-test",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files,
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+    };
+
+    const ctx = queryAgentContext(index, "src/main.ts");
+    expect(ctx.directImports.length).toBeLessThanOrEqual(10);
+    expect(ctx.directImportsTruncated).toBe(5);
+    expect(ctx.directDependents.length).toBeLessThanOrEqual(10);
+    expect(ctx.directDependentsTruncated).toBe(5);
   });
 });

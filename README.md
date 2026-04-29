@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.15.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.15.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,7 +43,7 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.15.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.15.1**:
 
 - 📦 **Agent Context Pack CLI** — `--agent-context <file>` outputs capped JSON context packs for AI agents
 - 🔍 **Skills Search Workflow Upgrade** — generated agent skills teach `--find-symbol` and `--find-import`
