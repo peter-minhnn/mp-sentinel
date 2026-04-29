@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-04-29
+
+### Added
+- **Positive explain-context dogfood** (`scripts/dogfood.mjs`): New `stepPositiveExplainContext()` validates `--explain-context` with indexing enabled via a temp fixture project. Asserts `status=available`, `indexUsed=true`, non-empty `includedFiles` + `suggestedCommands`. Total dogfood steps 9→10.
+- **Doctor manifest freshness** (`src/commands/create-skills.ts`): `runDoctor` now compares current manifest hash against cached `index.manifestHash`. Reports `stale` when hashes differ (changed manifest inputs) or when no `manifestHash` exists (legacy index).
+- **Safe suggested command formatter** (`src/services/source-index/query.ts`): New `quoteCliArg()` normalizes backslashes, escapes embedded double quotes, and wraps values in double quotes. Used by all suggested command builders in `query.ts` and `context-builder.ts`.
+
+### Tests
+- 3 new doctor manifest freshness tests (`--doctor` legacy index, changed manifest, matching hash).
+- 8 new `quoteCliArg` + suggestedCommands tests (quoting, normalization, escaping, dedup, determinism).
+- Dogfood step count updated 9→10.
+
 ## [1.17.0] - 2026-04-29
 
 ### Added

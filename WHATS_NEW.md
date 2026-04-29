@@ -1,3 +1,15 @@
+# What's New in v1.18.0
+
+## Positive Explain-Context Dogfood, Doctor Manifest Freshness & Safe Suggested Commands
+
+v1.18.0 integrates three parallel lanes: Lane A (positive explain-context dogfood), Lane B (doctor manifest freshness), and Lane C (safe suggested command formatter).
+
+- **Positive explain-context dogfood** (`scripts/dogfood.mjs`): New `stepPositiveExplainContext()` creates a temp fixture project with `indexing.enabled: true`, builds the index, runs `--explain-context`, and asserts `status=available`, `indexUsed=true`, and non-empty `includedFiles` + `suggestedCommands`. Total dogfood steps 9→10.
+- **Doctor manifest freshness** (`src/commands/create-skills.ts`): `runDoctor` now computes the current manifest hash from disk and compares it against the cached `index.manifestHash`. Reports `status: "stale"` when hashes differ (changed manifest inputs) or when no `manifestHash` exists in cache (legacy index). Status remains `"ok"` only when hashes match.
+- **Safe suggested command formatter** (`src/services/source-index/query.ts`): New `quoteCliArg()` helper normalizes backslashes to forward slashes, escapes embedded double quotes, and wraps values in double quotes. All suggested command builders in `query.ts` and `context-builder.ts` use it for consistent, safe argument quoting.
+
+---
+
 # What's New in v1.17.0
 
 ## Source Query Path Robustness, Reference Routing Quality Gate & Explain Context Action Hints

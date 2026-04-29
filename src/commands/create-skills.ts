@@ -50,6 +50,7 @@ import {
   validateSkillQuality,
 } from "../services/skills-generator/index.js";
 import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
+import { computeManifestHash } from "../services/source-index/manifest.js";
 
 const GENERATOR_VERSION = getToolVersion();
 
@@ -624,6 +625,8 @@ async function runDoctor(
       };
     } else {
       index = cached;
+      const currentManifestHash = await computeManifestHash(projectRoot);
+
       if (!index.manifestHash) {
         indexInfo = {
           status: "stale",
@@ -631,6 +634,15 @@ async function runDoctor(
           totalFiles: index.stats.totalFiles,
           reason:
             'Source index is missing manifestHash. Rebuild with "mp-sentinel indexing --force".',
+        };
+      } else if (index.manifestHash !== currentManifestHash) {
+        indexInfo = {
+          status: "stale",
+          schemaVersion: index.schemaVersion,
+          totalFiles: index.stats.totalFiles,
+          manifestHash: index.manifestHash,
+          reason:
+            'Manifest inputs changed (package.json / tsconfig / lockfile) since index was built. Run "mp-sentinel indexing --force" to rebuild.',
         };
       } else {
         indexInfo = {

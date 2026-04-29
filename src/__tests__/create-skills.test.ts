@@ -18,6 +18,7 @@ import {
 import { getToolVersion } from "../utils/version.js";
 import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
+import { computeManifestHash } from "../services/source-index/manifest.js";
 import { clearConfigCache } from "../utils/config.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -5181,11 +5182,49 @@ describe("runCreateSkillsCommand --doctor", () => {
     }
   });
 
-  it("--doctor JSON stdout for cache status parses directly (no log prefix)", async () => {
+  it("--doctor legacy index without manifestHash reports status stale", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
+    // Write a manually constructed index JSON without manifestHash (simulating pre-v1.18)
+    const cacheDir = join(cwd, ".mp-sentinel-cache");
+    await mkdir(cacheDir, { recursive: true });
+    const legacyIndex = {
+      schemaVersion: "1.2",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.17.0",
+      project: {
+        packageName: "fixture",
+        packageVersion: "1.0.0",
+        packageManager: "npm",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [
+        {
+          path: "src/index.ts",
+          language: "typescript",
+          sha256: "abc123",
+          sizeBytes: 100,
+          mtimeMs: 0,
+          imports: [],
+          exports: [{ kind: "named", names: ["hello"], line: 1 }],
+          symbols: [{ name: "hello", type: "function", line: 1, column: 0 }],
+          importsFrom: [],
+          importedBy: [],
+          exportedSymbols: ["hello"],
+        },
+      ],
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+      // manifestHash intentionally absent — legacy index
+    };
+    await writeFile(
+      join(cwd, ".mp-sentinel-cache", "source-index.json"),
+      JSON.stringify(legacyIndex),
+    );
+
     const cap = captureStdout();
-    await runCreateSkillsCommand(
+    const exitCode = await runCreateSkillsCommand(
       {
         "all-agents": false,
         "create-skills-format": "json",
@@ -5199,12 +5238,102 @@ describe("runCreateSkillsCommand --doctor", () => {
       cwd,
     );
     cap.restore();
-    // Must parse directly — no log prefix pollution
     const parsed = JSON.parse(cap.stdout);
-    expect(parsed).toHaveProperty("aiEnrichmentCache");
-    expect(parsed.aiEnrichmentCache.status).toBe("missing");
-    // Verify the stdout is clean JSON (starts with {)
-    expect(cap.stdout.trim().startsWith("{")).toBe(true);
+    expect(parsed.index.status).toBe("stale");
+    expect(parsed.index.reason).toContain("missing manifestHash");
+    expect(parsed.status).toBe("action-required");
+    expect(exitCode).toBe(1);
+  });
+
+  it("--doctor changed manifest inputs after index build are detected as stale", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    // Build a valid index with manifestHash
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    expect(index!.manifestHash).toBeDefined();
+    const originalHash = index!.manifestHash;
+
+    // Modify package.json to change the manifest fingerprint
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "2.0.0", dependencies: { lodash: "^4.0.0" } }),
+    );
+
+    // Verify the manifest hash has changed
+    const newHash = await computeManifestHash(cwd);
+    expect(newHash).not.toBe(originalHash);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.index.status).toBe("stale");
+    expect(parsed.index.manifestHash).toBe(originalHash);
+    expect(parsed.index.reason).toContain("Manifest inputs changed");
+    expect(parsed.status).toBe("action-required");
+    expect(exitCode).toBe(1);
+
+    // Doctor must NOT rebuild the index (read-only)
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cachedContent = JSON.parse(await readFile(cachePath, "utf-8"));
+    expect(cachedContent.manifestHash).toBe(originalHash);
+  });
+
+  it("--doctor current manifest matches cached hash reports status ok", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    // Build a valid index with manifestHash
+    const indexConfig = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+      cachePath: ".mp-sentinel-cache/source-index.json" as const,
+      maxFileSize: 512000,
+    };
+    const index = await buildSourceIndex(cwd, indexConfig, true);
+    expect(index).not.toBeNull();
+    expect(index!.manifestHash).toBeDefined();
+
+    // Do NOT modify package.json — manifest should still match
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    // Index status is ok because manifest hasn't changed (skills may be missing though)
+    expect(parsed.index.status).toBe("ok");
+    expect(parsed.index.manifestHash).toBe(index!.manifestHash);
   });
 });
 

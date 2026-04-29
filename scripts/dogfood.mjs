@@ -10,12 +10,14 @@
  *   4. index queries        - agent-context, find-symbol, find-import (JSON)
  *   5. create-skills --dry-run - all adapters, no writes (JSON)
  *   6. --explain-agents     - agent detection diagnostics (JSON)
- *   7. --explain-context    - context diagnostics (JSON)
- *   8. create-skills --doctor - doctor diagnostics (JSON)
- *   9. agent:skills:check   - generated skills freshness gate
+ *   7. --explain-context    - context diagnostics (JSON, unavailable path)
+ *   8. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
+ *   9. create-skills --doctor - doctor diagnostics (JSON)
+ *  10. agent:skills:check   - generated skills freshness gate
  *
  * Each JSON step is parsed, not just visually inspected.
- * explain-context "unavailable" due to indexing.enabled=false is expected.
+ * Step 7 validates "unavailable" (indexing.enabled=false repo default).
+ * Step 8 validates "available" with indexUsed + suggestedCommands using a temp fixture.
  *
  * Usage:
  *   node scripts/dogfood.mjs
@@ -25,11 +27,13 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 10;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -45,9 +49,9 @@ function ok(step, detail) {
   process.stdout.write("\n");
 }
 
-function run(cmd, label) {
+function run(cmd, label, opts) {
   try {
-    return execSync(cmd, { encoding: "utf-8", timeout: 120000, stdio: "pipe" });
+    return execSync(cmd, { encoding: "utf-8", timeout: 120000, stdio: "pipe", ...opts });
   } catch (e) {
     fail(label, e.stderr?.trim() || e.message);
     return null;
@@ -67,7 +71,7 @@ function parseJson(raw, label) {
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write(`\n[1/9] release:check\n`);
+  process.stdout.write(`\n[1/10] release:check\n`);
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -78,7 +82,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write(`\n[2/9] build\n`);
+  process.stdout.write(`\n[2/10] build\n`);
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -95,7 +99,7 @@ function stepBuild() {
 }
 
 function stepIndexing() {
-  process.stdout.write(`\n[3/9] indexing --stats\n`);
+  process.stdout.write(`\n[3/10] indexing --stats\n`);
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -117,7 +121,7 @@ function stepIndexing() {
 }
 
 function stepIndexQuery() {
-  process.stdout.write(`\n[4/9] index queries\n`);
+  process.stdout.write(`\n[4/10] index queries\n`);
 
   // --agent-context
   const acOut = run(
@@ -221,7 +225,7 @@ function stepIndexQuery() {
 }
 
 function stepCreateSkills() {
-  process.stdout.write(`\n[5/9] create-skills --dry-run\n`);
+  process.stdout.write(`\n[5/10] create-skills --dry-run\n`);
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -251,7 +255,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write(`\n[6/9] explain-agents\n`);
+  process.stdout.write(`\n[6/10] explain-agents\n`);
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -311,7 +315,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write(`\n[7/9] explain-context\n`);
+  process.stdout.write(`\n[7/10] explain-context\n`);
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -339,8 +343,132 @@ function stepExplainContext() {
   return false;
 }
 
+function stepPositiveExplainContext() {
+  process.stdout.write(`\n[8/10] explain-context (positive path)\n`);
+
+  const repoRoot = process.cwd();
+  const tempDir = mkdtempSync(join(tmpdir(), "dogfood-positive-ec-"));
+
+  try {
+    writeFileSync(
+      join(tempDir, "package.json"),
+      JSON.stringify({ name: "dogfood-positive-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    writeFileSync(
+      join(tempDir, ".sentinelrc.json"),
+      JSON.stringify({ indexing: { enabled: true } }, null, 2),
+      "utf-8",
+    );
+    mkdirSync(join(tempDir, "src"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src", "api.ts"),
+      [
+        "export function fetchData(url: string): Promise<Response> {",
+        "  return fetch(url);",
+        "}",
+        "",
+        "export class ApiClient {",
+        "  constructor(private baseUrl: string) {}",
+        "  async get(path: string): Promise<Response> {",
+        "    return fetch(this.baseUrl + path);",
+        "  }",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+    writeFileSync(
+      join(tempDir, "src", "lib.ts"),
+      [
+        "export function formatDate(date: Date): string {",
+        "  return date.toISOString();",
+        "}",
+        "",
+        "export function parseQuery(q: string): Record<string, string> {",
+        "  const params = new URLSearchParams(q);",
+        "  const result: Record<string, string> = {};",
+        "  params.forEach((v, k) => {",
+        "    result[k] = v;",
+        "  });",
+        "  return result;",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+    writeFileSync(
+      join(tempDir, "src", "consumer.ts"),
+      [
+        'import { fetchData, ApiClient } from "./api";',
+        'import { formatDate } from "./lib";',
+        "",
+        "export async function main(): Promise<unknown> {",
+        '  const data = await fetchData("https://example.com");',
+        '  const client = new ApiClient("https://api.example.com");',
+        '  const result = await client.get("/users");',
+        "  const formatted = formatDate(new Date());",
+        "  return { data, result, formatted };",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+    execSync("git init", { encoding: "utf-8", timeout: 30000, stdio: "pipe", cwd: tempDir });
+
+    const indexOut = run(
+      `node "${repoRoot}/dist/index.js" indexing --force --index-format json`,
+      "positive-explain-context indexing",
+      { cwd: tempDir },
+    );
+    if (indexOut === null) return false;
+
+    const indexJson = parseJson(indexOut, "positive-explain-context indexing");
+    if (!indexJson) return false;
+
+    const ecOut = run(
+      `node "${repoRoot}/dist/index.js" --explain-context --format json --files src/api.ts`,
+      "positive-explain-context",
+      { cwd: tempDir },
+    );
+    if (ecOut === null) return false;
+
+    const ecJson = parseJson(ecOut, "positive-explain-context");
+    if (!ecJson) return false;
+
+    if (ecJson.status !== "available") {
+      fail(
+        "positive-explain-context",
+        `expected status "available", got "${ecJson.status}"${ecJson.reason ? `: ${ecJson.reason}` : ""}`,
+      );
+      return false;
+    }
+    if (ecJson.indexUsed !== true) {
+      fail("positive-explain-context", "indexUsed is not true");
+      return false;
+    }
+    if (!Array.isArray(ecJson.includedFiles) || ecJson.includedFiles.length === 0) {
+      fail("positive-explain-context", "includedFiles empty or not an array");
+      return false;
+    }
+    if (!Array.isArray(ecJson.suggestedCommands) || ecJson.suggestedCommands.length === 0) {
+      fail("positive-explain-context", "suggestedCommands empty or not an array");
+      return false;
+    }
+
+    ok(
+      "positive-explain-context",
+      `status=${ecJson.status}, profile=${ecJson.profile}, ` +
+        `includedFiles=${ecJson.includedFiles.length}, suggestedCommands=${ecJson.suggestedCommands.length}`,
+    );
+    return true;
+  } catch (e) {
+    fail("positive-explain-context", e.stderr || e.message);
+    return false;
+  } finally {
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+  }
+}
+
 function stepDoctor() {
-  process.stdout.write(`\n[8/9] create-skills --doctor\n`);
+  process.stdout.write(`\n[9/10] create-skills --doctor\n`);
   let raw;
   try {
     raw = execSync(
@@ -408,7 +536,7 @@ function stepDoctor() {
 }
 
 function stepAgentSkillsCheck() {
-  process.stdout.write(`\n[9/9] agent:skills:check\n`);
+  process.stdout.write(`\n[10/10] agent:skills:check\n`);
   let raw;
   try {
     raw = execSync(
@@ -442,6 +570,7 @@ const steps = [
   stepCreateSkills,
   stepExplainAgents,
   stepExplainContext,
+  stepPositiveExplainContext,
   stepDoctor,
   stepAgentSkillsCheck,
 ];

@@ -8,6 +8,21 @@
 
 import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
 
+// ── Shared CLI Formatting ──────────────────────────────────────────────────────
+
+/**
+ * Format a string value for safe CLI double-quoted argument usage.
+ *
+ * - Normalizes backslashes to forward slashes
+ * - Escapes embedded double quotes
+ * - Wraps in double quotes
+ */
+export function quoteCliArg(value: string): string {
+  const normalized = value.replace(/\\/g, "/");
+  const escaped = normalized.replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
 // ── Symbol Query ──────────────────────────────────────────────────────────────
 
 const MAX_SYMBOL_RESULTS = 20;
@@ -353,7 +368,9 @@ export function queryAgentContext(
     .filter((s) => ["function", "class", "interface", "type"].includes(s.type))
     .slice(0, 3);
   for (const sym of prioritySymbols) {
-    suggestedCommands.push(`mp-sentinel indexing --find-symbol "${sym.name}" --index-format json`);
+    suggestedCommands.push(
+      `mp-sentinel indexing --find-symbol ${quoteCliArg(sym.name)} --index-format json`,
+    );
   }
 
   const externalImportSources = [
@@ -369,18 +386,20 @@ export function queryAgentContext(
     ),
   ].slice(0, 3);
   for (const pkg of externalImportSources) {
-    suggestedCommands.push(`mp-sentinel indexing --find-import "${pkg}" --index-format json`);
+    suggestedCommands.push(
+      `mp-sentinel indexing --find-import ${quoteCliArg(pkg)} --index-format json`,
+    );
   }
 
   for (const relatedPath of directImports.slice(0, 3)) {
     suggestedCommands.push(
-      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
+      `mp-sentinel indexing --agent-context ${quoteCliArg(relatedPath)} --index-format json`,
     );
   }
 
   for (const relatedPath of directDependents.slice(0, 3)) {
     suggestedCommands.push(
-      `mp-sentinel indexing --agent-context "${relatedPath}" --index-format json`,
+      `mp-sentinel indexing --agent-context ${quoteCliArg(relatedPath)} --index-format json`,
     );
   }
 

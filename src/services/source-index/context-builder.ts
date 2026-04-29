@@ -14,6 +14,7 @@ import type {
 import { detectProfile, type SkillProfile } from "../skills-generator/profile.js";
 import { buildSkillKnowledgeBase } from "../skills-generator/knowledge-base.js";
 import { log } from "../../utils/logger.js";
+import { quoteCliArg } from "./query.js";
 
 const INDEX_CONTEXT_MAX_CHARS = 12000;
 
@@ -524,7 +525,7 @@ export async function buildReviewContext(
 
   // --agent-context for included files (cap 3)
   for (const file of includedFiles.slice(0, 3)) {
-    addCmd(`mp-sentinel indexing --agent-context "${file}" --index-format json`);
+    addCmd(`mp-sentinel indexing --agent-context ${quoteCliArg(file)} --index-format json`);
   }
 
   // --find-import for dependency evidence (cap 3)
@@ -536,7 +537,7 @@ export async function buildReviewContext(
         const pkg = m?.[1];
         if (pkg && !importPkgs.has(pkg)) {
           importPkgs.add(pkg);
-          addCmd(`mp-sentinel indexing --find-import "${pkg}" --index-format json`);
+          addCmd(`mp-sentinel indexing --find-import ${quoteCliArg(pkg)} --index-format json`);
         }
       }
     }
@@ -554,7 +555,7 @@ export async function buildReviewContext(
           if (sym === "default" || sym.trim() === "") continue;
           if (!symNames.has(sym)) {
             symNames.add(sym);
-            addCmd(`mp-sentinel indexing --find-symbol "${sym}" --index-format json`);
+            addCmd(`mp-sentinel indexing --find-symbol ${quoteCliArg(sym)} --index-format json`);
           }
         }
       }

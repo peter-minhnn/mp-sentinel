@@ -514,4 +514,45 @@ describe("renderExplainContext", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("suggestedCommands use double-quoted CLI arguments via quoteCliArg", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    await makeIndex(cwd);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json", files: ["src/index.ts", "src/lib.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(jsonOutput.suggestedCommands).toBeDefined();
+
+      for (const cmd of jsonOutput.suggestedCommands) {
+        // Every command argument value must be wrapped in double quotes
+        if (cmd.includes("--agent-context ")) {
+          expect(cmd).toMatch(/--agent-context "([^"]*)"/);
+        }
+        if (cmd.includes("--find-import ")) {
+          expect(cmd).toMatch(/--find-import "([^"]*)"/);
+        }
+        if (cmd.includes("--find-symbol ")) {
+          expect(cmd).toMatch(/--find-symbol "([^"]*)"/);
+        }
+        // No backslashes in command strings
+        expect(cmd).not.toContain("\\");
+      }
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
 });

@@ -14,7 +14,12 @@ import {
 } from "../services/source-index/manifest.js";
 import { buildIndexContext } from "../cli/review.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
-import { querySymbols, queryImports, queryAgentContext } from "../services/source-index/query.js";
+import {
+  querySymbols,
+  queryImports,
+  queryAgentContext,
+  quoteCliArg,
+} from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
@@ -2838,5 +2843,108 @@ describe("queryAgentContext path robustness", () => {
     expect(ctx.error).toContain("not found");
     // Error message should reference the original user input
     expect(ctx.error).toContain("src\\nonexistent.ts");
+  });
+});
+
+// ── Lane C: Safe Suggested Command Formatter ──────────────────────────────────
+
+describe("quoteCliArg", () => {
+  it("wraps value in double quotes", () => {
+    expect(quoteCliArg("hello")).toBe('"hello"');
+  });
+
+  it("normalizes backslashes to forward slashes", () => {
+    expect(quoteCliArg("src\\lib\\utils.ts")).toBe('"src/lib/utils.ts"');
+  });
+
+  it("escapes embedded double quotes", () => {
+    expect(quoteCliArg('file"name')).toBe('"file\\"name"');
+  });
+
+  it("handles spaces in value", () => {
+    expect(quoteCliArg("my file.ts")).toBe('"my file.ts"');
+  });
+
+  it("handles value with both backslashes and quotes", () => {
+    expect(quoteCliArg('src\\"weird"\\file.ts')).toBe('"src/\\"weird\\"/file.ts"');
+  });
+
+  it("returns empty quoted string for empty input", () => {
+    expect(quoteCliArg("")).toBe('""');
+  });
+});
+
+describe("suggestedCommands dedup and determinism", () => {
+  it("suggestedCommands have no duplicates", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "dedup-test", version: "1.0.0" }),
+    );
+    // File that imports itself leads to same path appearing as both import and dependent
+    await writeFile(
+      join(cwd, "src", "self.ts"),
+      `import { self } from "./self.js";\n` +
+        `import { z } from "zod";\n` +
+        `export function self() { return "self"; }\n`,
+    );
+    // Add enough dependents so the file is in both directImports and directDependents
+    for (let i = 0; i < 5; i++) {
+      await writeFile(join(cwd, "src", `dep${i}.ts`), `import { self } from "./self.js";\n`);
+    }
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/self.ts");
+    expect(ctx.suggestedCommands.length).toBeGreaterThan(0);
+
+    const seen = new Set<string>();
+    for (const cmd of ctx.suggestedCommands) {
+      expect(seen.has(cmd)).toBe(false);
+      seen.add(cmd);
+    }
+  });
+
+  it("suggestedCommands are deterministic (same input → same output)", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "det-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `import { z } from "zod";\n` +
+        `export function main() { return 1; }\n` +
+        `export class MainClass { }\n`,
+    );
+
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx1 = queryAgentContext(index!, "src/main.ts");
+    const ctx2 = queryAgentContext(index!, "src/main.ts");
+
+    expect(ctx1.suggestedCommands).toEqual(ctx2.suggestedCommands);
   });
 });
