@@ -177,13 +177,18 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
   const srcDeepCounts = new Map<string, number>();
   const topLevels = new Set<string>();
 
+  const isFileName = (segment: string): boolean =>
+    /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|json|yaml|yml|md|css|scss|html|vue|svelte)$/i.test(segment);
+
   for (const file of index.files) {
     const parts = file.path.split("/");
     if (parts.length < 2) continue;
 
     if (parts[0] === "src") {
       // src/<top>/
-      srcLevels.add(`${parts[0]}/${parts[1]}/`);
+      if (!isFileName(parts[1]!)) {
+        srcLevels.add(`${parts[0]}/${parts[1]}/`);
+      }
       // src/<top>/<sub>/ — deeper service domains
       if (parts.length >= 3) {
         const deep = `${parts[0]}/${parts[1]}/${parts[2]}/`;

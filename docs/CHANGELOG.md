@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-04-29
+
+### Fixed
+- **Reference Routing path rendering**: `buildReferenceRouting()` no longer renders individual source files (`src/lib.ts`, `src/index.ts`) as directory patterns with trailing slashes. File names are now distinguished from directory names during candidate extraction. Regression test added to verify no `file.ext/` patterns appear in generated routing output.
+
 ## [1.16.0] - 2026-04-29
 
 ### Added

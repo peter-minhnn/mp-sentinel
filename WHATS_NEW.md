@@ -1,3 +1,14 @@
+# What's New in v1.16.1
+
+## Reference Routing Path Patch
+
+v1.16.1 fixes a path rendering bug in the generated Reference Routing section where individual source files were incorrectly displayed with trailing slashes (e.g., `src/lib.ts/` looked like a directory).
+
+- **File path rendering fix**: `buildReferenceRouting()` now distinguishes file names from directory names when extracting candidates from the source index. Files directly in `src/` (e.g., `src/lib.ts`, `src/index.ts`) no longer appear as directory patterns with trailing slashes.
+- **Regression guard**: New test verifies the generated routing output contains no `file.ext/` patterns (`.ts/`, `.js/`, `.tsx/`, `.mjs/`, `.cjs/`, `.json/`).
+
+---
+
 # What's New in v1.16.0
 
 ## Source Index Query Service, Skill Reference Router & Dogfood Query Guard

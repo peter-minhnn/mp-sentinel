@@ -2035,6 +2035,67 @@ describe("referenceRouting section", () => {
       expect(content.sections.referenceRouting).not.toContain(r);
     }
   });
+
+  it("does not render file paths with trailing slashes (no file.ext/ patterns)", () => {
+    const idx = makeMinimalIndex();
+    idx.files.push(
+      {
+        path: "src/lib.ts",
+        language: "typescript",
+        imports: [],
+        exports: [{ name: "helper", type: "function", line: 1, column: 1 }],
+        symbols: [{ name: "helper", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: ["src/cli/main.ts"],
+      },
+      {
+        path: "src/index.ts",
+        language: "typescript",
+        imports: [],
+        exports: [{ name: "main", type: "function", line: 1, column: 1 }],
+        symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      },
+      {
+        path: "src/cli/main.ts",
+        language: "typescript",
+        imports: [],
+        exports: [],
+        symbols: [{ name: "run", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      },
+    );
+    idx.insights = {
+      fileRoles: {},
+      publicApiFiles: [],
+      testMap: {},
+      dependencyUsage: {},
+      defaultExportFiles: [],
+      reExportFiles: [],
+      typeOnlyImportFiles: [],
+      dynamicImportFiles: [],
+    };
+
+    const kb = buildSkillKnowledgeBase(idx);
+    const content = generateContent(idx, "test", null, kb);
+
+    // Must not contain any file.ext/ patterns
+    const fileExtPatterns = [
+      "src/lib.ts/",
+      "src/index.ts/",
+      ".ts/",
+      ".js/",
+      ".tsx/",
+      ".mjs/",
+      ".cjs/",
+      ".json/",
+    ];
+    for (const p of fileExtPatterns) {
+      expect(content.sections.referenceRouting).not.toContain(p);
+    }
+  });
 });
 
 // ── New reference file existence checks ─────────────────────────────────────
