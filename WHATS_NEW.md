@@ -1,3 +1,15 @@
+# What's New in v1.14.0
+
+## Source Index Query CLI, Adapter Spec Guard & Script Workflow Harness
+
+v1.14.0 integrates three parallel lanes: Lane A (source index query CLI), Lane B (adapter spec contract guard), and Lane C (script workflow regression harness).
+
+- **Source index query CLI**: `indexing --find-symbol <query>` searches all indexed symbols (functions, classes, interfaces, types, enums, variables, methods, arrow functions) with scoring: exact (100) > case-insensitive (90) > starts-with (70) > contains (50). `indexing --find-import <query>` searches import statements with scoring: exact source (100) > case-insensitive source (90) > source contains (70) > imported name match (60). Both are read-only (never force-rebuild), cap at 20 results, sort by score desc then file path. JSON output writes only valid JSON to stdout; console output is ASCII-only. 17 new tests covering CLI arg parsing, search matching, and edge cases.
+- **Adapter spec contract guard**: New `validateAdapterSpec()` and `validateAllAdapterSpecs()` quality gate functions validate adapter spec completeness: `officialDocsUrl` (https), `outputKind` (skill/rule), `workspacePath` (`{projectName}` placeholder, trailing `/` for skill, extension for rule), `requiredFiles` (includes `SKILL.md` for skill), `frontmatterRules.required` (array), `sizeLimit` (>=0). Generic adapter is skipped. 9 new quality-gate tests + 4 new create-skills tests validating all primary adapters. Exported from the skills-generator service for external consumers.
+- **Script workflow regression harness**: 14 new tests in `src/tests/script-workflows.test.ts` covering `release-check.mjs` (8 tests for valid fixture, version mismatches, missing scripts, missing entries, missing package.json), `dogfood.mjs` (2 tests for TOTAL_STEPS and step function name declarations), `agent-skills-check.mjs` (2 tests for exit 0/1 behavior), and Unicode safety (2 tests for all 4 scripts/*.mjs). Zero production code changes — test-only harness.
+
+---
+
 # What's New in v1.13.0
 
 ## Doctor AI Enrichment Cache, Cache Hardening & Dogfood Agent Guard

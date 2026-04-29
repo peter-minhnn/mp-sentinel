@@ -1,5 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
-import { validateSkillQuality } from "../services/skills-generator/quality-gate.js";
+import {
+  validateSkillQuality,
+  validateAdapterSpec,
+  validateAllAdapterSpecs,
+} from "../services/skills-generator/quality-gate.js";
+import { ADAPTER_REGISTRY } from "../services/skills-generator/registry.js";
 import type {
   GeneratedSkillFile,
   AgentAdapterId,
@@ -988,6 +993,122 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "risky-unicode" && c.severity === "error",
       );
       expect(unicodeErrors.length).toBe(4); // left single, right single, left double, right double
+    });
+  });
+
+  // ── Adapter spec completeness (v1.14+) ─────────────────────────────────────
+
+  describe("validateAdapterSpec (spec completeness)", () => {
+    it("every primary adapter has a complete spec", () => {
+      const primaryAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
+      expect(primaryAdapters.length).toBeGreaterThan(0);
+
+      for (const adapter of primaryAdapters) {
+        const issues = validateAdapterSpec(adapter);
+        expect(issues).toEqual([]);
+      }
+    });
+
+    it("primary adapters have valid officialDocsUrl", () => {
+      const primaryAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
+      for (const adapter of primaryAdapters) {
+        expect(adapter.spec.officialDocsUrl).toBeTruthy();
+        expect(adapter.spec.officialDocsUrl).toMatch(/^https:\/\//);
+      }
+    });
+
+    it("primary adapters have workspacePath with {projectName}", () => {
+      const primaryAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
+      for (const adapter of primaryAdapters) {
+        expect(adapter.spec.workspacePath).toContain("{projectName}");
+      }
+    });
+
+    it("skill adapters have SKILL.md in requiredFiles", () => {
+      const skillAdapters = ADAPTER_REGISTRY.filter(
+        (a) => a.spec.outputKind === "skill" && a.id !== "generic",
+      );
+      expect(skillAdapters.length).toBeGreaterThan(0);
+      for (const adapter of skillAdapters) {
+        expect(adapter.spec.requiredFiles).toContain("SKILL.md");
+      }
+    });
+
+    it("rule adapters have file extension in workspacePath", () => {
+      const ruleAdapters = ADAPTER_REGISTRY.filter(
+        (a) => a.spec.outputKind === "rule" && a.id !== "generic",
+      );
+      expect(ruleAdapters.length).toBeGreaterThan(0);
+      for (const adapter of ruleAdapters) {
+        expect(adapter.spec.workspacePath).toMatch(/\.[a-z]+$/);
+      }
+    });
+
+    it("generic adapter is skipped by validateAdapterSpec", () => {
+      const generic = ADAPTER_REGISTRY.find((a) => a.id === "generic")!;
+      const issues = validateAdapterSpec(generic);
+      expect(issues).toEqual([]);
+    });
+
+    it("validateAllAdapterSpecs returns zero issues for current registry", () => {
+      const issues = validateAllAdapterSpecs(ADAPTER_REGISTRY);
+      expect(issues).toEqual([]);
+    });
+
+    it("flags missing officialDocsUrl on a primary adapter", () => {
+      const badAdapter = {
+        ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!,
+        id: "bad" as AgentAdapterId,
+        spec: {
+          ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!.spec,
+          officialDocsUrl: "",
+        },
+      };
+      const issues = validateAdapterSpec(badAdapter);
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues.some((i) => i.includes("officialDocsUrl"))).toBe(true);
+    });
+
+    it("flags missing SKILL.md in requiredFiles for a skill adapter", () => {
+      const badAdapter = {
+        ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!,
+        id: "bad" as AgentAdapterId,
+        spec: {
+          ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!.spec,
+          requiredFiles: [],
+        },
+      };
+      const issues = validateAdapterSpec(badAdapter);
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues.some((i) => i.includes("SKILL.md"))).toBe(true);
+    });
+
+    it("flags missing {projectName} in workspacePath", () => {
+      const badAdapter = {
+        ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!,
+        id: "bad" as AgentAdapterId,
+        spec: {
+          ...ADAPTER_REGISTRY.find((a) => a.id === "claude")!.spec,
+          workspacePath: ".claude/skills/best-practices/",
+        },
+      };
+      const issues = validateAdapterSpec(badAdapter);
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues.some((i) => i.includes("projectName"))).toBe(true);
+    });
+
+    it("flags rule workspacePath without file extension", () => {
+      const badAdapter = {
+        ...ADAPTER_REGISTRY.find((a) => a.id === "cursor")!,
+        id: "bad" as AgentAdapterId,
+        spec: {
+          ...ADAPTER_REGISTRY.find((a) => a.id === "cursor")!.spec,
+          workspacePath: ".cursor/rules/{projectName}-best-practices",
+        },
+      };
+      const issues = validateAdapterSpec(badAdapter);
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues.some((i) => i.includes("file extension"))).toBe(true);
     });
   });
 });

@@ -36,7 +36,11 @@ export {
   resolveAIEnrichmentConfig,
 } from "./ai-enrichment.js";
 export type { AIEnrichmentConfig } from "./ai-enrichment.js";
-export { validateSkillQuality } from "./quality-gate.js";
+export {
+  validateSkillQuality,
+  validateAdapterSpec,
+  validateAllAdapterSpecs,
+} from "./quality-gate.js";
 export {
   detectLegacyGeneratedFiles,
   detectUnexpectedGeneratedFiles,

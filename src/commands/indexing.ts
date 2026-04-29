@@ -442,11 +442,29 @@ export async function buildSourceIndex(
  * Run the indexing command
  */
 export async function runIndexingCommand(
-  values: Partial<CLIValues> & { force?: boolean; stats?: boolean; explainIndex?: string },
+  values: Partial<CLIValues> & {
+    force?: boolean;
+    stats?: boolean;
+    explainIndex?: string;
+    findSymbol?: string;
+    findImport?: string;
+  },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
   const startTime = performance.now();
   const format = resolveIndexFormat(values["index-format"]);
+
+  // --find-symbol and --find-import are read-only queries: they use the existing index only.
+  // Build/update the index if absent, but don't force rebuild.
+  const isReadOnlyQuery = !!(values.findSymbol || values.findImport);
+
+  // Validate query strings are non-empty
+  if (values.findSymbol !== undefined && values.findSymbol.trim() === "") {
+    throw new UserError("--find-symbol query must not be empty");
+  }
+  if (values.findImport !== undefined && values.findImport.trim() === "") {
+    throw new UserError("--find-import query must not be empty");
+  }
 
   // Suppress informational logs when emitting structured JSON so stdout contains only valid JSON.
   if (format === "json") setLogQuietMode(true);
@@ -459,7 +477,21 @@ export async function runIndexingCommand(
       enabled: true,
     };
 
-    const index = await buildSourceIndex(projectRoot, indexingConfig, values.force);
+    const index = await buildSourceIndex(
+      projectRoot,
+      indexingConfig,
+      isReadOnlyQuery ? false : values.force,
+    );
+
+    // Handle --find-symbol query
+    if (values.findSymbol) {
+      return handleFindSymbol(values.findSymbol, index, format);
+    }
+
+    // Handle --find-import query
+    if (values.findImport) {
+      return handleFindImport(values.findImport, index, format);
+    }
 
     // Handle --explain-index option
     if (values.explainIndex) {
@@ -773,6 +805,219 @@ async function handleExplain(
       }
     }
 
+    console.log();
+  }
+
+  return 0;
+}
+
+/**
+ * Handle --find-symbol query: search index for symbols matching the query.
+ * Read-only — uses the existing index; builds/updates only if absent.
+ *
+ * Scoring:
+ * - Exact name match: 100
+ * - Case-insensitive exact: 90
+ * - Name starts with query: 70
+ * - Name contains query: 50
+ *
+ * Results capped at 20.
+ */
+function handleFindSymbol(
+  query: string,
+  index: SourceIndex | null,
+  format: "console" | "json",
+): number {
+  if (!index) {
+    if (format === "json") {
+      console.log(JSON.stringify({ query, results: [] }));
+    } else {
+      console.log(`No index available. Run 'mp-sentinel indexing' first.`);
+    }
+    return 0;
+  }
+
+  const lowerQuery = query.toLowerCase();
+  const results: Array<{
+    file: string;
+    language: string;
+    symbol: {
+      name: string;
+      type: string;
+      line: number;
+      column: number;
+      parent?: string;
+    };
+    score: number;
+    reason: string;
+  }> = [];
+
+  for (const file of index.files) {
+    for (const sym of file.symbols) {
+      const lowerName = sym.name.toLowerCase();
+      let score = 0;
+      let reason = "";
+
+      if (sym.name === query) {
+        score = 100;
+        reason = "exact name match";
+      } else if (lowerName === lowerQuery) {
+        score = 90;
+        reason = "case-insensitive name match";
+      } else if (lowerName.startsWith(lowerQuery)) {
+        score = 70;
+        reason = "name starts with query";
+      } else if (lowerName.includes(lowerQuery)) {
+        score = 50;
+        reason = "name contains query";
+      }
+
+      if (score > 0) {
+        results.push({
+          file: file.path,
+          language: file.language,
+          symbol: {
+            name: sym.name,
+            type: sym.type,
+            line: sym.line,
+            column: sym.column,
+            ...(sym.parent && { parent: sym.parent }),
+          },
+          score,
+          reason,
+        });
+      }
+    }
+  }
+
+  // Sort by score descending, then by file path for deterministic output
+  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+  const capped = results.slice(0, 20);
+
+  if (format === "json") {
+    console.log(JSON.stringify({ query, results: capped }, null, 2));
+  } else {
+    console.log();
+    if (capped.length === 0) {
+      console.log(`No symbols found matching "${query}".`);
+    } else {
+      console.log(`Symbols matching "${query}" (${capped.length} results):`);
+      for (const r of capped) {
+        const detail =
+          `${r.symbol.type} ${r.symbol.name}` + (r.symbol.parent ? ` (in ${r.symbol.parent})` : "");
+        console.log(`  ${r.file}:${r.symbol.line}  ${detail}  [score=${r.score}, ${r.reason}]`);
+      }
+      if (results.length > 20) {
+        console.log(`  ... and ${results.length - 20} more`);
+      }
+    }
+    console.log();
+  }
+
+  return 0;
+}
+
+/**
+ * Handle --find-import query: search index for files importing a package or path.
+ * Read-only — uses the existing index; builds/updates only if absent.
+ *
+ * Scoring:
+ * - Exact package/path match: 100
+ * - Source contains query: 70
+ * - Imported name matches query: 60
+ *
+ * Results capped at 20.
+ */
+function handleFindImport(
+  query: string,
+  index: SourceIndex | null,
+  format: "console" | "json",
+): number {
+  if (!index) {
+    if (format === "json") {
+      console.log(JSON.stringify({ query, results: [] }));
+    } else {
+      console.log(`No index available. Run 'mp-sentinel indexing' first.`);
+    }
+    return 0;
+  }
+
+  const lowerQuery = query.toLowerCase();
+  const results: Array<{
+    file: string;
+    language: string;
+    importInfo: {
+      source: string;
+      kind: string;
+      names: string[];
+      line: number;
+      typeOnly?: boolean;
+    };
+    score: number;
+    reason: string;
+  }> = [];
+
+  for (const file of index.files) {
+    for (const imp of file.imports) {
+      const lowerSource = imp.source.toLowerCase();
+      let score = 0;
+      let reason = "";
+
+      if (imp.source === query) {
+        score = 100;
+        reason = "exact source match";
+      } else if (lowerSource === lowerQuery) {
+        score = 90;
+        reason = "case-insensitive source match";
+      } else if (lowerSource.includes(lowerQuery)) {
+        score = 70;
+        reason = "source contains query";
+      } else if (imp.names.some((n) => n.toLowerCase().includes(lowerQuery))) {
+        score = 60;
+        reason = "imported name matches query";
+      }
+
+      if (score > 0) {
+        results.push({
+          file: file.path,
+          language: file.language,
+          importInfo: {
+            source: imp.source,
+            kind: imp.kind,
+            names: imp.names,
+            line: imp.line,
+            ...(imp.typeOnly && { typeOnly: imp.typeOnly }),
+          },
+          score,
+          reason,
+        });
+      }
+    }
+  }
+
+  // Sort by score descending, then by file path for deterministic output
+  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+  const capped = results.slice(0, 20);
+
+  if (format === "json") {
+    console.log(JSON.stringify({ query, results: capped }, null, 2));
+  } else {
+    console.log();
+    if (capped.length === 0) {
+      console.log(`No imports found matching "${query}".`);
+    } else {
+      console.log(`Imports matching "${query}" (${capped.length} results):`);
+      for (const r of capped) {
+        const kindTag = r.importInfo.kind !== "named" ? `[${r.importInfo.kind}] ` : "";
+        const nameStr = r.importInfo.names.length > 0 ? ` (${r.importInfo.names.join(", ")})` : "";
+        console.log(
+          `  ${r.file}:${r.importInfo.line}  ${kindTag}"${r.importInfo.source}"${nameStr}  [score=${r.score}, ${r.reason}]`,
+        );
+      }
+      if (results.length > 20) {
+        console.log(`  ... and ${results.length - 20} more`);
+      }
+    }
     console.log();
   }
 

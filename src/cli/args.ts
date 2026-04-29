@@ -35,6 +35,8 @@ export interface CLIValues {
   force?: boolean;
   stats?: boolean;
   explainIndex?: string;
+  findSymbol?: string;
+  findImport?: string;
   agent?: string;
   "all-agents": boolean;
   "create-skills-format"?: string;
@@ -102,7 +104,12 @@ export const buildProgram = (): Command => {
     .option("--index-format <fmt>", "Output format: console | json (default: console)", "console")
     .option("--stats", "Output index statistics only (with --index-format json)", false)
     .option("--explain-index <file>", "Show dependency info for a specific file")
-    .option("--explain <file>", "Alias for --explain-index");
+    .option("--explain <file>", "Alias for --explain-index")
+    .option(
+      "--find-symbol <query>",
+      "Search index for symbols (functions, classes, interfaces, etc.)",
+    )
+    .option("--find-import <query>", "Search index for files importing a package or path");
 
   program
     .command("create-skills")
@@ -281,6 +288,12 @@ export const parseCliArgs = (): {
         typeof indexingOptions["explain"] === "string" && {
           explainIndex: indexingOptions["explain"] as string,
         }),
+      ...(typeof indexingOptions["findSymbol"] === "string" && {
+        findSymbol: indexingOptions["findSymbol"] as string,
+      }),
+      ...(typeof indexingOptions["findImport"] === "string" && {
+        findImport: indexingOptions["findImport"] as string,
+      }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
       ...(typeof createSkillsOptions["agent"] === "string" && {
         agent: createSkillsOptions["agent"],

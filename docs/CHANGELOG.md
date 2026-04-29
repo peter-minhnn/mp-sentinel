@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-04-29
+
+### Added
+- **Source index query CLI**: `indexing --find-symbol <query>` and `indexing --find-import <query>` flags for cache-based codebase search. `--find-symbol` searches all indexed symbols (functions, classes, interfaces, types, enums, variables, methods, arrow functions) with multi-tier scoring (exact 100 > case-insensitive 90 > starts-with 70 > contains 50). `--find-import` searches import statements (exact source 100 > case-insensitive source 90 > source contains 70 > imported name match 60). Both read-only (use existing cache, never force-rebuild), cap results at 20, sort by score desc then file path. JSON output writes only valid JSON to stdout; console output is ASCII-only.
+- **Adapter spec contract guard**: `validateAdapterSpec()` and `validateAllAdapterSpecs()` functions in `quality-gate.ts` validate adapter spec completeness (`officialDocsUrl`, `outputKind`, `workspacePath`, `requiredFiles`, `frontmatterRules`, `sizeLimit`). Generic adapter is skipped. Exported from `src/services/skills-generator/index.ts`.
+- **Script workflow regression harness**: 14 new tests in `src/tests/script-workflows.test.ts` covering `release-check.mjs` (8 tests), `dogfood.mjs` (2 tests), `agent-skills-check.mjs` (2 tests), and Unicode safety (2 tests). Zero production code changes — test-only.
+
+### Tests
+- **Source index query**: 17 new tests in `indexing.test.ts` covering CLI arg parsing (4), `--find-symbol` (6), and `--find-import` (7).
+- **Adapter spec guard**: 9 new tests in `quality-gate.test.ts` + 4 new tests in `create-skills.test.ts`.
+- **Script workflows**: 14 new tests in `script-workflows.test.ts`.
+
 ## [1.13.0] - 2026-04-29
 
 ### Added

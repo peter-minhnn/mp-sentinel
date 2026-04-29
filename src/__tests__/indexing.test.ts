@@ -1427,3 +1427,394 @@ describe("explain-index diagnostics (Lane D)", () => {
     }
   });
 });
+
+// ── Lane A: find-symbol and find-import query CLI ─────────────────────────────
+
+describe("find-symbol and find-import CLI args", () => {
+  it("parses --find-symbol option", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--find-symbol", "buildSourceIndex"];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.findSymbol).toBe("buildSourceIndex");
+  });
+
+  it("parses --find-import option", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--find-import", "zod"];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.findImport).toBe("zod");
+  });
+
+  it("parses --find-symbol and --find-import together", () => {
+    process.argv = [
+      "node",
+      "mp-sentinel",
+      "indexing",
+      "--find-symbol",
+      "hello",
+      "--find-import",
+      "react",
+    ];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.values.findSymbol).toBe("hello");
+    expect(parsed.values.findImport).toBe("react");
+  });
+
+  it("parses --find-symbol with --index-format json", () => {
+    process.argv = [
+      "node",
+      "mp-sentinel",
+      "indexing",
+      "--find-symbol",
+      "hello",
+      "--index-format",
+      "json",
+    ];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.values.findSymbol).toBe("hello");
+    expect(parsed.values["index-format"]).toBe("json");
+  });
+});
+
+describe("find-symbol query", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "find-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "index.ts"),
+      `export function hello() { return "hi"; }\n` +
+        `export class HelloWorld { }\n` +
+        `export interface IHello { }\n` +
+        `export const helloConst = 1;\n`,
+    );
+    await writeFile(join(cwd, "src", "utils.ts"), `export function helper() { return true; }`);
+  };
+
+  it("finds symbols by exact name match", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findSymbol: "hello", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("hello");
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      expect(
+        parsed.results.some((r: { symbol: { name: string } }) => r.symbol.name === "hello"),
+      ).toBe(true);
+      const exactMatch = parsed.results.find(
+        (r: { symbol: { name: string } }) => r.symbol.name === "hello",
+      );
+      expect(exactMatch.score).toBe(100);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds symbols by partial name match", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findSymbol: "Hello", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("Hello");
+      // Should match HelloWorld (starts with), IHello (contains), hello (case-insensitive)
+      expect(parsed.results.length).toBeGreaterThanOrEqual(3);
+      const helloMatch = parsed.results.find(
+        (r: { symbol: { name: string } }) => r.symbol.name === "hello",
+      );
+      expect(helloMatch).toBeDefined();
+      expect(helloMatch.score).toBe(90);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds classes and interfaces by exact name", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findSymbol: "HelloWorld", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const classMatch = parsed.results.find(
+        (r: { symbol: { type: string } }) => r.symbol.type === "class",
+      );
+      expect(classMatch).toBeDefined();
+      expect(classMatch.symbol.name).toBe("HelloWorld");
+      expect(classMatch.score).toBe(100);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("empty query result returns valid JSON with empty array", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand(
+        { findSymbol: "nonexistent_symbol_xyz", "index-format": "json" },
+        cwd,
+      );
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("nonexistent_symbol_xyz");
+      expect(parsed.results).toEqual([]);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("JSON output has no logs mixed into stdout", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findSymbol: "hello", "index-format": "json" }, cwd);
+
+      const jsonStr = logs.join("\n");
+      const parsed = JSON.parse(jsonStr);
+      expect(parsed).toBeDefined();
+      expect(jsonStr).not.toContain("[info]");
+      expect(jsonStr).not.toContain("[warning]");
+      expect(jsonStr).not.toContain("[error]");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("empty query string throws UserError", async () => {
+    const cwd = await makeTempDir();
+    await expect(
+      runIndexingCommand({ findSymbol: "   ", "index-format": "json" }, cwd),
+    ).rejects.toThrow("--find-symbol query must not be empty");
+  });
+});
+
+describe("find-import query", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "import-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `import { z } from "zod";\nimport lodash from "lodash";\nexport const main = 1;\n`,
+    );
+    await writeFile(
+      join(cwd, "src", "dep.ts"),
+      `import { helper } from "./utils.js";\nexport const dep = 2;\n`,
+    );
+    await writeFile(join(cwd, "src", "utils.ts"), `export const helper = () => true;`);
+  };
+
+  it("finds files importing an external package", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findImport: "zod", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("zod");
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      expect(
+        parsed.results.some(
+          (r: { importInfo: { source: string } }) => r.importInfo.source === "zod",
+        ),
+      ).toBe(true);
+      const exactMatch = parsed.results.find(
+        (r: { importInfo: { source: string } }) => r.importInfo.source === "zod",
+      );
+      expect(exactMatch.score).toBe(100);
+      expect(exactMatch.file).toBe("src/main.ts");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds files importing an internal path", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findImport: "./utils.js", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      expect(
+        parsed.results.some(
+          (r: { importInfo: { source: string } }) => r.importInfo.source === "./utils.js",
+        ),
+      ).toBe(true);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds imports by partial source match", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findImport: "lod", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const match = parsed.results.find(
+        (r: { importInfo: { source: string } }) => r.importInfo.source === "lodash",
+      );
+      expect(match).toBeDefined();
+      expect(match.score).toBe(70);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds imports by imported name match", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findImport: "helper", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      // "helper" is imported as name from "./utils.js"
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      expect(
+        parsed.results.some((r: { importInfo: { names: string[] } }) =>
+          r.importInfo.names.includes("helper"),
+        ),
+      ).toBe(true);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("empty query result returns valid JSON with empty array", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand(
+        { findImport: "nonexistent-package-xyz", "index-format": "json" },
+        cwd,
+      );
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("nonexistent-package-xyz");
+      expect(parsed.results).toEqual([]);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("JSON output has no logs mixed into stdout", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findImport: "zod", "index-format": "json" }, cwd);
+
+      const jsonStr = logs.join("\n");
+      const parsed = JSON.parse(jsonStr);
+      expect(parsed).toBeDefined();
+      expect(jsonStr).not.toContain("[info]");
+      expect(jsonStr).not.toContain("[warning]");
+      expect(jsonStr).not.toContain("[error]");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("empty query string throws UserError", async () => {
+    const cwd = await makeTempDir();
+    await expect(
+      runIndexingCommand({ findImport: "   ", "index-format": "json" }, cwd),
+    ).rejects.toThrow("--find-import query must not be empty");
+  });
+});

@@ -57,11 +57,18 @@ npx mp-sentinel indexing --stats
 # Show per-file symbols, imports, and dependency edges:
 npx mp-sentinel indexing --explain-index src/utils/git.ts
 
+# Search index for symbols (functions, classes, interfaces, etc.):
+npx mp-sentinel indexing --find-symbol buildSourceIndex --index-format json
+
+# Search index for files importing a package or path:
+npx mp-sentinel indexing --find-import zod --index-format json
+
 # JSON output with import classification (v1.11.0+):
 npx mp-sentinel indexing --explain-index src/commands/indexing.ts --index-format json
 ```
 Imports are classified as `internal` (resolved to another source file in the index), `local` (unresolved but with a local-looking path), or `external` (package/remote). The `--explain` alias is preserved for backward compatibility.
-```
+
+`--find-symbol` and `--find-import` are read-only queries that use the existing source index cache (building/updating it only if absent). `--find-symbol` searches for functions, classes, interfaces, types, enums, variables, methods, and arrow functions by exact or partial name. `--find-import` searches for files that import a given package or local path. Both return results capped at 20 entries, sorted by match score (exact > case-insensitive > starts-with > contains).
 
 ### Automation-Friendly Usage
 For CI/CD or scripts that need to parse output, use `--index-format json` and call the CLI directly (not via `npm run`) to avoid npm banners:

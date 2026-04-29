@@ -7,6 +7,7 @@
 
 import type {
   AdapterSpec,
+  AgentAdapter,
   AgentAdapterId,
   GeneratedSkillFile,
   QualityCheck,
@@ -764,6 +765,70 @@ function checkAdapterLayoutContract(
   }
 
   return checks;
+}
+
+// ── Spec completeness validation ──────────────────────────────────────────────
+
+/**
+ * Validate that a primary adapter's spec is complete.
+ * Returns an array of human-readable issue strings; empty = valid.
+ * Generic adapter is skipped (its docsUrl is intentionally empty).
+ */
+export function validateAdapterSpec(adapter: AgentAdapter): string[] {
+  const issues: string[] = [];
+  const { id, spec, label } = adapter;
+
+  if (id === "generic") return issues;
+
+  if (
+    !spec.officialDocsUrl ||
+    typeof spec.officialDocsUrl !== "string" ||
+    !spec.officialDocsUrl.startsWith("https://")
+  ) {
+    issues.push(`${id}: officialDocsUrl must be an https:// URL`);
+  }
+
+  if (spec.outputKind !== "skill" && spec.outputKind !== "rule") {
+    issues.push(`${id}: outputKind must be "skill" or "rule"`);
+  }
+
+  if (!spec.workspacePath || typeof spec.workspacePath !== "string") {
+    issues.push(`${id}: workspacePath is required`);
+  } else if (!spec.workspacePath.includes("{projectName}")) {
+    issues.push(`${id}: workspacePath must contain {projectName} placeholder`);
+  } else if (spec.outputKind === "skill" && !spec.workspacePath.endsWith("/")) {
+    issues.push(`${id}: skill workspacePath must end with "/"`);
+  } else if (spec.outputKind === "rule" && !/\.[a-z]+$/.test(spec.workspacePath)) {
+    issues.push(`${id}: rule workspacePath must end with a file extension`);
+  }
+
+  if (!Array.isArray(spec.requiredFiles)) {
+    issues.push(`${id}: requiredFiles must be an array`);
+  } else if (spec.outputKind === "skill" && !spec.requiredFiles.includes("SKILL.md")) {
+    issues.push(`${id}: skill adapter must include "SKILL.md" in requiredFiles`);
+  }
+
+  if (!spec.frontmatterRules || !Array.isArray(spec.frontmatterRules.required)) {
+    issues.push(`${id}: frontmatterRules.required must be an array`);
+  }
+
+  if (typeof spec.sizeLimit !== "number" || spec.sizeLimit < 0) {
+    issues.push(`${id}: sizeLimit must be a non-negative number`);
+  }
+
+  return issues;
+}
+
+/**
+ * Validate all adapters in the given registry.
+ * Returns a combined array of all issues; empty = all good.
+ */
+export function validateAllAdapterSpecs(adapters: AgentAdapter[]): string[] {
+  const allIssues: string[] = [];
+  for (const adapter of adapters) {
+    allIssues.push(...validateAdapterSpec(adapter));
+  }
+  return allIssues;
 }
 
 // ── Main entry point ────────────────────────────────────────────────────────

@@ -4784,3 +4784,86 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(cap.stdout.trim().startsWith("{")).toBe(true);
   });
 });
+
+// ── Adapter spec path contract (v1.14+) ────────────────────────────────────
+
+describe("adapter spec path contract", () => {
+  it("every primary adapter generated output matches its spec workspacePath", async () => {
+    const primaryAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
+
+    for (const adapter of primaryAdapters) {
+      const files = await adapter.generate(null, {
+        projectRoot: "/tmp/test-project",
+        projectName: "test-proj",
+        force: false,
+      });
+
+      expect(files.length).toBeGreaterThan(0);
+      const resolvedWs = adapter.spec.workspacePath.replace(/\{projectName\}/g, "test-proj");
+
+      for (const file of files) {
+        const normalized = file.outputPath.replace(/\\/g, "/");
+        if (adapter.spec.outputKind === "skill") {
+          expect(normalized).toContain(resolvedWs);
+        } else {
+          expect(normalized.endsWith(resolvedWs)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("every skill adapter generates exactly one SKILL.md", async () => {
+    const skillAdapters = ADAPTER_REGISTRY.filter(
+      (a) => a.spec.outputKind === "skill" && a.id !== "generic",
+    );
+    for (const adapter of skillAdapters) {
+      const files = await adapter.generate(null, {
+        projectRoot: "/tmp/test-project",
+        projectName: "test-proj",
+        force: false,
+      });
+      const skillMdFiles = files
+        .map((f) => f.outputPath.replace(/\\/g, "/"))
+        .filter((p) => p.endsWith("/SKILL.md"));
+      expect(skillMdFiles.length).toBe(1);
+    }
+  });
+
+  it("Codex and Antigravity generate under .agents/skills/ with suffixed project dirs", async () => {
+    const cwd = await makeTempDir();
+    const codex = getAdapter("codex")!;
+    const antigravity = getAdapter("antigravity")!;
+
+    const codexFiles = await codex.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-cli",
+      force: false,
+    });
+    const agFiles = await antigravity.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-cli",
+      force: false,
+    });
+
+    const codexPath = codexFiles[0]!.outputPath.replace(/\\/g, "/");
+    const agPath = agFiles[0]!.outputPath.replace(/\\/g, "/");
+
+    expect(codexPath).toContain(".agents/skills/my-cli-codex-best-practices/SKILL.md");
+    expect(agPath).toContain(".agents/skills/my-cli-antigravity-best-practices/SKILL.md");
+  });
+
+  it("Claude SKILL.md frontmatter is the first non-metadata content", async () => {
+    const cwd = await makeTempDir();
+    const adapter = getAdapter("claude")!;
+    const files = await adapter.generate(null, {
+      projectRoot: cwd,
+      projectName: "my-cli",
+      force: false,
+    });
+    const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"))!;
+    // After metadata header is applied by the command layer, frontmatter should be first
+    const lines = skillMd.content.split("\n");
+    const firstNonEmpty = lines.find((l) => l.trim().length > 0);
+    expect(firstNonEmpty).toBe("---");
+  });
+});
