@@ -1,3 +1,17 @@
+# What's New in v1.12.0
+
+## AI Enrichment Cache Runtime
+
+v1.12.0 implements the AI enrichment cache spec from v1.11.0, eliminating redundant provider API calls when the source index hasn't changed.
+
+- **File-based cache**: Enrichment results are cached at `.mp-sentinel-cache/ai-enrichment/<cacheKey>.json` using a composite SHA256 key of source index hash, provider, model, prompt version, and input hash. Cache hits skip the provider entirely.
+- **Transparent to callers**: `create-skills.ts` passes `projectRoot` to `enrichIndex()`. No new CLI flags, no config changes, no adapter output changes.
+- **Cache failure is non-blocking**: Corrupt cache files, key mismatches, and write failures log warnings and fall back to the provider — enrichment never fails because of cache issues.
+- **`--no-ai-enrich` unchanged**: When `--no-ai-enrich` is active, `enrichIndex()` is never called, so the cache is never read or written.
+- **Atomic writes**: Cache files are written to a temp file then renamed, preventing corruption on crash mid-write.
+
+---
+
 # What's New in v1.11.0
 
 ## Phase 2 Closeout — Diagnostics, Fixtures & Cache Spec

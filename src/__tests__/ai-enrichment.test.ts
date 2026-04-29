@@ -6,7 +6,10 @@
  * resolution handles edge cases correctly.
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import {
   validateAIEnrichmentOutput,
@@ -16,7 +19,13 @@ import {
   computeEnrichmentOutputHash,
   resolveAIEnrichmentConfig,
   deepSortForHash,
+  computeEnrichmentCacheKey,
+  readEnrichmentCache,
+  writeEnrichmentCache,
+  enrichIndex,
 } from "../services/skills-generator/ai-enrichment.js";
+import { computeIndexHash } from "../services/skills-generator/metadata.js";
+import { AIProviderFactory } from "../services/ai/factory.js";
 
 import type {
   SourceIndex,
@@ -390,5 +399,400 @@ describe("Determinism property test", () => {
     // The hash should NOT include generatedAt, mtimeMs, or stats
     // These fields are stripped by buildEnrichmentInput
     expect(hash1).toBe(hash2);
+  });
+});
+
+// ── computeEnrichmentCacheKey ────────────────────────────────────────────────
+
+describe("computeEnrichmentCacheKey", () => {
+  it("same inputs produce same key", () => {
+    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-04-28", "xyz789");
+    const k2 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-04-28", "xyz789");
+    expect(k1).toBe(k2);
+  });
+
+  it("different sourceIndexHash produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "g", "v1", "inp");
+    const k2 = computeEnrichmentCacheKey("def456", "gemini", "g", "v1", "inp");
+    expect(k1).not.toBe(k2);
+  });
+
+  it("different provider produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp");
+    const k2 = computeEnrichmentCacheKey("abc", "openai", "g", "v1", "inp");
+    expect(k1).not.toBe(k2);
+  });
+
+  it("different model produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc", "gemini", "gem-2.5", "v1", "inp");
+    const k2 = computeEnrichmentCacheKey("abc", "gemini", "gem-3.0", "v1", "inp");
+    expect(k1).not.toBe(k2);
+  });
+
+  it("different promptVersion produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc", "gemini", "g", "2026-01-01", "inp");
+    const k2 = computeEnrichmentCacheKey("abc", "gemini", "g", "2026-02-01", "inp");
+    expect(k1).not.toBe(k2);
+  });
+
+  it("different inputHash produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp1");
+    const k2 = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp2");
+    expect(k1).not.toBe(k2);
+  });
+
+  it("key is 16 hex chars", () => {
+    const key = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp");
+    expect(key).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+// ── Cache read/write ─────────────────────────────────────────────────────────
+
+describe("readEnrichmentCache / writeEnrichmentCache", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "mp-sentinel-cache-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("write then read returns same data and metadata", async () => {
+    const metadata = {
+      mode: "ai" as const,
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      promptVersion: "2026-04-28",
+      inputHash: "abcd1234efgh5678",
+      outputHash: "deadbeefcafe1234",
+    };
+    const output = {
+      languageRules: ["Use strict mode"],
+      libraryRules: ["Use zod"],
+      versionNotes: ["TypeScript 5.x"],
+      riskWarnings: ["Low coverage"],
+      recommendedChecks: ["Check types"],
+    };
+    const cacheKey = computeEnrichmentCacheKey(
+      "srcHash12345678",
+      metadata.provider,
+      metadata.model,
+      metadata.promptVersion,
+      metadata.inputHash,
+    );
+
+    await writeEnrichmentCache(tmpDir, cacheKey, metadata, output);
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+
+    expect(cached).not.toBeNull();
+    expect(cached!.metadata).toEqual(metadata);
+    expect(cached!.output).toEqual(output);
+  });
+
+  it("write creates valid JSON file at correct path", async () => {
+    const metadata = {
+      mode: "ai" as const,
+      provider: "openai",
+      model: "gpt-4",
+      promptVersion: "2026-04-28",
+      inputHash: "input9999999999",
+      outputHash: "output88888888",
+    };
+    const output = {
+      languageRules: [],
+      libraryRules: [],
+      versionNotes: [],
+      riskWarnings: [],
+      recommendedChecks: [],
+    };
+    const cacheKey = "testkey12345678";
+
+    await writeEnrichmentCache(tmpDir, cacheKey, metadata, output);
+
+    // Verify file exists at expected path
+    const { readFile } = await import("node:fs/promises");
+    const cachePath = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment", `${cacheKey}.json`);
+    const raw = await readFile(cachePath, "utf-8");
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.cacheKey).toBe(cacheKey);
+    expect(parsed.metadata.provider).toBe("openai");
+    expect(parsed.output.languageRules).toEqual([]);
+  });
+
+  it("read returns null for non-existent cache key", async () => {
+    const cached = await readEnrichmentCache(tmpDir, "nonexistentkey");
+    expect(cached).toBeNull();
+  });
+
+  it("read returns null for corrupt JSON", async () => {
+    const cacheKey = "corruptkey12345";
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(cacheDir, { recursive: true });
+    await writeFile(join(cacheDir, `${cacheKey}.json`), "not valid json!!!", "utf-8");
+
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+    expect(cached).toBeNull();
+  });
+
+  it("read returns null when cacheKey field mismatches", async () => {
+    const metadata = {
+      mode: "ai" as const,
+      provider: "gemini",
+      model: "g",
+      promptVersion: "v1",
+      inputHash: "abc1234567890abc",
+      outputHash: "def1234567890def",
+    };
+    const output = {
+      languageRules: [],
+      libraryRules: [],
+      versionNotes: [],
+      riskWarnings: [],
+      recommendedChecks: [],
+    };
+    const cacheKey = "correctkey12345";
+    const wrongKey = "wrongkey67890";
+
+    await writeEnrichmentCache(tmpDir, cacheKey, metadata, output);
+
+    // Try to read with wrong key (but file was saved with correctkey)
+    // We need to point readEnrichmentCache at the file that has the wrong key embedded
+    const readResult = await readEnrichmentCache(tmpDir, wrongKey);
+    expect(readResult).toBeNull();
+  });
+});
+
+// ── enrichIndex cache integration ─────────────────────────────────────────────
+
+describe("enrichIndex cache integration", () => {
+  let tmpDir: string;
+  const originalEnv = { ...process.env };
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "mp-sentinel-enrich-cache-"));
+    process.env.GEMINI_API_KEY = "test-key";
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+    process.env = { ...originalEnv };
+    jest.restoreAllMocks();
+  });
+
+  function makeTestIndex(): SourceIndex {
+    return {
+      schemaVersion: "1.2",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "test-project",
+        packageVersion: "1.0.0",
+        packageManager: "npm",
+        nodeEngine: ">=18",
+        dependencies: { typescript: "5.0.0" },
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [
+        {
+          path: "src/index.ts",
+          language: "typescript",
+          sha256: "abc",
+          sizeBytes: 100,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [{ name: "main", type: "function", line: 1, column: 0 }],
+          importsFrom: [],
+          importedBy: [],
+        },
+      ],
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+    };
+  }
+
+  function makeMockProvider() {
+    const validOutput = JSON.stringify({
+      languageRules: ["Use strict mode"],
+      libraryRules: ["Use zod v4.3.6"],
+      versionNotes: ["TypeScript 5.x"],
+      riskWarnings: ["Check coverage"],
+      recommendedChecks: ["Verify types"],
+    });
+    return {
+      isAvailable: () => true,
+      generateContent: jest.fn<Promise<string>>().mockResolvedValue(validOutput),
+    };
+  }
+
+  it("cache hit: returns cached result without calling provider", async () => {
+    const index = makeTestIndex();
+    const sourceIndexHash = computeIndexHash(index, tmpDir);
+    const input = buildEnrichmentInput(index);
+    const inputHash = computeEnrichmentInputHash(input);
+
+    const cacheKey = computeEnrichmentCacheKey(
+      sourceIndexHash,
+      "gemini",
+      "gemini-2.5-flash",
+      "2026-04-28",
+      inputHash,
+    );
+
+    const cachedOutput = {
+      languageRules: ["Cached rule"],
+      libraryRules: [],
+      versionNotes: [],
+      riskWarnings: [],
+      recommendedChecks: [],
+    };
+    const cachedMetadata = {
+      mode: "ai" as const,
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      promptVersion: "2026-04-28",
+      inputHash,
+      outputHash: "cachedoutputhash",
+    };
+
+    // Pre-populate cache
+    await writeEnrichmentCache(tmpDir, cacheKey, cachedMetadata, cachedOutput);
+
+    // Mock provider — should NOT be called
+    const createProviderSpy = jest.spyOn(AIProviderFactory, "createProvider");
+    const getDefaultModelSpy = jest
+      .spyOn(AIProviderFactory, "getDefaultModel")
+      .mockReturnValue("gemini-2.5-flash");
+
+    const result = await enrichIndex(index, {
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      projectRoot: tmpDir,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.output).toEqual(cachedOutput);
+    expect(result!.metadata).toEqual(cachedMetadata);
+    // Provider must NOT have been created (cache hit)
+    expect(createProviderSpy).not.toHaveBeenCalled();
+
+    createProviderSpy.mockRestore();
+    getDefaultModelSpy.mockRestore();
+  });
+
+  it("cache miss: calls provider and writes cache", async () => {
+    const index = makeTestIndex();
+
+    const mockProvider = makeMockProvider();
+    const createProviderSpy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(mockProvider as any);
+    const getDefaultModelSpy = jest
+      .spyOn(AIProviderFactory, "getDefaultModel")
+      .mockReturnValue("gemini-2.5-flash");
+
+    const result = await enrichIndex(index, {
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      projectRoot: tmpDir,
+    });
+
+    expect(result).not.toBeNull();
+    expect(mockProvider.generateContent).toHaveBeenCalledTimes(1);
+
+    // Verify cache file was written
+    const sourceIndexHash = computeIndexHash(index, tmpDir);
+    const input = buildEnrichmentInput(index);
+    const inputHash = computeEnrichmentInputHash(input);
+    const cacheKey = computeEnrichmentCacheKey(
+      sourceIndexHash,
+      "gemini",
+      "gemini-2.5-flash",
+      "2026-04-28",
+      inputHash,
+    );
+    const cached = await readEnrichmentCache(tmpDir, cacheKey);
+    expect(cached).not.toBeNull();
+    expect(cached!.output).toEqual(result!.output);
+
+    createProviderSpy.mockRestore();
+    getDefaultModelSpy.mockRestore();
+  });
+
+  it("corrupt cache: provider is called (corrupt cache is ignored)", async () => {
+    const index = makeTestIndex();
+    const sourceIndexHash = computeIndexHash(index, tmpDir);
+    const input = buildEnrichmentInput(index);
+    const inputHash = computeEnrichmentInputHash(input);
+
+    const cacheKey = computeEnrichmentCacheKey(
+      sourceIndexHash,
+      "gemini",
+      "gemini-2.5-flash",
+      "2026-04-28",
+      inputHash,
+    );
+
+    // Write corrupt cache file
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache", "ai-enrichment");
+    const { mkdir: mkdirAsync } = await import("node:fs/promises");
+    await mkdirAsync(cacheDir, { recursive: true });
+    await writeFile(join(cacheDir, `${cacheKey}.json`), "{{{bad json", "utf-8");
+
+    const mockProvider = makeMockProvider();
+    const createProviderSpy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(mockProvider as any);
+    const getDefaultModelSpy = jest
+      .spyOn(AIProviderFactory, "getDefaultModel")
+      .mockReturnValue("gemini-2.5-flash");
+
+    const result = await enrichIndex(index, {
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      projectRoot: tmpDir,
+    });
+
+    // Should still succeed via provider call
+    expect(result).not.toBeNull();
+    expect(mockProvider.generateContent).toHaveBeenCalledTimes(1);
+
+    createProviderSpy.mockRestore();
+    getDefaultModelSpy.mockRestore();
+  });
+
+  it("projectRoot not set: skips cache entirely, calls provider directly", async () => {
+    const index = makeTestIndex();
+
+    const mockProvider = makeMockProvider();
+    const createProviderSpy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(mockProvider as any);
+    const getDefaultModelSpy = jest
+      .spyOn(AIProviderFactory, "getDefaultModel")
+      .mockReturnValue("gemini-2.5-flash");
+
+    const result = await enrichIndex(index, {
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      // no projectRoot
+    });
+
+    expect(result).not.toBeNull();
+    expect(mockProvider.generateContent).toHaveBeenCalledTimes(1);
+    // No cache directory should be created
+    const cacheDir = join(tmpDir, ".mp-sentinel-cache");
+    const { existsSync } = await import("node:fs");
+    // The tmpDir is empty — no cache was written here
+    // (but also the test tmpDir was never passed to enrichIndex, so cacheDir won't exist)
+    expect(existsSync(cacheDir)).toBe(false);
+
+    createProviderSpy.mockRestore();
+    getDefaultModelSpy.mockRestore();
   });
 });

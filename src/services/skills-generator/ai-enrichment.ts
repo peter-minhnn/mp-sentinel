@@ -14,6 +14,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFile, writeFile, rename, mkdir, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   SourceIndex,
   AIEnrichmentInput,
@@ -29,6 +31,7 @@ import { ProviderError } from "../../utils/errors.js";
 import { AIProviderFactory } from "../ai/factory.js";
 import { detectProfile } from "./profile.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
+import { computeIndexHash } from "./metadata.js";
 
 // ── Zod validation ─────────────────────────────────────────────────────────
 
@@ -289,6 +292,141 @@ export function computeEnrichmentOutputHash(output: AIEnrichmentOutput): string 
   return hash.digest("hex").slice(0, 16);
 }
 
+// ── Cache helpers ──────────────────────────────────────────────────────────
+
+const ENRICHMENT_CACHE_DIR = "ai-enrichment";
+
+/**
+ * Composite cache key for AI enrichment results.
+ * Combines source index hash, provider, model, prompt version, and input hash
+ * so that any change to these components produces a different key.
+ */
+export function computeEnrichmentCacheKey(
+  sourceIndexHash: string,
+  provider: string,
+  model: string,
+  promptVersion: string,
+  inputHash: string,
+): string {
+  const composite = [sourceIndexHash, provider, model, promptVersion, inputHash].join("::");
+  return createHash("sha256").update(composite).digest("hex").slice(0, 16);
+}
+
+/** Zod schema for cache envelope validation. */
+const EnrichmentCacheEnvelopeSchema = z.object({
+  cacheKey: z.string(),
+  createdAt: z.string(),
+  metadata: z.object({
+    mode: z.literal("ai"),
+    provider: z.string(),
+    model: z.string(),
+    promptVersion: z.string(),
+    inputHash: z.string(),
+    outputHash: z.string(),
+  }),
+  output: z.object({
+    languageRules: z.array(z.string()),
+    libraryRules: z.array(z.string()),
+    versionNotes: z.array(z.string()),
+    riskWarnings: z.array(z.string()),
+    recommendedChecks: z.array(z.string()),
+  }),
+});
+
+interface EnrichmentCacheEnvelope {
+  cacheKey: string;
+  createdAt: string;
+  metadata: EnrichmentMetadata & { mode: "ai" };
+  output: AIEnrichmentOutput;
+}
+
+function cacheFilePath(projectRoot: string, cacheKey: string): string {
+  return join(projectRoot, ".mp-sentinel-cache", ENRICHMENT_CACHE_DIR, `${cacheKey}.json`);
+}
+
+async function deleteCacheFile(path: string): Promise<void> {
+  try {
+    await unlink(path);
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Read a cached enrichment result. Returns null on cache miss,
+ * corrupt cache (deleted if possible), or key mismatch (deleted if possible).
+ */
+export async function readEnrichmentCache(
+  projectRoot: string,
+  cacheKey: string,
+): Promise<{ metadata: EnrichmentMetadata; output: AIEnrichmentOutput } | null> {
+  const path = cacheFilePath(projectRoot, cacheKey);
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf-8");
+  } catch {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    log.warning(`Corrupt AI enrichment cache (invalid JSON), deleting`);
+    await deleteCacheFile(path);
+    return null;
+  }
+
+  const result = EnrichmentCacheEnvelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    log.warning(`Corrupt AI enrichment cache (schema mismatch), deleting`);
+    await deleteCacheFile(path);
+    return null;
+  }
+
+  if (result.data.cacheKey !== cacheKey) {
+    log.warning(`AI enrichment cache key mismatch, deleting`);
+    await deleteCacheFile(path);
+    return null;
+  }
+
+  log.info(`Using cached AI enrichment (${ENRICHMENT_CACHE_DIR}/${cacheKey}.json)`);
+  return {
+    metadata: result.data.metadata,
+    output: result.data.output,
+  };
+}
+
+/**
+ * Write an enrichment result to the cache. Best-effort — never throws.
+ */
+export async function writeEnrichmentCache(
+  projectRoot: string,
+  cacheKey: string,
+  metadata: EnrichmentMetadata & { mode: "ai" },
+  output: AIEnrichmentOutput,
+): Promise<void> {
+  const dir = join(projectRoot, ".mp-sentinel-cache", ENRICHMENT_CACHE_DIR);
+  const path = join(dir, `${cacheKey}.json`);
+
+  const envelope: EnrichmentCacheEnvelope = {
+    cacheKey,
+    createdAt: new Date().toISOString(),
+    metadata,
+    output,
+  };
+
+  try {
+    await mkdir(dir, { recursive: true });
+    const tmp = path + ".tmp." + Date.now();
+    await writeFile(tmp, JSON.stringify(envelope, null, 2), "utf-8");
+    await rename(tmp, path);
+    log.info(`AI enrichment cached -> ${ENRICHMENT_CACHE_DIR}/${cacheKey}.json`);
+  } catch (err) {
+    log.warning(`Failed to write AI enrichment cache: ${(err as Error).message}`);
+  }
+}
+
 // ── Provider validation ────────────────────────────────────────────────────
 
 const VALID_AI_PROVIDERS: readonly AIProvider[] = ["gemini", "openai", "anthropic", "grok"];
@@ -307,6 +445,7 @@ export interface AIEnrichmentConfig {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  projectRoot?: string;
 }
 
 /**
@@ -346,11 +485,9 @@ export async function enrichIndex(
   metadata: EnrichmentMetadata;
   output: AIEnrichmentOutput;
 } | null> {
-  // Build enrichment input (KB derived internally if not cached)
   const input = buildEnrichmentInput(index);
   const inputHash = computeEnrichmentInputHash(input);
 
-  // Determine AI provider config
   const envProvider = process.env.AI_PROVIDER || "gemini";
   const rawProvider = (config.provider ?? envProvider).toLowerCase();
   if (!isAIProvider(rawProvider)) {
@@ -361,7 +498,42 @@ export async function enrichIndex(
   const providerName: AIProvider = rawProvider;
   const modelName = config.model ?? AIProviderFactory.getDefaultModel(providerName);
 
-  // Get API key
+  // ── Cache check ──────────────────────────────────────────────────────────
+  if (config.projectRoot) {
+    const sourceIndexHash = computeIndexHash(index, config.projectRoot);
+    const cacheKey = computeEnrichmentCacheKey(
+      sourceIndexHash,
+      providerName,
+      modelName,
+      ENRICHMENT_PROMPT_VERSION,
+      inputHash,
+    );
+    const cached = await readEnrichmentCache(config.projectRoot, cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Proceed to provider call, then cache the result
+    const result = await callEnrichmentProvider(input, providerName, modelName, inputHash, config);
+    if (result) {
+      await writeEnrichmentCache(config.projectRoot, cacheKey, result.metadata, result.output);
+    }
+    return result;
+  }
+
+  return callEnrichmentProvider(input, providerName, modelName, inputHash, config);
+}
+
+/**
+ * Call the AI provider for enrichment. Shared by both cached and uncached paths.
+ */
+async function callEnrichmentProvider(
+  input: AIEnrichmentInput,
+  providerName: AIProvider,
+  modelName: string,
+  inputHash: string,
+  config: AIEnrichmentConfig,
+): Promise<{ metadata: EnrichmentMetadata & { mode: "ai" }; output: AIEnrichmentOutput } | null> {
   const apiKey = getApiKeyForProvider(providerName);
   if (!apiKey) {
     throw new ProviderError(
@@ -370,7 +542,6 @@ export async function enrichIndex(
     );
   }
 
-  // Build the AI model config
   const modelConfig = {
     provider: providerName,
     model: modelName,
@@ -379,7 +550,6 @@ export async function enrichIndex(
     maxTokens: config.maxTokens ?? 4096,
   };
 
-  // Create the provider
   const provider = AIProviderFactory.createProvider(modelConfig);
 
   if (!provider.isAvailable()) {
@@ -388,7 +558,6 @@ export async function enrichIndex(
     );
   }
 
-  // Build and send prompt
   const prompt = buildEnrichmentPrompt(input);
   const systemPrompt = "You are an expert codebase quality advisor. Return only valid JSON.";
 
@@ -396,12 +565,11 @@ export async function enrichIndex(
 
   const response = await provider.generateContent(systemPrompt, prompt);
 
-  // Validate the response
   log.info("Validating AI enrichment output...");
   const output = validateAIEnrichmentOutput(response);
   const outputHash = computeEnrichmentOutputHash(output);
 
-  const metadata: EnrichmentMetadata = {
+  const metadata: EnrichmentMetadata & { mode: "ai" } = {
     mode: "ai",
     provider: providerName,
     model: modelName,

@@ -940,6 +940,7 @@ export async function runCreateSkillsCommand(
 
     if (aiEnabled) {
       const aiEnrichConfig = resolveAIEnrichmentConfig(aiConfig ?? {});
+      aiEnrichConfig.projectRoot = projectRoot;
       const result = await enrichIndex(index, aiEnrichConfig);
       if (result) {
         enrichment = result.output;

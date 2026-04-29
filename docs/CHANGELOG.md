@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-04-29
+
+### Added
+- **AI enrichment cache runtime**: File-based cache at `.mp-sentinel-cache/ai-enrichment/<cacheKey>.json` eliminates redundant AI provider calls when the source index hasn't changed. The cache key is a composite SHA256 hash of source index hash, provider, model, prompt version, and input hash. Cache hits skip the provider call entirely and return the cached result.
+- **`computeEnrichmentCacheKey()`**: New exported function in `ai-enrichment.ts` computing the composite cache key from five components.
+- **`readEnrichmentCache()` / `writeEnrichmentCache()`**: New exported helpers for cache I/O with Zod envelope validation, corrupt cache detection + deletion, and atomic writes (temp file then rename).
+- **`callEnrichmentProvider()`**: Internal helper extracted from `enrichIndex()` shared by both cached and uncached paths.
+
+### Changed
+- **`enrichIndex()`**: Now accepts optional `projectRoot` in `AIEnrichmentConfig`. When provided, checks the cache before calling the provider, and writes the cache after a successful provider call. When absent, behavior is unchanged (no cache interaction).
+- **`create-skills.ts`**: Passes `projectRoot` to `enrichIndex()` config, enabling cache usage.
+- **Spec typo fix**: `framewords` -> `frameworks` in `docs/AI_ENRICHMENT_CACHE_SPEC.md`.
+
 ## [1.11.0] - 2026-04-29
 
 ### Added

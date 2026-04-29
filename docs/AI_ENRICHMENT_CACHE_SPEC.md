@@ -30,7 +30,7 @@ the concatenation of these components, each separated by `::`:
 
 | Component | Source | Rationale |
 |-----------|--------|-----------|
-| `sourceIndexHash` | `computeIndexHash(index)` in `metadata.ts` | Captures structural index changes (files, imports, manifest). Covers schema version, manifest hash, all file hashes, dependency lists, scripts, and framewords. |
+| `sourceIndexHash` | `computeIndexHash(index)` in `metadata.ts` | Captures structural index changes (files, imports, manifest). Covers schema version, manifest hash, all file hashes, dependency lists, scripts, and frameworks. |
 | `provider` | resolved provider name (`"gemini"` / `"openai"` / `"anthropic"` / `"grok"`) | Different providers return different output for the same input. |
 | `model` | resolved model name (e.g. `"gemini-2.5-flash"`) | Same provider, different model -> different output. |
 | `promptVersion` | `ENRICHMENT_PROMPT_VERSION` (`"2026-04-28"`) | Prompt template changes invalidate all prior caches. |
