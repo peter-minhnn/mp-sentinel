@@ -545,6 +545,8 @@ export interface ReviewContextMetadata {
   intelligenceSignals?: ReviewIntelligenceSignal[];
   /** Compact evidence summaries for auditability (v1.15.0+) */
   evidenceSummary?: EvidenceSummary[];
+  /** Suggested follow-up index-query commands (v1.16.0+) */
+  suggestedCommands?: string[];
 }
 
 /**
@@ -589,6 +591,8 @@ export interface ExplainContextOutput {
   intelligenceSignals?: ReviewIntelligenceSignal[];
   /** Compact evidence summaries for auditability (v1.15.0+) */
   evidenceSummary?: EvidenceSummary[];
+  /** Suggested follow-up index-query commands (v1.16.0+) */
+  suggestedCommands?: string[];
 }
 
 // ====================================================================================

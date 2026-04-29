@@ -1004,6 +1004,182 @@ describe("validateSkillQuality", () => {
     });
   });
 
+  // ── Reference Routing quality gate (v1.16.1+) ──────────────────────────────
+
+  describe("reference routing", () => {
+    function routingSection(body: string): string {
+      return ["## Reference Routing", "", body].join("\n");
+    }
+
+    function validTable(): string {
+      return [
+        "When touching files, load only the relevant references:",
+        "",
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        "| `src/cli/`, `src/commands/` | commands, testing-map |",
+        "| `src/types/` | public-api, codebase-map |",
+        "| Other files | architecture, codebase-map |",
+      ].join("\n");
+    }
+
+    function makeContent(sectionBody: string): string {
+      return [
+        "## Required Agent Workflow",
+        "",
+        "step 1",
+        "",
+        routingSection(sectionBody),
+        "",
+        "## Overview",
+        "",
+        "overview",
+      ].join("\n");
+    }
+
+    it("passes a well-formed reference routing table", () => {
+      const content = makeContent(validTable());
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      expect(routingErrors).toHaveLength(0);
+    });
+
+    it("flags file-looking pattern with trailing slash as error", () => {
+      const badTable = [
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        "| `src/index.ts/` | architecture, codebase-map |",
+        "| Other files | architecture, codebase-map |",
+      ].join("\n");
+      const content = makeContent(badTable);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      expect(routingErrors.length).toBe(1);
+      expect(routingErrors[0]!.message).toContain("src/index.ts/");
+      expect(routingErrors[0]!.message).toContain("looks like a file path");
+    });
+
+    it("flags unknown reference name as error", () => {
+      const badTable = [
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        "| `src/utils/` | helpers, foobar |",
+        "| Other files | architecture, codebase-map |",
+      ].join("\n");
+      const content = makeContent(badTable);
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      expect(routingErrors.length).toBe(2); // "helpers" and "foobar" both unknown
+      expect(routingErrors.some((c) => c.message.includes('"helpers"'))).toBe(true);
+      expect(routingErrors.some((c) => c.message.includes('"foobar"'))).toBe(true);
+    });
+
+    it("flags missing fallback row as error", () => {
+      const noFallback = [
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        "| `src/cli/` | commands, testing-map |",
+        "| `src/types/` | public-api, codebase-map |",
+      ].join("\n");
+      const content = makeContent(noFallback);
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      const fallbackErrors = routingErrors.filter((c) => c.message.includes("fallback"));
+      expect(fallbackErrors.length).toBe(1);
+    });
+
+    it("flags missing table markup as error", () => {
+      const content = makeContent("Just some prose, no table at all.");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      expect(routingErrors.length).toBe(1);
+      expect(routingErrors[0]!.message).toContain("table missing");
+    });
+
+    it("flags missing header columns as error", () => {
+      const badHeader = [
+        "| Some Column | Another Column |",
+        "|---|---|",
+        "| `src/cli/` | commands |",
+        "| Other files | architecture |",
+      ].join("\n");
+      const content = makeContent(badHeader);
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "error",
+      );
+      const headerErrors = routingErrors.filter((c) => c.message.includes("header"));
+      expect(headerErrors.length).toBe(1);
+    });
+
+    it("warns when row count exceeds cap", () => {
+      const rows: string[] = [];
+      for (let i = 0; i < 18; i++) {
+        rows.push(`| \`src/dir${i}/\` | architecture, codebase-map |`);
+      }
+      const bigTable = [
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        ...rows,
+        "| Other files | architecture, codebase-map |",
+      ].join("\n");
+      const content = makeContent(bigTable);
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingWarnings = report.checks.filter(
+        (c) => c.type === "reference-routing" && c.severity === "warning",
+      );
+      expect(routingWarnings.length).toBe(1);
+      expect(routingWarnings[0]!.message).toContain("19 data rows");
+    });
+
+    it("returns no routing checks when Reference Routing section is absent", () => {
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps",
+        "",
+        "## Overview",
+        "",
+        "overview",
+      ].join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingChecks = report.checks.filter((c) => c.type === "reference-routing");
+      expect(routingChecks).toHaveLength(0);
+    });
+
+    it("treats Other files row reference names as exempt from validation", () => {
+      const fallbackTable = [
+        "| Directory Pattern | Recommended References |",
+        "|---|---|",
+        "| `src/cli/` | commands, testing-map |",
+        "| Other files | architecture, codebase-map |",
+      ].join("\n");
+      const content = makeContent(fallbackTable);
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const routingErrors = report.checks.filter((c) => c.type === "reference-routing");
+      expect(routingErrors).toHaveLength(0);
+    });
+  });
+
   // ── Adapter spec completeness (v1.14+) ─────────────────────────────────────
 
   describe("validateAdapterSpec (spec completeness)", () => {

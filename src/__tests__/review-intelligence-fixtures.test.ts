@@ -617,6 +617,10 @@ describe("Review Intelligence — explain-context JSON output shape", () => {
       expect(jsonOutput.contextPreview).toBeDefined();
       expect(jsonOutput.profile).toBeDefined();
       expect(jsonOutput.budgetChars).toBe(12000);
+      // v1.16.0: suggestedCommands should be present when context is available
+      expect(jsonOutput.suggestedCommands).toBeDefined();
+      expect(Array.isArray(jsonOutput.suggestedCommands)).toBe(true);
+      expect(jsonOutput.suggestedCommands.length).toBeGreaterThan(0);
     } finally {
       logSpy.mockRestore();
       process.chdir(originalCwd);

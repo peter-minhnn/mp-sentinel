@@ -911,9 +911,9 @@ function handleAgentContext(
   filePath: string,
   index: SourceIndex | null,
   format: "console" | "json",
-  _projectRoot: string,
+  projectRoot: string,
 ): number {
-  const ctx = queryAgentContext(index, filePath);
+  const ctx = queryAgentContext(index, filePath, projectRoot);
 
   if (!index) {
     if (format === "json") {

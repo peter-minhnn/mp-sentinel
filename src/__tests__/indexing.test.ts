@@ -2654,3 +2654,189 @@ describe("queryAgentContext (service)", () => {
     expect(ctx.directDependentsTruncated).toBe(5);
   });
 });
+
+// ── Path Robustness Tests (Lane A) ────────────────────────────────────────────
+
+describe("queryAgentContext path robustness", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await mkdir(join(cwd, "src", "lib"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "path-test", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export function hello() { return "hi"; }\n`);
+    await writeFile(
+      join(cwd, "src", "lib", "utils.ts"),
+      `import { hello } from "../index.js";\n` + `export function helper() { return hello(); }\n`,
+    );
+  };
+
+  it("accepts forward-slashed relative path", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src/index.ts", cwd);
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file!.path).toBe("src/index.ts");
+  });
+
+  it("accepts backslash path on any platform", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src\\index.ts", cwd);
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file!.path).toBe("src/index.ts");
+  });
+
+  it("accepts nested backslash path", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src\\lib\\utils.ts", cwd);
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file!.path).toBe("src/lib/utils.ts");
+  });
+
+  it("accepts absolute path inside project root", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const absPath = join(cwd, "src", "index.ts");
+    const ctx = queryAgentContext(index!, absPath, cwd);
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file!.path).toBe("src/index.ts");
+  });
+
+  it("returns canonical forward-slashed path for absolute Windows-style input", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    // Simulate a Windows-style absolute path with backslashes
+    const winPath = cwd.replace(/\//g, "\\") + "\\src\\index.ts";
+    const ctx = queryAgentContext(index!, winPath, cwd);
+    expect(ctx.error).toBeUndefined();
+    // Canonical path always uses forward slashes
+    expect(ctx.file!.path).toBe("src/index.ts");
+  });
+
+  it("suggested commands use forward slashes", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src\\lib\\utils.ts", cwd);
+    expect(ctx.error).toBeUndefined();
+    for (const cmd of ctx.suggestedCommands) {
+      expect(cmd).not.toContain("\\");
+    }
+  });
+
+  it("path outside project root returns error", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "/some/other/project/src/file.ts", cwd);
+    expect(ctx.error).toBeDefined();
+    expect(ctx.error).toContain("not found");
+  });
+
+  it("missing file returns user-facing error with original path", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const ctx = queryAgentContext(index!, "src\\nonexistent.ts", cwd);
+    expect(ctx.error).toBeDefined();
+    expect(ctx.error).toContain("not found");
+    // Error message should reference the original user input
+    expect(ctx.error).toContain("src\\nonexistent.ts");
+  });
+});

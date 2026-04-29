@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-04-29
+
+### Added
+- **Source query path robustness** (`src/services/source-index/query.ts`): New `normalizePath()` helper for cross-platform path handling (backslash→forward-slash, project root stripping, leading slash stripping). `queryAgentContext()` now accepts optional `projectRoot` for absolute path resolution.
+- **Reference routing quality gate** (`src/services/skills-generator/quality-gate.ts`): `checkReferenceRouting()` validates routing tables for file-pattern-as-directory bugs, unknown reference names, missing fallback rows, and malformed markup.
+- **Explain context action hints** (`src/services/source-index/context-builder.ts`): `buildReviewContext()` generates capped, deduplicated suggested follow-up commands (`--agent-context`, `--find-import`, `--find-symbol`) from context files and dependency signals. Surfaced in `--explain-context` JSON and console output.
+
+### Fixed
+- Reference routing quality gate: separator row (`|---|---|`) no longer parsed as a data row.
+
+### Tests
+- 8 path robustness tests for `queryAgentContext()` (backslash, absolute, Windows-style, missing file, outside project).
+- 9 reference routing quality gate tests (well-formed table, file-as-directory, unknown refs, missing fallback, malformed markup, row cap warning).
+- 4 explain context tests (JSON includes suggestedCommands, absent when unavailable, console output, ASCII-safe).
+
 ## [1.16.1] - 2026-04-29
 
 ### Fixed

@@ -512,6 +512,55 @@ export async function buildReviewContext(
     evidence: s.evidence,
   }));
 
+  // Build suggested follow-up commands (v1.16.0+)
+  const suggestedCommands: string[] = [];
+  const seenCmds = new Set<string>();
+  const addCmd = (cmd: string): void => {
+    if (!seenCmds.has(cmd)) {
+      seenCmds.add(cmd);
+      suggestedCommands.push(cmd);
+    }
+  };
+
+  // --agent-context for included files (cap 3)
+  for (const file of includedFiles.slice(0, 3)) {
+    addCmd(`mp-sentinel indexing --agent-context "${file}" --index-format json`);
+  }
+
+  // --find-import for dependency evidence (cap 3)
+  if (dedupedIntelligenceSignals.length > 0) {
+    const importPkgs = new Set<string>();
+    for (const signal of dedupedIntelligenceSignals) {
+      if (signal.type === "dependency" && importPkgs.size < 3) {
+        const m = signal.evidence.match(/^Package: (.+?)@/);
+        const pkg = m?.[1];
+        if (pkg && !importPkgs.has(pkg)) {
+          importPkgs.add(pkg);
+          addCmd(`mp-sentinel indexing --find-import "${pkg}" --index-format json`);
+        }
+      }
+    }
+  }
+
+  // --find-symbol for exported symbols from included files (cap 2)
+  if (includedFiles.length > 0) {
+    const symNames = new Set<string>();
+    for (const fp of includedFiles) {
+      if (symNames.size >= 2) break;
+      const f = fileIndexMap.get(fp);
+      if (f?.exportedSymbols && f.exportedSymbols.length > 0) {
+        for (const sym of f.exportedSymbols) {
+          if (symNames.size >= 2) break;
+          if (sym === "default" || sym.trim() === "") continue;
+          if (!symNames.has(sym)) {
+            symNames.add(sym);
+            addCmd(`mp-sentinel indexing --find-symbol "${sym}" --index-format json`);
+          }
+        }
+      }
+    }
+  }
+
   return {
     context,
     metadata: {
@@ -526,6 +575,7 @@ export async function buildReviewContext(
         intelligenceSignals: dedupedIntelligenceSignals,
       }),
       ...(evidenceSummary.length > 0 && { evidenceSummary }),
+      ...(suggestedCommands.length > 0 && { suggestedCommands }),
     },
   };
 }

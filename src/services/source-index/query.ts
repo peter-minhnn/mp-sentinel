@@ -221,6 +221,33 @@ export interface AgentContextResult {
 }
 
 /**
+ * Normalize a user-supplied file path for index lookup.
+ *
+ * - Converts backslashes to forward slashes (Windows tolerance)
+ * - If projectRoot is provided and filePath is absolute, strips the
+ *   projectRoot prefix to derive the relative path
+ * - Strips leading slashes
+ *
+ * Returns a forward-slash relative path suitable for matching against
+ * SourceIndexFile.path entries.
+ */
+function normalizePath(filePath: string, projectRoot?: string): string {
+  let normalized = filePath.replace(/\\/g, "/");
+
+  if (projectRoot) {
+    const rootNorm = projectRoot.replace(/\\/g, "/");
+    // Absolute Unix (/home/...) or Windows (C:/...)
+    if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
+      if (normalized.toLowerCase().startsWith(rootNorm.toLowerCase())) {
+        normalized = normalized.slice(rootNorm.length);
+      }
+    }
+  }
+
+  return normalized.replace(/^\/+/, "");
+}
+
+/**
  * Build an AI-agent-friendly context pack for a given source file.
  *
  * Includes:
@@ -231,7 +258,11 @@ export interface AgentContextResult {
  *
  * Returns an error string via `error` when the index is null or the file is not found.
  */
-export function queryAgentContext(index: SourceIndex | null, filePath: string): AgentContextResult {
+export function queryAgentContext(
+  index: SourceIndex | null,
+  filePath: string,
+  projectRoot?: string,
+): AgentContextResult {
   const emptyError = (msg: string): AgentContextResult => ({
     file: null,
     directImports: [],
@@ -246,12 +277,11 @@ export function queryAgentContext(index: SourceIndex | null, filePath: string): 
 
   if (!index) return emptyError("No index available");
 
-  const normalizedPath =
-    filePath.startsWith("/") || filePath.startsWith("\\")
-      ? filePath.replace(/^[/\\]+/, "")
-      : filePath;
+  const normalizedPath = normalizePath(filePath, projectRoot);
 
-  const file = index.files.find((f) => f.path === normalizedPath || f.path === filePath);
+  const file =
+    index.files.find((f) => f.path === normalizedPath) ??
+    index.files.find((f) => f.path === filePath);
 
   if (!file) return emptyError(`File not found in index: ${filePath}`);
 

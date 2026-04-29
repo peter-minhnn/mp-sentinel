@@ -500,6 +500,7 @@ export async function renderExplainContext(opts: {
   let includedSignals: string[] | undefined;
   let intelligenceSignals: ReviewIntelligenceSignal[] | undefined;
   let evidenceSummary: EvidenceSummary[] | undefined;
+  let suggestedCommands: string[] | undefined;
   const budgetChars = 12000;
 
   try {
@@ -527,6 +528,7 @@ export async function renderExplainContext(opts: {
           includedSignals = result.metadata.includedSignals;
           intelligenceSignals = result.metadata.intelligenceSignals;
           evidenceSummary = result.metadata.evidenceSummary;
+          suggestedCommands = result.metadata.suggestedCommands;
         } else {
           unavailableReason = "Source index found but context generation produced no content.";
         }
@@ -560,6 +562,9 @@ export async function renderExplainContext(opts: {
     }
     if (evidenceSummary && evidenceSummary.length > 0) {
       output.evidenceSummary = evidenceSummary;
+    }
+    if (suggestedCommands && suggestedCommands.length > 0) {
+      output.suggestedCommands = suggestedCommands;
     }
   }
 
@@ -598,6 +603,12 @@ export async function renderExplainContext(opts: {
       console.log("\nIncluded files:");
       for (const file of output.includedFiles || []) {
         console.log(`  - ${file}`);
+      }
+      if (output.suggestedCommands && output.suggestedCommands.length > 0) {
+        console.log("\nSuggested commands:");
+        for (const cmd of output.suggestedCommands) {
+          console.log(`  ${cmd}`);
+        }
       }
       console.log("\nContext preview:");
       console.log("=== Start of context ===\n");

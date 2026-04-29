@@ -1,3 +1,15 @@
+# What's New in v1.17.0
+
+## Source Query Path Robustness, Reference Routing Quality Gate & Explain Context Action Hints
+
+v1.17.0 integrates three parallel lanes: Lane A (source query path robustness), Lane B (reference routing quality gate), and Lane C (explain context action hints).
+
+- **Source query path robustness** (`src/services/source-index/query.ts`): New `normalizePath()` helper handles backslash-to-forward-slash conversion, strips project root prefixes from absolute paths (Unix and Windows), and strips leading slashes. `queryAgentContext()` now accepts optional `projectRoot` for absolute path resolution. 8 new tests covering forward/backslash paths, absolute paths, Windows-style paths, and error cases.
+- **Reference routing quality gate** (`src/services/skills-generator/quality-gate.ts`): `checkReferenceRouting()` now validates routing tables, flags file-looking patterns with trailing slashes, unknown reference names, missing fallback rows, and malformed table markup. Fixed separator row parsing bug. 9 new quality gate tests.
+- **Explain context action hints** (`src/services/source-index/context-builder.ts`): `buildReviewContext()` now generates capped, deduplicated suggested commands (`--agent-context`, `--find-import`, `--find-symbol`) from actual context files and dependency signals. Commands use `--index-format json` and double-quoted arguments. Rendered in JSON and console output by `--explain-context`. 4 new tests.
+
+---
+
 # What's New in v1.16.1
 
 ## Reference Routing Path Patch

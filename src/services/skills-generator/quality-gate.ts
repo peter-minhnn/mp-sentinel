@@ -610,6 +610,151 @@ function checkAgentWorkflowContract(
   return checks;
 }
 
+// ── Reference Routing Contract (v1.16.1+) ───────────────────────────────────
+
+const KNOWN_REFERENCE_NAMES = new Set([
+  "architecture",
+  "modules",
+  "commands",
+  "codebase-map",
+  "testing-map",
+  "dependencies",
+  "public-api",
+]);
+
+const MAX_ROUTING_ROWS_QUALITY = 15;
+
+/** Check if a token looks like a file name (has a known extension). */
+function isFileNamePattern(token: string): boolean {
+  return /\.[a-z]{2,6}$/i.test(token);
+}
+
+/**
+ * Validate the Reference Routing section in generated content:
+ * - Section must exist (enforced by checkRequiredSections).
+ * - Table must have a header and at least a fallback row.
+ * - All reference names must be from the known set.
+ * - No directory pattern may look like a file (e.g. `src/index.ts/`).
+ * - Row count must stay within the cap.
+ */
+function checkReferenceRouting(file: GeneratedSkillFile): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const content = file.content;
+
+  const sections = extractSections(content);
+  const routingBody = sections.get("Reference Routing");
+  if (!routingBody) return checks; // Missing section caught by required-section check
+
+  // ── Parse routing table ─────────────────────────────────────────────────
+  const tableLines: string[] = [];
+  let inTable = false;
+  for (const line of routingBody.split("\n")) {
+    if (line.startsWith("|")) {
+      inTable = true;
+      tableLines.push(line);
+    } else if (inTable && !line.startsWith("|")) {
+      break; // Table ended
+    }
+  }
+
+  if (tableLines.length < 2) {
+    checks.push({
+      type: "reference-routing",
+      severity: "error",
+      file: file.outputPath,
+      message: "Reference Routing table missing — must have header and at least one row",
+    });
+    return checks;
+  }
+
+  // Verify header row
+  const header = tableLines[0]!;
+  if (!header.includes("Directory Pattern") || !header.includes("Recommended References")) {
+    checks.push({
+      type: "reference-routing",
+      severity: "error",
+      file: file.outputPath,
+      message:
+        "Reference Routing table header must contain 'Directory Pattern' and 'Recommended References'",
+    });
+  }
+
+  // Verify fallback row exists
+  const hasFallback = tableLines.some((l) => l.includes("Other files"));
+  if (!hasFallback) {
+    checks.push({
+      type: "reference-routing",
+      severity: "error",
+      file: file.outputPath,
+      message: "Reference Routing table must include an 'Other files' fallback row",
+    });
+  }
+
+  // ── Validate data rows ──────────────────────────────────────────────────
+  const isSeparatorRow = (line: string): boolean =>
+    line
+      .split("|")
+      .filter((c) => c.length > 0)
+      .every((c) => /^:?-+:?$/.test(c.trim()));
+  const dataRows = tableLines.slice(1).filter((l) => !isSeparatorRow(l)); // Skip header + separator
+
+  for (const row of dataRows) {
+    // Parse cells: | cell1 | cell2 |
+    const cells = row
+      .split("|")
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+
+    if (cells.length < 2) continue;
+
+    const dirCell = cells[0]!;
+    const refCell = cells[1]!;
+
+    // Check for file-looking patterns ending with /
+    const dirTokens = [...dirCell.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
+    for (const token of dirTokens) {
+      const stripped = token.endsWith("/") ? token.slice(0, -1) : token;
+      if (token.endsWith("/") && isFileNamePattern(stripped)) {
+        checks.push({
+          type: "reference-routing",
+          severity: "error",
+          file: file.outputPath,
+          message: `Directory pattern \`${token}\` looks like a file path ending with '/' — use the parent directory instead`,
+        });
+      }
+    }
+
+    // Skip fallback row for reference name validation
+    if (dirCell.includes("Other files")) continue;
+
+    // Validate reference names
+    const refNames = refCell.split(",").map((r) => r.trim());
+    for (const name of refNames) {
+      if (!KNOWN_REFERENCE_NAMES.has(name)) {
+        checks.push({
+          type: "reference-routing",
+          severity: "error",
+          file: file.outputPath,
+          message: `Unknown reference name "${name}" in routing row — must be one of: ${[...KNOWN_REFERENCE_NAMES].join(", ")}`,
+        });
+      }
+    }
+  }
+
+  // Check row cap
+  if (dataRows.length > MAX_ROUTING_ROWS_QUALITY + 1) {
+    // +1 for fallback row
+    checks.push({
+      type: "reference-routing",
+      severity: "warning",
+      file: file.outputPath,
+      message: `Reference Routing table has ${dataRows.length} data rows (max ${MAX_ROUTING_ROWS_QUALITY} + 1 fallback)`,
+    });
+  }
+
+  return checks;
+}
+
 // ── Adapter Layout Contract (v1.0.17+) ─────────────────────────────────────
 
 /**
@@ -874,6 +1019,7 @@ export function validateSkillQuality(
     allChecks.push(...checkUnknownPaths(file, index, knownRefPaths));
     allChecks.push(...checkRealSignals(file, index));
     allChecks.push(...checkAgentWorkflowContract(file, adapterId));
+    allChecks.push(...checkReferenceRouting(file));
     allChecks.push(...checkRiskyUnicode(file));
   }
 

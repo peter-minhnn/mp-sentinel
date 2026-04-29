@@ -418,4 +418,100 @@ describe("renderExplainContext", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("JSON output includes suggestedCommands when context is available", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    await makeIndex(cwd);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json", files: ["src/index.ts", "src/lib.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(jsonOutput.status).toBe("available");
+      expect(jsonOutput.suggestedCommands).toBeDefined();
+      expect(Array.isArray(jsonOutput.suggestedCommands)).toBe(true);
+      // At minimum, --agent-context commands for included files
+      const hasAgentContext = jsonOutput.suggestedCommands.some((cmd: string) =>
+        cmd.includes("--agent-context"),
+      );
+      expect(hasAgentContext).toBe(true);
+      // Commands are capped
+      const agentContextCmds = jsonOutput.suggestedCommands.filter((cmd: string) =>
+        cmd.includes("--agent-context"),
+      );
+      expect(agentContextCmds.length).toBeLessThanOrEqual(3);
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("JSON output omits suggestedCommands when index is unavailable", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, false);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json" }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(jsonOutput.status).toBe("unavailable");
+      expect(jsonOutput.suggestedCommands).toBeUndefined();
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("console output includes 'Suggested commands:' section when available", async () => {
+    const cwd = await makeTempDir();
+    const config = await makeConfig(cwd, true);
+    await makeIndex(cwd);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "console", files: ["src/index.ts"] }),
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const calls = logSpy.mock.calls.map((c) => c[0]).join("\n");
+      expect(calls).toContain("Suggested commands:");
+      expect(calls).toContain("--agent-context");
+      // ASCII-safe: no risky Unicode in command output
+      const riskyUnicode = ["—", "→", "←", "…", "✓", "✗"];
+      for (const r of riskyUnicode) {
+        expect(calls).not.toContain(r);
+      }
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
 });
