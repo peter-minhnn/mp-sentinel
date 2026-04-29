@@ -7,17 +7,18 @@
  *   1. release:check        - version consistency + lockfile integrity
  *   2. build                - tsup compile
  *   3. indexing --stats     - source index build + stats (JSON)
- *   4. index queries        - agent-context, find-symbol, find-import (JSON)
- *   5. create-skills --dry-run - all adapters, no writes (JSON)
- *   6. --explain-agents     - agent detection diagnostics (JSON)
- *   7. --explain-context    - context diagnostics (JSON, unavailable path)
- *   8. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
- *   9. create-skills --doctor - doctor diagnostics (JSON)
- *  10. agent:skills:check   - generated skills freshness gate
+ *   4. indexing --health    - positive health check (status=ok, version fields) (JSON)
+ *   5. index queries        - agent-context, find-symbol, find-import (JSON)
+ *   6. create-skills --dry-run - all adapters, no writes (JSON)
+ *   7. --explain-agents     - agent detection diagnostics (JSON)
+ *   8. --explain-context    - context diagnostics (JSON, unavailable path)
+ *   9. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
+ *  10. create-skills --doctor - doctor diagnostics (JSON)
+ *  11. agent:skills:check   - generated skills freshness gate
  *
  * Each JSON step is parsed, not just visually inspected.
- * Step 7 validates "unavailable" (indexing.enabled=false repo default).
- * Step 8 validates "available" with indexUsed + suggestedCommands using a temp fixture.
+ * Step 8 validates "unavailable" (indexing.enabled=false repo default).
+ * Step 9 validates "available" with indexUsed + suggestedCommands using a temp fixture.
  *
  * Usage:
  *   node scripts/dogfood.mjs
@@ -33,7 +34,7 @@ import { tmpdir } from "node:os";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 11;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -68,10 +69,14 @@ function parseJson(raw, label) {
   }
 }
 
+function stepHeader(n, label) {
+  process.stdout.write(`\n[${n}/${TOTAL_STEPS}] ${label}\n`);
+}
+
 // --- steps -------------------------------------------------------------
 
 function stepReleaseCheck() {
-  process.stdout.write(`\n[1/10] release:check\n`);
+  stepHeader(1, "release:check");
   const out = run("npm run release:check --silent", "release:check");
   if (out === null) return false;
 
@@ -82,7 +87,7 @@ function stepReleaseCheck() {
 }
 
 function stepBuild() {
-  process.stdout.write(`\n[2/10] build\n`);
+  stepHeader(2, "build");
   const out = run("npm run build --silent", "build");
   if (out === null) return false;
 
@@ -95,32 +100,12 @@ function stepBuild() {
     return false;
   }
 
-  // Dist freshness smoke: dist must be parseable and match current source.
-  // --health exits non-zero for non-"ok" statuses (e.g. "stale" during dev),
-  // so capture stdout/stderr ourselves instead of using run().
-  let healthOut;
-  try {
-    healthOut = execSync(
-      "node dist/index.js indexing --health --index-format json",
-      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
-    );
-  } catch (e) {
-    healthOut = e.stdout || "";
-  }
-
-  const healthJson = parseJson(healthOut, "dist indexing --health");
-  if (!healthJson) return false;
-  if (typeof healthJson.status !== "string") {
-    fail("dist indexing --health", "JSON output missing 'status' field");
-    return false;
-  }
-
-  ok("build", `dist/index.js + dist/lib.js produced, --health status=${healthJson.status}`);
+  ok("build", "dist/index.js + dist/lib.js produced");
   return true;
 }
 
 function stepIndexing() {
-  process.stdout.write(`\n[3/10] indexing --stats\n`);
+  stepHeader(3, "indexing --stats");
   const out = run(
     "node dist/index.js indexing --stats --index-format json",
     "indexing --stats",
@@ -141,8 +126,77 @@ function stepIndexing() {
   return true;
 }
 
+function stepHealthCheck() {
+  stepHeader(4, "indexing --health (positive check)");
+  const out = run(
+    "node dist/index.js indexing --health --index-format json",
+    "indexing --health",
+  );
+  if (out === null) return false;
+
+  const json = parseJson(out, "indexing --health");
+  if (!json) return false;
+
+  if (json.status !== "ok") {
+    fail("indexing --health", `expected status "ok", got "${json.status}"`);
+    return false;
+  }
+  if (typeof json.toolVersion !== "string" || json.toolVersion === "") {
+    fail("indexing --health", "toolVersion missing or empty");
+    return false;
+  }
+  if (typeof json.currentToolVersion !== "string" || json.currentToolVersion === "") {
+    fail("indexing --health", "currentToolVersion missing or empty");
+    return false;
+  }
+  if (json.toolVersion !== json.currentToolVersion) {
+    fail(
+      "indexing --health",
+      `toolVersion "${json.toolVersion}" !== currentToolVersion "${json.currentToolVersion}"`,
+    );
+    return false;
+  }
+  if (typeof json.schemaVersion !== "string" || json.schemaVersion === "") {
+    fail("indexing --health", "schemaVersion missing or empty");
+    return false;
+  }
+  if (typeof json.parseErrorRate !== "number") {
+    fail("indexing --health", "parseErrorRate is not a number");
+    return false;
+  }
+  if ("recoveredFiles" in json && typeof json.recoveredFiles !== "number") {
+    fail("indexing --health", "recoveredFiles present but not a number");
+    return false;
+  }
+  if ("parserModeBreakdown" in json) {
+    if (typeof json.parserModeBreakdown !== "object" || json.parserModeBreakdown === null) {
+      fail("indexing --health", "parserModeBreakdown present but not an object");
+      return false;
+    }
+  }
+
+  const parts = [
+    `status=ok`,
+    `toolVersion=${json.toolVersion}`,
+    `schemaVersion=${json.schemaVersion}`,
+    `parseErrorRate=${json.parseErrorRate}`,
+  ];
+  if (typeof json.recoveredFiles === "number") {
+    parts.push(`recoveredFiles=${json.recoveredFiles}`);
+  }
+  if (json.parserModeBreakdown && typeof json.parserModeBreakdown === "object") {
+    const bd = Object.entries(json.parserModeBreakdown)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    parts.push(`parserModes: ${bd}`);
+  }
+
+  ok("indexing --health", parts.join(", "));
+  return true;
+}
+
 function stepIndexQuery() {
-  process.stdout.write(`\n[4/10] index queries\n`);
+  stepHeader(5, "index queries");
 
   // --agent-context
   const acOut = run(
@@ -246,7 +300,7 @@ function stepIndexQuery() {
 }
 
 function stepCreateSkills() {
-  process.stdout.write(`\n[5/10] create-skills --dry-run\n`);
+  stepHeader(6, "create-skills --dry-run");
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -276,7 +330,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  process.stdout.write(`\n[6/10] explain-agents\n`);
+  stepHeader(7, "explain-agents");
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -336,7 +390,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  process.stdout.write(`\n[7/10] explain-context\n`);
+  stepHeader(8, "explain-context");
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -365,7 +419,7 @@ function stepExplainContext() {
 }
 
 function stepPositiveExplainContext() {
-  process.stdout.write(`\n[8/10] explain-context (positive path)\n`);
+  stepHeader(9, "explain-context (positive path)");
 
   const repoRoot = process.cwd();
   const tempDir = mkdtempSync(join(tmpdir(), "dogfood-positive-ec-"));
@@ -489,7 +543,7 @@ function stepPositiveExplainContext() {
 }
 
 function stepDoctor() {
-  process.stdout.write(`\n[9/10] create-skills --doctor\n`);
+  stepHeader(10, "create-skills --doctor");
   let raw;
   try {
     raw = execSync(
@@ -557,7 +611,7 @@ function stepDoctor() {
 }
 
 function stepAgentSkillsCheck() {
-  process.stdout.write(`\n[10/10] agent:skills:check\n`);
+  stepHeader(11, "agent:skills:check");
   let raw;
   try {
     raw = execSync(
@@ -587,6 +641,7 @@ const steps = [
   stepReleaseCheck,
   stepBuild,
   stepIndexing,
+  stepHealthCheck,
   stepIndexQuery,
   stepCreateSkills,
   stepExplainAgents,

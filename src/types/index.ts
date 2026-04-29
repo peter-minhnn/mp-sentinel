@@ -383,6 +383,14 @@ export interface IndexInsights {
 }
 
 /**
+ * Which parser mode was used for this file.
+ * - `tree-sitter`: parsed normally via tree-sitter AST
+ * - `ascii-fallback`: tree-sitter threw "Invalid argument", recovered via ASCII normalization
+ * - `lexical-fallback`: tree-sitter + ASCII both failed, recovered via regex-based lexical parse
+ */
+export type ParserMode = "tree-sitter" | "ascii-fallback" | "lexical-fallback";
+
+/**
  * Parsed file information stored in source index
  */
 export interface SourceIndexFile {
@@ -402,8 +410,12 @@ export interface SourceIndexFile {
   exports: ExportInfo[];
   /** Symbols (functions, classes, interfaces, types) */
   symbols: SymbolInfo[];
-  /** Parse errors if any */
+  /** Hard parse errors — the file could not be parsed at all */
   parseErrors?: string[];
+  /** Which parser mode was used (schema 1.3+). Absent on pre-1.3 caches (implies tree-sitter). */
+  parserMode?: ParserMode;
+  /** Recovery warnings — fallback was used but the file was recovered (schema 1.3+) */
+  parseWarnings?: string[];
   /** Dependency graph - files this file imports from */
   importsFrom?: string[];
   /** Files that import this file */
@@ -503,6 +515,10 @@ export interface IndexHealthOutput {
   staleReasons: string[];
   changedFilesSample: string[];
   missingFilesSample: string[];
+  /** Number of files recovered via fallback parser (schema 1.3+) */
+  recoveredFiles?: number;
+  /** Breakdown of files by parser mode (schema 1.3+) */
+  parserModeBreakdown?: Record<ParserMode, number>;
 }
 
 /**
@@ -827,6 +843,14 @@ export interface DepMapEntry {
   files: string[];
   /** Number of importing files */
   fileCount: number;
+  /** Number of production source files using this dependency */
+  sourceFileCount: number;
+  /** Number of test/spec files using this dependency */
+  testFileCount: number;
+  /** Number of example/tooling files using this dependency */
+  exampleFileCount: number;
+  /** Dominant usage category */
+  usageKind: "runtime" | "test" | "mixed";
 }
 
 /** A single risk item in the risk map */

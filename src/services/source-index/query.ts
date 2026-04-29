@@ -216,6 +216,8 @@ interface FileInfo {
   }>;
   exportsTruncated: number;
   parseErrors?: number;
+  parserMode?: string;
+  parseWarnings?: string[];
 }
 
 interface HubFileEntry {
@@ -331,6 +333,9 @@ export function queryAgentContext(
     exportsTruncated: file.exports.length > MAX_EXPORTS ? file.exports.length - MAX_EXPORTS : 0,
     ...(file.parseErrors &&
       file.parseErrors.length > 0 && { parseErrors: file.parseErrors.length }),
+    ...(file.parserMode && file.parserMode !== "tree-sitter" && { parserMode: file.parserMode }),
+    ...(file.parseWarnings &&
+      file.parseWarnings.length > 0 && { parseWarnings: file.parseWarnings }),
   };
 
   const importsFrom = file.importsFrom ?? [];

@@ -1,3 +1,19 @@
+# What's New in v1.20.0
+
+## Dependency Usage Tiering, Parser Recovery Telemetry & Dogfood Health Guard
+
+v1.20.0 integrates three parallel lanes: Lane A (dependency usage tiering for generated skills), Lane B (parser recovery telemetry), and Lane C (dogfood health guard).
+
+- **Dependency usage tiering** (`src/services/skills-generator/knowledge-base.ts`, `src/services/skills-generator/content.ts`, `src/types/index.ts`): Generated skill files now partition dependencies into Runtime and Test/Tooling sections. `DepMapEntry` gains `sourceFileCount`, `testFileCount`, `exampleFileCount`, and `usageKind` (`"runtime" | "test" | "mixed"`) fields. The dependency map builder accepts `fileRoles` for per-file role classification. Runtime dependencies get priority in the capped detail table, preventing test-only noise (like `@jest/globals`) from dominating the top entries.
+- **Parser recovery telemetry** (`src/services/source-index/parser.ts`, `src/commands/indexing.ts`, `src/services/source-index/query.ts`, `src/types/index.ts`): New `ParserMode` type (`"tree-sitter" | "ascii-fallback" | "lexical-fallback"`) tracks which parser path each file used. Fallback recoveries (ASCII or lexical) no longer inflate `parseErrorRate` — they're now tracked separately as `parseWarnings`. `IndexHealthOutput` gains `recoveredFiles` count and `parserModeBreakdown` (e.g., `tree-sitter=90, lexical-fallback=3`). `--stats`, `--health`, `--explain-index`, and `--agent-context` all surface parser mode data. Backward compatible with old caches (missing fields default to `"tree-sitter"`).
+- **Dogfood health guard** (`scripts/dogfood.mjs`, `src/tests/script-workflows.test.ts`): New step 4 runs `indexing --health --index-format json` and validates status, tool version match, schema version, and parse error rate shape. Optional fields (`recoveredFiles`, `parserModeBreakdown`) validated for shape when present. Step count bumped from 10 to 11 with a `stepHeader()` helper for renumbering resilience.
+
+### Tests
+- Dogfood health guard step count test updated: 10 → 11.
+- All 760 existing tests pass.
+
+---
+
 # What's New in v1.19.1
 
 ## Parser ASCII Fallback, Dist Freshness Guard & Health Type Cleanup

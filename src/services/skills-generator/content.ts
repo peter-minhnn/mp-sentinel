@@ -5,6 +5,7 @@
  */
 
 import type {
+  DepMapEntry,
   SourceIndex,
   SourceIndexFile,
   AIEnrichmentOutput,
@@ -914,27 +915,58 @@ function buildDependenciesSection(
   const lines = [`## Dependencies`];
 
   if (kb.dependencies.length > 0) {
-    lines.push(``, `### Top Dependencies (by usage)`, ``);
-    lines.push(`| Package | Version | Used By |`);
-    lines.push(`|---|---|---|`);
-    for (const dep of kb.dependencies.slice(0, MAX_DEP_TABLE_ENTRIES)) {
-      const displayVersion = cleanDisplayVersion(dep.version);
-      lines.push(`| \`${dep.packageName}\` | ${displayVersion} | ${dep.fileCount} file(s) |`);
-    }
-    lines.push(``);
+    const runtimeDeps = kb.dependencies.filter(
+      (d) => d.usageKind === "runtime" || d.usageKind === "mixed",
+    );
+    const testDeps = kb.dependencies.filter((d) => d.usageKind === "test");
 
-    lines.push(`### Dependency Details`, ``);
-    for (const dep of kb.dependencies.slice(0, MAX_DEP_DETAIL_ENTRIES)) {
-      const fileList = dep.files
-        .slice(0, MAX_DEP_FILE_LIST)
-        .map((f) => `\`${f}\``)
-        .join(", ");
-      const overflow =
-        dep.files.length > MAX_DEP_FILE_LIST
-          ? ` (+${dep.files.length - MAX_DEP_FILE_LIST} more)`
-          : "";
-      const displayVersion = cleanDisplayVersion(dep.version);
-      lines.push(`- **${dep.packageName}** v${displayVersion} - used by: ${fileList}${overflow}`);
+    // Caps: runtime gets priority, test gets the remainder
+    const runtimeTable = runtimeDeps.slice(0, MAX_DEP_TABLE_ENTRIES);
+    const testTable = testDeps.slice(0, Math.max(0, MAX_DEP_TABLE_ENTRIES - runtimeTable.length));
+    const runtimeDetail = runtimeDeps.slice(0, MAX_DEP_DETAIL_ENTRIES);
+    const testDetail = testDeps.slice(
+      0,
+      Math.max(0, MAX_DEP_DETAIL_ENTRIES - runtimeDetail.length),
+    );
+
+    function renderDepTable(deps: DepMapEntry[]): void {
+      lines.push(`| Package | Version | Used By |`);
+      lines.push(`|---|---|---|`);
+      for (const dep of deps) {
+        const displayVersion = cleanDisplayVersion(dep.version);
+        lines.push(`| \`${dep.packageName}\` | ${displayVersion} | ${dep.fileCount} file(s) |`);
+      }
+    }
+
+    function renderDepDetails(deps: DepMapEntry[]): void {
+      for (const dep of deps) {
+        const fileList = dep.files
+          .slice(0, MAX_DEP_FILE_LIST)
+          .map((f) => `\`${f}\``)
+          .join(", ");
+        const overflow =
+          dep.files.length > MAX_DEP_FILE_LIST
+            ? ` (+${dep.files.length - MAX_DEP_FILE_LIST} more)`
+            : "";
+        const displayVersion = cleanDisplayVersion(dep.version);
+        lines.push(`- **${dep.packageName}** v${displayVersion} - used by: ${fileList}${overflow}`);
+      }
+    }
+
+    if (runtimeTable.length > 0) {
+      lines.push(``, `### Runtime Dependencies`, ``);
+      renderDepTable(runtimeTable);
+      lines.push(``);
+      renderDepDetails(runtimeDetail);
+      lines.push(``);
+    }
+
+    if (testTable.length > 0) {
+      lines.push(`### Test/Tooling Dependencies`, ``);
+      renderDepTable(testTable);
+      lines.push(``);
+      renderDepDetails(testDetail);
+      lines.push(``);
     }
   }
 

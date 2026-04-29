@@ -3345,6 +3345,8 @@ describe("parseFile unicode fallback", () => {
     expect(result!.imports).toEqual([]);
     expect(result!.exports.length).toBeGreaterThan(0);
     expect(result!.parseErrors).toBeUndefined();
+    expect(result!.parseWarnings).toBeUndefined();
+    expect(result!.parserMode).toBe("tree-sitter");
   });
 
   it("extracts symbol from file with Unicode comment (ASCII fallback path)", async () => {
@@ -3378,7 +3380,7 @@ describe("parseFile unicode fallback", () => {
     expect(result!.exports.some((e) => e.names.includes("helper"))).toBe(true);
   });
 
-  it("returns parseError annotation when fallback is used", async () => {
+  it("returns parseWarning when fallback is used", async () => {
     const lang = getLanguageForFile("test.ts");
     // Content with multiple risky characters to trigger fallback on Windows
     const content = `// Dashes: — —\n// Arrow: →\nexport function result() { return 42; }`;
@@ -3386,10 +3388,21 @@ describe("parseFile unicode fallback", () => {
     const result = await parseFile("test.ts", content, lang!);
 
     expect(result).not.toBeNull();
-    // On non-Windows or if parse succeeds normally, parseErrors may be absent
-    // The key assertion: if there are parseErrors, they should include the fallback annotation
+    // On non-Windows or if parse succeeds normally, parseWarnings may be absent
+    // The key assertion: if fallback was used, it's recorded in parseWarnings (not parseErrors)
+    if (result!.parseWarnings) {
+      expect(result!.parseWarnings.length).toBeGreaterThan(0);
+      expect(
+        result!.parseWarnings.some((w) => w.includes("ASCII fallback") || w.includes("retry")),
+      ).toBe(true);
+    }
+    // Hard parse errors should NOT include fallback messages
     if (result!.parseErrors) {
-      expect(result!.parseErrors.length).toBeGreaterThan(0);
+      for (const e of result!.parseErrors) {
+        expect(e).not.toContain("ASCII fallback");
+        expect(e).not.toContain("lexical fallback");
+        expect(e).not.toContain("parsed with retry");
+      }
     }
     // Symbol must still be extracted
     expect(result!.symbols.some((s) => s.name === "result")).toBe(true);

@@ -84,6 +84,32 @@ const getIndexParseErrorRate = (index: SourceIndex): number => {
 };
 
 /**
+ * Count files recovered via fallback parser (non-tree-sitter parserMode).
+ */
+const getRecoveredFileCount = (index: SourceIndex): number => {
+  return index.files.filter(
+    (file) => file.parserMode === "ascii-fallback" || file.parserMode === "lexical-fallback",
+  ).length;
+};
+
+/**
+ * Build a breakdown of files by parser mode.
+ * Undefined parserMode (pre-1.3 caches) is treated as tree-sitter.
+ */
+const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
+  const breakdown: Record<string, number> = {
+    "tree-sitter": 0,
+    "ascii-fallback": 0,
+    "lexical-fallback": 0,
+  };
+  for (const file of index.files) {
+    const mode = file.parserMode ?? "tree-sitter";
+    breakdown[mode] = (breakdown[mode] ?? 0) + 1;
+  }
+  return breakdown;
+};
+
+/**
  * Get indexing configuration from project config
  */
 export function getIndexingConfig(config: {
@@ -575,6 +601,9 @@ async function handleHealth(
 
   const status = uniqueReasons.length === 0 ? "ok" : "stale";
 
+  const recoveredFiles = getRecoveredFileCount(index);
+  const parserModeBreakdown = getParserModeBreakdown(index);
+
   const output: IndexHealthOutput = {
     status,
     schemaVersion: index.schemaVersion,
@@ -587,6 +616,8 @@ async function handleHealth(
     staleReasons: uniqueReasons,
     changedFilesSample,
     missingFilesSample,
+    recoveredFiles,
+    parserModeBreakdown,
   };
 
   if (format === "json") {
@@ -597,6 +628,12 @@ async function handleHealth(
     console.log(`  Schema version:  ${index.schemaVersion}`);
     console.log(`  Total files:     ${index.files.length}`);
     console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
+    console.log(`  Recovered files:  ${recoveredFiles}`);
+    if (parserModeBreakdown["ascii-fallback"] || parserModeBreakdown["lexical-fallback"]) {
+      console.log(
+        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+      );
+    }
     console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
     console.log(`  Current manifest: ${currentManifestHash}`);
     console.log(`  Tool version (cache):  ${cacheToolVersion}`);
@@ -804,11 +841,16 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     return 1;
   }
 
+  const recoveredFiles = getRecoveredFileCount(index);
+  const parserModeBreakdown = getParserModeBreakdown(index);
+
   const stats = {
     totalFiles: index.stats.totalFiles,
     indexedFiles: index.stats.indexedFiles,
     skippedFiles: index.stats.skippedFiles,
     parseErrors: index.stats.parseErrors,
+    recoveredFiles,
+    parserModeBreakdown,
     durationMs: index.stats.durationMs,
     importEdges: index.stats.importEdges,
     graphEnabled: index.files.some((f) => f.importsFrom || f.importedBy),
@@ -838,6 +880,12 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     console.log(`  Indexed files:    ${stats.indexedFiles}`);
     console.log(`  Skipped files:    ${stats.skippedFiles}`);
     console.log(`  Parse errors:     ${stats.parseErrors}`);
+    console.log(`  Recovered files:   ${recoveredFiles}`);
+    if (parserModeBreakdown["ascii-fallback"] || parserModeBreakdown["lexical-fallback"]) {
+      console.log(
+        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+      );
+    }
     console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
     console.log(`  Graph enabled:    ${stats.graphEnabled ? "yes" : "no"}`);
     console.log(`  Schema version:   ${stats.schemaVersion}`);
@@ -964,6 +1012,9 @@ async function handleExplain(
     importedByCount: file.importedBy?.length ?? 0,
     exportedSymbols: file.exportedSymbols,
     role: file.role,
+    ...(file.parserMode && file.parserMode !== "tree-sitter" && { parserMode: file.parserMode }),
+    ...(file.parseWarnings &&
+      file.parseWarnings.length > 0 && { parseWarnings: file.parseWarnings }),
     ...(file.parseErrors && file.parseErrors.length > 0 && { parseErrors: file.parseErrors }),
   };
 
@@ -975,6 +1026,16 @@ async function handleExplain(
     console.log(`  Language: ${file.language}`);
     if (file.role) {
       console.log(`  Role: ${file.role}`);
+    }
+    if (file.parserMode && file.parserMode !== "tree-sitter") {
+      console.log(`  Parser mode: ${file.parserMode}`);
+    }
+    if (file.parseWarnings && file.parseWarnings.length > 0) {
+      console.log(`  Parse warnings (${file.parseWarnings.length}):`);
+      file.parseWarnings.slice(0, 5).forEach((w) => console.log(`    - ${w}`));
+      if (file.parseWarnings.length > 5) {
+        console.log(`    ... and ${file.parseWarnings.length - 5} more`);
+      }
     }
 
     // Resolved internal imports
@@ -1167,6 +1228,16 @@ function handleAgentContext(
     log.header(`Agent Context: ${fileInfo.path}`);
     console.log(`  Language: ${fileInfo.language}`);
     if (fileInfo.role) console.log(`  Role: ${fileInfo.role}`);
+    if (fileInfo.parserMode) {
+      console.log(`  Parser mode: ${fileInfo.parserMode}`);
+    }
+    if (fileInfo.parseWarnings && fileInfo.parseWarnings.length > 0) {
+      console.log(`  Parse warnings (${fileInfo.parseWarnings.length}):`);
+      fileInfo.parseWarnings.slice(0, 3).forEach((w) => console.log(`    - ${w}`));
+      if (fileInfo.parseWarnings.length > 3) {
+        console.log(`    ... and ${fileInfo.parseWarnings.length - 3} more`);
+      }
+    }
 
     console.log(
       `\n  Symbols (${fileInfo.symbols.length}${fileInfo.symbolsTruncated > 0 ? `, ${fileInfo.symbolsTruncated} more not shown` : ""}):`,

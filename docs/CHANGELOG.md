@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.19.1] - 2026-04-29
+## [1.20.0] - 2026-04-29
 
 ### Fixed
 - **Parser ASCII fallback** (`src/services/source-index/parser.ts`): Tree-sitter `Invalid argument` errors on Windows (caused by Unicode box-drawing, em dashes, smart quotes in source comments) are now caught and retried with in-memory ASCII normalization. Symbols, imports, and exports are preserved. Errors are annotated with `"Invalid argument; parsed with ASCII fallback"`.

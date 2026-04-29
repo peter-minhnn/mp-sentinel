@@ -214,22 +214,59 @@ function buildTestingMap(
 
 // ── Dependency Map ─────────────────────────────────────────────────────────
 
-function buildDepMap(index: SourceIndex, dependencyUsage: Record<string, string[]>): DepMapEntry[] {
+function buildDepMap(
+  index: SourceIndex,
+  dependencyUsage: Record<string, string[]>,
+  fileRoles: Record<string, FileRole>,
+): DepMapEntry[] {
   const allDeps = { ...index.project.dependencies, ...index.project.devDependencies };
   const result: DepMapEntry[] = [];
 
   for (const [pkgName, files] of Object.entries(dependencyUsage)) {
     const version = allDeps[pkgName] ?? "unknown";
+    let sourceCount = 0;
+    let testCount = 0;
+    let exampleCount = 0;
+
+    for (const filePath of files) {
+      const role = fileRoles[filePath];
+      if (role === "test") {
+        testCount++;
+      } else if (role === "example") {
+        exampleCount++;
+      } else {
+        sourceCount++;
+      }
+    }
+
+    const usageKind: "runtime" | "test" | "mixed" =
+      sourceCount > 0 && testCount === 0
+        ? "runtime"
+        : sourceCount === 0 && testCount > 0
+          ? "test"
+          : "mixed";
+
     result.push({
       packageName: pkgName,
       version,
       files: [...files].sort(),
       fileCount: files.length,
+      sourceFileCount: sourceCount,
+      testFileCount: testCount,
+      exampleFileCount: exampleCount,
+      usageKind,
     });
   }
 
+  // Sort: runtime first, mixed second, test last; within each: fileCount desc, packageName asc
+  const kindOrder = { runtime: 0, mixed: 1, test: 2 };
   return result
-    .sort((a, b) => b.fileCount - a.fileCount || a.packageName.localeCompare(b.packageName))
+    .sort(
+      (a, b) =>
+        kindOrder[a.usageKind] - kindOrder[b.usageKind] ||
+        b.fileCount - a.fileCount ||
+        a.packageName.localeCompare(b.packageName),
+    )
     .slice(0, 20);
 }
 
@@ -354,7 +391,7 @@ export function buildSkillKnowledgeBase(
   const modules = buildModuleOwnership(index, fileRoles);
   const entrypoints = buildEntrypoints(index, publicApiFiles, fileRoles);
   const testing = buildTestingMap(index, testMap, fileRoles, modules);
-  const dependencies = buildDepMap(index, dependencyUsage);
+  const dependencies = buildDepMap(index, dependencyUsage, fileRoles);
   const risks = buildRiskMap(
     index,
     defaultExportFiles,

@@ -9,6 +9,7 @@ import type {
   ImportInfo,
   ExportInfo,
   SymbolInfo,
+  ParserMode,
   SourceIndexFile,
 } from "../../types/index.js";
 import { log } from "../../utils/logger.js";
@@ -670,6 +671,7 @@ export async function parseFile(
         imports: [],
         exports: [],
         symbols: [],
+        parserMode: "tree-sitter" as ParserMode,
         parseErrors,
       };
     }
@@ -689,6 +691,7 @@ export async function parseFile(
       imports,
       exports,
       symbols,
+      parserMode: "tree-sitter" as ParserMode,
     };
     if (parseErrors.length > 0) {
       result.parseErrors = parseErrors;
@@ -713,12 +716,7 @@ export async function parseFile(
 
             walkAST(tree.rootNode, symbols, imports, exports);
 
-            const allErrors = ["Invalid argument; parsed with ASCII fallback"];
-            if (normErrors.length > 0) {
-              allErrors.push(...normErrors);
-            }
-
-            return {
+            const result: SourceIndexFile = {
               path: filePath,
               language,
               sha256: "",
@@ -727,8 +725,13 @@ export async function parseFile(
               imports,
               exports,
               symbols,
-              parseErrors: allErrors,
+              parserMode: "ascii-fallback" as ParserMode,
+              parseWarnings: ["Invalid argument; parsed with ASCII fallback"],
             };
+            if (normErrors.length > 0) {
+              result.parseErrors = normErrors;
+            }
+            return result;
           }
         } catch {
           // ASCII fallback also failed — try lexical fallback below.
@@ -745,12 +748,7 @@ export async function parseFile(
 
             walkAST(tree.rootNode, symbols, imports, exports);
 
-            const allErrors = ["Invalid argument; parsed with retry"];
-            if (retryErrors.length > 0) {
-              allErrors.push(...retryErrors);
-            }
-
-            return {
+            const result: SourceIndexFile = {
               path: filePath,
               language,
               sha256: "",
@@ -759,8 +757,13 @@ export async function parseFile(
               imports,
               exports,
               symbols,
-              parseErrors: allErrors,
+              parserMode: "tree-sitter" as ParserMode,
+              parseWarnings: ["Invalid argument; parsed with retry"],
             };
+            if (retryErrors.length > 0) {
+              result.parseErrors = retryErrors;
+            }
+            return result;
           }
         } catch {
           // Retry also failed — use lexical fallback below.
@@ -778,7 +781,8 @@ export async function parseFile(
         imports: lexical.imports,
         exports: lexical.exports,
         symbols: lexical.symbols,
-        parseErrors: ["Invalid argument; parsed with lexical fallback"],
+        parserMode: "lexical-fallback" as ParserMode,
+        parseWarnings: ["Invalid argument; parsed with lexical fallback"],
       };
     }
 

@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.19.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.20.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,10 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.19.1**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.20.0**:
 
-- 🔧 **Parser ASCII Fallback** — Tree-sitter Unicode resilience with in-memory normalization
-- 📦 **Dist Freshness Guard** — dogfood + release-check validate dist CLI against source
+- 📊 **Dependency Usage Tiering** — Generated skills partition deps into Runtime vs Test/Tooling sections
+- 📡 **Parser Recovery Telemetry** — Fallback paths tracked separately from hard parse errors
+- 🩺 **Dogfood Health Guard** — Positive health path validated in every dogfood run
 - 🩺 **Health Type Cleanup** — shared `IndexHealthOutput` types, sample cap reduced to 5
 - 🛡️ **Safe Suggested Command Formatter** — `quoteCliArg()` normalizes paths and escapes arguments in suggested commands
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
