@@ -26,6 +26,7 @@ import {
   isLanguageSupported,
   sanitizeContent,
   lexicalParse,
+  chunkedParse,
 } from "../services/source-index/parser.js";
 import { getLanguageForFile } from "../services/source-index/manifest.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
@@ -4554,6 +4555,561 @@ describe("chunked-tree-sitter recovery: warnings vs errors", () => {
       expect(json.recoveredFiles).toBe(1);
       // But --recovered drilldown lists all non-tree-sitter files (both)
       expect(json.files.length).toBe(2);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+});
+
+// ── Chunked Parser Offset & Observability Tests (v1.26.0) ───────────────────
+
+describe("chunkedParse line offsets", () => {
+  it("preserves correct line numbers for symbols after chunk boundaries", async () => {
+    // Pad so chunk boundary falls between line 300 and line 350.
+    // ~300 lines of 100-char padding ≈ 30000 chars → boundary around line 298.
+    const padLine = " ".repeat(98) + "//";
+    const lines: string[] = [];
+    // Pre-boundary padding (lines 1-290)
+    for (let i = 1; i <= 290; i++) lines.push(padLine);
+    // Line 291: import before chunk boundary
+    lines.push('import { chunk } from "./lib";');
+    // Lines 292-320: more padding (push to ~32000 chars)
+    for (let i = 292; i <= 320; i++) lines.push(padLine);
+    // Lines 321-350: padding
+    for (let i = 321; i <= 350; i++) lines.push(padLine);
+    // Line 351: symbol in second chunk
+    lines.push('export function postChunkFn(): string { return "ok"; }');
+    // Line 352: export in second chunk
+    lines.push("export class PostChunkClass { prop = 1; }");
+    // Lines 353-360: final padding
+    for (let i = 353; i <= 360; i++) lines.push(padLine);
+
+    const content = lines.join("\n");
+    expect(content.length).toBeGreaterThan(30000);
+
+    const doParse = async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      const errors: string[] = [];
+      if (
+        tree &&
+        tree.rootNode &&
+        typeof tree.rootNode.hasError === "function" &&
+        tree.rootNode.hasError()
+      ) {
+        errors.push("Tree has syntax errors");
+      }
+      return { tree, parseErrors: errors };
+    };
+
+    const result = await chunkedParse(content, "typescript", doParse);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // Verify symbols have correct line numbers
+    const postChunkFn = result.symbols.find((s) => s.name === "postChunkFn");
+    expect(postChunkFn).toBeDefined();
+    expect(postChunkFn!.line).toBe(351);
+
+    const postChunkClass = result.symbols.find((s) => s.name === "PostChunkClass");
+    expect(postChunkClass).toBeDefined();
+    expect(postChunkClass!.line).toBe(352);
+
+    // Verify imports have correct line numbers
+    const chunkImport = result.imports.find((i) => i.source === "./lib");
+    expect(chunkImport).toBeDefined();
+    expect(chunkImport!.line).toBe(291);
+
+    // Verify exports have correct line numbers
+    const fnExport = result.exports.find((e) => e.names.includes("postChunkFn"));
+    expect(fnExport).toBeDefined();
+    expect(fnExport!.line).toBe(351);
+  });
+
+  it("preserves correct line numbers for imports after chunk boundaries", async () => {
+    const padLine = " ".repeat(98) + "//";
+    const lines: string[] = [];
+    for (let i = 1; i <= 290; i++) lines.push(padLine);
+    // First chunk import
+    lines.push('import { first } from "./first";');
+    for (let i = 292; i <= 360; i++) lines.push(padLine);
+    // Second chunk import (line 361)
+    lines.push('import { second } from "./second";');
+    for (let i = 362; i <= 370; i++) lines.push(padLine);
+
+    const content = lines.join("\n");
+    expect(content.length).toBeGreaterThan(30000);
+
+    const doParse = async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      const errors: string[] = [];
+      if (
+        tree &&
+        tree.rootNode &&
+        typeof tree.rootNode.hasError === "function" &&
+        tree.rootNode.hasError()
+      ) {
+        errors.push("Tree has syntax errors");
+      }
+      return { tree, parseErrors: errors };
+    };
+
+    const result = await chunkedParse(content, "typescript", doParse);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    const firstImport = result.imports.find((i) => i.source === "./first");
+    expect(firstImport).toBeDefined();
+    expect(firstImport!.line).toBe(291);
+
+    const secondImport = result.imports.find((i) => i.source === "./second");
+    expect(secondImport).toBeDefined();
+    expect(secondImport!.line).toBe(361);
+  });
+
+  it("preserves correct line numbers for exports after chunk boundaries", async () => {
+    const padLine = " ".repeat(98) + "//";
+    const lines: string[] = [];
+    for (let i = 1; i <= 290; i++) lines.push(padLine);
+    // Export in first chunk
+    lines.push("export function preExport() { return 1; }");
+    for (let i = 292; i <= 360; i++) lines.push(padLine);
+    // Export in second chunk (line 361)
+    lines.push("export function postExport() { return 2; }");
+    for (let i = 362; i <= 370; i++) lines.push(padLine);
+
+    const content = lines.join("\n");
+    expect(content.length).toBeGreaterThan(30000);
+
+    const doParse = async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      const errors: string[] = [];
+      if (
+        tree &&
+        tree.rootNode &&
+        typeof tree.rootNode.hasError === "function" &&
+        tree.rootNode.hasError()
+      ) {
+        errors.push("Tree has syntax errors");
+      }
+      return { tree, parseErrors: errors };
+    };
+
+    const result = await chunkedParse(content, "typescript", doParse);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    const preExp = result.exports.find((e) => e.names.includes("preExport"));
+    expect(preExp).toBeDefined();
+    expect(preExp!.line).toBe(291);
+
+    const postExp = result.exports.find((e) => e.names.includes("postExport"));
+    expect(postExp).toBeDefined();
+    expect(postExp!.line).toBe(361);
+  });
+});
+
+describe("chunkedParse observability fields", () => {
+  const buildLargeContentWithMarkers = (markers: string[]): string => {
+    const padLine = " ".repeat(98) + "//";
+    const lines: string[] = [];
+    // ~290 pad lines → first chunk fills up
+    for (let i = 1; i <= 290; i++) lines.push(padLine);
+    lines.push(markers[0]!);
+    for (let i = 292; i <= 360; i++) lines.push(padLine);
+    lines.push(markers[1]!);
+    for (let i = 362; i <= 370; i++) lines.push(padLine);
+    return lines.join("\n");
+  };
+
+  it("chunkWarningCount matches count of chunk-level parse warnings", async () => {
+    const content = buildLargeContentWithMarkers([
+      'import { a } from "./a";',
+      'import { b } from "./b";',
+    ]);
+    expect(content.length).toBeGreaterThan(30000);
+
+    const doParse = async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      const errors: string[] = [];
+      if (
+        tree &&
+        tree.rootNode &&
+        typeof tree.rootNode.hasError === "function" &&
+        tree.rootNode.hasError()
+      ) {
+        errors.push("Tree has syntax errors");
+      }
+      return { tree, parseErrors: errors };
+    };
+
+    const result = await chunkedParse(content, "typescript", doParse);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // chunkWarningCount = number of chunk-level parse warnings
+    expect(typeof result.chunkWarningCount).toBe("number");
+    // parseWarnings are the individual chunk warnings (e.g., "Chunk at line X: Tree has syntax errors")
+    expect(result.chunkWarningCount).toBe(result.parseWarnings.length);
+    // chunkCount should be at least 2
+    expect(result.chunkCount).toBeGreaterThanOrEqual(2);
+    // chunkSize should be the MAX_CHUNK_SIZE constant
+    expect(result.chunkSize).toBe(30000);
+  });
+
+  it("returns null when content fits in a single chunk", async () => {
+    const content = 'export const x = 1;\nexport function foo() { return "bar"; }\n';
+
+    const doParse = async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      return { tree, parseErrors: [] };
+    };
+
+    const result = await chunkedParse(content, "typescript", doParse);
+    expect(result).toBeNull();
+  });
+});
+
+// ── Parser Drilldown Chunk Fields (v1.26.0) ──────────────────────────────────
+
+describe("indexing --recovered chunk fields", () => {
+  it("--recovered entries include chunkCount, chunkSize, chunkWarningCount when present", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "chunk-fields-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject a chunked file with chunkCount, chunkSize, chunkWarningCount
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/large.ts",
+      language: "typescript",
+      sha256: "abc123",
+      sizeBytes: 50000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: [
+        "Invalid argument; parsed with chunked tree-sitter fallback",
+        "Chunk at line 801: Tree has syntax errors",
+      ],
+      chunkCount: 3,
+      chunkSize: 30000,
+      chunkWarningCount: 1,
+    });
+    cached.stats.totalFiles = 2;
+    cached.stats.indexedFiles = 2;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+          recovered?: boolean;
+        },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      const largeFile = json.files.find((f: { path: string }) => f.path === "src/large.ts");
+      expect(largeFile).toBeDefined();
+      expect(largeFile.chunkCount).toBe(3);
+      expect(largeFile.chunkSize).toBe(30000);
+      expect(largeFile.chunkWarningCount).toBe(1);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("--recovered entries omit chunk fields for non-chunked-tree-sitter modes", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "no-chunk-fields", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    // Add ascii-fallback file without chunk fields
+    cached.files.push({
+      path: "src/ascii.ts",
+      language: "typescript",
+      sha256: "def456",
+      sizeBytes: 1500,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "ascii-fallback",
+      parseWarnings: ["Invalid argument; parsed with ASCII fallback"],
+    });
+    // Add lexical-fallback file without chunk fields
+    cached.files.push({
+      path: "src/lexical.ts",
+      language: "typescript",
+      sha256: "ghi789",
+      sizeBytes: 2000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "lexical-fallback",
+      parseWarnings: ["Invalid argument; parsed with lexical fallback"],
+    });
+    cached.stats.totalFiles = 3;
+    cached.stats.indexedFiles = 3;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+          recovered?: boolean;
+        },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      const asciiFile = json.files.find((f: { path: string }) => f.path === "src/ascii.ts");
+      expect(asciiFile).toBeDefined();
+      expect(asciiFile.chunkCount).toBeUndefined();
+      expect(asciiFile.chunkSize).toBeUndefined();
+      expect(asciiFile.chunkWarningCount).toBeUndefined();
+
+      const lexicalFile = json.files.find((f: { path: string }) => f.path === "src/lexical.ts");
+      expect(lexicalFile).toBeDefined();
+      expect(lexicalFile.chunkCount).toBeUndefined();
+      expect(lexicalFile.chunkSize).toBeUndefined();
+      expect(lexicalFile.chunkWarningCount).toBeUndefined();
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("--recovered handles old-cache files with missing parserMode as tree-sitter", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "old-cache-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    // Add old-cache file without parserMode field (pre-1.3)
+    cached.files.push({
+      path: "src/old.ts",
+      language: "typescript",
+      sha256: "old123",
+      sizeBytes: 1000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      // No parserMode — old-cache (pre-schema 1.3)
+    });
+    cached.stats.totalFiles = 2;
+    cached.stats.indexedFiles = 2;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+          recovered?: boolean;
+        },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      const oldFile = json.files.find((f: { path: string }) => f.path === "src/old.ts");
+      // Old-cache files without parserMode should NOT be in recovered (treated as tree-sitter)
+      expect(oldFile).toBeUndefined();
+      // recoveredFiles count should be 0
+      expect(json.recoveredFiles).toBe(0);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("--recovered clean empty-state has proper shape", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "empty-state-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+          recovered?: boolean;
+        },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+      expect(json.status).toBe("ok");
+      expect(json.totalFiles).toBe(1);
+      expect(json.recoveredFiles).toBe(0);
+      expect(json.files).toEqual([]);
+      expect(json.parserModeBreakdown).toEqual({
+        "tree-sitter": 1,
+        "chunked-tree-sitter": 0,
+        "ascii-fallback": 0,
+        "lexical-fallback": 0,
+      });
+      expect(json.truncated).toBe(false);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("--recovered chunked-tree-sitter file has parserModeBreakdown reflecting chunked count", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "breakdown-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/chunked.ts",
+      language: "typescript",
+      sha256: "chk123",
+      sizeBytes: 50000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: ["Invalid argument; parsed with chunked tree-sitter fallback"],
+      chunkCount: 2,
+      chunkSize: 30000,
+      chunkWarningCount: 0,
+    });
+    cached.files.push({
+      path: "src/also-chunked.ts",
+      language: "typescript",
+      sha256: "chk456",
+      sizeBytes: 45000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: ["Invalid argument; parsed with chunked tree-sitter fallback"],
+    });
+    cached.stats.totalFiles = 3;
+    cached.stats.indexedFiles = 3;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+          recovered?: boolean;
+        },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+      expect(json.parserModeBreakdown["tree-sitter"]).toBe(1);
+      expect(json.parserModeBreakdown["chunked-tree-sitter"]).toBe(2);
+      expect(json.parserModeBreakdown["ascii-fallback"]).toBe(0);
+      expect(json.parserModeBreakdown["lexical-fallback"]).toBe(0);
+      expect(json.recoveredFiles).toBe(2);
     } finally {
       stdoutWrite.mockRestore();
     }

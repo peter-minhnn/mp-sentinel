@@ -1056,6 +1056,9 @@ interface DrilldownFileEntry {
   exportCount: number;
   role?: FileRole;
   suggestedCommands: string[];
+  chunkCount?: number;
+  chunkSize?: number;
+  chunkWarningCount?: number;
 }
 
 const MAX_DRILLDOWN_FILES = 50;
@@ -1124,10 +1127,16 @@ async function handleDrilldown(
     importCount: f.imports.length,
     exportCount: f.exports.length,
     ...(f.role && { role: f.role }),
+    ...(f.chunkCount !== undefined && { chunkCount: f.chunkCount }),
+    ...(f.chunkSize !== undefined && { chunkSize: f.chunkSize }),
+    ...(f.chunkWarningCount !== undefined && { chunkWarningCount: f.chunkWarningCount }),
     suggestedCommands: [
       `mp-sentinel indexing --explain-index ${quoteCliArg(f.path)} --index-format json`,
       `mp-sentinel indexing --agent-context ${quoteCliArg(f.path)} --index-format json`,
     ],
+    ...(f.chunkCount !== undefined && { chunkCount: f.chunkCount }),
+    ...(f.chunkSize !== undefined && { chunkSize: f.chunkSize }),
+    ...(f.chunkWarningCount !== undefined && { chunkWarningCount: f.chunkWarningCount }),
   }));
 
   if (mode === "recovered") {

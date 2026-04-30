@@ -1,3 +1,15 @@
+# What's New in v1.26.0
+
+## Chunked Parser Observability & Lexical Fallback Guard
+
+v1.26.0 adds chunk-level telemetry fields to parser output and drilldown, and hardens the dogfood health gate to catch silent parser regressions.
+
+- **Chunk telemetry** (`src/types/index.ts`, `src/services/source-index/parser.ts`, `src/commands/indexing.ts`): `chunkCount`, `chunkSize`, and `chunkWarningCount` fields added to `SourceIndexFile` and surfaced in `--recovered` drilldown entries for files parsed via `chunked-tree-sitter`.
+- **Dogfood lexical-fallback guard** (`scripts/dogfood.mjs`): Health check now asserts `parserModeBreakdown["lexical-fallback"] === 0` after a fresh dogfood index build. A non-zero count means Tree-sitter + chunked + ASCII all failed for some file, indicating a silent parser regression.
+- **Dogfood chunk field validation** (`scripts/dogfood.mjs`): Parser drilldown step validates that every `chunked-tree-sitter` recovered file has `parseWarnings` with a chunked recovery indicator, plus valid `chunkCount` (>= 2), `chunkSize`, `chunkWarningCount`, and non-zero symbols/imports/exports counts.
+
+---
+
 # What's New in v1.25.0
 
 ## Large-File Chunked Parser Recovery

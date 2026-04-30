@@ -179,6 +179,17 @@ function stepHealthCheck() {
     return false;
   }
 
+  // v1.26.0: lexical fallback must not occur on this repo's own source code.
+  // A non-zero count means Tree-sitter + chunked + ASCII all failed for a file,
+  // which indicates a silent regression in parser recovery.
+  if (json.parserModeBreakdown["lexical-fallback"] !== 0) {
+    fail(
+      "indexing --health",
+      `lexical-fallback=${json.parserModeBreakdown["lexical-fallback"]}, expected 0`,
+    );
+    return false;
+  }
+
   // Assert suggestedCommands when parser recovery/errors exist
   const hasRecovered = typeof json.recoveredFiles === "number" && json.recoveredFiles > 0;
   const hasParseErrors = typeof json.parseErrorCount === "number" && json.parseErrorCount > 0;
@@ -311,6 +322,65 @@ function stepParserDrilldown() {
     const firstFile = peJson.files[0];
     if (!Array.isArray(firstFile.suggestedCommands) || firstFile.suggestedCommands.length === 0) {
       fail("parser drilldown --parse-errors", "first file missing suggestedCommands");
+      return false;
+    }
+  }
+
+  // v1.26.0: validate chunk fields for chunked-tree-sitter recovered files
+  for (const file of recJson.files) {
+    if (file.parserMode !== "chunked-tree-sitter") continue;
+
+    if (!Array.isArray(file.parseWarnings) || file.parseWarnings.length === 0) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing parseWarnings`,
+      );
+      return false;
+    }
+    const hasRecoveryNote = file.parseWarnings.some(
+      (w) => w.includes("chunked tree-sitter") || w.includes("chunked-tree-sitter"),
+    );
+    if (!hasRecoveryNote) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing chunked recovery indicator in parseWarnings`,
+      );
+      return false;
+    }
+
+    // chunkCount must be >= 2 for a meaningful chunked parse
+    if (typeof file.chunkCount !== "number" || file.chunkCount < 2) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing or invalid chunkCount (got ${file.chunkCount})`,
+      );
+      return false;
+    }
+
+    // chunkSize must be a positive number
+    if (typeof file.chunkSize !== "number" || file.chunkSize <= 0) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing or invalid chunkSize (got ${file.chunkSize})`,
+      );
+      return false;
+    }
+
+    // chunkWarningCount must be a number (0+)
+    if (typeof file.chunkWarningCount !== "number") {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing chunkWarningCount`,
+      );
+      return false;
+    }
+
+    // Chunked recovery must produce meaningful data (non-zero symbols or imports or exports)
+    if (file.symbolCount === 0 && file.importCount === 0 && file.exportCount === 0) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" has zero symbols, imports, and exports`,
+      );
       return false;
     }
   }

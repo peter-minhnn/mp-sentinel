@@ -417,10 +417,16 @@ export interface SourceIndexFile {
   symbols: SymbolInfo[];
   /** Hard parse errors — the file could not be parsed at all */
   parseErrors?: string[];
-  /** Which parser mode was used (schema 1.3+). Absent on pre-1.3 caches (implies tree-sitter). */
+  /** Which parser mode was used. Optional parser telemetry fields; absent on older caches. */
   parserMode?: ParserMode;
-  /** Recovery warnings — fallback was used but the file was recovered (schema 1.3+) */
+  /** Recovery warnings — fallback was used but the file was recovered */
   parseWarnings?: string[];
+  /** Number of chunks when parserMode is chunked-tree-sitter (optional parser telemetry) */
+  chunkCount?: number;
+  /** MAX_CHUNK_SIZE value used when parserMode is chunked-tree-sitter (optional parser telemetry) */
+  chunkSize?: number;
+  /** Number of chunk-level warnings when parserMode is chunked-tree-sitter (optional parser telemetry) */
+  chunkWarningCount?: number;
   /** Dependency graph - files this file imports from */
   importsFrom?: string[];
   /** Files that import this file */
@@ -520,11 +526,11 @@ export interface IndexHealthOutput {
   staleReasons: string[];
   changedFilesSample: string[];
   missingFilesSample: string[];
-  /** Number of files recovered via fallback parser (schema 1.3+) */
+  /** Number of files recovered via fallback parser (optional parser telemetry; absent on older caches) */
   recoveredFiles?: number;
-  /** Breakdown of files by parser mode (schema 1.3+) */
+  /** Breakdown of files by parser mode (optional parser telemetry; absent on older caches) */
   parserModeBreakdown?: Record<ParserMode, number>;
-  /** Count of files with hard parse errors (schema 1.3+) */
+  /** Count of files with hard parse errors (optional parser telemetry; absent on older caches) */
   parseErrorCount?: number;
   /** Suggested next commands based on parser recovery state */
   suggestedCommands?: string[];

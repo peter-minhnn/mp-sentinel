@@ -639,7 +639,7 @@ const MAX_CHUNK_SIZE = 30000;
  * Splits content on line boundaries, parses each chunk independently,
  * and merges the results while preserving correct line numbers via offsets.
  */
-async function chunkedParse(
+export async function chunkedParse(
   content: string,
   language: IndexableLanguage,
   doParse: (parseContent: string) => Promise<{ tree: any; parseErrors: string[] }>,
@@ -649,6 +649,9 @@ async function chunkedParse(
   exports: ExportInfo[];
   parseWarnings: string[];
   parseErrors: string[];
+  chunkCount: number;
+  chunkSize: number;
+  chunkWarningCount: number;
 } | null> {
   const lines = content.split("\n");
   const chunks: Array<{ text: string; startLine: number }> = [];
@@ -752,6 +755,9 @@ async function chunkedParse(
     exports: dedupedExports,
     parseWarnings: allParseWarnings,
     parseErrors: allParseErrors,
+    chunkCount: chunks.length,
+    chunkSize: MAX_CHUNK_SIZE,
+    chunkWarningCount: allParseWarnings.length,
   };
 }
 
@@ -848,6 +854,9 @@ export async function parseFile(
           symbols: chunked.symbols,
           parserMode: "chunked-tree-sitter" as ParserMode,
           parseWarnings,
+          chunkCount: chunked.chunkCount,
+          chunkSize: chunked.chunkSize,
+          chunkWarningCount: chunked.chunkWarningCount,
         };
         if (chunked.parseErrors.length > 0) {
           result.parseErrors = chunked.parseErrors;
@@ -922,6 +931,9 @@ export async function parseFile(
       }
 
       // Step 3: Tree-sitter failed entirely — use lexical regex-based fallback.
+      log.warning(
+        `Lexical fallback used for ${filePath}: Tree-sitter + chunked + ASCII all failed`,
+      );
       const lexical = lexicalParse(content);
       return {
         path: filePath,
