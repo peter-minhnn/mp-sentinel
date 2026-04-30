@@ -211,6 +211,31 @@ function stepHealthCheck() {
     }
   }
 
+  // v1.27.0: assert chunk aggregate telemetry when chunked files exist
+  const hasChunkedFiles =
+    typeof json.parserModeBreakdown === "object" &&
+    json.parserModeBreakdown !== null &&
+    typeof json.parserModeBreakdown["chunked-tree-sitter"] === "number" &&
+    json.parserModeBreakdown["chunked-tree-sitter"] > 0;
+  if (hasChunkedFiles) {
+    if (typeof json.chunkedFiles !== "number") {
+      fail("indexing --health", "chunkedFiles missing when chunked files exist");
+      return false;
+    }
+    if (typeof json.totalChunks !== "number") {
+      fail("indexing --health", "totalChunks missing when chunked files exist");
+      return false;
+    }
+    if (typeof json.totalChunkWarnings !== "number") {
+      fail("indexing --health", "totalChunkWarnings missing when chunked files exist");
+      return false;
+    }
+    if (typeof json.chunkSize !== "number") {
+      fail("indexing --health", "chunkSize missing when chunked files exist");
+      return false;
+    }
+  }
+
   const parts = [
     `status=ok`,
     `toolVersion=${json.toolVersion}`,
@@ -439,6 +464,120 @@ function stepIndexQuery() {
     return false;
   }
   const acSymbols = acJson.file.symbolsTruncated ? `${acJson.file.symbols.length}+` : acJson.file.symbols.length;
+
+  // v1.27.0: agent-context chunk fields
+  if (acJson.file.parserMode === "chunked-tree-sitter") {
+    if (typeof acJson.file.chunkCount !== "number") {
+      fail("indexing --agent-context", "chunkCount missing for chunked-tree-sitter file");
+      return false;
+    }
+    if (typeof acJson.file.chunkSize !== "number") {
+      fail("indexing --agent-context", "chunkSize missing for chunked-tree-sitter file");
+      return false;
+    }
+    if (typeof acJson.file.chunkWarningCount !== "number") {
+      fail("indexing --agent-context", "chunkWarningCount missing for chunked-tree-sitter file");
+      return false;
+    }
+  } else {
+    if ("chunkCount" in acJson.file) {
+      fail("indexing --agent-context", `chunkCount present for non-chunked file (parserMode=${acJson.file.parserMode ?? "tree-sitter"})`);
+      return false;
+    }
+  }
+
+  // --explain-index (v1.27.0: chunk telemetry propagation)
+  const eiOut = run(
+    "node dist/index.js indexing --explain-index src/types/index.ts --index-format json",
+    "indexing --explain-index",
+  );
+  if (eiOut === null) return false;
+
+  const eiJson = parseJson(eiOut, "indexing --explain-index");
+  if (!eiJson) return false;
+
+  if (typeof eiJson.path !== "string") {
+    fail("indexing --explain-index", "path missing or not a string");
+    return false;
+  }
+  if (eiJson.parserMode === "chunked-tree-sitter") {
+    if (typeof eiJson.chunkCount !== "number") {
+      fail("indexing --explain-index", "chunkCount missing for chunked-tree-sitter file");
+      return false;
+    }
+    if (typeof eiJson.chunkSize !== "number") {
+      fail("indexing --explain-index", "chunkSize missing for chunked-tree-sitter file");
+      return false;
+    }
+    if (typeof eiJson.chunkWarningCount !== "number") {
+      fail("indexing --explain-index", "chunkWarningCount missing for chunked-tree-sitter file");
+      return false;
+    }
+  } else {
+    if ("chunkCount" in eiJson) {
+      fail("indexing --explain-index", `chunkCount present for non-chunked file (parserMode=${eiJson.parserMode ?? "tree-sitter"})`);
+      return false;
+    }
+  }
+
+  // v1.27.0: when chunked files exist, test agent-context + explain-index against one
+  const roOut = run(
+    "node dist/index.js indexing --recovered --index-format json",
+    "index queries --recovered (for chunk field check)",
+  );
+  if (roOut !== null) {
+    const roJson = parseJson(roOut, "index queries --recovered");
+    if (roJson && Array.isArray(roJson.files)) {
+      const chunked = roJson.files.filter((f) => f.parserMode === "chunked-tree-sitter");
+      if (chunked.length > 0) {
+        const chunkedPath = chunked[0].path;
+
+        const acChunked = run(
+          `node dist/index.js indexing --agent-context ${chunkedPath} --index-format json`,
+          `indexing --agent-context ${chunkedPath}`,
+        );
+        if (acChunked !== null) {
+          const acChunkedJson = parseJson(acChunked, `indexing --agent-context ${chunkedPath}`);
+          if (acChunkedJson && acChunkedJson.file) {
+            if (typeof acChunkedJson.file.chunkCount !== "number") {
+              fail("indexing --agent-context (chunked)", "chunkCount missing for chunked file");
+              return false;
+            }
+            if (typeof acChunkedJson.file.chunkSize !== "number") {
+              fail("indexing --agent-context (chunked)", "chunkSize missing for chunked file");
+              return false;
+            }
+            if (typeof acChunkedJson.file.chunkWarningCount !== "number") {
+              fail("indexing --agent-context (chunked)", "chunkWarningCount missing for chunked file");
+              return false;
+            }
+          }
+        }
+
+        const eiChunked = run(
+          `node dist/index.js indexing --explain-index ${chunkedPath} --index-format json`,
+          `indexing --explain-index ${chunkedPath}`,
+        );
+        if (eiChunked !== null) {
+          const eiChunkedJson = parseJson(eiChunked, `indexing --explain-index ${chunkedPath}`);
+          if (eiChunkedJson) {
+            if (typeof eiChunkedJson.chunkCount !== "number") {
+              fail("indexing --explain-index (chunked)", "chunkCount missing for chunked file");
+              return false;
+            }
+            if (typeof eiChunkedJson.chunkSize !== "number") {
+              fail("indexing --explain-index (chunked)", "chunkSize missing for chunked file");
+              return false;
+            }
+            if (typeof eiChunkedJson.chunkWarningCount !== "number") {
+              fail("indexing --explain-index (chunked)", "chunkWarningCount missing for chunked file");
+              return false;
+            }
+          }
+        }
+      }
+    }
+  }
 
   // --find-symbol
   const fsOut = run(

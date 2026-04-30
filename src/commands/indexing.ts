@@ -19,6 +19,7 @@ import {
   queryImports,
   queryAgentContext,
   quoteCliArg,
+  getParserTelemetry,
 } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
@@ -119,6 +120,31 @@ export const getParserModeBreakdown = (index: SourceIndex): Record<string, numbe
     breakdown[mode] = (breakdown[mode] ?? 0) + 1;
   }
   return breakdown;
+};
+
+/**
+ * Aggregate chunk telemetry across all chunked-tree-sitter files.
+ * Returns undefined when no chunked files exist.
+ */
+export const getChunkTelemetry = (
+  index: SourceIndex,
+):
+  | { chunkedFiles: number; totalChunks: number; totalChunkWarnings: number; chunkSize: number }
+  | undefined => {
+  let chunkedFiles = 0;
+  let totalChunks = 0;
+  let totalChunkWarnings = 0;
+  let chunkSize: number | undefined;
+  for (const file of index.files) {
+    if (file.parserMode === "chunked-tree-sitter") {
+      chunkedFiles++;
+      if (file.chunkCount !== undefined) totalChunks += file.chunkCount;
+      if (file.chunkWarningCount !== undefined) totalChunkWarnings += file.chunkWarningCount;
+      if (chunkSize === undefined && file.chunkSize !== undefined) chunkSize = file.chunkSize;
+    }
+  }
+  if (chunkedFiles === 0) return undefined;
+  return { chunkedFiles, totalChunks, totalChunkWarnings, chunkSize: chunkSize ?? 0 };
 };
 
 /**
@@ -626,6 +652,8 @@ async function handleHealth(
     suggestedCommands.push("mp-sentinel indexing --parse-errors --index-format json");
   }
 
+  const chunkTelemetry = getChunkTelemetry(index);
+
   const output: IndexHealthOutput = {
     status,
     schemaVersion: index.schemaVersion,
@@ -641,6 +669,7 @@ async function handleHealth(
     recoveredFiles,
     parserModeBreakdown,
     parseErrorCount,
+    ...(chunkTelemetry && chunkTelemetry),
     ...(suggestedCommands.length > 0 && { suggestedCommands }),
   };
 
@@ -660,6 +689,11 @@ async function handleHealth(
     ) {
       console.log(
         `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, chunked-tree-sitter=${parserModeBreakdown["chunked-tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+      );
+    }
+    if (chunkTelemetry) {
+      console.log(
+        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings`,
       );
     }
     console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
@@ -934,6 +968,7 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
 
   const recoveredFiles = getRecoveredFileCount(index);
   const parserModeBreakdown = getParserModeBreakdown(index);
+  const chunkTelemetry = getChunkTelemetry(index);
 
   const stats = {
     totalFiles: index.stats.totalFiles,
@@ -942,6 +977,7 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     parseErrors: index.stats.parseErrors,
     recoveredFiles,
     parserModeBreakdown,
+    ...(chunkTelemetry && chunkTelemetry),
     durationMs: index.stats.durationMs,
     importEdges: index.stats.importEdges,
     graphEnabled: index.files.some((f) => f.importsFrom || f.importedBy),
@@ -979,6 +1015,11 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     ) {
       console.log(
         `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, chunked-tree-sitter=${parserModeBreakdown["chunked-tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+      );
+    }
+    if (chunkTelemetry) {
+      console.log(
+        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings`,
       );
     }
     console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
@@ -1121,15 +1162,11 @@ async function handleDrilldown(
   const files: DrilldownFileEntry[] = capped.map((f) => ({
     path: f.path,
     parserMode: f.parserMode ?? "tree-sitter",
-    ...(f.parseWarnings && f.parseWarnings.length > 0 && { parseWarnings: f.parseWarnings }),
-    ...(f.parseErrors && f.parseErrors.length > 0 && { parseErrors: f.parseErrors }),
     symbolCount: f.symbols.length,
     importCount: f.imports.length,
     exportCount: f.exports.length,
     ...(f.role && { role: f.role }),
-    ...(f.chunkCount !== undefined && { chunkCount: f.chunkCount }),
-    ...(f.chunkSize !== undefined && { chunkSize: f.chunkSize }),
-    ...(f.chunkWarningCount !== undefined && { chunkWarningCount: f.chunkWarningCount }),
+    ...getParserTelemetry(f),
     suggestedCommands: [
       `mp-sentinel indexing --explain-index ${quoteCliArg(f.path)} --index-format json`,
       `mp-sentinel indexing --agent-context ${quoteCliArg(f.path)} --index-format json`,
@@ -1279,10 +1316,7 @@ async function handleExplain(
     importedByCount: file.importedBy?.length ?? 0,
     exportedSymbols: file.exportedSymbols,
     role: file.role,
-    ...(file.parserMode && file.parserMode !== "tree-sitter" && { parserMode: file.parserMode }),
-    ...(file.parseWarnings &&
-      file.parseWarnings.length > 0 && { parseWarnings: file.parseWarnings }),
-    ...(file.parseErrors && file.parseErrors.length > 0 && { parseErrors: file.parseErrors }),
+    ...getParserTelemetry(file),
   };
 
   if (format === "json") {
@@ -1303,6 +1337,11 @@ async function handleExplain(
       if (file.parseWarnings.length > 5) {
         console.log(`    ... and ${file.parseWarnings.length - 5} more`);
       }
+    }
+    if (file.parserMode === "chunked-tree-sitter" && file.chunkCount !== undefined) {
+      console.log(
+        `  Chunked: ${file.chunkCount} chunks @ ${file.chunkSize} bytes/chunk, ${file.chunkWarningCount ?? 0} warnings`,
+      );
     }
 
     // Resolved internal imports
@@ -1504,6 +1543,18 @@ function handleAgentContext(
       if (fileInfo.parseWarnings.length > 3) {
         console.log(`    ... and ${fileInfo.parseWarnings.length - 3} more`);
       }
+    }
+    if (fileInfo.parseErrorMessages && fileInfo.parseErrorMessages.length > 0) {
+      console.log(`  Parse errors (${fileInfo.parseErrorMessages.length}):`);
+      fileInfo.parseErrorMessages.slice(0, 3).forEach((e) => console.log(`    - ${e}`));
+      if (fileInfo.parseErrorMessages.length > 3) {
+        console.log(`    ... and ${fileInfo.parseErrorMessages.length - 3} more`);
+      }
+    }
+    if (fileInfo.chunkCount !== undefined) {
+      console.log(
+        `  Chunked: ${fileInfo.chunkCount} chunks @ ${fileInfo.chunkSize} bytes/chunk, ${fileInfo.chunkWarningCount ?? 0} warnings`,
+      );
     }
 
     console.log(

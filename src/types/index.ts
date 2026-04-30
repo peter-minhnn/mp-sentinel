@@ -534,6 +534,14 @@ export interface IndexHealthOutput {
   parseErrorCount?: number;
   /** Suggested next commands based on parser recovery state */
   suggestedCommands?: string[];
+  /** Number of files parsed via chunked-tree-sitter (optional aggregate chunk telemetry) */
+  chunkedFiles?: number;
+  /** Total chunk count across all chunked files (optional aggregate chunk telemetry) */
+  totalChunks?: number;
+  /** Total chunk-level warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkWarnings?: number;
+  /** Size of each chunk in bytes (optional aggregate chunk telemetry) */
+  chunkSize?: number;
 }
 
 /**

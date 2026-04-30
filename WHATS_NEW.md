@@ -1,3 +1,16 @@
+# What's New in v1.27.0
+
+## Parser Telemetry Propagation
+
+v1.27.0 propagates parser telemetry consistently across all output surfaces, adds a shared serializer for parser diagnostics, and surfaces aggregate chunk stats in health/stats output.
+
+- **Shared parser telemetry serializer** (`src/services/source-index/query.ts`): New `getParserTelemetry(file, options?)` function consolidates all parser diagnostic fields (`parserMode`, `parseWarnings`, `parseErrors`, `parseErrorMessages`, `chunkCount`, `chunkSize`, `chunkWarningCount`) into a single call. Supports `agentContext: true` option to emit `parseErrors` as a count with separate `parseErrorMessages` array.
+- **Consistent telemetry in all outputs** (`src/commands/indexing.ts`): `--explain-index` and `--agent-context` now include chunk telemetry for chunked-tree-sitter files. `handleDrilldown()` and `handleExplain()` both use the shared serializer.
+- **Aggregate chunk summary** (`src/commands/indexing.ts`, `src/types/index.ts`): `--health` and `--stats` JSON now include `chunkedFiles`, `totalChunks`, `totalChunkWarnings`, `chunkSize` when chunked files exist. Console output shows a compact "Chunks: N files, N chunks @ N bytes/chunk, N warnings" line.
+- **Dogfood extended** (`scripts/dogfood.mjs`): Health step asserts aggregate chunk fields. Index queries step validates chunk fields in `agent-context` and `explain-index` output per parser mode.
+
+---
+
 # What's New in v1.26.1
 
 ## Hygiene Patch

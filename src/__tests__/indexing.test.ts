@@ -19,6 +19,7 @@ import {
   queryImports,
   queryAgentContext,
   quoteCliArg,
+  getParserTelemetry,
 } from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
@@ -439,6 +440,60 @@ describe("indexing command output", () => {
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
       expect(parsed.stats.indexedFiles).toBe(1);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("runIndexingCommand --stats includes chunk telemetry when chunked files exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"));
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "chunk-stats", type: "module", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject chunked files
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/large.ts",
+      language: "typescript",
+      sha256: "abc123",
+      sizeBytes: 50000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      chunkCount: 4,
+      chunkSize: 30000,
+      chunkWarningCount: 2,
+    });
+    cached.stats.totalFiles = 2;
+    cached.stats.indexedFiles = 2;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) jsonBlob = text;
+      originalLog?.(...args);
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", stats: true }, cwd);
+
+      expect(exitCode).toBe(0);
+      expect(jsonBlob).not.toBeNull();
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.chunkedFiles).toBe(1);
+      expect(parsed.totalChunks).toBe(4);
+      expect(parsed.totalChunkWarnings).toBe(2);
+      expect(parsed.chunkSize).toBe(30000);
     } finally {
       console.log = originalLog;
     }
@@ -3482,6 +3537,106 @@ describe("indexing --health", () => {
       console.log = originalLog;
     }
   });
+
+  it("includes chunk telemetry when chunked files exist in the index", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "chunk-health", type: "module", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject chunked files into the cache
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/a.ts",
+      language: "typescript",
+      sha256: "aaa",
+      sizeBytes: 50000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      chunkCount: 3,
+      chunkSize: 30000,
+      chunkWarningCount: 1,
+    });
+    cached.files.push({
+      path: "src/b.ts",
+      language: "typescript",
+      sha256: "bbb",
+      sizeBytes: 80000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [],
+      parserMode: "chunked-tree-sitter",
+      chunkCount: 5,
+      chunkSize: 30000,
+      chunkWarningCount: 2,
+    });
+    cached.stats.totalFiles = 3;
+    cached.stats.indexedFiles = 3;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(1); // stale because injected files don't exist on disk
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.chunkedFiles).toBe(2);
+      expect(parsed.totalChunks).toBe(8);
+      expect(parsed.totalChunkWarnings).toBe(3);
+      expect(parsed.chunkSize).toBe(30000);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("omits chunk telemetry when no chunked files exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "no-chunks-health", type: "module", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("ok");
+      expect(parsed.chunkedFiles).toBeUndefined();
+      expect(parsed.totalChunks).toBeUndefined();
+      expect(parsed.totalChunkWarnings).toBeUndefined();
+      expect(parsed.chunkSize).toBeUndefined();
+    } finally {
+      console.log = originalLog;
+    }
+  });
 });
 
 // ── Parser Resilience: Unicode / Invalid Argument Fallback ──────────────
@@ -5110,6 +5265,366 @@ describe("indexing --recovered chunk fields", () => {
       expect(json.parserModeBreakdown["ascii-fallback"]).toBe(0);
       expect(json.parserModeBreakdown["lexical-fallback"]).toBe(0);
       expect(json.recoveredFiles).toBe(2);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+});
+
+describe("getParserTelemetry — shared serializer", () => {
+  it("omits all fields for tree-sitter files with no issues", () => {
+    const result = getParserTelemetry({
+      parserMode: "tree-sitter",
+    });
+    expect(result).toEqual({});
+  });
+
+  it("omits parserMode for tree-sitter files even with parse errors", () => {
+    const result = getParserTelemetry({
+      parserMode: "tree-sitter",
+      parseErrors: ["Syntax error"],
+    });
+    expect(result.parserMode).toBeUndefined();
+    expect(result.parseErrors).toEqual(["Syntax error"]);
+  });
+
+  it("includes parserMode for non-tree-sitter modes", () => {
+    const result = getParserTelemetry({
+      parserMode: "ascii-fallback",
+    });
+    expect(result.parserMode).toBe("ascii-fallback");
+  });
+
+  it("includes parseWarnings when present", () => {
+    const result = getParserTelemetry({
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: ["Warning 1", "Warning 2"],
+      chunkCount: 2,
+      chunkSize: 30000,
+      chunkWarningCount: 0,
+    });
+    expect(result.parseWarnings).toEqual(["Warning 1", "Warning 2"]);
+    expect(result.chunkCount).toBe(2);
+  });
+
+  it("omits parseWarnings when empty array", () => {
+    const result = getParserTelemetry({
+      parserMode: "ascii-fallback",
+      parseWarnings: [],
+    });
+    expect(result.parseWarnings).toBeUndefined();
+  });
+
+  it("includes parseErrors as string[] by default", () => {
+    const result = getParserTelemetry({
+      parseErrors: ["Error 1", "Error 2"],
+    });
+    expect(result.parseErrors).toEqual(["Error 1", "Error 2"]);
+  });
+
+  it("agentContext mode: emits parseErrors as count and parseErrorMessages as array", () => {
+    const result = getParserTelemetry(
+      {
+        parserMode: "tree-sitter",
+        parseErrors: ["Err A", "Err B", "Err C"],
+      },
+      { agentContext: true },
+    );
+    expect(result.parseErrors).toBe(3);
+    expect(result.parseErrorMessages).toEqual(["Err A", "Err B", "Err C"]);
+  });
+
+  it("agentContext mode: omits parseErrors and parseErrorMessages when empty", () => {
+    const result = getParserTelemetry(
+      {
+        parseErrors: [],
+      },
+      { agentContext: true },
+    );
+    expect(result.parseErrors).toBeUndefined();
+    expect(result.parseErrorMessages).toBeUndefined();
+  });
+
+  it("omits chunk fields for ascii-fallback files", () => {
+    const result = getParserTelemetry({
+      parserMode: "ascii-fallback",
+      chunkCount: 5,
+      chunkSize: 10000,
+      chunkWarningCount: 2,
+    });
+    expect(result.chunkCount).toBeUndefined();
+    expect(result.parserMode).toBe("ascii-fallback");
+  });
+
+  it("omits chunk fields for lexical-fallback files", () => {
+    const result = getParserTelemetry({
+      parserMode: "lexical-fallback",
+      chunkCount: 5,
+      chunkSize: 10000,
+      chunkWarningCount: 2,
+    });
+    expect(result.chunkCount).toBeUndefined();
+  });
+
+  it("omits chunk fields for normal files without parserMode (old cache)", () => {
+    const result = getParserTelemetry({});
+    expect(result).toEqual({});
+  });
+
+  it("includes chunk fields for chunked-tree-sitter files", () => {
+    const result = getParserTelemetry({
+      parserMode: "chunked-tree-sitter",
+      chunkCount: 8,
+      chunkSize: 30000,
+      chunkWarningCount: 3,
+    });
+    expect(result.chunkCount).toBe(8);
+    expect(result.chunkSize).toBe(30000);
+    expect(result.chunkWarningCount).toBe(3);
+    expect(result.parserMode).toBe("chunked-tree-sitter");
+  });
+
+  it("returns parserMode but no chunk fields for old cached chunked files (missing fields)", () => {
+    const result = getParserTelemetry({
+      parserMode: "chunked-tree-sitter",
+      // No chunkCount, chunkSize, chunkWarningCount
+    });
+    expect(result.chunkCount).toBeUndefined();
+    expect(result.parserMode).toBe("chunked-tree-sitter");
+  });
+
+  it("omits chunk fields when chunkCount is missing but other fields present", () => {
+    const result = getParserTelemetry({
+      parserMode: "chunked-tree-sitter",
+      chunkSize: 30000,
+      chunkWarningCount: 0,
+    });
+    expect(result.chunkCount).toBeUndefined();
+  });
+});
+
+describe("explain-index and agent-context JSON chunk telemetry", () => {
+  it("explain-index JSON for tree-sitter file is parseable and excludes chunk fields", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "ei-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "mod.ts"), "export const x = 1;\nexport function f() {}\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        {
+          "index-format": "json",
+          explainIndex: "src/mod.ts",
+        } as Partial<CLIValues> & { explainIndex?: string },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return typeof p.path === "string";
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      // Parseable
+      expect(json.path).toBe("src/mod.ts");
+      expect(json.language).toBe("typescript");
+
+      // ASCII-safe: no control characters in output
+      const raw = jsonCall![0];
+      expect(raw).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
+
+      // Normal file: no chunk fields
+      expect("chunkCount" in json).toBe(false);
+      expect("chunkSize" in json).toBe(false);
+      expect("chunkWarningCount" in json).toBe(false);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("agent-context JSON for tree-sitter file is parseable and excludes chunk fields", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "ac-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "mod.ts"), "export const x = 1;\nexport function f() {}\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        {
+          "index-format": "json",
+          agentContext: "src/mod.ts",
+        } as Partial<CLIValues> & { agentContext?: string },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.file && typeof p.file.path === "string";
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      // Parseable
+      expect(json.file.path).toBe("src/mod.ts");
+      expect(json.file.language).toBe("typescript");
+      expect(Array.isArray(json.file.symbols)).toBe(true);
+      expect(Array.isArray(json.file.imports)).toBe(true);
+
+      // ASCII-safe: no control characters in output
+      const raw = jsonCall![0];
+      expect(raw).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
+
+      // Normal file: no chunk fields
+      expect("chunkCount" in json.file).toBe(false);
+      expect("chunkSize" in json.file).toBe(false);
+      expect("chunkWarningCount" in json.file).toBe(false);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("explain-index JSON includes chunk fields for chunked-tree-sitter files", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "ei-chunk-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject a chunked-tree-sitter file into the cache
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/chunked.ts",
+      language: "typescript",
+      sha256: "chk456",
+      sizeBytes: 60000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [{ name: "largeFn", type: "function", line: 1, column: 1 }],
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: ["Parsed with chunked tree-sitter fallback"],
+      chunkCount: 4,
+      chunkSize: 30000,
+      chunkWarningCount: 1,
+    });
+    cached.stats.totalFiles = 2;
+    cached.stats.indexedFiles = 2;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        {
+          "index-format": "json",
+          explainIndex: "src/chunked.ts",
+        } as Partial<CLIValues> & { explainIndex?: string },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return typeof p.path === "string";
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      expect(json.path).toBe("src/chunked.ts");
+      expect(json.chunkCount).toBe(4);
+      expect(json.chunkSize).toBe(30000);
+      expect(json.chunkWarningCount).toBe(1);
+
+      // ASCII-safe
+      const raw = jsonCall![0];
+      expect(raw).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
+  it("agent-context JSON includes chunk fields for chunked-tree-sitter files", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "ac-chunk-test", type: "module", version: "1.0.0" }, null, 2),
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n");
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject a chunked-tree-sitter file into the cache
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    cached.files.push({
+      path: "src/chunked.ts",
+      language: "typescript",
+      sha256: "chk789",
+      sizeBytes: 60000,
+      mtimeMs: Date.now(),
+      imports: [],
+      exports: [],
+      symbols: [{ name: "largeFn", type: "function", line: 1, column: 1 }],
+      parserMode: "chunked-tree-sitter",
+      parseWarnings: ["Parsed with chunked tree-sitter fallback"],
+      chunkCount: 4,
+      chunkSize: 30000,
+      chunkWarningCount: 1,
+    });
+    cached.stats.totalFiles = 2;
+    cached.stats.indexedFiles = 2;
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    try {
+      await runIndexingCommand(
+        {
+          "index-format": "json",
+          agentContext: "src/chunked.ts",
+        } as Partial<CLIValues> & { agentContext?: string },
+        cwd,
+      );
+      const jsonCall = stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.file && typeof p.file.path === "string";
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonCall).toBeDefined();
+      const json = JSON.parse(jsonCall![0]);
+
+      expect(json.file.path).toBe("src/chunked.ts");
+      expect(json.file.chunkCount).toBe(4);
+      expect(json.file.chunkSize).toBe(30000);
+      expect(json.file.chunkWarningCount).toBe(1);
+
+      // ASCII-safe
+      const raw = jsonCall![0];
+      expect(raw).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
     } finally {
       stdoutWrite.mockRestore();
     }

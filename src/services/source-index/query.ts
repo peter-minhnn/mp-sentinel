@@ -8,6 +8,73 @@
 
 import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
 
+// ── Shared Serializer ─────────────────────────────────────────────────────────
+
+export interface ParserTelemetryOptions {
+  /**
+   * When true, emit parseErrors as a count and parseErrorMessages as the full
+   * string array (used by --agent-context). When false/omitted, emit parseErrors
+   * as the string array directly (used by all other command outputs).
+   */
+  agentContext?: boolean;
+}
+
+/**
+ * Build a compact parser-telemetry object for a single source file.
+ *
+ * - Omits parserMode when it is "tree-sitter" or absent (default parser).
+ * - Omits parseWarnings / parseErrors when empty.
+ * - Includes chunk fields only for chunked-tree-sitter files that have them.
+ * - In agentContext mode, parseErrors is a count and parseErrorMessages carries
+ *   the full array.
+ *
+ * Returns an empty object when there is nothing to report beyond normal tree-sitter.
+ */
+export function getParserTelemetry(
+  file: Pick<
+    SourceIndexFile,
+    | "parserMode"
+    | "parseWarnings"
+    | "parseErrors"
+    | "chunkCount"
+    | "chunkSize"
+    | "chunkWarningCount"
+  >,
+  options?: ParserTelemetryOptions,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  if (file.parserMode && file.parserMode !== "tree-sitter") {
+    result.parserMode = file.parserMode;
+  }
+
+  if (file.parseWarnings && file.parseWarnings.length > 0) {
+    result.parseWarnings = file.parseWarnings;
+  }
+
+  if (file.parseErrors && file.parseErrors.length > 0) {
+    if (options?.agentContext) {
+      result.parseErrors = file.parseErrors.length;
+      result.parseErrorMessages = file.parseErrors;
+    } else {
+      result.parseErrors = file.parseErrors;
+    }
+  }
+
+  if (
+    file.parserMode === "chunked-tree-sitter" &&
+    file.chunkCount !== undefined &&
+    file.chunkSize !== undefined &&
+    file.chunkWarningCount !== undefined
+  ) {
+    result.chunkCount = file.chunkCount;
+    result.chunkSize = file.chunkSize;
+    result.chunkWarningCount = file.chunkWarningCount;
+  }
+
+  return result;
+}
+
 // ── Shared CLI Formatting ──────────────────────────────────────────────────────
 
 /**
@@ -216,8 +283,12 @@ interface FileInfo {
   }>;
   exportsTruncated: number;
   parseErrors?: number;
+  parseErrorMessages?: string[];
   parserMode?: string;
   parseWarnings?: string[];
+  chunkCount?: number;
+  chunkSize?: number;
+  chunkWarningCount?: number;
 }
 
 interface HubFileEntry {
@@ -331,11 +402,7 @@ export function queryAgentContext(
       ...(exp.isDefault && { isDefault: exp.isDefault }),
     })),
     exportsTruncated: file.exports.length > MAX_EXPORTS ? file.exports.length - MAX_EXPORTS : 0,
-    ...(file.parseErrors &&
-      file.parseErrors.length > 0 && { parseErrors: file.parseErrors.length }),
-    ...(file.parserMode && file.parserMode !== "tree-sitter" && { parserMode: file.parserMode }),
-    ...(file.parseWarnings &&
-      file.parseWarnings.length > 0 && { parseWarnings: file.parseWarnings }),
+    ...getParserTelemetry(file, { agentContext: true }),
   };
 
   const importsFrom = file.importsFrom ?? [];
