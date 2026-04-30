@@ -50,7 +50,7 @@ import {
   resolveAIEnrichmentConfig,
   validateSkillQuality,
 } from "../services/skills-generator/index.js";
-import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
+import { buildSourceIndex, getIndexingConfig, getParserModeBreakdown } from "./indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 
 const GENERATOR_VERSION = getToolVersion();
@@ -457,6 +457,43 @@ function categorizeDoctorFindings(
     failItems.push({ label: "Index: stale", action, commands: ["mp-sentinel indexing --force"] });
   }
 
+  // ── Parser: hard parse errors (fail) ───────────────────────────────────────
+  const hardErrorCount = indexInfo.parseErrorCount ?? 0;
+  const errorSample =
+    indexInfo.hardParseErrorFilesSample && indexInfo.hardParseErrorFilesSample.length > 0
+      ? indexInfo.hardParseErrorFilesSample
+      : [];
+  if (hardErrorCount > 0 && errorSample.length > 0) {
+    const firstFile = errorSample[0]!;
+    const sampleStr = errorSample.map((f) => `"${f}"`).join(", ");
+    const action = `${hardErrorCount} file(s) have hard parse errors. Run "mp-sentinel indexing --health --index-format json" to assess, then "mp-sentinel indexing --explain-index \"${firstFile}\" --index-format json" to diagnose the first failure.`;
+    recommendedActions.push(action);
+    recommendedCommands.push("mp-sentinel indexing --health --index-format json");
+    failItems.push({
+      label: `Index: ${hardErrorCount} hard parse error(s)`,
+      action: `Sample: ${sampleStr}. ${action}`,
+      commands: [
+        "mp-sentinel indexing --health --index-format json",
+        `mp-sentinel indexing --explain-index "${firstFile}" --index-format json`,
+      ],
+    });
+  }
+
+  // ── Parser: recovered files (warn) ─────────────────────────────────────────
+  const recoveredCount = indexInfo.recoveredFiles ?? 0;
+  if (recoveredCount > 0) {
+    const breakdown = indexInfo.parserModeBreakdown;
+    const detail = breakdown
+      ? ` (${breakdown["ascii-fallback"] ?? 0} ascii-fallback, ${breakdown["lexical-fallback"] ?? 0} lexical-fallback)`
+      : "";
+    const action = `${recoveredCount} file(s) recovered via fallback parser${detail}. Run "mp-sentinel indexing --health --index-format json" for full breakdown.`;
+    recommendedActions.push(action);
+    warnItems.push({
+      label: `Index: ${recoveredCount} fallback-parsed file(s)`,
+      action,
+    });
+  }
+
   // ── Skills (fail) ─────────────────────────────────────────────────────────
   const hasQualityErrors = skills.some((s) => s.quality && s.quality.errors > 0);
 
@@ -741,6 +778,34 @@ async function runDoctor(
     }
   }
 
+  // Enrich indexInfo with parser telemetry when index is available
+  if (index) {
+    // Recovered: fallback parser used AND no hard parse errors
+    const recoveredFiles = index.files.filter(
+      (f) =>
+        (f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback") &&
+        (!f.parseErrors || f.parseErrors.length === 0),
+    ).length;
+    const breakdown = getParserModeBreakdown(index);
+    const filesWithErrors = index.files.filter((f) => f.parseErrors && f.parseErrors.length > 0);
+    const parseErrorCount = filesWithErrors.length;
+    const parseErrorRate =
+      index.files.length > 0 ? Math.round((parseErrorCount / index.files.length) * 1000) / 1000 : 0;
+    const hardParseErrorFilesSample = filesWithErrors
+      .slice(0, 3)
+      .map((f) => f.path)
+      .sort();
+
+    indexInfo = {
+      ...indexInfo,
+      parseErrorRate,
+      recoveredFiles,
+      parserModeBreakdown: breakdown,
+      parseErrorCount,
+      hardParseErrorFilesSample,
+    };
+  }
+
   // e) Skills check
   const skills: DoctorSkillInfo[] = [];
 
@@ -938,6 +1003,32 @@ async function runDoctor(
         .filter(Boolean)
         .join(", ");
       log.info(`  Index: ${indexInfo.status} (${detail})`);
+
+      // Parser telemetry (when available)
+      const recovered = indexInfo.recoveredFiles ?? 0;
+      const errors = indexInfo.parseErrorCount ?? 0;
+      const errorRate = indexInfo.parseErrorRate;
+      const breakdown = indexInfo.parserModeBreakdown;
+      if (
+        recovered > 0 ||
+        errors > 0 ||
+        (breakdown && (breakdown["ascii-fallback"] ?? 0) + (breakdown["lexical-fallback"] ?? 0) > 0)
+      ) {
+        const parts: string[] = [];
+        if (breakdown) {
+          const bd = [
+            `tree-sitter=${breakdown["tree-sitter"] ?? 0}`,
+            `ascii-fallback=${breakdown["ascii-fallback"] ?? 0}`,
+            `lexical-fallback=${breakdown["lexical-fallback"] ?? 0}`,
+          ].join(", ");
+          log.info(`  Parser: ${bd}`);
+        }
+        if (recovered > 0) parts.push(`${recovered} recovered`);
+        if (errors > 0 && errorRate != null)
+          parts.push(`${errors} hard errors (${(errorRate * 100).toFixed(1)}%)`);
+        else if (errors > 0) parts.push(`${errors} hard errors`);
+        if (parts.length > 0) log.info(`    ${parts.join(", ")}`);
+      }
     }
 
     // Skills

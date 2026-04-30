@@ -1,3 +1,19 @@
+# What's New in v1.21.0
+
+## Doctor Parser Recovery Summary & Generated Skills Parser Recovery Note
+
+v1.21.0 completes the parser telemetry UX by surfacing parser recovery data in doctor diagnostics and generated skill files.
+
+- **Doctor parser recovery summary** (`src/commands/create-skills.ts`, `src/types/index.ts`): `DoctorIndexInfo` gains 5 new parser telemetry fields: `parseErrorRate`, `recoveredFiles`, `parserModeBreakdown`, `parseErrorCount`, and `hardParseErrorFilesSample`. Hard parse errors surface as `[fail] Action Required` items (exit 1) with actionable commands. Recovered files (fallback-parsed without hard errors) surface as `[warn] Advisory` items. Console output shows per-mode parser breakdown (`tree-sitter=N, ascii-fallback=N, lexical-fallback=N`), recovered count, and error rate percentage.
+- **Generated skills parser recovery note** (`src/services/skills-generator/content.ts`): A new `### Parser Recovery` subsection in the Architecture section of generated skill files renders when recovered files or hard parse errors exist. Shows a one-line ASCII breakdown plus up to 3 sample error paths.
+- **Regression tests & dogfood tightening** (`src/__tests__/create-skills.test.ts`, `scripts/dogfood.mjs`): New test coverage for doctor parser telemetry computation, categorization, and console output. Dogfood health step validates `recoveredFiles` and `parserModeBreakdown` shape when present.
+
+### Tests
+- 9 new tests covering doctor parser telemetry (computation, categorization, console output, JSON output, edge cases).
+- All 769 tests pass.
+
+---
+
 # What's New in v1.20.0
 
 ## Dependency Usage Tiering, Parser Recovery Telemetry & Dogfood Health Guard

@@ -1030,6 +1030,16 @@ export interface DoctorIndexInfo {
   totalFiles?: number;
   manifestHash?: string;
   reason?: string;
+  /** Fraction of files with parse errors (0-1) */
+  parseErrorRate?: number;
+  /** Files recovered via fallback parser (ascii-fallback or lexical-fallback, no parse errors) */
+  recoveredFiles?: number;
+  /** Per-mode file count breakdown (tree-sitter / ascii-fallback / lexical-fallback) */
+  parserModeBreakdown?: Record<string, number>;
+  /** Count of files with hard parse errors */
+  parseErrorCount?: number;
+  /** Sample of file paths with hard parse errors (max 3, sorted) */
+  hardParseErrorFilesSample?: string[];
 }
 
 /** Bootstrap script availability status */

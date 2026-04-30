@@ -507,6 +507,38 @@ function buildArchitecture(index: SourceIndex | null): string {
     }
   }
 
+  // Parser recovery note (only when there is something to report)
+  const recoveredFiles = index.files.filter(
+    (f) => f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback",
+  ).length;
+  const hardErrorFiles = index.files.filter((f) => f.parseErrors && f.parseErrors.length > 0);
+  const hasParseIssues = recoveredFiles > 0 || hardErrorFiles.length > 0;
+
+  if (hasParseIssues) {
+    lines.push(``, `### Parser Recovery`, ``);
+
+    if (recoveredFiles > 0) {
+      const ts = index.files.filter(
+        (f) => (f.parserMode ?? "tree-sitter") === "tree-sitter",
+      ).length;
+      const ascii = index.files.filter((f) => f.parserMode === "ascii-fallback").length;
+      const lexical = index.files.filter((f) => f.parserMode === "lexical-fallback").length;
+      lines.push(
+        `${recoveredFiles} file(s) recovered via fallback parser. Breakdown: tree-sitter=${ts}, ascii-fallback=${ascii}, lexical-fallback=${lexical}`,
+      );
+    }
+
+    if (hardErrorFiles.length > 0) {
+      lines.push(`${hardErrorFiles.length} file(s) with hard parse errors. Sample paths:`);
+      for (const f of hardErrorFiles
+        .map((x) => x.path)
+        .sort()
+        .slice(0, 3)) {
+        lines.push(`- \`${f}\``);
+      }
+    }
+  }
+
   return lines.join("\n");
 }
 

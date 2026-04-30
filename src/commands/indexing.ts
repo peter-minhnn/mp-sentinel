@@ -86,7 +86,7 @@ const getIndexParseErrorRate = (index: SourceIndex): number => {
 /**
  * Count files recovered via fallback parser (non-tree-sitter parserMode).
  */
-const getRecoveredFileCount = (index: SourceIndex): number => {
+export const getRecoveredFileCount = (index: SourceIndex): number => {
   return index.files.filter(
     (file) => file.parserMode === "ascii-fallback" || file.parserMode === "lexical-fallback",
   ).length;
@@ -96,7 +96,7 @@ const getRecoveredFileCount = (index: SourceIndex): number => {
  * Build a breakdown of files by parser mode.
  * Undefined parserMode (pre-1.3 caches) is treated as tree-sitter.
  */
-const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
+export const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
   const breakdown: Record<string, number> = {
     "tree-sitter": 0,
     "ascii-fallback": 0,

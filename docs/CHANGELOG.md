@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-04-30
+
+### Added
+- **Doctor parser recovery summary** (`src/commands/create-skills.ts`, `src/types/index.ts`): `DoctorIndexInfo` now includes `parseErrorRate`, `recoveredFiles`, `parserModeBreakdown`, `parseErrorCount`, and `hardParseErrorFilesSample`. Hard parse errors are reported as `[fail] Action Required` (exit 1) with actionable commands. Recovered files (fallback-parsed, no hard errors) are reported as `[warn] Advisory`. Console output shows per-mode parser breakdown under `[ok] Healthy`.
+- **Generated skills parser recovery note** (`src/services/skills-generator/content.ts`): New `### Parser Recovery` subsection under `## Architecture` in generated skill files. Renders only when recovered files or hard parse errors exist, showing one-line ASCII breakdown and up to 3 sample error paths.
+
+### Tests
+- 9 new doctor parser telemetry tests: computation, categorization, console output, JSON output, and edge cases.
+
 ## [1.20.0] - 2026-04-29
 
 ### Fixed

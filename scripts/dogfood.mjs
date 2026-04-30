@@ -164,13 +164,18 @@ function stepHealthCheck() {
     fail("indexing --health", "parseErrorRate is not a number");
     return false;
   }
-  if ("recoveredFiles" in json && typeof json.recoveredFiles !== "number") {
-    fail("indexing --health", "recoveredFiles present but not a number");
+  if (typeof json.recoveredFiles !== "number") {
+    fail("indexing --health", "recoveredFiles missing or not a number");
     return false;
   }
-  if ("parserModeBreakdown" in json) {
-    if (typeof json.parserModeBreakdown !== "object" || json.parserModeBreakdown === null) {
-      fail("indexing --health", "parserModeBreakdown present but not an object");
+  if (typeof json.parserModeBreakdown !== "object" || json.parserModeBreakdown === null) {
+    fail("indexing --health", "parserModeBreakdown missing or not an object");
+    return false;
+  }
+  const requiredModes = ["tree-sitter", "ascii-fallback", "lexical-fallback"];
+  for (const mode of requiredModes) {
+    if (typeof json.parserModeBreakdown[mode] !== "number") {
+      fail("indexing --health", `parserModeBreakdown.${mode} missing or not a number`);
       return false;
     }
   }
@@ -582,6 +587,22 @@ function stepDoctor() {
     return false;
   }
 
+  // Parser telemetry fields required when index is ok or stale
+  if (json.index.status === "ok" || json.index.status === "stale") {
+    if (typeof json.index.recoveredFiles !== "number") {
+      fail("create-skills --doctor", "index.recoveredFiles missing or not a number");
+      return false;
+    }
+    if (typeof json.index.parserModeBreakdown !== "object" || json.index.parserModeBreakdown === null) {
+      fail("create-skills --doctor", "index.parserModeBreakdown missing or not an object");
+      return false;
+    }
+    if (typeof json.index.parseErrorCount !== "number") {
+      fail("create-skills --doctor", "index.parseErrorCount missing or not a number");
+      return false;
+    }
+  }
+
   // skills should include entries for detected adapters
   if (!Array.isArray(json.skills)) {
     fail("create-skills --doctor", "skills is not an array");
@@ -600,12 +621,17 @@ function stepDoctor() {
     }
   }
 
+  let parserSummary = "";
+  if (typeof json.index.recoveredFiles === "number" && typeof json.index.parseErrorCount === "number") {
+    parserSummary = `, parser: ${json.index.recoveredFiles} recovered, ${json.index.parseErrorCount} hard errors`;
+  }
+
   ok(
     "create-skills --doctor",
     `status=${json.status}, index=${json.index.status}, ` +
     `skills=${json.skills.length} agents, ${json.legacyFiles?.length ?? 0} legacy, ` +
     `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions, ` +
-    `${json.recommendedCommands?.length ?? 0} commands`,
+    `${json.recommendedCommands?.length ?? 0} commands${parserSummary}`,
   );
   return true;
 }

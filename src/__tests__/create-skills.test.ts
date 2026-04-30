@@ -1,7 +1,8 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { execSync } from "node:child_process";
 import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
@@ -20,6 +21,7 @@ import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { clearConfigCache } from "../utils/config.js";
+import { setLogQuietMode } from "../utils/logger.js";
 
 // -- Fixtures ------------------------------------------------------------------
 
@@ -5623,6 +5625,354 @@ describe("runCreateSkillsCommand --doctor", () => {
     } finally {
       if (prevKey) process.env.GEMINI_API_KEY = prevKey;
     }
+  });
+
+  // ── Helpers for parser telemetry tests ───────────────────────────────────
+
+  async function writeUpToDateSkills(cwd: string, index: unknown) {
+    const idx = index as SourceIndex;
+    const adapter = getAdapter("claude")!;
+    const projectName = (idx.project.packageName ?? "fixture")
+      .replace(/^@/, "")
+      .replace(/\//g, "-");
+    const kb = buildSkillKnowledgeBase(idx, cwd);
+    const { computeIndexHash, renderMetadataHeader } =
+      await import("../services/skills-generator/metadata.js");
+    const hash = computeIndexHash(idx, cwd);
+    const genVersion = getToolVersion();
+    const genFiles = await adapter.generate(idx, {
+      projectRoot: cwd,
+      projectName,
+      force: false,
+      knowledgeBase: kb,
+    });
+    for (const file of genFiles) {
+      const header = renderMetadataHeader({
+        generatorVersion: genVersion,
+        sourceIndexSchema: idx.schemaVersion,
+        sourceIndexHash: hash,
+        agent: "claude",
+        projectName,
+      });
+      await mkdir(dirname(file.outputPath), { recursive: true });
+      await writeFile(file.outputPath, header + "\n" + file.content);
+    }
+  }
+
+  const defaultIndexConfig = {
+    enabled: true,
+    languages: ["typescript", "tsx", "javascript", "jsx"] as const,
+    cachePath: ".mp-sentinel-cache/source-index.json" as const,
+    maxFileSize: 512000,
+  };
+
+  async function injectFallbackParserModes(cwd: string) {
+    const cachePath = join(cwd, defaultIndexConfig.cachePath);
+    const raw = await readFile(cachePath, "utf-8");
+    const cached = JSON.parse(raw);
+    if (cached.files.length >= 1) {
+      cached.files[0].parserMode = "ascii-fallback";
+      cached.files[0].parseWarnings = ["Invalid argument; parsed with ASCII fallback"];
+    }
+    if (cached.files.length >= 2) {
+      cached.files[1].parserMode = "lexical-fallback";
+      cached.files[1].parseWarnings = ["Invalid argument; parsed with lexical fallback"];
+    }
+    cached.stats.parseErrors = 0;
+    await writeFile(cachePath, JSON.stringify(cached, null, 2));
+  }
+
+  async function injectHardParseErrors(cwd: string) {
+    const cachePath = join(cwd, defaultIndexConfig.cachePath);
+    const raw = await readFile(cachePath, "utf-8");
+    const cached = JSON.parse(raw);
+    if (cached.files.length >= 1) {
+      cached.files[0].parseErrors = ["Syntax error: unexpected token"];
+    }
+    if (cached.files.length >= 2) {
+      cached.files[1].parseErrors = ["Syntax error: unexpected identifier"];
+    }
+    cached.stats.parseErrors = cached.files.filter(
+      (f: { parseErrors?: string[] }) => f.parseErrors && f.parseErrors.length > 0,
+    ).length;
+    await writeFile(cachePath, JSON.stringify(cached, null, 2));
+  }
+
+  // ── Parser telemetry in doctor JSON ──────────────────────────────────────
+
+  it("--doctor --format json includes parser telemetry for healthy index with recovered files", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectFallbackParserModes(cwd);
+    // Re-read modified index so skills hash matches
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.index.status).toBe("ok");
+    expect(typeof parsed.index.recoveredFiles).toBe("number");
+    expect(parsed.index.recoveredFiles).toBeGreaterThanOrEqual(1);
+    expect(typeof parsed.index.parserModeBreakdown).toBe("object");
+    expect(parsed.index.parserModeBreakdown).not.toBeNull();
+    expect(typeof parsed.index.parseErrorCount).toBe("number");
+    expect(parsed.index.parseErrorCount).toBe(0);
+    expect(exitCode).toBe(0);
+  });
+
+  it("--doctor --format json returns action-required and exit 1 for hard parse errors", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectHardParseErrors(cwd);
+    // Re-read modified index so skills hash matches
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.status).toBe("action-required");
+    expect(parsed.index.status).toBe("ok");
+    expect(typeof parsed.index.parseErrorCount).toBe("number");
+    expect(parsed.index.parseErrorCount).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(parsed.index.hardParseErrorFilesSample)).toBe(true);
+    expect(parsed.index.hardParseErrorFilesSample.length).toBeGreaterThanOrEqual(1);
+    expect(exitCode).toBe(1);
+  });
+
+  it("--doctor --format json does not require parser fields when index is missing", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.index.status).toBe("missing");
+    expect(exitCode).toBe(1);
+  });
+
+  it("recovered parser files create [warn] advisory and keep exit 0 when no fail items", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectFallbackParserModes(cwd);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    // Recovered files alone are advisory [warn], not failures
+    expect(parsed.status).toBe("ok");
+    expect(parsed.index.recoveredFiles).toBeGreaterThanOrEqual(1);
+    expect(parsed.index.parseErrorCount).toBe(0);
+    // recommendedActions should mention the fallback
+    const hasFallbackAction = parsed.recommendedActions.some((a: string) => a.includes("fallback"));
+    expect(hasFallbackAction).toBe(true);
+    expect(exitCode).toBe(0);
+  });
+
+  it("hard parse errors create [fail] and cause action-required with exit 1", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectHardParseErrors(cwd);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.status).toBe("action-required");
+    expect(parsed.index.parseErrorCount).toBeGreaterThanOrEqual(1);
+    const hasParseErrorAction = parsed.recommendedActions.some((a: string) =>
+      a.includes("hard parse error"),
+    );
+    expect(hasParseErrorAction).toBe(true);
+    expect(exitCode).toBe(1);
+  });
+
+  it("--doctor console parser output is ASCII-safe (no risky Unicode) via spawned CLI", () => {
+    // Console rendering cannot be intercepted in-process (Jest VM isolates
+    // console from the logger module). Spawn the real CLI instead.
+    const repoRoot = resolve(join(import.meta.dirname, "..", ".."));
+    const distIndex = join(repoRoot, "dist", "index.js");
+    const raw = execSync(`node ${distIndex} create-skills --doctor`, {
+      encoding: "utf-8",
+      timeout: 60000,
+    });
+    // No risky Unicode: emoji, fancy quotes, non-ASCII symbols
+    expect(raw).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+    expect(raw).not.toMatch(/[‘’“”]/);
+  });
+
+  // ── Generated content parser recovery note ───────────────────────────────
+
+  it("generated architecture section includes Parser Recovery when index has parse issues", () => {
+    const baseIdx = makeMinimalIndex();
+    const idxWithIssues: SourceIndex = {
+      ...baseIdx,
+      files: [
+        {
+          ...baseIdx.files[0]!,
+          parserMode: "ascii-fallback",
+          parseWarnings: ["Invalid argument; parsed with ASCII fallback"],
+        },
+        {
+          path: "src/broken.ts",
+          language: "typescript",
+          sha256: "def",
+          sizeBytes: 80,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [],
+          parseErrors: ["Syntax error: unexpected token"],
+        },
+      ],
+      stats: { ...baseIdx.stats, totalFiles: 2, indexedFiles: 1, parseErrors: 1 },
+    };
+
+    const content = generateContent(idxWithIssues, "test-project");
+    expect(content.sections.architecture).toContain("### Parser Recovery");
+    expect(content.sections.architecture).toContain("ascii-fallback");
+    expect(content.sections.architecture).toContain("hard parse errors");
+  });
+
+  it("generated architecture section excludes Parser Recovery for clean index", () => {
+    const idx = makeMinimalIndex();
+    const content = generateContent(idx, "test-project");
+    expect(content.sections.architecture).not.toContain("### Parser Recovery");
+  });
+
+  it("generated architecture section Parser Recovery output is deterministic", () => {
+    const baseIdx = makeMinimalIndex();
+    const idx: SourceIndex = {
+      ...baseIdx,
+      files: [
+        {
+          ...baseIdx.files[0]!,
+          parserMode: "ascii-fallback",
+          parseWarnings: ["Invalid argument; parsed with ASCII fallback"],
+        },
+        {
+          path: "src/a.ts",
+          language: "typescript",
+          sha256: "bbb",
+          sizeBytes: 50,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [],
+          parseErrors: ["Syntax error"],
+        },
+        {
+          path: "src/b.ts",
+          language: "typescript",
+          sha256: "ccc",
+          sizeBytes: 50,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [],
+          parseErrors: ["Syntax error"],
+        },
+      ],
+      stats: { ...baseIdx.stats, totalFiles: 3, indexedFiles: 1, parseErrors: 2 },
+    };
+
+    const c1 = generateContent(idx, "test-project");
+    const c2 = generateContent(JSON.parse(JSON.stringify(idx)), "test-project");
+    expect(c1.sections.architecture).toBe(c2.sections.architecture);
   });
 });
 

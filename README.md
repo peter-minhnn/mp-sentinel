@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.20.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.21.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,13 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.20.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.21.0**:
 
-- 📊 **Dependency Usage Tiering** — Generated skills partition deps into Runtime vs Test/Tooling sections
+- 🩺 **Doctor Parser Recovery Summary** — Hard parse errors and fallback recoveries surfaced in doctor diagnostics
+- 📝 **Generated Skills Parser Recovery Note** — Parser recovery breakdown in generated skill files
 - 📡 **Parser Recovery Telemetry** — Fallback paths tracked separately from hard parse errors
-- 🩺 **Dogfood Health Guard** — Positive health path validated in every dogfood run
-- 🩺 **Health Type Cleanup** — shared `IndexHealthOutput` types, sample cap reduced to 5
-- 🛡️ **Safe Suggested Command Formatter** — `quoteCliArg()` normalizes paths and escapes arguments in suggested commands
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines
