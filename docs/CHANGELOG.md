@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-04-30
+
+### Changed
+- **Doctor `recommendedCommands` policy** (`src/commands/create-skills.ts`): Recovered-only parser state is advisory — it appears under `index.suggestedCommands` but is excluded from top-level `recommendedCommands`. Only hard parse error drilldowns (`--parse-errors`) appear in both locations.
+
+### Tests
+- Health JSON `suggestedCommands`: 3 new tests (recovered, hard parse errors, clean index).
+- Doctor drilldown policy: 2 updated tests for `recommendedCommands` vs `index.suggestedCommands` placement.
+
 ## [1.22.0] - 2026-04-30
 
 ### Added

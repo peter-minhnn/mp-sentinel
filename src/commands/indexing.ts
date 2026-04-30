@@ -605,6 +605,16 @@ async function handleHealth(
 
   const recoveredFiles = getRecoveredFileCount(index);
   const parserModeBreakdown = getParserModeBreakdown(index);
+  const parseErrorCount = index.files.filter(
+    (f) => f.parseErrors && f.parseErrors.length > 0,
+  ).length;
+  const suggestedCommands: string[] = [];
+  if (recoveredFiles > 0) {
+    suggestedCommands.push("mp-sentinel indexing --recovered --index-format json");
+  }
+  if (parseErrorCount > 0) {
+    suggestedCommands.push("mp-sentinel indexing --parse-errors --index-format json");
+  }
 
   const output: IndexHealthOutput = {
     status,
@@ -620,6 +630,8 @@ async function handleHealth(
     missingFilesSample,
     recoveredFiles,
     parserModeBreakdown,
+    parseErrorCount,
+    ...(suggestedCommands.length > 0 && { suggestedCommands }),
   };
 
   if (format === "json") {

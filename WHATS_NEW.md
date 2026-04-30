@@ -1,3 +1,19 @@
+# What's New in v1.23.0
+
+## Health Suggested Drilldowns Closeout
+
+v1.23.0 finalizes the parser recovery drilldown suggestions policy introduced in v1.21.0-v1.22.0.
+
+- **Health JSON `suggestedCommands`** (`src/commands/indexing.ts`): `indexing --health --index-format json` includes `suggestedCommands` with `--recovered` when recovered files exist and `--parse-errors` when hard parse errors exist. Clean indexes omit `suggestedCommands` entirely.
+- **Doctor `recommendedCommands` policy** (`src/commands/create-skills.ts`): Recovered-only parser state is advisory and appears under `index.suggestedCommands` but is excluded from top-level `recommendedCommands`. Only `--parse-errors` (hard errors, which cause `action-required` status) appears in both `index.suggestedCommands` and top-level `recommendedCommands`.
+- **Docs** (`AGENTS.md`, `README.md`): Wording updated to clarify health suggestions are machine-readable next steps; doctor `index.suggestedCommands` is advisory unless hard parse errors exist.
+
+### Tests
+- Health JSON: 3 new tests for `suggestedCommands` (recovered, hard errors, clean).
+- Doctor JSON: Updated recovered test to assert `index.suggestedCommands` but not `recommendedCommands`; updated hard-errors test to assert both locations.
+
+---
+
 # What's New in v1.22.0
 
 ## Parser Recovery Drilldown

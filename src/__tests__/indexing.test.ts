@@ -3364,6 +3364,123 @@ describe("indexing --health", () => {
       }
     }
   });
+
+  it("suggestedCommands includes --recovered when recovered files exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build clean index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject recovered files into cache
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    if (cached.files.length >= 1) {
+      cached.files[0].parserMode = "ascii-fallback";
+      cached.files[0].parseWarnings = ["Invalid argument; parsed with ASCII fallback"];
+    }
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.suggestedCommands).toBeDefined();
+      expect(Array.isArray(parsed.suggestedCommands)).toBe(true);
+      expect(parsed.suggestedCommands).toContain(
+        "mp-sentinel indexing --recovered --index-format json",
+      );
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("suggestedCommands includes --parse-errors when hard parse errors exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build clean index first
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    // Inject hard parse errors into cache
+    const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+    const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+    if (cached.files.length >= 1) {
+      cached.files[0].parseErrors = ["Syntax error: unexpected token"];
+    }
+    await writeFile(cachePath, JSON.stringify(cached));
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.suggestedCommands).toBeDefined();
+      expect(Array.isArray(parsed.suggestedCommands)).toBe(true);
+      expect(parsed.suggestedCommands).toContain(
+        "mp-sentinel indexing --parse-errors --index-format json",
+      );
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("suggestedCommands is absent for clean index", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "index.ts"), `export const x = 1;`);
+
+    // Build clean index
+    await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+    let jsonBlob: string | null = null;
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      if (text.trim().startsWith("{")) {
+        jsonBlob = text;
+      }
+    };
+
+    try {
+      const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(jsonBlob!.trim());
+      expect(parsed.status).toBe("ok");
+      expect(parsed.suggestedCommands).toBeUndefined();
+    } finally {
+      console.log = originalLog;
+    }
+  });
 });
 
 // ── Parser Resilience: Unicode / Invalid Argument Fallback ──────────────

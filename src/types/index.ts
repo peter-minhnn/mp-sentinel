@@ -519,6 +519,10 @@ export interface IndexHealthOutput {
   recoveredFiles?: number;
   /** Breakdown of files by parser mode (schema 1.3+) */
   parserModeBreakdown?: Record<ParserMode, number>;
+  /** Count of files with hard parse errors (schema 1.3+) */
+  parseErrorCount?: number;
+  /** Suggested next commands based on parser recovery state */
+  suggestedCommands?: string[];
 }
 
 /**
@@ -1040,6 +1044,8 @@ export interface DoctorIndexInfo {
   parseErrorCount?: number;
   /** Sample of file paths with hard parse errors (max 3, sorted) */
   hardParseErrorFilesSample?: string[];
+  /** Suggested next commands for drilldown when parser issues exist */
+  suggestedCommands?: string[];
 }
 
 /** Bootstrap script availability status */

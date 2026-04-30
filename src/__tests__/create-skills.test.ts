@@ -6004,7 +6004,11 @@ describe("runCreateSkillsCommand --doctor", () => {
     cap.restore();
     const parsed = JSON.parse(cap.stdout);
 
-    expect(parsed.recommendedCommands).toContain(
+    // Recovered-only is advisory: in index.suggestedCommands, not in top-level recommendedCommands.
+    expect(parsed.index.suggestedCommands).toContain(
+      "mp-sentinel indexing --recovered --index-format json",
+    );
+    expect(parsed.recommendedCommands).not.toContain(
       "mp-sentinel indexing --recovered --index-format json",
     );
     const hasRecoveredAction = parsed.recommendedActions.some(
@@ -6043,6 +6047,10 @@ describe("runCreateSkillsCommand --doctor", () => {
     const parsed = JSON.parse(cap.stdout);
 
     expect(parsed.recommendedCommands).toContain(
+      "mp-sentinel indexing --parse-errors --index-format json",
+    );
+    // Hard parse errors appear in both index.suggestedCommands and top-level recommendedCommands.
+    expect(parsed.index.suggestedCommands).toContain(
       "mp-sentinel indexing --parse-errors --index-format json",
     );
     const hasHardErrorAction = parsed.recommendedActions.some((a: string) =>

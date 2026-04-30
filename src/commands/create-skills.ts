@@ -489,7 +489,7 @@ function categorizeDoctorFindings(
       : "";
     const action = `${recoveredCount} file(s) recovered via fallback parser${detail}. Run "mp-sentinel indexing --recovered --index-format json" to list them.`;
     recommendedActions.push(action);
-    recommendedCommands.push("mp-sentinel indexing --recovered --index-format json");
+    // Recovered-only is advisory: keep in index.suggestedCommands but NOT in top-level recommendedCommands.
     warnItems.push({
       label: `Index: ${recoveredCount} fallback-parsed file(s)`,
       action,
@@ -807,6 +807,18 @@ async function runDoctor(
       parseErrorCount,
       hardParseErrorFilesSample,
     };
+
+    // Suggested drilldown commands when parser issues exist
+    const idxSuggestedCommands: string[] = [];
+    if (recoveredFiles > 0) {
+      idxSuggestedCommands.push("mp-sentinel indexing --recovered --index-format json");
+    }
+    if (parseErrorCount > 0) {
+      idxSuggestedCommands.push("mp-sentinel indexing --parse-errors --index-format json");
+    }
+    if (idxSuggestedCommands.length > 0) {
+      indexInfo = { ...indexInfo, suggestedCommands: idxSuggestedCommands };
+    }
   }
 
   // e) Skills check

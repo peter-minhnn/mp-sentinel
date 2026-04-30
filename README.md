@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.22.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.23.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,11 +43,10 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.22.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.23.0**:
 
-- 🔍 **Parser Recovery Drilldown** — `--recovered` and `--parse-errors` read-only indexing flags for inspecting parser recovery state
-- 🩺 **Doctor Drilldown Recommendations** — Recovered file warnings and hard parse error failures now recommend the new drilldown commands
-- 🐕 **Dogfood Parser Drilldown Step** — New step validates both drilldown commands' JSON output shape
+- 📋 **Health Suggested Drilldowns Closeout** — `indexing --health` JSON includes `suggestedCommands` for recovered and parse-error drilldowns
+- 🩺 **Doctor `recommendedCommands` Policy** — Recovered-only state is advisory (`index.suggestedCommands` only); hard parse errors appear in both locations
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines

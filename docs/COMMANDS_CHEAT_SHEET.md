@@ -84,6 +84,20 @@ Imports are classified as `internal` (resolved to another source file in the ind
 
 `--recovered` and `--parse-errors` are read-only parser drilldown commands (v1.22.0+). `--recovered` lists files recovered via fallback parser (`ascii-fallback` or `lexical-fallback`), with per-file parser mode, symbol/import/export counts, and optional role. `--parse-errors` lists files with hard parse errors, with per-file error messages, symbol/import/export counts, and optional role. Both output JSON to stdout (all logs to stderr), cap files at 50 sorted by path, exit `0` on success, and exit `1` when cache is missing or unreadable. The two flags cannot be used together.
 
+### Health → Drilldown Workflow (v1.23.0+)
+Start with a health check to see if parser issues exist, then drill into specifics.
+```bash
+# Step 1: Check health — look for recoveredFiles > 0 or parseErrorCount > 0
+npx mp-sentinel indexing --health --index-format json
+
+# Step 2: If recoveredFiles > 0, list recovered files
+npx mp-sentinel indexing --recovered --index-format json
+
+# Step 2 (alternative): If parseErrorCount > 0, list files with hard parse errors
+npx mp-sentinel indexing --parse-errors --index-format json
+```
+The health JSON output includes `suggestedCommands` with drilldown command recommendations when `recoveredFiles > 0` or `parseErrorCount > 0`. The doctor diagnostic surfaces drilldown commands in `index.suggestedCommands` when parser issues exist (advisory for recovered-only, action-required for hard parse errors). Only hard parse error drilldowns (`--parse-errors`) appear in top-level `recommendedCommands`.
+
 `--find-symbol`, `--find-import`, and `--agent-context` are read-only queries that use the existing source index cache (building/updating it only if absent). `--find-symbol` searches for functions, classes, interfaces, types, enums, variables, methods, and arrow functions by exact or partial name. `--find-import` searches for files that import a given package or local path. Both return results capped at 20 entries, sorted by match score (exact > case-insensitive > starts-with > contains).
 
 `--agent-context` produces an AI-agent-friendly context pack for a file: symbols (capped 30), imports/exports (capped 20), direct imports and dependents (capped 10 each), top hub files among related (capped 5), and suggested diagnostic follow-up commands. Output is capped aggressively — no file contents are included.

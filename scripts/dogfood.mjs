@@ -181,6 +181,27 @@ function stepHealthCheck() {
     }
   }
 
+  // Assert suggestedCommands when parser recovery/errors exist
+  const hasRecovered = typeof json.recoveredFiles === "number" && json.recoveredFiles > 0;
+  const hasParseErrors = typeof json.parseErrorCount === "number" && json.parseErrorCount > 0;
+  if (hasRecovered || hasParseErrors) {
+    if (!Array.isArray(json.suggestedCommands) || json.suggestedCommands.length === 0) {
+      fail(
+        "indexing --health",
+        "suggestedCommands missing or empty when parser issues exist",
+      );
+      return false;
+    }
+    if (hasRecovered && !json.suggestedCommands.some((c) => c.includes("--recovered"))) {
+      fail("indexing --health", "suggestedCommands missing --recovered drilldown");
+      return false;
+    }
+    if (hasParseErrors && !json.suggestedCommands.some((c) => c.includes("--parse-errors"))) {
+      fail("indexing --health", "suggestedCommands missing --parse-errors drilldown");
+      return false;
+    }
+  }
+
   const parts = [
     `status=ok`,
     `toolVersion=${json.toolVersion}`,
