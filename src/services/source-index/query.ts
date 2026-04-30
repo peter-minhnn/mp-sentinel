@@ -39,6 +39,8 @@ export function getParserTelemetry(
     | "chunkCount"
     | "chunkSize"
     | "chunkWarningCount"
+    | "chunkBoundaryWarningCount"
+    | "chunkActionableWarningCount"
   >,
   options?: ParserTelemetryOptions,
 ): Record<string, unknown> {
@@ -70,6 +72,12 @@ export function getParserTelemetry(
     result.chunkCount = file.chunkCount;
     result.chunkSize = file.chunkSize;
     result.chunkWarningCount = file.chunkWarningCount;
+    if (file.chunkBoundaryWarningCount !== undefined) {
+      result.chunkBoundaryWarningCount = file.chunkBoundaryWarningCount;
+    }
+    if (file.chunkActionableWarningCount !== undefined) {
+      result.chunkActionableWarningCount = file.chunkActionableWarningCount;
+    }
   }
 
   return result;
@@ -289,6 +297,8 @@ interface FileInfo {
   chunkCount?: number;
   chunkSize?: number;
   chunkWarningCount?: number;
+  chunkBoundaryWarningCount?: number;
+  chunkActionableWarningCount?: number;
 }
 
 interface HubFileEntry {

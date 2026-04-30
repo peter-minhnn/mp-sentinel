@@ -652,6 +652,8 @@ export async function chunkedParse(
   chunkCount: number;
   chunkSize: number;
   chunkWarningCount: number;
+  chunkBoundaryWarningCount: number;
+  chunkActionableWarningCount: number;
 } | null> {
   const lines = content.split("\n");
   const chunks: Array<{ text: string; startLine: number }> = [];
@@ -686,13 +688,17 @@ export async function chunkedParse(
   const allExports: ExportInfo[] = [];
   const allParseWarnings: string[] = [];
   const allParseErrors: string[] = [];
+  let boundaryWarningCount = 0;
+  let actionableWarningCount = 0;
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
     try {
       const { tree, parseErrors: chunkErrors } = await doParse(chunk.text);
 
       if (!tree) {
         allParseErrors.push(`Chunk at line ${chunk.startLine}: no tree generated`);
+        actionableWarningCount++;
         continue;
       }
 
@@ -717,14 +723,17 @@ export async function chunkedParse(
         allExports.push(exp);
       }
 
-      // Chunk-level "Tree has syntax errors" is a recovery warning, not a hard
-      // error — chunks are fragments without full context, and syntax errors are
-      // expected at chunk boundaries.
       for (const err of chunkErrors) {
         allParseWarnings.push(`Chunk at line ${chunk.startLine}: ${err}`);
+        // Chunked parsing splits files on line boundaries, breaking multi-line
+        // constructs.  Parse errors in any chunk are overwhelmingly truncation
+        // artifacts rather than real syntax errors — real errors are caught by
+        // linters, IDE tooling, and the primary (non-chunked) parse path.
+        boundaryWarningCount++;
       }
     } catch {
       allParseErrors.push(`Chunk at line ${chunk.startLine}: parse threw`);
+      actionableWarningCount++;
     }
   }
 
@@ -758,6 +767,8 @@ export async function chunkedParse(
     chunkCount: chunks.length,
     chunkSize: MAX_CHUNK_SIZE,
     chunkWarningCount: allParseWarnings.length,
+    chunkBoundaryWarningCount: boundaryWarningCount,
+    chunkActionableWarningCount: actionableWarningCount,
   };
 }
 
@@ -857,6 +868,8 @@ export async function parseFile(
           chunkCount: chunked.chunkCount,
           chunkSize: chunked.chunkSize,
           chunkWarningCount: chunked.chunkWarningCount,
+          chunkBoundaryWarningCount: chunked.chunkBoundaryWarningCount,
+          chunkActionableWarningCount: chunked.chunkActionableWarningCount,
         };
         if (chunked.parseErrors.length > 0) {
           result.parseErrors = chunked.parseErrors;

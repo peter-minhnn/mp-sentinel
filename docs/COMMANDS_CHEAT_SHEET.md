@@ -69,7 +69,7 @@ npx mp-sentinel indexing --agent-context src/commands/indexing.ts --index-format
 # Index health check — read-only diagnostic (v1.19.0+):
 npx mp-sentinel indexing --health --index-format json
 
-# Parser recovery drilldown — list files recovered via fallback parser (v1.22.0+):
+# Parser recovery drilldown — list files recovered via chunked-tree-sitter, ascii-fallback, or lexical-fallback (v1.22.0+):
 npx mp-sentinel indexing --recovered --index-format json
 
 # Hard parse error drilldown — list files with hard parse errors (v1.22.0+):
@@ -82,7 +82,7 @@ Imports are classified as `internal` (resolved to another source file in the ind
 
 `--health` is a read-only diagnostic that examines cache integrity without building or calling AI. It reports cache status (`ok`, `missing`, `unreadable`, `stale`), schema version, file count, parse error rate, manifest hash comparison, and samples of changed or missing files. Exit codes: `0` = healthy, `1` = missing/stale/unreadable, `2` = error. JSON mode emits the health payload to stdout; all logs go to stderr.
 
-`--recovered` and `--parse-errors` are read-only parser drilldown commands (v1.22.0+). `--recovered` lists files recovered via fallback parser (`ascii-fallback` or `lexical-fallback`), with per-file parser mode, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). `--parse-errors` lists files with hard parse errors, with per-file error messages, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). Both output JSON to stdout (all logs to stderr), cap files at 50 sorted by path, exit `0` on success, and exit `1` when cache is missing or unreadable. The two flags cannot be used together.
+`--recovered` and `--parse-errors` are read-only parser drilldown commands (v1.22.0+). `--recovered` lists files recovered via fallback parser (`chunked-tree-sitter`, `ascii-fallback`, or `lexical-fallback`), with per-file parser mode, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). `--parse-errors` lists files with hard parse errors, with per-file error messages, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). Both output JSON to stdout (all logs to stderr), cap files at 50 sorted by path, exit `0` on success, and exit `1` when cache is missing or unreadable. The two flags cannot be used together.
 
 ### Health → Drilldown Workflow (v1.23.0+)
 Start with a health check to see if parser issues exist, then drill into specifics.

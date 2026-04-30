@@ -471,6 +471,8 @@ describe("indexing command output", () => {
       chunkCount: 4,
       chunkSize: 30000,
       chunkWarningCount: 2,
+      chunkBoundaryWarningCount: 2,
+      chunkActionableWarningCount: 0,
     });
     cached.stats.totalFiles = 2;
     cached.stats.indexedFiles = 2;
@@ -493,6 +495,8 @@ describe("indexing command output", () => {
       expect(parsed.chunkedFiles).toBe(1);
       expect(parsed.totalChunks).toBe(4);
       expect(parsed.totalChunkWarnings).toBe(2);
+      expect(parsed.totalChunkBoundaryWarnings).toBe(2);
+      expect(parsed.totalChunkActionableWarnings).toBe(0);
       expect(parsed.chunkSize).toBe(30000);
     } finally {
       console.log = originalLog;
@@ -3564,6 +3568,8 @@ describe("indexing --health", () => {
       chunkCount: 3,
       chunkSize: 30000,
       chunkWarningCount: 1,
+      chunkBoundaryWarningCount: 1,
+      chunkActionableWarningCount: 0,
     });
     cached.files.push({
       path: "src/b.ts",
@@ -3578,6 +3584,8 @@ describe("indexing --health", () => {
       chunkCount: 5,
       chunkSize: 30000,
       chunkWarningCount: 2,
+      chunkBoundaryWarningCount: 2,
+      chunkActionableWarningCount: 0,
     });
     cached.stats.totalFiles = 3;
     cached.stats.indexedFiles = 3;
@@ -3599,6 +3607,8 @@ describe("indexing --health", () => {
       expect(parsed.chunkedFiles).toBe(2);
       expect(parsed.totalChunks).toBe(8);
       expect(parsed.totalChunkWarnings).toBe(3);
+      expect(parsed.totalChunkBoundaryWarnings).toBe(3);
+      expect(parsed.totalChunkActionableWarnings).toBe(0);
       expect(parsed.chunkSize).toBe(30000);
     } finally {
       console.log = originalLog;
@@ -3632,6 +3642,8 @@ describe("indexing --health", () => {
       expect(parsed.chunkedFiles).toBeUndefined();
       expect(parsed.totalChunks).toBeUndefined();
       expect(parsed.totalChunkWarnings).toBeUndefined();
+      expect(parsed.totalChunkBoundaryWarnings).toBeUndefined();
+      expect(parsed.totalChunkActionableWarnings).toBeUndefined();
       expect(parsed.chunkSize).toBeUndefined();
     } finally {
       console.log = originalLog;
@@ -4882,26 +4894,20 @@ describe("chunkedParse line offsets", () => {
 });
 
 describe("chunkedParse observability fields", () => {
-  const buildLargeContentWithMarkers = (markers: string[]): string => {
-    const padLine = " ".repeat(98) + "//";
+  /** Build content >30k chars with a syntax error at a specific 1-based line. */
+  const buildLargeContentWithError = (errorLine: number): string => {
+    const pad = 'const v__ = ".........................................";'; // ~48 chars
+    const err = "@@@"; // ERROR node — invalid token sequence
     const lines: string[] = [];
-    // ~290 pad lines → first chunk fills up
-    for (let i = 1; i <= 290; i++) lines.push(padLine);
-    lines.push(markers[0]!);
-    for (let i = 292; i <= 360; i++) lines.push(padLine);
-    lines.push(markers[1]!);
-    for (let i = 362; i <= 370; i++) lines.push(padLine);
+    for (let i = 1; i <= 700; i++) {
+      if (i === errorLine) lines.push(err);
+      else lines.push(pad);
+    }
     return lines.join("\n");
   };
 
-  it("chunkWarningCount matches count of chunk-level parse warnings", async () => {
-    const content = buildLargeContentWithMarkers([
-      'import { a } from "./a";',
-      'import { b } from "./b";',
-    ]);
-    expect(content.length).toBeGreaterThan(30000);
-
-    const doParse = async (parseContent: string) => {
+  const makeDoParse = () => {
+    return async (parseContent: string) => {
       const parser = await import("tree-sitter");
       const tsModule = await import("tree-sitter-typescript");
       const Parser = parser.default;
@@ -4910,29 +4916,56 @@ describe("chunkedParse observability fields", () => {
       p.setLanguage(grammars.typescript);
       const tree = p.parse(parseContent);
       const errors: string[] = [];
-      if (
-        tree &&
-        tree.rootNode &&
-        typeof tree.rootNode.hasError === "function" &&
-        tree.rootNode.hasError()
-      ) {
-        errors.push("Tree has syntax errors");
+      if (tree && tree.rootNode) {
+        const hasError =
+          typeof tree.rootNode.hasError === "function"
+            ? tree.rootNode.hasError()
+            : Boolean(tree.rootNode.hasError);
+        if (hasError) {
+          errors.push("Tree has syntax errors");
+        }
       }
       return { tree, parseErrors: errors };
     };
+  };
 
-    const result = await chunkedParse(content, "typescript", doParse);
+  it("boundary + actionable equals total chunk warnings", async () => {
+    // Error near the chunk-1 end (boundary) → classified as boundary
+    const content = buildLargeContentWithError(620);
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
     expect(result).not.toBeNull();
     if (!result) return;
 
-    // chunkWarningCount = number of chunk-level parse warnings
     expect(typeof result.chunkWarningCount).toBe("number");
-    // parseWarnings are the individual chunk warnings (e.g., "Chunk at line X: Tree has syntax errors")
+    expect(typeof result.chunkBoundaryWarningCount).toBe("number");
+    expect(typeof result.chunkActionableWarningCount).toBe("number");
     expect(result.chunkWarningCount).toBe(result.parseWarnings.length);
-    // chunkCount should be at least 2
+    expect(result.chunkBoundaryWarningCount + result.chunkActionableWarningCount).toBe(
+      result.chunkWarningCount,
+    );
     expect(result.chunkCount).toBeGreaterThanOrEqual(2);
-    // chunkSize should be the MAX_CHUNK_SIZE constant
     expect(result.chunkSize).toBe(30000);
+  });
+
+  it("classifies interior ERROR node as boundary — chunked parsing is lossy", async () => {
+    // Error at line 200 — well within chunk 1, far from chunk boundaries.
+    // Chunked parsing splits on line boundaries, breaking multi-line constructs,
+    // so all chunk warnings are classified as boundary artifacts.
+    const content = buildLargeContentWithError(200);
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // All chunk warnings are boundary — chunked parsing is a lossy fallback
+    expect(result.chunkBoundaryWarningCount).toBe(result.chunkWarningCount);
+    expect(result.chunkActionableWarningCount).toBe(0);
+    expect(result.chunkBoundaryWarningCount + result.chunkActionableWarningCount).toBe(
+      result.chunkWarningCount,
+    );
   });
 
   it("returns null when content fits in a single chunk", async () => {
@@ -4987,6 +5020,8 @@ describe("indexing --recovered chunk fields", () => {
       chunkCount: 3,
       chunkSize: 30000,
       chunkWarningCount: 1,
+      chunkBoundaryWarningCount: 1,
+      chunkActionableWarningCount: 0,
     });
     cached.stats.totalFiles = 2;
     cached.stats.indexedFiles = 2;
@@ -5016,6 +5051,8 @@ describe("indexing --recovered chunk fields", () => {
       expect(largeFile.chunkCount).toBe(3);
       expect(largeFile.chunkSize).toBe(30000);
       expect(largeFile.chunkWarningCount).toBe(1);
+      expect(largeFile.chunkBoundaryWarningCount).toBe(1);
+      expect(largeFile.chunkActionableWarningCount).toBe(0);
     } finally {
       stdoutWrite.mockRestore();
     }
@@ -5087,12 +5124,16 @@ describe("indexing --recovered chunk fields", () => {
       expect(asciiFile.chunkCount).toBeUndefined();
       expect(asciiFile.chunkSize).toBeUndefined();
       expect(asciiFile.chunkWarningCount).toBeUndefined();
+      expect(asciiFile.chunkBoundaryWarningCount).toBeUndefined();
+      expect(asciiFile.chunkActionableWarningCount).toBeUndefined();
 
       const lexicalFile = json.files.find((f: { path: string }) => f.path === "src/lexical.ts");
       expect(lexicalFile).toBeDefined();
       expect(lexicalFile.chunkCount).toBeUndefined();
       expect(lexicalFile.chunkSize).toBeUndefined();
       expect(lexicalFile.chunkWarningCount).toBeUndefined();
+      expect(lexicalFile.chunkBoundaryWarningCount).toBeUndefined();
+      expect(lexicalFile.chunkActionableWarningCount).toBeUndefined();
     } finally {
       stdoutWrite.mockRestore();
     }
@@ -5225,6 +5266,8 @@ describe("indexing --recovered chunk fields", () => {
       chunkCount: 2,
       chunkSize: 30000,
       chunkWarningCount: 0,
+      chunkBoundaryWarningCount: 0,
+      chunkActionableWarningCount: 0,
     });
     cached.files.push({
       path: "src/also-chunked.ts",
@@ -5377,10 +5420,14 @@ describe("getParserTelemetry — shared serializer", () => {
       chunkCount: 8,
       chunkSize: 30000,
       chunkWarningCount: 3,
+      chunkBoundaryWarningCount: 3,
+      chunkActionableWarningCount: 0,
     });
     expect(result.chunkCount).toBe(8);
     expect(result.chunkSize).toBe(30000);
     expect(result.chunkWarningCount).toBe(3);
+    expect(result.chunkBoundaryWarningCount).toBe(3);
+    expect(result.chunkActionableWarningCount).toBe(0);
     expect(result.parserMode).toBe("chunked-tree-sitter");
   });
 
@@ -5446,6 +5493,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       expect("chunkCount" in json).toBe(false);
       expect("chunkSize" in json).toBe(false);
       expect("chunkWarningCount" in json).toBe(false);
+      expect("chunkBoundaryWarningCount" in json).toBe(false);
+      expect("chunkActionableWarningCount" in json).toBe(false);
     } finally {
       stdoutWrite.mockRestore();
     }
@@ -5495,6 +5544,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       expect("chunkCount" in json.file).toBe(false);
       expect("chunkSize" in json.file).toBe(false);
       expect("chunkWarningCount" in json.file).toBe(false);
+      expect("chunkBoundaryWarningCount" in json.file).toBe(false);
+      expect("chunkActionableWarningCount" in json.file).toBe(false);
     } finally {
       stdoutWrite.mockRestore();
     }
@@ -5527,6 +5578,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       chunkCount: 4,
       chunkSize: 30000,
       chunkWarningCount: 1,
+      chunkBoundaryWarningCount: 1,
+      chunkActionableWarningCount: 0,
     });
     cached.stats.totalFiles = 2;
     cached.stats.indexedFiles = 2;
@@ -5556,6 +5609,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       expect(json.chunkCount).toBe(4);
       expect(json.chunkSize).toBe(30000);
       expect(json.chunkWarningCount).toBe(1);
+      expect(json.chunkBoundaryWarningCount).toBe(1);
+      expect(json.chunkActionableWarningCount).toBe(0);
 
       // ASCII-safe
       const raw = jsonCall![0];
@@ -5592,6 +5647,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       chunkCount: 4,
       chunkSize: 30000,
       chunkWarningCount: 1,
+      chunkBoundaryWarningCount: 1,
+      chunkActionableWarningCount: 0,
     });
     cached.stats.totalFiles = 2;
     cached.stats.indexedFiles = 2;
@@ -5621,6 +5678,8 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
       expect(json.file.chunkCount).toBe(4);
       expect(json.file.chunkSize).toBe(30000);
       expect(json.file.chunkWarningCount).toBe(1);
+      expect(json.file.chunkBoundaryWarningCount).toBe(1);
+      expect(json.file.chunkActionableWarningCount).toBe(0);
 
       // ASCII-safe
       const raw = jsonCall![0];

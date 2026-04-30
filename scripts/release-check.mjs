@@ -275,7 +275,7 @@ function checkDistFreshness(expected) {
       timeout: 30000,
       stdio: "pipe",
     });
-    const requiredFlags = ["--health", "--agent-context", "--find-symbol", "--find-import"];
+    const requiredFlags = ["--health", "--agent-context", "--find-symbol", "--find-import", "--stats", "--explain-index", "--recovered", "--parse-errors"];
     const missing = requiredFlags.filter((f) => !helpOut.includes(f));
     if (missing.length > 0) {
       for (const flag of missing) {

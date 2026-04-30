@@ -427,6 +427,10 @@ export interface SourceIndexFile {
   chunkSize?: number;
   /** Number of chunk-level warnings when parserMode is chunked-tree-sitter (optional parser telemetry) */
   chunkWarningCount?: number;
+  /** Number of expected chunk-boundary warnings (tree-sitter syntax errors at chunk edges) */
+  chunkBoundaryWarningCount?: number;
+  /** Number of actionable chunk warnings (non-boundary parser issues; 0 means all chunk warnings are boundary notices) */
+  chunkActionableWarningCount?: number;
   /** Dependency graph - files this file imports from */
   importsFrom?: string[];
   /** Files that import this file */
@@ -540,6 +544,10 @@ export interface IndexHealthOutput {
   totalChunks?: number;
   /** Total chunk-level warnings across all chunked files (optional aggregate chunk telemetry) */
   totalChunkWarnings?: number;
+  /** Total chunk-boundary warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkBoundaryWarnings?: number;
+  /** Total actionable chunk warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkActionableWarnings?: number;
   /** Size of each chunk in bytes (optional aggregate chunk telemetry) */
   chunkSize?: number;
 }
@@ -1071,6 +1079,10 @@ export interface DoctorIndexInfo {
   totalChunks?: number;
   /** Total chunk-level warnings across all chunked files (optional aggregate chunk telemetry) */
   totalChunkWarnings?: number;
+  /** Total chunk-boundary warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkBoundaryWarnings?: number;
+  /** Total actionable chunk warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkActionableWarnings?: number;
   /** Size of each chunk in bytes (optional aggregate chunk telemetry) */
   chunkSize?: number;
 }

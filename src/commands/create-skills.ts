@@ -826,12 +826,18 @@ async function runDoctor(
     let chunkedFiles = 0;
     let totalChunks = 0;
     let totalChunkWarnings = 0;
+    let totalChunkBoundaryWarnings = 0;
+    let totalChunkActionableWarnings = 0;
     let chunkSize: number | undefined;
     for (const f of index.files) {
       if (f.parserMode === "chunked-tree-sitter") {
         chunkedFiles++;
         if (f.chunkCount !== undefined) totalChunks += f.chunkCount;
         if (f.chunkWarningCount !== undefined) totalChunkWarnings += f.chunkWarningCount;
+        if (f.chunkBoundaryWarningCount !== undefined)
+          totalChunkBoundaryWarnings += f.chunkBoundaryWarningCount;
+        if (f.chunkActionableWarningCount !== undefined)
+          totalChunkActionableWarnings += f.chunkActionableWarningCount;
         if (chunkSize === undefined && f.chunkSize !== undefined) chunkSize = f.chunkSize;
       }
     }
@@ -841,6 +847,8 @@ async function runDoctor(
         chunkedFiles,
         totalChunks,
         totalChunkWarnings,
+        totalChunkBoundaryWarnings,
+        totalChunkActionableWarnings,
         chunkSize: chunkSize ?? 0,
       };
     }
@@ -1081,8 +1089,10 @@ async function runDoctor(
       const tw = indexInfo.totalChunkWarnings;
       const cs = indexInfo.chunkSize;
       if (cf !== undefined && cf > 0 && tc !== undefined && cs !== undefined) {
+        const tbd = indexInfo.totalChunkBoundaryWarnings;
+        const tac = indexInfo.totalChunkActionableWarnings;
         log.info(
-          `  Chunks:           ${cf} files, ${tc} chunks @ ${cs} bytes/chunk, ${tw ?? 0} warnings`,
+          `  Chunks:           ${cf} files, ${tc} chunks @ ${cs} bytes/chunk, ${tw ?? 0} warnings (${tbd ?? 0} boundary, ${tac ?? 0} actionable)`,
         );
       }
     }

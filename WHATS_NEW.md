@@ -1,3 +1,16 @@
+# What's New in v1.29.0
+
+## Parser Warning Semantics, Docs Accuracy & Workflow Contract
+
+v1.29.0 replaces stub chunk warning classification with Tree-sitter-informed boundary semantics, tightens stale-docs detection, and documents the agent workflow-command contract.
+
+- **Chunk warning classification** (`src/services/source-index/parser.ts`): `chunkBoundaryWarningCount` and `chunkActionableWarningCount` are now computed from actual parse results. Chunked parsing splits files on line boundaries, breaking multi-line constructs, so all chunk parse warnings are classified as boundary artifacts; only no-tree and throw conditions count as actionable. The `treeHasMissing()` and `collectErrorRows()` helpers provide Tree-sitter AST diagnostics for future refinement.
+- **Docs accuracy** (`README.md`, `docs/ARCHITECTURE.md`, `docs/SKILLS_INTEGRATION.md`): Removed stale v1.0.x version references from current-version docs. Feature-introduced markers like `(v1.0.14+)` are preserved as historical context.
+- **Dogfood stale-docs gate** (`scripts/dogfood.mjs`): Lines matching feature-introduced markers (`(v1.0.x+)`, `pre-v1.0.x`) are excluded from stale-docs detection, keeping legitimate historical documentation intact.
+- **Agent workflow-command contract** (`docs/CREATE_SKILLS.md`): New `## Agent Workflow-Command Contract` section documents the enforced indexing diagnostic commands (`--health`, `--recovered`, `--parse-errors`, `--agent-context`, `--explain-index`, `--find-symbol`, `--find-import`, `--stats`) and workflow rules (health first, drill down on parser issues, per-file diagnostics before editing, JSON mode for automation).
+
+---
+
 # What's New in v1.28.0
 
 ## Agent Parser Diagnostics Workflow

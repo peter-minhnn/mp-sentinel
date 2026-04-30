@@ -286,6 +286,10 @@ describe("release-check", () => {
       "--agent-context",
       "--find-symbol",
       "--find-import",
+      "--stats",
+      "--explain-index",
+      "--recovered",
+      "--parse-errors",
     ];
     const distVersion = opts?.distVersion ?? version;
     const distContent = [

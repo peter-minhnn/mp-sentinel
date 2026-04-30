@@ -125,7 +125,7 @@ export const buildProgram = (): Command => {
     )
     .option(
       "--recovered",
-      "Read-only: list files recovered via fallback parser (no build, no AI)",
+      "Read-only: list files recovered via chunked-tree-sitter, ascii-fallback, or lexical-fallback (no build, no AI)",
       false,
     )
     .option(

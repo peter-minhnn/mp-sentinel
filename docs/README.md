@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.0.12-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.28.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -14,7 +14,7 @@
 
 Traditional tools like **ESLint** or **Prettier** are great for syntax and formatting, but they miss the bigger picture. They can't tell you if your logic is flawed or if you're breaking the project's architecture.
 
-**MP Sentinel fills that gap.** v1.0.12 introduces diagnostic explain-context mode, CLI parser hardening, and version consistency improvements.
+**MP Sentinel fills that gap.** It introduces agentic parser diagnostics, chunked parser recovery with full observability, and AI-powered code reviews — all 100% offline and secure.
 
 - 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, or Grok for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
@@ -268,7 +268,7 @@ const results = await auditFilesWithConcurrency(
 
 ## 🤖 CI/CD Integration
 
-MP Sentinel v1.0.12 supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
+MP Sentinel supports multiple AI providers in CI/CD pipelines. Choose the provider that fits your needs.
 
 ### Quick Setup
 

@@ -20,11 +20,10 @@ All documentation has been moved to the `docs/` directory:
 - [Create Skills Guide](./docs/CREATE_SKILLS.md)
 - [Local Skills Integration](./docs/SKILLS_INTEGRATION.md)
 - [Skills Quick Start](./docs/SKILLS_QUICK_START.md)
-- [Migration Guide (v1.0.4)](./docs/MIGRATION_1.0.4.md)
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.28.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.29.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,10 +42,4 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.28.0**:
-
-- 🩺 **Agent Parser Diagnostics Workflow** — Generated skills teach health-first parser diagnostics, doctor exposes chunk aggregate telemetry
-- 🔍 **Generated Skills Workflow** — Required Agent Workflow now includes `--health`, `--recovered`, and `--parse-errors` with `--index-format json`
-- ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
-- 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
-- 🔍 **Local Review Mode** — Review commits without CI/CD pipelines
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.29.0**.

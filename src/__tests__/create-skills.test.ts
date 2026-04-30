@@ -5691,6 +5691,8 @@ describe("runCreateSkillsCommand --doctor", () => {
       cached.files[0].chunkCount = 4;
       cached.files[0].chunkSize = 30000;
       cached.files[0].chunkWarningCount = 2;
+      cached.files[0].chunkBoundaryWarningCount = 2;
+      cached.files[0].chunkActionableWarningCount = 0;
       cached.files[0].parseWarnings = [
         "Invalid argument; parsed with chunked tree-sitter (4 chunks)",
       ];
@@ -5835,6 +5837,10 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.index.totalChunks).toBe(4);
     expect(typeof parsed.index.totalChunkWarnings).toBe("number");
     expect(parsed.index.totalChunkWarnings).toBe(2);
+    expect(typeof parsed.index.totalChunkBoundaryWarnings).toBe("number");
+    expect(parsed.index.totalChunkBoundaryWarnings).toBe(2);
+    expect(typeof parsed.index.totalChunkActionableWarnings).toBe("number");
+    expect(parsed.index.totalChunkActionableWarnings).toBe(0);
     expect(typeof parsed.index.chunkSize).toBe("number");
     expect(parsed.index.chunkSize).toBe(30000);
     expect(exitCode).toBe(0);
@@ -5873,6 +5879,8 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.index.chunkedFiles).toBeUndefined();
     expect(parsed.index.totalChunks).toBeUndefined();
     expect(parsed.index.totalChunkWarnings).toBeUndefined();
+    expect(parsed.index.totalChunkBoundaryWarnings).toBeUndefined();
+    expect(parsed.index.totalChunkActionableWarnings).toBeUndefined();
     expect(parsed.index.chunkSize).toBeUndefined();
     expect(exitCode).toBe(0);
   });

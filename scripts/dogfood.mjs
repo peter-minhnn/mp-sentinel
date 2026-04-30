@@ -10,16 +10,13 @@
  *   4. indexing --health    - positive health check (status=ok, version fields) (JSON)
  *   5. parser drilldown     - --recovered and --parse-errors drilldown (JSON)
  *   6. index queries        - agent-context, find-symbol, find-import (JSON)
- *   7. create-skills --dry-run - all adapters, no writes (JSON)
+ *   7. create-skills --dry-run - all adapters, no writes + quality gate (JSON)
  *   8. --explain-agents     - agent detection diagnostics (JSON)
  *   9. --explain-context    - context diagnostics (JSON, unavailable path)
  *  10. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
  *  11. create-skills --doctor - doctor diagnostics (JSON)
- *  12. agent:skills:check   - generated skills freshness gate
- *
- * Each JSON step is parsed, not just visually inspected.
- * Step 8 validates "unavailable" (indexing.enabled=false repo default).
- * Step 9 validates "available" with indexUsed + suggestedCommands using a temp fixture.
+ *  12. stale docs check     - no v1.0.x references in docs/
+ *  13. agent:skills:check   - generated skills freshness gate
  *
  * Usage:
  *   node scripts/dogfood.mjs
@@ -29,13 +26,13 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 13;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -108,7 +105,7 @@ function stepBuild() {
 function stepIndexing() {
   stepHeader(3, "indexing --stats");
   const out = run(
-    "node dist/index.js indexing --stats --index-format json",
+    "node dist/index.js indexing --stats --index-format json --force",
     "indexing --stats",
   );
   if (out === null) return false;
@@ -228,6 +225,27 @@ function stepHealthCheck() {
     }
     if (typeof json.totalChunkWarnings !== "number") {
       fail("indexing --health", "totalChunkWarnings missing when chunked files exist");
+      return false;
+    }
+    if (typeof json.totalChunkBoundaryWarnings !== "number") {
+      fail(
+        "indexing --health",
+        "totalChunkBoundaryWarnings missing when chunked files exist",
+      );
+      return false;
+    }
+    if (typeof json.totalChunkActionableWarnings !== "number") {
+      fail(
+        "indexing --health",
+        "totalChunkActionableWarnings missing when chunked files exist",
+      );
+      return false;
+    }
+    if (json.totalChunkActionableWarnings !== 0) {
+      fail(
+        "indexing --health",
+        `totalChunkActionableWarnings must be 0 (got ${json.totalChunkActionableWarnings})`,
+      );
       return false;
     }
     if (typeof json.chunkSize !== "number") {
@@ -400,6 +418,31 @@ function stepParserDrilldown() {
       return false;
     }
 
+    // chunkBoundaryWarningCount must be a number (0+)
+    if (typeof file.chunkBoundaryWarningCount !== "number") {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing chunkBoundaryWarningCount`,
+      );
+      return false;
+    }
+
+    // chunkActionableWarningCount must be 0
+    if (typeof file.chunkActionableWarningCount !== "number") {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" missing chunkActionableWarningCount`,
+      );
+      return false;
+    }
+    if (file.chunkActionableWarningCount !== 0) {
+      fail(
+        "parser drilldown --recovered",
+        `chunked-tree-sitter file "${file.path}" has actionable chunk warnings (${file.chunkActionableWarningCount})`,
+      );
+      return false;
+    }
+
     // Chunked recovery must produce meaningful data (non-zero symbols or imports or exports)
     if (file.symbolCount === 0 && file.importCount === 0 && file.exportCount === 0) {
       fail(
@@ -479,6 +522,23 @@ function stepIndexQuery() {
       fail("indexing --agent-context", "chunkWarningCount missing for chunked-tree-sitter file");
       return false;
     }
+    if (typeof acJson.file.chunkBoundaryWarningCount !== "number") {
+      fail(
+        "indexing --agent-context",
+        "chunkBoundaryWarningCount missing for chunked-tree-sitter file",
+      );
+      return false;
+    }
+    if (
+      typeof acJson.file.chunkActionableWarningCount !== "number" ||
+      acJson.file.chunkActionableWarningCount !== 0
+    ) {
+      fail(
+        "indexing --agent-context",
+        `chunkActionableWarningCount must be 0 for chunked-tree-sitter file (got ${acJson.file.chunkActionableWarningCount})`,
+      );
+      return false;
+    }
   } else {
     if ("chunkCount" in acJson.file) {
       fail("indexing --agent-context", `chunkCount present for non-chunked file (parserMode=${acJson.file.parserMode ?? "tree-sitter"})`);
@@ -511,6 +571,23 @@ function stepIndexQuery() {
     }
     if (typeof eiJson.chunkWarningCount !== "number") {
       fail("indexing --explain-index", "chunkWarningCount missing for chunked-tree-sitter file");
+      return false;
+    }
+    if (typeof eiJson.chunkBoundaryWarningCount !== "number") {
+      fail(
+        "indexing --explain-index",
+        "chunkBoundaryWarningCount missing for chunked-tree-sitter file",
+      );
+      return false;
+    }
+    if (
+      typeof eiJson.chunkActionableWarningCount !== "number" ||
+      eiJson.chunkActionableWarningCount !== 0
+    ) {
+      fail(
+        "indexing --explain-index",
+        `chunkActionableWarningCount must be 0 for chunked-tree-sitter file (got ${eiJson.chunkActionableWarningCount})`,
+      );
       return false;
     }
   } else {
@@ -551,6 +628,23 @@ function stepIndexQuery() {
               fail("indexing --agent-context (chunked)", "chunkWarningCount missing for chunked file");
               return false;
             }
+            if (typeof acChunkedJson.file.chunkBoundaryWarningCount !== "number") {
+              fail(
+                "indexing --agent-context (chunked)",
+                "chunkBoundaryWarningCount missing for chunked file",
+              );
+              return false;
+            }
+            if (
+              typeof acChunkedJson.file.chunkActionableWarningCount !== "number" ||
+              acChunkedJson.file.chunkActionableWarningCount !== 0
+            ) {
+              fail(
+                "indexing --agent-context (chunked)",
+                `chunkActionableWarningCount must be 0 for chunked file (got ${acChunkedJson.file.chunkActionableWarningCount})`,
+              );
+              return false;
+            }
           }
         }
 
@@ -571,6 +665,23 @@ function stepIndexQuery() {
             }
             if (typeof eiChunkedJson.chunkWarningCount !== "number") {
               fail("indexing --explain-index (chunked)", "chunkWarningCount missing for chunked file");
+              return false;
+            }
+            if (typeof eiChunkedJson.chunkBoundaryWarningCount !== "number") {
+              fail(
+                "indexing --explain-index (chunked)",
+                "chunkBoundaryWarningCount missing for chunked file",
+              );
+              return false;
+            }
+            if (
+              typeof eiChunkedJson.chunkActionableWarningCount !== "number" ||
+              eiChunkedJson.chunkActionableWarningCount !== 0
+            ) {
+              fail(
+                "indexing --explain-index (chunked)",
+                `chunkActionableWarningCount must be 0 for chunked file (got ${eiChunkedJson.chunkActionableWarningCount})`,
+              );
               return false;
             }
           }
@@ -655,6 +766,24 @@ function stepCreateSkills() {
       actions[f.action] = (actions[f.action] || 0) + 1;
     }
   }
+
+  // Quality gate: fail on any adapter quality errors
+  let qualityErrors = 0;
+  for (const entry of json.dryRun) {
+    if (entry.quality && entry.quality.errors > 0) {
+      qualityErrors += entry.quality.errors;
+      for (const check of entry.quality.checks) {
+        if (check.severity === "error") {
+          fail("create-skills --dry-run", `[quality:${entry.agent}] ${check.file}: ${check.message}`);
+        }
+      }
+    }
+  }
+  if (qualityErrors > 0) {
+    fail("create-skills --dry-run", `${qualityErrors} quality error(s) across adapters`);
+    return false;
+  }
+
   const summary = Object.entries(actions)
     .map(([a, c]) => `${a}=${c}`)
     .join(", ");
@@ -945,6 +1074,27 @@ function stepDoctor() {
         fail("create-skills --doctor", "index.totalChunkWarnings missing when chunked files exist");
         return false;
       }
+      if (typeof json.index.totalChunkBoundaryWarnings !== "number") {
+        fail(
+          "create-skills --doctor",
+          "index.totalChunkBoundaryWarnings missing when chunked files exist",
+        );
+        return false;
+      }
+      if (typeof json.index.totalChunkActionableWarnings !== "number") {
+        fail(
+          "create-skills --doctor",
+          "index.totalChunkActionableWarnings missing when chunked files exist",
+        );
+        return false;
+      }
+      if (json.index.totalChunkActionableWarnings !== 0) {
+        fail(
+          "create-skills --doctor",
+          `index.totalChunkActionableWarnings must be 0 (got ${json.index.totalChunkActionableWarnings})`,
+        );
+        return false;
+      }
       if (typeof json.index.chunkSize !== "number") {
         fail("create-skills --doctor", "index.chunkSize missing when chunked files exist");
         return false;
@@ -990,8 +1140,61 @@ function stepDoctor() {
   return true;
 }
 
+function stepStaleDocsCheck() {
+  stepHeader(12, "stale docs check");
+
+  const DOCS_DIR = "docs";
+  if (!existsSync(DOCS_DIR)) {
+    ok("stale docs check", "docs/ directory not found -- skipping");
+    return true;
+  }
+
+  let files;
+  try {
+    files = readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"));
+  } catch {
+    fail("stale docs check", "cannot read docs/ directory");
+    return false;
+  }
+
+  // Historical files that legitimately reference old versions
+  const EXCLUDED = new Set(["CHANGELOG.md"]);
+  const STALE_PATTERN = /v1\.0\.\d/;
+  // Feature-introduced markers document when a feature first shipped --
+  // these are historical context, not stale current-version references.
+  const FEATURE_MARKER = /(?:From |\()v1\.0\.\d+[\+\)\,]|pre-v1\.0\.\d+/;
+
+  let staleHits = 0;
+  for (const file of files) {
+    if (EXCLUDED.has(file)) continue;
+    if (file.startsWith("MIGRATION_")) continue;
+
+    let content;
+    try {
+      content = readFileSync(join(DOCS_DIR, file), "utf-8");
+    } catch {
+      continue;
+    }
+
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (FEATURE_MARKER.test(lines[i])) continue;
+      if (STALE_PATTERN.test(lines[i])) {
+        fail("stale docs check", `${DOCS_DIR}/${file}:${i + 1} contains stale v1.0.x reference`);
+        staleHits++;
+      }
+    }
+  }
+
+  if (staleHits === 0) {
+    ok("stale docs check", "no stale v1.0.x references in docs");
+    return true;
+  }
+  return false;
+}
+
 function stepAgentSkillsCheck() {
-  stepHeader(12, "agent:skills:check");
+  stepHeader(13, "agent:skills:check");
   let raw;
   try {
     raw = execSync(
@@ -1029,6 +1232,7 @@ const steps = [
   stepExplainContext,
   stepPositiveExplainContext,
   stepDoctor,
+  stepStaleDocsCheck,
   stepAgentSkillsCheck,
 ];
 

@@ -2,7 +2,7 @@
 
 ## System Design
 
-MP Sentinel v1.0.12 centers on a stable `review` command contract with diff-first auditing:
+MP Sentinel centers on a stable `review` command contract with diff-first auditing:
 
 - `review --staged`
 - `review --commit <sha>`
@@ -15,7 +15,7 @@ The runtime is optimized for quality and cost control:
 - guardrails (`maxFiles`, `maxDiffLines`, `maxCharsPerFile`)
 - secret scrubbing before model calls
 - persistent cache in `.mp-sentinel-cache`
-- **repository-aware review context** from source index (v1.0.11+)
+- **repository-aware review context** from source index
 
 ## High-Level Flow
 
@@ -82,7 +82,7 @@ Signals are deduplicated by `type + file + evidence` and respect the 12k charact
 - `create-skills` independently refreshes the index and uses the same `SkillKnowledgeBase` for richer documentation.
 - `indexing.enabled` in config only controls review consumption, not `create-skills` or direct `indexing` command behavior.
 
-## Source Indexing & Review Context (v1.0.11+)
+## Source Indexing & Review Context
 
 ### Behavioral Contract
 
@@ -141,7 +141,7 @@ v1.4.0 makes review intelligence signals explainable by adding structured metada
 - **Backward compatible**: `includedSignals` (string[]) is preserved. Indexes without `insights` gracefully fall back with no signals.
 - **No new CLI flags, no AI calls, no network calls.**
 
-## Explain Context Mode (v1.0.12+)
+## Explain Context Mode
 
 The `--explain-context` flag on the `review` command provides diagnostic output showing context building details without making AI calls:
 

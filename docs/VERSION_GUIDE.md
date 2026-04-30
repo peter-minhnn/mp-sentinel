@@ -8,15 +8,18 @@ This document provides detailed instructions on **MP Sentinel** versions and how
 
 You can install a specific version by adding `@version` after the package name.
 
-| Version | Status | Notes | Installation Command |
-| :--- | :--- | :--- | :--- |
-| **1.0.12** | `Latest` | Diagnostic explain-context mode, CLI parser hardening, version consistency. | `npm install -g mp-sentinel@1.0.12` |
-| **1.0.5** | `Stable` | Offline agent skills integration, smarter techStack matching, and performance boost. | `npm install -g mp-sentinel@1.0.5` |
-| **1.0.4** | `Stable` | Interactive local review, auto-fetch syncing, and mixed uncommitted audits. | `npm install -g mp-sentinel@1.0.4` |
-| **1.0.3** | `Legacy` | Version synchronization, build improvements, and Prettier integration. | `npm install -g mp-sentinel@1.0.3` |
-| **1.0.2** | `Legacy` | Skills.sh integration, enhanced parallel processing, 3-layer security. | `npm install -g mp-sentinel@1.0.2` |
-| **1.0.1** | `Legacy` | Added Branch Diff Mode, improved commit pattern matching. | `npm install -g mp-sentinel@1.0.1` |
-| **1.0.0** | `Legacy` | Initial version with multi-provider AI support. | `npm install -g mp-sentinel@1.0.0` |
+```bash
+# Install the latest version
+npm install -g mp-sentinel@latest
+
+# Install a specific version
+npm install -g mp-sentinel@1.28.0
+```
+
+For a full list of available versions and their release notes, see:
+- [npm registry](https://www.npmjs.com/package/mp-sentinel)
+- [WHATS_NEW.md](../WHATS_NEW.md)
+- [Changelog](./CHANGELOG.md)
 
 ---
 
@@ -63,8 +66,8 @@ npm install -g mp-sentinel@latest
 If a new version has compatibility issues with your system, you can revert to an older version:
 
 ```bash
-# Example: Revert to version 1.0.1
-npm install -g mp-sentinel@1.0.1
+# Example: Revert to a previous version
+npm install -g mp-sentinel@1.27.0
 ```
 
 ---
@@ -75,10 +78,10 @@ If you cannot use `npm` to install from the public registry (e.g., due to strict
 
 ### Option A: Install from Tarball (Recommended for corporate environments)
 
-1. Download the `.tgz` package (e.g., `mp-sentinel-1.0.6.tgz`) from [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases).
+1. Download the `.tgz` package from [GitHub Releases](https://github.com/peter-minhnn/mp-sentinel/releases).
 2. Install it locally:
 ```bash
-npm install -g ./packages/v1.0.6/mp-sentinel-1.0.6.tgz
+npm install -g ./mp-sentinel-x.y.z.tgz
 ```
 *This method is identical to a standard npm install but doesn't require an active connection to npmjs.org.*
 

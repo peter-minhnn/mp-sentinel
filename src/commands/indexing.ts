@@ -129,22 +129,42 @@ export const getParserModeBreakdown = (index: SourceIndex): Record<string, numbe
 export const getChunkTelemetry = (
   index: SourceIndex,
 ):
-  | { chunkedFiles: number; totalChunks: number; totalChunkWarnings: number; chunkSize: number }
+  | {
+      chunkedFiles: number;
+      totalChunks: number;
+      totalChunkWarnings: number;
+      totalChunkBoundaryWarnings: number;
+      totalChunkActionableWarnings: number;
+      chunkSize: number;
+    }
   | undefined => {
   let chunkedFiles = 0;
   let totalChunks = 0;
   let totalChunkWarnings = 0;
+  let totalChunkBoundaryWarnings = 0;
+  let totalChunkActionableWarnings = 0;
   let chunkSize: number | undefined;
   for (const file of index.files) {
     if (file.parserMode === "chunked-tree-sitter") {
       chunkedFiles++;
       if (file.chunkCount !== undefined) totalChunks += file.chunkCount;
       if (file.chunkWarningCount !== undefined) totalChunkWarnings += file.chunkWarningCount;
+      if (file.chunkBoundaryWarningCount !== undefined)
+        totalChunkBoundaryWarnings += file.chunkBoundaryWarningCount;
+      if (file.chunkActionableWarningCount !== undefined)
+        totalChunkActionableWarnings += file.chunkActionableWarningCount;
       if (chunkSize === undefined && file.chunkSize !== undefined) chunkSize = file.chunkSize;
     }
   }
   if (chunkedFiles === 0) return undefined;
-  return { chunkedFiles, totalChunks, totalChunkWarnings, chunkSize: chunkSize ?? 0 };
+  return {
+    chunkedFiles,
+    totalChunks,
+    totalChunkWarnings,
+    totalChunkBoundaryWarnings,
+    totalChunkActionableWarnings,
+    chunkSize: chunkSize ?? 0,
+  };
 };
 
 /**
@@ -693,7 +713,7 @@ async function handleHealth(
     }
     if (chunkTelemetry) {
       console.log(
-        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings`,
+        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings (${chunkTelemetry.totalChunkBoundaryWarnings} boundary, ${chunkTelemetry.totalChunkActionableWarnings} actionable)`,
       );
     }
     console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
@@ -1019,7 +1039,7 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     }
     if (chunkTelemetry) {
       console.log(
-        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings`,
+        `  Chunks:           ${chunkTelemetry.chunkedFiles} files, ${chunkTelemetry.totalChunks} chunks @ ${chunkTelemetry.chunkSize} bytes/chunk, ${chunkTelemetry.totalChunkWarnings} warnings (${chunkTelemetry.totalChunkBoundaryWarnings} boundary, ${chunkTelemetry.totalChunkActionableWarnings} actionable)`,
       );
     }
     console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
@@ -1100,6 +1120,8 @@ interface DrilldownFileEntry {
   chunkCount?: number;
   chunkSize?: number;
   chunkWarningCount?: number;
+  chunkBoundaryWarningCount?: number;
+  chunkActionableWarningCount?: number;
 }
 
 const MAX_DRILLDOWN_FILES = 50;
@@ -1340,7 +1362,7 @@ async function handleExplain(
     }
     if (file.parserMode === "chunked-tree-sitter" && file.chunkCount !== undefined) {
       console.log(
-        `  Chunked: ${file.chunkCount} chunks @ ${file.chunkSize} bytes/chunk, ${file.chunkWarningCount ?? 0} warnings`,
+        `  Chunked: ${file.chunkCount} chunks @ ${file.chunkSize} bytes/chunk, ${file.chunkWarningCount ?? 0} warnings (${file.chunkBoundaryWarningCount ?? 0} boundary, ${file.chunkActionableWarningCount ?? 0} actionable)`,
       );
     }
 
@@ -1553,7 +1575,7 @@ function handleAgentContext(
     }
     if (fileInfo.chunkCount !== undefined) {
       console.log(
-        `  Chunked: ${fileInfo.chunkCount} chunks @ ${fileInfo.chunkSize} bytes/chunk, ${fileInfo.chunkWarningCount ?? 0} warnings`,
+        `  Chunked: ${fileInfo.chunkCount} chunks @ ${fileInfo.chunkSize} bytes/chunk, ${fileInfo.chunkWarningCount ?? 0} warnings (${fileInfo.chunkBoundaryWarningCount ?? 0} boundary, ${fileInfo.chunkActionableWarningCount ?? 0} actionable)`,
       );
     }
 

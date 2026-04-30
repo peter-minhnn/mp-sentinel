@@ -413,6 +413,35 @@ npx mp-sentinel create-skills --doctor --format json
 
 ---
 
+## Agent Workflow-Command Contract
+
+Generated skill files and the `create-skills` quality gate enforce an agent workflow contract. Agents must follow this sequence when working with mp-sentinel projects:
+
+### Required Commands
+
+| Command | Purpose |
+|---------|---------|
+| `indexing --health` | Check index health: status, version consistency, parser telemetry, suggested commands |
+| `indexing --recovered` | List files parsed with recovery modes (chunked, ASCII, lexical fallback) |
+| `indexing --parse-errors` | List files with hard parse errors |
+| `indexing --agent-context <file>` | Per-file diagnostics: symbols, imports, dependents, parser mode, chunk telemetry |
+| `indexing --explain-index <file>` | Full parser diagnostics for a single file |
+| `indexing --find-symbol <name>` | Locate a symbol across the index |
+| `indexing --find-import <package>` | Find files that import a given package |
+| `indexing --stats` | Aggregate index statistics |
+| `--explain-context` | Review context diagnostics (available on the root CLI) |
+
+### Workflow Rules
+
+1. **Health first.** Always start with `--health` to assess index state and parser health before touching files. If the index is missing or corrupt, build it first with `indexing` or `indexing --force`.
+2. **Drill down when parser issues exist.** If `--health` reports `recoveredFiles > 0` or `parseErrorCount > 0`, inspect with `--recovered` or `--parse-errors` before making code changes. Parser recovery modes (`chunked-tree-sitter`, `ascii-fallback`, `lexical-fallback`) indicate files that may need attention.
+3. **Use per-file diagnostics before editing.** Before modifying any file, check its parser state with `--explain-index <file>` or `--agent-context <file>` to understand its parse health and dependency graph.
+4. **JSON mode for automation.** All indexing diagnostic commands support `--index-format json` for machine-readable output. Use it in CI and automated workflows.
+
+The quality gate validates that generated skills include this workflow. Missing `--health`, `--recovered`, or `--parse-errors` commands in generated content are hard errors.
+
+---
+
 ## Exit Codes
 
 | Code | Meaning |

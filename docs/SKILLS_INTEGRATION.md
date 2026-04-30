@@ -22,7 +22,7 @@ Add these fields to your `.sentinelrc.json`:
 }
 ```
 
-(The options `enableSkillsFetch` and `skillsFetchTimeout` from v1.0.4 are now deprecated but will not cause errors if left in the config)
+(The options `enableSkillsFetch` and `skillsFetchTimeout` are now deprecated but will not cause errors if left in the config)
 
 ### Configuration Options
 
