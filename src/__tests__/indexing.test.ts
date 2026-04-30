@@ -4987,6 +4987,151 @@ describe("chunkedParse observability fields", () => {
   });
 });
 
+// ── Safe-Boundary Chunking (v1.31.0) ─────────────────────────────────────────
+
+describe("chunkedParse safe-boundary chunking", () => {
+  /** Build content >30k chars consisting entirely of top-level statements
+   *  (each ending with ;), so every line is a safe-boundary candidate. */
+  const buildTopLevelContent = (): string => {
+    const pad = "const v__: number = 0;"; // ~23 chars, top-level statement ending with ;
+    const lines: string[] = [];
+    for (let i = 1; i <= 1450; i++) {
+      lines.push(`const v${i}: number = ${i};`);
+    }
+    return lines.join("\n");
+  };
+
+  /** Build content >30k chars deeply nested inside an IIFE so NO line returns
+   *  to the chunk-start depth (0) within the search window. */
+  const buildDeeplyNestedContent = (): string => {
+    const pad = "const v__: number = 0;"; // ~23 chars
+    const lines: string[] = [];
+    lines.push("const wrapper = (() => {"); // depth 0→2 (two opens)
+    for (let i = 1; i <= 1440; i++) {
+      lines.push(`  const v${i}: number = ${i};`);
+    }
+    lines.push("  return 42;");
+    lines.push("})();"); // depth 2→0, but at the very end
+    return lines.join("\n");
+  };
+
+  const makeDoParse = () => {
+    return async (parseContent: string) => {
+      const parser = await import("tree-sitter");
+      const tsModule = await import("tree-sitter-typescript");
+      const Parser = parser.default;
+      const grammars = tsModule.default as { typescript: unknown };
+      const p = new Parser();
+      p.setLanguage(grammars.typescript);
+      const tree = p.parse(parseContent);
+      const errors: string[] = [];
+      if (tree && tree.rootNode) {
+        const hasError =
+          typeof tree.rootNode.hasError === "function"
+            ? tree.rootNode.hasError()
+            : Boolean(tree.rootNode.hasError);
+        if (hasError) {
+          errors.push("Tree has syntax errors");
+        }
+      }
+      return { tree, parseErrors: errors };
+    };
+  };
+
+  it("top-level statements split at safe boundaries produce fewer chunk warnings", async () => {
+    const content = buildTopLevelContent();
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.chunkCount).toBeGreaterThanOrEqual(2);
+    // Top-level statements ending with ; are safe boundaries — each chunk
+    // should parse as a valid program fragment with minimal or zero warnings.
+    expect(result.chunkWarningCount).toBeLessThanOrEqual(1);
+    expect(result.chunkBoundaryWarningCount + result.chunkActionableWarningCount).toBe(
+      result.chunkWarningCount,
+    );
+  });
+
+  it("preserves imports and exports across safe-boundary chunks", async () => {
+    // Interleave imports, top-level filler, and exports so boundary lands cleanly.
+    const lines: string[] = [];
+    lines.push('import { readFile } from "node:fs";');
+    lines.push('import { resolve } from "node:path";');
+    // Pad with top-level statements (safe boundaries)
+    for (let i = 1; i <= 1420; i++) {
+      lines.push(`const v${i}: number = ${i};`);
+    }
+    lines.push("export function helperA(): string { return 'a'; }");
+    lines.push("export function helperB(): number { return 42; }");
+
+    const content = lines.join("\n");
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.imports.some((i) => i.source === "node:fs")).toBe(true);
+    expect(result.imports.some((i) => i.source === "node:path")).toBe(true);
+    expect(result.symbols.some((s) => s.name === "helperA")).toBe(true);
+    expect(result.symbols.some((s) => s.name === "helperB")).toBe(true);
+
+    // Imports are in the first chunk (top of file) — verify line numbers
+    const fsImport = result.imports.find((i) => i.source === "node:fs");
+    expect(fsImport).toBeDefined();
+    expect(fsImport!.line).toBe(1);
+
+    const pathImport = result.imports.find((i) => i.source === "node:path");
+    expect(pathImport).toBeDefined();
+    expect(pathImport!.line).toBe(2);
+  });
+
+  it("falls back to max-size split when no safe boundary exists in the search window", async () => {
+    // All content is inside the IIFE at depth >= 1; chunkStartDepth is 0.
+    // No line within the bounded lookahead window returns to depth 0, forcing fallback.
+    const content = buildDeeplyNestedContent();
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
+    // Even with no safe boundaries, chunkedParse must still return results
+    // with the correct warning invariants.
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.chunkCount).toBeGreaterThanOrEqual(2);
+
+    // Chunk parse warnings (from splitting mid-construct) are classified as boundary
+    expect(result.chunkBoundaryWarningCount + result.chunkActionableWarningCount).toBe(
+      result.chunkWarningCount,
+    );
+
+    // Symbols array exists — some symbols may survive chunked parsing even
+    // in deeply nested content, but empty is also valid for pathological cases.
+    expect(Array.isArray(result.symbols)).toBe(true);
+  });
+
+  it("chunkBoundaryWarningCount + chunkActionableWarningCount equals chunkWarningCount", async () => {
+    const content = buildTopLevelContent();
+    expect(content.length).toBeGreaterThan(30000);
+
+    const result = await chunkedParse(content, "typescript", makeDoParse());
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(typeof result.chunkWarningCount).toBe("number");
+    expect(typeof result.chunkBoundaryWarningCount).toBe("number");
+    expect(typeof result.chunkActionableWarningCount).toBe("number");
+    expect(result.chunkWarningCount).toBe(result.parseWarnings.length);
+    expect(result.chunkBoundaryWarningCount + result.chunkActionableWarningCount).toBe(
+      result.chunkWarningCount,
+    );
+    expect(result.chunkSize).toBe(30000);
+  });
+});
+
 // ── Parser Drilldown Chunk Fields (v1.26.0) ──────────────────────────────────
 
 describe("indexing --recovered chunk fields", () => {

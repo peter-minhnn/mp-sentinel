@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-04-30
+
+### Changed
+- **Safe-boundary chunking** (`src/services/source-index/parser.ts`): `chunkedParse` prefers split points where brace depth returns to the chunk's starting depth and the line ends at a likely statement/module boundary (`;`, `}`, or blank). Falls back to max-size line split when no safe boundary exists within the search window. Reduces boundary-warning noise in large files without changing the public telemetry contract.
+
+### Tests
+- 4 new safe-boundary chunking tests: top-level safe-boundary splits, import/export preservation, fallback for deeply-nested content, and warning-count invariants.
+
 ## [1.30.0] - 2026-04-30
 
 ### Added

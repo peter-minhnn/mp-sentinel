@@ -634,10 +634,45 @@ function keywordToSymbolType(kw: string): SymbolInfo["type"] {
 const MAX_CHUNK_SIZE = 30000;
 
 /**
+ * Hard upper bound for any chunk (including safe-boundary extensions).
+ * Tree-sitter on Windows throws "Invalid argument" for content > ~32768 bytes.
+ * Keeping chunks ≤ 32000 leaves a safe margin.
+ */
+const HARD_CHUNK_LIMIT = 32000;
+
+/**
+ * Approximate net brace-depth change in a line.
+ * Used as a heuristic for finding safe chunk split points — strings may
+ * skew the count slightly but the fallback handles false negatives.
+ */
+function netBraceChange(line: string): number {
+  let depth = 0;
+  for (const ch of line) {
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+  }
+  return depth;
+}
+
+/**
+ * Check if a trimmed line ends at a likely statement/module boundary.
+ */
+function isSafeLineEnd(line: string): boolean {
+  const trimmed = line.trimEnd();
+  return trimmed.endsWith(";") || trimmed.endsWith("}") || trimmed.trim() === "";
+}
+
+/**
  * Chunked Tree-sitter fallback for large files.
  *
- * Splits content on line boundaries, parses each chunk independently,
- * and merges the results while preserving correct line numbers via offsets.
+ * Builds chunks on line boundaries, preferring safe split points where
+ * brace depth returns to the chunk's starting depth and the line ends at
+ * a likely statement/module boundary (;, }, or blank).  When no safe
+ * boundary is found within ~10% of MAX_CHUNK_SIZE, falls back to the
+ * existing max-size line split so no content is ever dropped.
+ *
+ * Parses each chunk independently and merges results while preserving
+ * correct line numbers via offsets.
  */
 export async function chunkedParse(
   content: string,
@@ -659,18 +694,56 @@ export async function chunkedParse(
   const chunks: Array<{ text: string; startLine: number }> = [];
   let currentChunk = "";
   let chunkStartLine = 1;
+  let chunkStartDepth = 0;
+  let currentDepth = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const candidate = currentChunk ? currentChunk + "\n" + line : line;
 
     if (candidate.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-      // Finalize the current chunk and start a new one
-      chunks.push({ text: currentChunk, startLine: chunkStartLine });
-      currentChunk = line;
-      chunkStartLine = i + 1; // 1-based line number
+      // Search ahead for a safe split boundary: a line where brace depth
+      // returns to the chunk's starting depth AND the line ends at a
+      // likely statement/module boundary (;, }, or blank).
+      // Cap the search window so the chunk never exceeds HARD_CHUNK_LIMIT.
+      const maxExtra = Math.min(
+        HARD_CHUNK_LIMIT - currentChunk.length,
+        Math.floor(MAX_CHUNK_SIZE * 0.1),
+      );
+      let safeIdx: number | null = null;
+      let searchDepth = currentDepth;
+      let extraChars = 0;
+
+      for (let j = i; j < lines.length; j++) {
+        extraChars += lines[j]!.length + 1;
+        if (extraChars > maxExtra) break;
+        searchDepth += netBraceChange(lines[j]!);
+        if (searchDepth === chunkStartDepth && isSafeLineEnd(lines[j]!)) {
+          safeIdx = j;
+          break;
+        }
+      }
+
+      if (safeIdx !== null) {
+        for (let j = i; j <= safeIdx; j++) {
+          currentChunk += "\n" + lines[j]!;
+          currentDepth += netBraceChange(lines[j]!);
+        }
+        chunks.push({ text: currentChunk, startLine: chunkStartLine });
+        currentChunk = "";
+        chunkStartLine = safeIdx + 2;
+        chunkStartDepth = currentDepth;
+        i = safeIdx;
+      } else {
+        chunks.push({ text: currentChunk, startLine: chunkStartLine });
+        currentChunk = line;
+        chunkStartLine = i + 1;
+        chunkStartDepth = currentDepth;
+        currentDepth = chunkStartDepth + netBraceChange(line);
+      }
     } else {
       currentChunk = candidate;
+      currentDepth += netBraceChange(line);
     }
   }
 

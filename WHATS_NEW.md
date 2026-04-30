@@ -1,3 +1,15 @@
+# What's New in v1.31.0
+
+## Smarter Chunk Boundaries for Large Files
+
+v1.31.0 improves `chunked-tree-sitter` parsing by preferring safe chunk boundaries, reducing boundary-warning noise in large files without changing the public telemetry contract.
+
+- **Safe-boundary chunking** (`src/services/source-index/parser.ts`): `chunkedParse` now prefers split points where brace depth returns to the chunk's starting depth and the source line ends at a likely statement/module boundary (`;`, `}`, or blank). When no safe boundary is found within a bounded lookahead capped by the hard chunk limit, it falls back to the existing max-size line split.
+- **Stable telemetry**: No new public JSON fields. `chunkWarningCount`, `chunkBoundaryWarningCount`, and `chunkActionableWarningCount` remain unchanged. The `chunkBoundaryWarningCount + chunkActionableWarningCount === chunkWarningCount` invariant is preserved.
+- **Line-offset preservation**: All symbol, import, and export line numbers remain correct across chunk boundaries.
+
+---
+
 # What's New in v1.30.0
 
 ## Release-Note Symbol Hygiene Gate
