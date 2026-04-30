@@ -1065,6 +1065,14 @@ export interface DoctorIndexInfo {
   hardParseErrorFilesSample?: string[];
   /** Suggested next commands for drilldown when parser issues exist */
   suggestedCommands?: string[];
+  /** Number of chunked files (optional aggregate chunk telemetry; present when chunked files exist) */
+  chunkedFiles?: number;
+  /** Total chunk count across all chunked files (optional aggregate chunk telemetry) */
+  totalChunks?: number;
+  /** Total chunk-level warnings across all chunked files (optional aggregate chunk telemetry) */
+  totalChunkWarnings?: number;
+  /** Size of each chunk in bytes (optional aggregate chunk telemetry) */
+  chunkSize?: number;
 }
 
 /** Bootstrap script availability status */

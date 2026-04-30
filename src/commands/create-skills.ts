@@ -821,6 +821,29 @@ async function runDoctor(
     if (idxSuggestedCommands.length > 0) {
       indexInfo = { ...indexInfo, suggestedCommands: idxSuggestedCommands };
     }
+
+    // Chunk aggregate telemetry (when chunked files exist)
+    let chunkedFiles = 0;
+    let totalChunks = 0;
+    let totalChunkWarnings = 0;
+    let chunkSize: number | undefined;
+    for (const f of index.files) {
+      if (f.parserMode === "chunked-tree-sitter") {
+        chunkedFiles++;
+        if (f.chunkCount !== undefined) totalChunks += f.chunkCount;
+        if (f.chunkWarningCount !== undefined) totalChunkWarnings += f.chunkWarningCount;
+        if (chunkSize === undefined && f.chunkSize !== undefined) chunkSize = f.chunkSize;
+      }
+    }
+    if (chunkedFiles > 0) {
+      indexInfo = {
+        ...indexInfo,
+        chunkedFiles,
+        totalChunks,
+        totalChunkWarnings,
+        chunkSize: chunkSize ?? 0,
+      };
+    }
   }
 
   // e) Skills check
@@ -1050,6 +1073,17 @@ async function runDoctor(
           parts.push(`${errors} hard errors (${(errorRate * 100).toFixed(1)}%)`);
         else if (errors > 0) parts.push(`${errors} hard errors`);
         if (parts.length > 0) log.info(`    ${parts.join(", ")}`);
+      }
+
+      // Chunk telemetry (when available)
+      const cf = indexInfo.chunkedFiles;
+      const tc = indexInfo.totalChunks;
+      const tw = indexInfo.totalChunkWarnings;
+      const cs = indexInfo.chunkSize;
+      if (cf !== undefined && cf > 0 && tc !== undefined && cs !== undefined) {
+        log.info(
+          `  Chunks:           ${cf} files, ${tc} chunks @ ${cs} bytes/chunk, ${tw ?? 0} warnings`,
+        );
       }
     }
 

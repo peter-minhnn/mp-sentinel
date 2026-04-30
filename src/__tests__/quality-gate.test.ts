@@ -105,8 +105,8 @@ describe("validateSkillQuality", () => {
   // -- Max file size ----------------------------------------------------------
 
   describe("max file size", () => {
-    it("flags SKILL.md over 3600 chars as error for claude", () => {
-      const longContent = "# Header\n\n" + "x".repeat(3601);
+    it("flags SKILL.md over 4200 chars as error for claude", () => {
+      const longContent = "# Header\n\n" + "x".repeat(4201);
       const files = [makeFile(".claude/skills/test/SKILL.md", longContent)];
       const report = validateSkillQuality(files, "claude", null);
       const sizeErrors = report.checks.filter(
@@ -1241,15 +1241,20 @@ describe("validateSkillQuality", () => {
       "",
       "1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.",
       "2. **Read local agent instructions**: `AGENTS.md`, `CLAUDE.md`.",
-      "3. **Before touching any file**, use source index diagnostics:",
+      "3. **Check parser health first**:",
+      "   - `mp-sentinel indexing --health --index-format json` - index health overview",
+      "4. **Drilldown when health suggests issues**:",
+      "   - `mp-sentinel indexing --recovered --index-format json` - fallback recoveries",
+      "   - `mp-sentinel indexing --parse-errors --index-format json` - hard parse errors",
+      "5. **Before touching any file**, use source index diagnostics:",
       "   - `mp-sentinel indexing --agent-context <file> --index-format json` - symbols, imports, dependents",
       "   - `mp-sentinel indexing --explain-index <file> --index-format json` - imports, dependents, symbols",
       "   - `mp-sentinel indexing --find-symbol <name> --index-format json` - search for symbols",
       "   - `mp-sentinel indexing --find-import <pkg> --index-format json` - search for imports",
       "   - `mp-sentinel indexing --stats --index-format json` - index summary",
       "   - `mp-sentinel --explain-context --format json --files <file>` - review context enrichment",
-      "4. **Load only the relevant references** for the paths you touch.",
-      "5. **Respect the profile rules** - each profile has specific review pitfalls listed below.",
+      "6. **Load only the relevant references** for the paths you touch.",
+      "7. **Respect the profile rules** - each profile has specific review pitfalls listed below.",
     ].join("\n");
 
     it("returns zero agent-workflow-contract errors for valid workflow", () => {
@@ -1401,6 +1406,52 @@ describe("validateSkillQuality", () => {
       // Other commands still have --index-format json and should not error
       const otherFailures = errors.filter((c) => !c.message.includes("find-symbol"));
       expect(otherFailures).toHaveLength(0);
+    });
+
+    // v1.28.0: new parser diagnostic commands
+    it("flags missing --health as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --health --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("health");
+    });
+
+    it("flags missing --recovered as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --recovered --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("recovered");
+    });
+
+    it("flags missing --parse-errors as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --parse-errors --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("parse-errors");
     });
   });
 

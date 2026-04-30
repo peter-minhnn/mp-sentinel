@@ -929,6 +929,32 @@ function stepDoctor() {
       fail("create-skills --doctor", "index.parseErrorCount missing or not a number");
       return false;
     }
+
+    // v1.28.0: assert chunk aggregate fields when chunked files exist
+    const chunkedCount = json.index.parserModeBreakdown?.["chunked-tree-sitter"] ?? 0;
+    if (chunkedCount > 0) {
+      if (typeof json.index.chunkedFiles !== "number") {
+        fail("create-skills --doctor", "index.chunkedFiles missing when chunked files exist");
+        return false;
+      }
+      if (typeof json.index.totalChunks !== "number") {
+        fail("create-skills --doctor", "index.totalChunks missing when chunked files exist");
+        return false;
+      }
+      if (typeof json.index.totalChunkWarnings !== "number") {
+        fail("create-skills --doctor", "index.totalChunkWarnings missing when chunked files exist");
+        return false;
+      }
+      if (typeof json.index.chunkSize !== "number") {
+        fail("create-skills --doctor", "index.chunkSize missing when chunked files exist");
+        return false;
+      }
+    } else {
+      if ("chunkedFiles" in json.index) {
+        fail("create-skills --doctor", "index.chunkedFiles present when no chunked files exist");
+        return false;
+      }
+    }
   }
 
   // skills should include entries for detected adapters

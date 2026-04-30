@@ -5682,6 +5682,26 @@ describe("runCreateSkillsCommand --doctor", () => {
     await writeFile(cachePath, JSON.stringify(cached, null, 2));
   }
 
+  async function injectChunkedParserModes(cwd: string) {
+    const cachePath = join(cwd, defaultIndexConfig.cachePath);
+    const raw = await readFile(cachePath, "utf-8");
+    const cached = JSON.parse(raw);
+    if (cached.files.length >= 1) {
+      cached.files[0].parserMode = "chunked-tree-sitter";
+      cached.files[0].chunkCount = 4;
+      cached.files[0].chunkSize = 30000;
+      cached.files[0].chunkWarningCount = 2;
+      cached.files[0].parseWarnings = [
+        "Invalid argument; parsed with chunked tree-sitter (4 chunks)",
+      ];
+    }
+    if (cached.files.length >= 2) {
+      cached.files[1].parserMode = "tree-sitter";
+    }
+    cached.stats.parseErrors = 0;
+    await writeFile(cachePath, JSON.stringify(cached, null, 2));
+  }
+
   async function injectHardParseErrors(cwd: string) {
     const cachePath = join(cwd, defaultIndexConfig.cachePath);
     const raw = await readFile(cachePath, "utf-8");
@@ -5777,6 +5797,84 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(Array.isArray(parsed.index.hardParseErrorFilesSample)).toBe(true);
     expect(parsed.index.hardParseErrorFilesSample.length).toBeGreaterThanOrEqual(1);
     expect(exitCode).toBe(1);
+  });
+
+  it("--doctor --format json includes chunk aggregate fields when chunked files exist", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectChunkedParserModes(cwd);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.index.status).toBe("ok");
+    expect(typeof parsed.index.chunkedFiles).toBe("number");
+    expect(parsed.index.chunkedFiles).toBe(1);
+    expect(typeof parsed.index.totalChunks).toBe("number");
+    expect(parsed.index.totalChunks).toBe(4);
+    expect(typeof parsed.index.totalChunkWarnings).toBe("number");
+    expect(parsed.index.totalChunkWarnings).toBe(2);
+    expect(typeof parsed.index.chunkSize).toBe("number");
+    expect(parsed.index.chunkSize).toBe(30000);
+    expect(exitCode).toBe(0);
+  });
+
+  it("--doctor --format json omits chunk aggregate fields when no chunked files exist", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    // No chunk injection — all files use tree-sitter
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const cached = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(cached).not.toBeNull();
+    await writeUpToDateSkills(cwd, cached!);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.index.status).toBe("ok");
+    expect(parsed.index.chunkedFiles).toBeUndefined();
+    expect(parsed.index.totalChunks).toBeUndefined();
+    expect(parsed.index.totalChunkWarnings).toBeUndefined();
+    expect(parsed.index.chunkSize).toBeUndefined();
+    expect(exitCode).toBe(0);
   });
 
   it("--doctor --format json does not require parser fields when index is missing", async () => {

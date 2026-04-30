@@ -1,3 +1,17 @@
+# What's New in v1.28.0
+
+## Agent Parser Diagnostics Workflow
+
+v1.28.0 closes the parser diagnostics workflow gap: generated skills now teach agents the health-first workflow, doctor exposes chunk aggregate telemetry, and docs explicitly include `chunked-tree-sitter` in recovery drilldowns.
+
+- **Generated skills workflow** (`src/services/skills-generator/content.ts`): Required Agent Workflow now includes `--health`, `--recovered`, and `--parse-errors` diagnostic commands with `--index-format json`, teaching agents to check parser health before touching files.
+- **Quality gate expanded** (`src/services/skills-generator/quality-gate.ts`): Agent workflow contract now validates that `--health`, `--recovered`, and `--parse-errors` are present in generated skills, flagging any missing command as a hard error.
+- **Doctor chunk telemetry** (`src/types/index.ts`, `src/commands/create-skills.ts`): `DoctorIndexInfo` gains optional `chunkedFiles`, `totalChunks`, `totalChunkWarnings`, `chunkSize` fields, populated when chunked files exist. Console output shows a compact "Chunks: N files, N chunks @ N bytes/chunk, N warnings" line.
+- **Docs** (`AGENTS.md`): Parser recovery drilldown explicitly includes `chunked-tree-sitter`. Health-first workflow documented.
+- **Dogfood** (`scripts/dogfood.mjs`): Doctor step asserts chunk aggregate fields when `chunked-tree-sitter` mode count > 0, and their absence when count is 0.
+
+---
+
 # What's New in v1.27.0
 
 ## Parser Telemetry Propagation

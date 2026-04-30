@@ -17,7 +17,7 @@ import type {
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
-const SKILL_MD_MAX = 3600;
+const SKILL_MD_MAX = 4200;
 const REF_MD_MAX = 6000;
 const SINGLE_FILE_MAX = 22000;
 
@@ -555,6 +555,9 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
 // ── Agent Workflow Contract (v1.0.16+, tightened v1.19.0) ─────────────────────
 
 const INDEX_COMMANDS = [
+  { flag: "--health", label: "health" },
+  { flag: "--recovered", label: "recovered" },
+  { flag: "--parse-errors", label: "parse-errors" },
   { flag: "--agent-context", label: "agent-context" },
   { flag: "--explain-index", label: "explain-index" },
   { flag: "--find-symbol", label: "find-symbol" },
