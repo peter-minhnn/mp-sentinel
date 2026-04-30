@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-04-30
+
+### Added
+- **Release-check symbol hygiene gate** (`scripts/release-check.mjs`): New symbol hygiene check validates that backtick-quoted function references in the latest WHATS_NEW.md section exist in `src/**/*.ts`. Missing references cause a hard release-check failure.
+
+### Fixed
+- **Symbol scan path** (`scripts/release-check.mjs`): Fixed recursive `readdirSync` path construction to use `entry.parentPath` for correct nested-file resolution.
+- **Unused import** (`scripts/release-check.mjs`): Removed unused `statSync` import.
+
+### Tests
+- 1 new release-check test: symbol hygiene with nested `src/` paths.
+
 ## [1.29.1] - 2026-04-30
 
 ### Fixed

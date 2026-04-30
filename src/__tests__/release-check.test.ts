@@ -326,6 +326,49 @@ describe("release-check", () => {
     expect(result.stderr).toContain('--version "1.2.4" does not match expected');
   });
 
+  // ── WHATS_NEW symbol hygiene ────────────────────────────────────────
+
+  const WHATS_NEW_WITH_SYMBOLS = (v) =>
+    `# What's New in v${v}\n\n## Feature\n\nUses \`realFunc()\` helper.\n\n---\n\n# What's New in v0.0.0\n\nOld.`;
+
+  function validFilesWithSrc(version, whatsNew, opts) {
+    const base = validFiles(version, opts);
+    base["WHATS_NEW.md"] = whatsNew;
+    base["src/exists.ts"] = "export function realFunc() {}";
+    return base;
+  }
+
+  it("passes when WHATS_NEW.md function references exist in src/", () => {
+    const dir = fixture(validFilesWithSrc("1.2.3", WHATS_NEW_WITH_SYMBOLS("1.2.3")));
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("WHATS_NEW.md symbol hygiene (1 function ref)");
+  });
+
+  it("passes when WHATS_NEW.md function reference exists in nested src/ path", () => {
+    const v = "1.2.3";
+    const w = `# What's New in v${v}\n\n## Feature\n\nUses \`nestedFunc()\` helper.\n\n---`;
+    const files = validFiles(v);
+    files["WHATS_NEW.md"] = w;
+    files["src/services/deep/nested.ts"] = "export function nestedFunc() {}";
+    const dir = fixture(files);
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("WHATS_NEW.md symbol hygiene (1 function ref)");
+  });
+
+  it("fails when WHATS_NEW.md function reference does not exist in src/", () => {
+    const w = `# What's New in v1.2.3\n\n## Feature\n\nUses \`missingFunc()\` helper.\n\n---`;
+    const dir = fixture(validFilesWithSrc("1.2.3", w));
+    const result = run(dir);
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("missingFunc");
+    expect(result.stderr).toContain("not found in src/");
+  });
+
   it("fails when dist/index.js indexing --help is missing a required flag", () => {
     const dir = fixture(distFixture("1.2.3", { helpFlags: ["--health", "--agent-context"] }));
     const result = run(dir);

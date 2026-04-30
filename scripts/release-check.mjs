@@ -289,6 +289,47 @@ function checkDistFreshness(expected) {
   }
 }
 
+function checkWhatsNewSymbols() {
+  const text = readText("WHATS_NEW.md");
+  if (!text) return;
+
+  // The latest section is everything from the first heading to the next "---" separator
+  const lines = text.split("\n");
+  const sepIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  const section = lines.slice(0, sepIdx === -1 ? lines.length : sepIdx).join("\n");
+
+  // Find backtick-quoted function/method references: `foo()`
+  const funcRefs = [...section.matchAll(/`(\w+\(\))`/g)].map((m) => m[1].replace(/\(\)$/, ""));
+  if (funcRefs.length === 0) return;
+
+  // De-duplicate
+  const symbols = [...new Set(funcRefs)];
+
+  function symbolInSrc(symbol) {
+    try {
+      const entries = readdirSync("src", { recursive: true, withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+        const content = readFileSync(join(entry.parentPath, entry.name), "utf-8");
+        if (content.includes(symbol)) return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  for (const sym of symbols) {
+    if (!symbolInSrc(sym)) {
+      fail(`WHATS_NEW.md: latest section references \`${sym}()\` but "${sym}" not found in src/`);
+    }
+  }
+
+  if (symbols.length > 0) {
+    ok(`WHATS_NEW.md symbol hygiene (${symbols.length} function ref${symbols.length === 1 ? "" : "s"})`);
+  }
+}
+
 // --- main --------------------------------------------------------------
 
 const pkg = readJson("package.json");
@@ -305,6 +346,7 @@ checkLockfileRoot(expected);
 checkReadmeBadge(expected);
 checkReadmeWhatsNew(expected);
 checkWhatsNew(expected);
+checkWhatsNewSymbols();
 checkChangelog(expected);
 checkLockfileIntegrity();
 checkPackageFiles();

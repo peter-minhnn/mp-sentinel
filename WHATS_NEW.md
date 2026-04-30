@@ -1,3 +1,14 @@
+# What's New in v1.30.0
+
+## Release-Note Symbol Hygiene Gate
+
+v1.30.0 adds a release-check gate that validates function references in WHATS_NEW.md point to real symbols in the source tree, preventing stale backtick-quoted references from shipping in release notes.
+
+- **Release-check symbol hygiene** (`scripts/release-check.mjs`): New symbol hygiene check scans the latest WHATS_NEW.md section for backtick-quoted function references and verifies each symbol exists in `src/**/*.ts`. Missing references cause a hard release-check failure.
+- **Path fix** (`scripts/release-check.mjs`): Symbol scan now uses recursive `readdirSync` with `parentPath` for correct nested-file resolution. Removed unused `statSync` import.
+
+---
+
 # What's New in v1.29.1
 
 ## Release-Note Hygiene
