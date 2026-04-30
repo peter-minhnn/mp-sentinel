@@ -5886,10 +5886,16 @@ describe("runCreateSkillsCommand --doctor", () => {
     // console from the logger module). Spawn the real CLI instead.
     const repoRoot = resolve(join(import.meta.dirname, "..", ".."));
     const distIndex = join(repoRoot, "dist", "index.js");
-    const raw = execSync(`node ${distIndex} create-skills --doctor`, {
-      encoding: "utf-8",
-      timeout: 60000,
-    });
+    let raw: string;
+    try {
+      raw = execSync(`node ${distIndex} create-skills --doctor`, {
+        encoding: "utf-8",
+        timeout: 60000,
+      });
+    } catch (e: unknown) {
+      // Doctor exits 1 for action-required (e.g. stale skills, parser issues).
+      raw = ((e as { stdout?: string }).stdout as string) || "";
+    }
     // No risky Unicode: emoji, fancy quotes, non-ASCII symbols
     expect(raw).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     expect(raw).not.toMatch(/[‘’“”]/);

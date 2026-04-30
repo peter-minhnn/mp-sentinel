@@ -385,10 +385,15 @@ export interface IndexInsights {
 /**
  * Which parser mode was used for this file.
  * - `tree-sitter`: parsed normally via tree-sitter AST
- * - `ascii-fallback`: tree-sitter threw "Invalid argument", recovered via ASCII normalization
+ * - `chunked-tree-sitter`: tree-sitter threw "Invalid argument" on full file, recovered via chunked parse
+ * - `ascii-fallback`: tree-sitter (+ chunked) threw "Invalid argument", recovered via ASCII normalization
  * - `lexical-fallback`: tree-sitter + ASCII both failed, recovered via regex-based lexical parse
  */
-export type ParserMode = "tree-sitter" | "ascii-fallback" | "lexical-fallback";
+export type ParserMode =
+  | "tree-sitter"
+  | "chunked-tree-sitter"
+  | "ascii-fallback"
+  | "lexical-fallback";
 
 /**
  * Parsed file information stored in source index
@@ -1038,7 +1043,7 @@ export interface DoctorIndexInfo {
   parseErrorRate?: number;
   /** Files recovered via fallback parser (ascii-fallback or lexical-fallback, no parse errors) */
   recoveredFiles?: number;
-  /** Per-mode file count breakdown (tree-sitter / ascii-fallback / lexical-fallback) */
+  /** Per-mode file count breakdown (tree-sitter / chunked-tree-sitter / ascii-fallback / lexical-fallback) */
   parserModeBreakdown?: Record<string, number>;
   /** Count of files with hard parse errors */
   parseErrorCount?: number;

@@ -485,7 +485,7 @@ function categorizeDoctorFindings(
   if (recoveredCount > 0) {
     const breakdown = indexInfo.parserModeBreakdown;
     const detail = breakdown
-      ? ` (${breakdown["ascii-fallback"] ?? 0} ascii-fallback, ${breakdown["lexical-fallback"] ?? 0} lexical-fallback)`
+      ? ` (${breakdown["chunked-tree-sitter"] ?? 0} chunked-tree-sitter, ${breakdown["ascii-fallback"] ?? 0} ascii-fallback, ${breakdown["lexical-fallback"] ?? 0} lexical-fallback)`
       : "";
     const action = `${recoveredCount} file(s) recovered via fallback parser${detail}. Run "mp-sentinel indexing --recovered --index-format json" to list them.`;
     recommendedActions.push(action);
@@ -786,7 +786,9 @@ async function runDoctor(
     // Recovered: fallback parser used AND no hard parse errors
     const recoveredFiles = index.files.filter(
       (f) =>
-        (f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback") &&
+        (f.parserMode === "chunked-tree-sitter" ||
+          f.parserMode === "ascii-fallback" ||
+          f.parserMode === "lexical-fallback") &&
         (!f.parseErrors || f.parseErrors.length === 0),
     ).length;
     const breakdown = getParserModeBreakdown(index);
@@ -1027,12 +1029,17 @@ async function runDoctor(
       if (
         recovered > 0 ||
         errors > 0 ||
-        (breakdown && (breakdown["ascii-fallback"] ?? 0) + (breakdown["lexical-fallback"] ?? 0) > 0)
+        (breakdown &&
+          (breakdown["chunked-tree-sitter"] ?? 0) +
+            (breakdown["ascii-fallback"] ?? 0) +
+            (breakdown["lexical-fallback"] ?? 0) >
+            0)
       ) {
         const parts: string[] = [];
         if (breakdown) {
           const bd = [
             `tree-sitter=${breakdown["tree-sitter"] ?? 0}`,
+            `chunked-tree-sitter=${breakdown["chunked-tree-sitter"] ?? 0}`,
             `ascii-fallback=${breakdown["ascii-fallback"] ?? 0}`,
             `lexical-fallback=${breakdown["lexical-fallback"] ?? 0}`,
           ].join(", ");

@@ -509,7 +509,10 @@ function buildArchitecture(index: SourceIndex | null): string {
 
   // Parser recovery note (only when there is something to report)
   const recoveredFiles = index.files.filter(
-    (f) => f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback",
+    (f) =>
+      f.parserMode === "chunked-tree-sitter" ||
+      f.parserMode === "ascii-fallback" ||
+      f.parserMode === "lexical-fallback",
   ).length;
   const hardErrorFiles = index.files.filter((f) => f.parseErrors && f.parseErrors.length > 0);
   const hasParseIssues = recoveredFiles > 0 || hardErrorFiles.length > 0;
@@ -521,10 +524,11 @@ function buildArchitecture(index: SourceIndex | null): string {
       const ts = index.files.filter(
         (f) => (f.parserMode ?? "tree-sitter") === "tree-sitter",
       ).length;
+      const chunked = index.files.filter((f) => f.parserMode === "chunked-tree-sitter").length;
       const ascii = index.files.filter((f) => f.parserMode === "ascii-fallback").length;
       const lexical = index.files.filter((f) => f.parserMode === "lexical-fallback").length;
       lines.push(
-        `${recoveredFiles} file(s) recovered via fallback parser. Breakdown: tree-sitter=${ts}, ascii-fallback=${ascii}, lexical-fallback=${lexical}`,
+        `${recoveredFiles} file(s) recovered via fallback parser. Breakdown: tree-sitter=${ts}, chunked-tree-sitter=${chunked}, ascii-fallback=${ascii}, lexical-fallback=${lexical}`,
       );
     }
 

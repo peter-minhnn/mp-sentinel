@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-04-30
+
+### Added
+- **Chunked Tree-sitter parser recovery** (`src/services/source-index/parser.ts`): New `chunkedParse()` fallback that splits large content on line boundaries (MAX_CHUNK_SIZE=30000), parses each chunk independently via Tree-sitter, and merges results with correct line offsets. Positioned between full-file Tree-sitter and ASCII normalization in the recovery chain. Imports/exports are deduplicated across chunks.
+- **New parser mode** (`src/types/index.ts`): `chunked-tree-sitter` added to the `ParserMode` union.
+
+### Changed
+- **Recovery chain order**: `Invalid argument` → chunked Tree-sitter → ASCII normalization → lexical fallback (was: ASCII normalization → lexical fallback).
+- **Telemetry** (`src/commands/indexing.ts`, `src/commands/create-skills.ts`): `getRecoveredFileCount`, `getParserModeBreakdown`, drilldown recovered filter, and doctor recovered count all include `chunked-tree-sitter`. Console breakdown displays include `chunked-tree-sitter`.
+- **Dogfood** (`scripts/dogfood.mjs`): Required modes assertion relaxed — validates breakdown shape rather than specific mode names.
+
+### Tests
+- 2 new parser unit tests: large file symbol line number preservation, imports/exports across chunk boundaries.
+- Updated recovered drilldown test filter to accept all recovery modes.
+
 ## [1.24.0] - 2026-04-30
 
 ### Added

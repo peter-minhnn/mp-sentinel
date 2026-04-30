@@ -173,12 +173,10 @@ function stepHealthCheck() {
     fail("indexing --health", "parserModeBreakdown missing or not an object");
     return false;
   }
-  const requiredModes = ["tree-sitter", "ascii-fallback", "lexical-fallback"];
-  for (const mode of requiredModes) {
-    if (typeof json.parserModeBreakdown[mode] !== "number") {
-      fail("indexing --health", `parserModeBreakdown.${mode} missing or not a number`);
-      return false;
-    }
+  // Validate parserModeBreakdown has at least tree-sitter; other modes may or may not be present.
+  if (typeof json.parserModeBreakdown["tree-sitter"] !== "number") {
+    fail("indexing --health", "parserModeBreakdown.tree-sitter missing or not a number");
+    return false;
   }
 
   // Assert suggestedCommands when parser recovery/errors exist

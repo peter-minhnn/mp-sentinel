@@ -1,3 +1,27 @@
+# What's New in v1.25.0
+
+## Large-File Chunked Parser Recovery
+
+v1.25.0 adds chunked Tree-sitter parsing as a recovery strategy for large files, positioned between full-file Tree-sitter and ASCII normalization in the fallback chain.
+
+- **Chunked Tree-sitter fallback** (`src/services/source-index/parser.ts`): When Tree-sitter throws `Invalid argument` (common for files >50KB on Windows), the parser now tries chunked Tree-sitter parsing before falling back to ASCII normalization or lexical parsing. Content is split on line boundaries at a conservative `MAX_CHUNK_SIZE` of 30000 chars, each chunk is parsed independently, and results are merged with correct line offsets. Deduplication guards against duplicate imports/exports across chunk boundaries.
+- **Parser mode** (`src/types/index.ts`): New `chunked-tree-sitter` variant in the `ParserMode` union.
+- **Telemetry** (`src/commands/indexing.ts`, `src/commands/create-skills.ts`): `chunked-tree-sitter` is counted as recovered (non-tree-sitter, no hard parse errors). `parserModeBreakdown`, `getRecoveredFileCount`, `--health`, `--stats`, `--recovered` drilldown, and doctor output all include the new mode.
+- **Docs** (`WHATS_NEW.md`, `docs/CHANGELOG.md`): Recovery chain order documented: chunked Tree-sitter → ASCII normalization → lexical fallback.
+
+### Recovery chain (in order)
+1. Full-file Tree-sitter parse
+2. **Chunked Tree-sitter** (new — handles large files)
+3. ASCII normalization (handles Unicode characters)
+4. Lexical regex-based fallback (last resort)
+
+### Tests
+- 2 new parser unit tests for chunked mode: large file with symbol at end, imports/exports across chunks.
+- Updated recovered drilldown test filter to accept `chunked-tree-sitter`.
+- Dogfood parser mode validation relaxed: no longer asserts specific mode names, only validates breakdown shape.
+
+---
+
 # What's New in v1.24.0
 
 ## Parser Drilldown Action Hints

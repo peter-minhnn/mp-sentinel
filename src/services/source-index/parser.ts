@@ -630,6 +630,131 @@ function keywordToSymbolType(kw: string): SymbolInfo["type"] {
   }
 }
 
+/** Max characters per chunk for chunked Tree-sitter parsing. */
+const MAX_CHUNK_SIZE = 30000;
+
+/**
+ * Chunked Tree-sitter fallback for large files.
+ *
+ * Splits content on line boundaries, parses each chunk independently,
+ * and merges the results while preserving correct line numbers via offsets.
+ */
+async function chunkedParse(
+  content: string,
+  language: IndexableLanguage,
+  doParse: (parseContent: string) => Promise<{ tree: any; parseErrors: string[] }>,
+): Promise<{
+  symbols: SymbolInfo[];
+  imports: ImportInfo[];
+  exports: ExportInfo[];
+  parseWarnings: string[];
+  parseErrors: string[];
+} | null> {
+  const lines = content.split("\n");
+  const chunks: Array<{ text: string; startLine: number }> = [];
+  let currentChunk = "";
+  let chunkStartLine = 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const candidate = currentChunk ? currentChunk + "\n" + line : line;
+
+    if (candidate.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
+      // Finalize the current chunk and start a new one
+      chunks.push({ text: currentChunk, startLine: chunkStartLine });
+      currentChunk = line;
+      chunkStartLine = i + 1; // 1-based line number
+    } else {
+      currentChunk = candidate;
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push({ text: currentChunk, startLine: chunkStartLine });
+  }
+
+  if (chunks.length <= 1) {
+    // Not enough chunks to be meaningful — let the caller fall through
+    return null;
+  }
+
+  const allSymbols: SymbolInfo[] = [];
+  const allImports: ImportInfo[] = [];
+  const allExports: ExportInfo[] = [];
+  const allParseWarnings: string[] = [];
+  const allParseErrors: string[] = [];
+
+  for (const chunk of chunks) {
+    try {
+      const { tree, parseErrors: chunkErrors } = await doParse(chunk.text);
+
+      if (!tree) {
+        allParseErrors.push(`Chunk at line ${chunk.startLine}: no tree generated`);
+        continue;
+      }
+
+      const symbols: SymbolInfo[] = [];
+      const imports: ImportInfo[] = [];
+      const exports: ExportInfo[] = [];
+
+      walkAST(tree.rootNode, symbols, imports, exports);
+
+      // Apply line offset to all extracted items
+      const lineOffset = chunk.startLine - 1;
+      for (const sym of symbols) {
+        sym.line += lineOffset;
+        allSymbols.push(sym);
+      }
+      for (const imp of imports) {
+        imp.line += lineOffset;
+        allImports.push(imp);
+      }
+      for (const exp of exports) {
+        exp.line += lineOffset;
+        allExports.push(exp);
+      }
+
+      // Chunk-level "Tree has syntax errors" is a recovery warning, not a hard
+      // error — chunks are fragments without full context, and syntax errors are
+      // expected at chunk boundaries.
+      for (const err of chunkErrors) {
+        allParseWarnings.push(`Chunk at line ${chunk.startLine}: ${err}`);
+      }
+    } catch {
+      allParseErrors.push(`Chunk at line ${chunk.startLine}: parse threw`);
+    }
+  }
+
+  // Deduplicate imports and exports by source/names (can appear across chunk boundaries)
+  const seenImports = new Set<string>();
+  const dedupedImports: ImportInfo[] = [];
+  for (const imp of allImports) {
+    const key = `${imp.source}:${imp.kind}:${imp.names.join(",")}`;
+    if (!seenImports.has(key)) {
+      seenImports.add(key);
+      dedupedImports.push(imp);
+    }
+  }
+
+  const seenExports = new Set<string>();
+  const dedupedExports: ExportInfo[] = [];
+  for (const exp of allExports) {
+    const key = `${exp.kind}:${exp.names.join(",")}`;
+    if (!seenExports.has(key)) {
+      seenExports.add(key);
+      dedupedExports.push(exp);
+    }
+  }
+
+  return {
+    symbols: allSymbols,
+    imports: dedupedImports,
+    exports: dedupedExports,
+    parseWarnings: allParseWarnings,
+    parseErrors: allParseErrors,
+  };
+}
+
 /**
  * Parse a single file and extract AST information
  */
@@ -701,10 +826,36 @@ export async function parseFile(
     const message = error instanceof Error ? error.message : String(error);
 
     // Tree-sitter can throw "Invalid argument" on Windows when content contains
-    // certain Unicode characters (box-drawing, smart quotes, em dashes, etc.).
-    // Retry with an in-memory ASCII-normalized copy — never mutate the source file.
+    // certain Unicode characters (box-drawing, smart quotes, em dashes, etc.)
+    // or when the file is too large for a single parse.
+    // Recovery order: chunked Tree-sitter → ASCII normalization → lexical fallback.
     if (message.includes("Invalid argument")) {
-      // Step 1: Retry with ASCII-normalized content (in-memory only).
+      // Step 1: Try chunked Tree-sitter parse (handles large files and some Unicode cases).
+      const chunked = await chunkedParse(content, language, doParse);
+      if (chunked) {
+        const parseWarnings = [
+          "Invalid argument; parsed with chunked tree-sitter fallback",
+          ...chunked.parseWarnings,
+        ];
+        const result: SourceIndexFile = {
+          path: filePath,
+          language,
+          sha256: "",
+          sizeBytes: content.length,
+          mtimeMs: Date.now(),
+          imports: chunked.imports,
+          exports: chunked.exports,
+          symbols: chunked.symbols,
+          parserMode: "chunked-tree-sitter" as ParserMode,
+          parseWarnings,
+        };
+        if (chunked.parseErrors.length > 0) {
+          result.parseErrors = chunked.parseErrors;
+        }
+        return result;
+      }
+
+      // Step 2: Retry with ASCII-normalized content (in-memory only).
       const normalized = asciiNormalize(content);
       if (normalized !== content) {
         try {
@@ -770,7 +921,7 @@ export async function parseFile(
         }
       }
 
-      // Step 2: Tree-sitter failed entirely — use lexical regex-based fallback.
+      // Step 3: Tree-sitter failed entirely — use lexical regex-based fallback.
       const lexical = lexicalParse(content);
       return {
         path: filePath,

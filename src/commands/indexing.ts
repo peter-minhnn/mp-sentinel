@@ -95,7 +95,11 @@ const getIndexParseErrorRate = (index: SourceIndex): number => {
  */
 export const getRecoveredFileCount = (index: SourceIndex): number => {
   return index.files.filter(
-    (file) => file.parserMode === "ascii-fallback" || file.parserMode === "lexical-fallback",
+    (file) =>
+      (file.parserMode === "chunked-tree-sitter" ||
+        file.parserMode === "ascii-fallback" ||
+        file.parserMode === "lexical-fallback") &&
+      (!file.parseErrors || file.parseErrors.length === 0),
   ).length;
 };
 
@@ -106,6 +110,7 @@ export const getRecoveredFileCount = (index: SourceIndex): number => {
 export const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
   const breakdown: Record<string, number> = {
     "tree-sitter": 0,
+    "chunked-tree-sitter": 0,
     "ascii-fallback": 0,
     "lexical-fallback": 0,
   };
@@ -648,9 +653,13 @@ async function handleHealth(
     console.log(`  Total files:     ${index.files.length}`);
     console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
     console.log(`  Recovered files:  ${recoveredFiles}`);
-    if (parserModeBreakdown["ascii-fallback"] || parserModeBreakdown["lexical-fallback"]) {
+    if (
+      parserModeBreakdown["chunked-tree-sitter"] ||
+      parserModeBreakdown["ascii-fallback"] ||
+      parserModeBreakdown["lexical-fallback"]
+    ) {
       console.log(
-        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, chunked-tree-sitter=${parserModeBreakdown["chunked-tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
       );
     }
     console.log(`  Manifest hash:    ${cachedHash ?? "missing"}`);
@@ -963,9 +972,13 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     console.log(`  Skipped files:    ${stats.skippedFiles}`);
     console.log(`  Parse errors:     ${stats.parseErrors}`);
     console.log(`  Recovered files:   ${recoveredFiles}`);
-    if (parserModeBreakdown["ascii-fallback"] || parserModeBreakdown["lexical-fallback"]) {
+    if (
+      parserModeBreakdown["chunked-tree-sitter"] ||
+      parserModeBreakdown["ascii-fallback"] ||
+      parserModeBreakdown["lexical-fallback"]
+    ) {
       console.log(
-        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
+        `  Parser breakdown:  tree-sitter=${parserModeBreakdown["tree-sitter"]}, chunked-tree-sitter=${parserModeBreakdown["chunked-tree-sitter"]}, ascii-fallback=${parserModeBreakdown["ascii-fallback"]}, lexical-fallback=${parserModeBreakdown["lexical-fallback"]}`,
       );
     }
     console.log(`  Import edges:     ${stats.importEdges ?? "N/A"}`);
@@ -1089,7 +1102,10 @@ async function handleDrilldown(
   const matches: SourceIndexFile[] =
     mode === "recovered"
       ? index.files.filter(
-          (f) => f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback",
+          (f) =>
+            f.parserMode === "chunked-tree-sitter" ||
+            f.parserMode === "ascii-fallback" ||
+            f.parserMode === "lexical-fallback",
         )
       : index.files.filter((f) => f.parseErrors && f.parseErrors.length > 0);
 
