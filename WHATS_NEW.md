@@ -1,3 +1,19 @@
+# What's New in v1.24.0
+
+## Parser Drilldown Action Hints
+
+v1.24.0 makes parser drilldown output directly actionable by adding per-file `suggestedCommands` so agents can move from drilldown listing to file-level diagnostics in one step.
+
+- **Drilldown `suggestedCommands`** (`src/commands/indexing.ts`): Each file entry in `--recovered` and `--parse-errors` JSON output now includes `suggestedCommands` with `--explain-index` and `--agent-context` commands pointing to that file. Paths are forward-slash normalized and double-quoted via `quoteCliArg`. The commands are deterministic for the same index.
+- **Doctor** (`src/commands/create-skills.ts`): No policy change — recovered-only remains advisory, hard parse errors remain action-required. Drilldown entries at `index.suggestedCommands` remain unchanged.
+- **Dogfood** (`scripts/dogfood.mjs`): Parser drilldown step now validates the first recovered file has `suggestedCommands` when files are present.
+- **Docs** (`docs/COMMANDS_CHEAT_SHEET.md`): Health → drilldown workflow updated to document per-file `suggestedCommands`.
+
+### Tests
+- 5 new tests for drilldown `suggestedCommands`: recovered entries, parse-error entries, forward-slash normalization, determinism, empty drilldown safety.
+
+---
+
 # What's New in v1.23.0
 
 ## Health Suggested Drilldowns Closeout

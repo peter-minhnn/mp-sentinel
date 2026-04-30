@@ -292,6 +292,31 @@ function stepParserDrilldown() {
   if (recJson.truncated) parts.push("recovered-truncated");
   if (peJson.truncated) parts.push("parseErrors-truncated");
 
+  // v1.24.0: validate first recovered file has suggestedCommands when files exist
+  if (recJson.files.length > 0) {
+    const firstFile = recJson.files[0];
+    if (!Array.isArray(firstFile.suggestedCommands) || firstFile.suggestedCommands.length === 0) {
+      fail("parser drilldown --recovered", "first file missing suggestedCommands");
+      return false;
+    }
+    const hasExplain = firstFile.suggestedCommands.some((cmd) => cmd.includes("--explain-index"));
+    const hasAgentCtx = firstFile.suggestedCommands.some((cmd) => cmd.includes("--agent-context"));
+    if (!hasExplain || !hasAgentCtx) {
+      fail(
+        "parser drilldown --recovered",
+        "suggestedCommands missing --explain-index or --agent-context",
+      );
+      return false;
+    }
+  }
+  if (peJson.files.length > 0) {
+    const firstFile = peJson.files[0];
+    if (!Array.isArray(firstFile.suggestedCommands) || firstFile.suggestedCommands.length === 0) {
+      fail("parser drilldown --parse-errors", "first file missing suggestedCommands");
+      return false;
+    }
+  }
+
   ok("parser drilldown", parts.join(", "));
   return true;
 }

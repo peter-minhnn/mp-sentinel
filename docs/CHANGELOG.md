@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-04-30
+
+### Added
+- **Drilldown `suggestedCommands`** (`src/commands/indexing.ts`): Each file entry in `--recovered` and `--parse-errors` JSON output now includes `suggestedCommands` with `mp-sentinel indexing --explain-index "<path>" --index-format json` and `mp-sentinel indexing --agent-context "<path>" --index-format json`. Paths use forward-slash normalization and double-quoting via `quoteCliArg`.
+
+### Changed
+- **Dogfood** (`scripts/dogfood.mjs`): Parser drilldown step validates first recovered file has `suggestedCommands` when files are present.
+- **Docs** (`docs/COMMANDS_CHEAT_SHEET.md`): Health → drilldown workflow updated with per-file `suggestedCommands` documentation.
+
+### Tests
+- 5 new tests for drilldown `suggestedCommands`: recovered entries, parse-error entries, path normalization, determinism, empty drilldown.
+
 ## [1.23.0] - 2026-04-30
 
 ### Changed

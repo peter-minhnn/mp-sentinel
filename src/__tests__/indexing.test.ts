@@ -3948,3 +3948,271 @@ describe("indexing --parse-errors drilldown", () => {
     stdoutWrite.mockRestore();
   });
 });
+
+// ── Parser Drilldown suggestedCommands (v1.24.0) ─────────────────────────────────
+
+describe("drilldown suggestedCommands", () => {
+  it("--recovered file entries include suggestedCommands with --explain-index and --agent-context", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "sc-recovered-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "src", "unicode.ts"),
+      [
+        'import { foo } from "./lib";',
+        "// — em dash in comment",
+        "export function bar() {",
+        "  return foo() + 1;",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(join(cwd, "src", "lib.ts"), "export function foo() { return 42; }\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.status === "ok" && Array.isArray(parsed.files);
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    const json = JSON.parse(jsonCall![0]);
+
+    const recoveredFiles = json.files.filter(
+      (f: { parserMode?: string }) =>
+        f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback",
+    );
+    for (const file of recoveredFiles) {
+      expect(Array.isArray(file.suggestedCommands)).toBe(true);
+      expect(file.suggestedCommands.length).toBe(2);
+      expect(file.suggestedCommands[0]).toContain("--explain-index");
+      expect(file.suggestedCommands[0]).toContain("--index-format json");
+      expect(file.suggestedCommands[1]).toContain("--agent-context");
+      expect(file.suggestedCommands[1]).toContain("--index-format json");
+      for (const cmd of file.suggestedCommands) {
+        expect(cmd).toMatch(/"src\/unicode\.ts"/);
+      }
+    }
+    for (const file of json.files) {
+      expect(Array.isArray(file.suggestedCommands)).toBe(true);
+      expect(file.suggestedCommands.length).toBe(2);
+    }
+    stdoutWrite.mockRestore();
+  });
+
+  it("--parse-errors file entries include suggestedCommands with --explain-index and --agent-context", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "sc-pe-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "broken.ts"), "export const x = ;\n", "utf-8");
+    await writeFile(join(cwd, "src", "clean.ts"), "export const y = 1;\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", parseErrors: true } as Partial<CLIValues> & {
+        parseErrors?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.status === "ok" && Array.isArray(parsed.files);
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    const json = JSON.parse(jsonCall![0]);
+
+    const parseErrorFiles = json.files.filter(
+      (f: { parseErrors?: string[] }) => f.parseErrors && f.parseErrors.length > 0,
+    );
+    expect(parseErrorFiles.length).toBeGreaterThan(0);
+    for (const file of parseErrorFiles) {
+      expect(Array.isArray(file.suggestedCommands)).toBe(true);
+      expect(file.suggestedCommands.length).toBe(2);
+      expect(file.suggestedCommands[0]).toContain("--explain-index");
+      expect(file.suggestedCommands[0]).toContain("--index-format json");
+      expect(file.suggestedCommands[1]).toContain("--agent-context");
+      expect(file.suggestedCommands[1]).toContain("--index-format json");
+      for (const cmd of file.suggestedCommands) {
+        expect(cmd).toMatch(/"src\/broken\.ts"/);
+      }
+    }
+    stdoutWrite.mockRestore();
+  });
+
+  it("suggestedCommands use forward-slash normalized and double-quoted paths", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "sc-path-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src", "subdir"), { recursive: true });
+    await writeFile(
+      join(cwd, "src", "subdir", "unicode.ts"),
+      [
+        'import { foo } from "../lib";',
+        "// — em dash",
+        "export function bar() { return foo() + 1; }",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(join(cwd, "src", "lib.ts"), "export function foo() { return 42; }\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.status === "ok" && Array.isArray(parsed.files);
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    const json = JSON.parse(jsonCall![0]);
+    for (const file of json.files) {
+      for (const cmd of file.suggestedCommands) {
+        const pathArg = cmd.match(/"([^"]+)"/);
+        if (pathArg) {
+          expect(pathArg[1]).not.toContain("\\");
+        }
+      }
+    }
+    stdoutWrite.mockRestore();
+  });
+
+  it("suggestedCommands are deterministic for the same index", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "sc-det-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "src", "unicode.ts"),
+      [
+        'import { foo } from "./lib";',
+        "// — em dash",
+        "export function bar() { return foo() + 1; }",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(join(cwd, "src", "lib.ts"), "export function foo() { return 42; }\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const call1 = jest.spyOn(console, "log");
+    await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    const json1 = JSON.parse(
+      call1.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      })![0],
+    );
+    call1.mockRestore();
+
+    const call2 = jest.spyOn(console, "log");
+    await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    const json2 = JSON.parse(
+      call2.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      })![0],
+    );
+    call2.mockRestore();
+
+    expect(json1.files.length).toBe(json2.files.length);
+    for (let i = 0; i < json1.files.length; i++) {
+      expect(json1.files[i].suggestedCommands).toEqual(json2.files[i].suggestedCommands);
+    }
+  });
+
+  it("empty drilldown has empty files array (no invalid commands)", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "sc-empty-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    const json = JSON.parse(
+      stdoutWrite.mock.calls.find((c) => {
+        try {
+          const p = JSON.parse(c[0]);
+          return p.status === "ok" && Array.isArray(p.files);
+        } catch {
+          return false;
+        }
+      })![0],
+    );
+    expect(json.files).toEqual([]);
+    stdoutWrite.mockRestore();
+  });
+});

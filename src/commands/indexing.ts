@@ -14,7 +14,12 @@ import type {
   SourceIndexFile,
   IndexHealthOutput,
 } from "../types/index.js";
-import { querySymbols, queryImports, queryAgentContext } from "../services/source-index/query.js";
+import {
+  querySymbols,
+  queryImports,
+  queryAgentContext,
+  quoteCliArg,
+} from "../services/source-index/query.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
   readManifest,
@@ -1037,6 +1042,7 @@ interface DrilldownFileEntry {
   importCount: number;
   exportCount: number;
   role?: FileRole;
+  suggestedCommands: string[];
 }
 
 const MAX_DRILLDOWN_FILES = 50;
@@ -1102,6 +1108,10 @@ async function handleDrilldown(
     importCount: f.imports.length,
     exportCount: f.exports.length,
     ...(f.role && { role: f.role }),
+    suggestedCommands: [
+      `mp-sentinel indexing --explain-index ${quoteCliArg(f.path)} --index-format json`,
+      `mp-sentinel indexing --agent-context ${quoteCliArg(f.path)} --index-format json`,
+    ],
   }));
 
   if (mode === "recovered") {

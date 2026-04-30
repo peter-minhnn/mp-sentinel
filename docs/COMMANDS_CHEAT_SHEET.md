@@ -82,7 +82,7 @@ Imports are classified as `internal` (resolved to another source file in the ind
 
 `--health` is a read-only diagnostic that examines cache integrity without building or calling AI. It reports cache status (`ok`, `missing`, `unreadable`, `stale`), schema version, file count, parse error rate, manifest hash comparison, and samples of changed or missing files. Exit codes: `0` = healthy, `1` = missing/stale/unreadable, `2` = error. JSON mode emits the health payload to stdout; all logs go to stderr.
 
-`--recovered` and `--parse-errors` are read-only parser drilldown commands (v1.22.0+). `--recovered` lists files recovered via fallback parser (`ascii-fallback` or `lexical-fallback`), with per-file parser mode, symbol/import/export counts, and optional role. `--parse-errors` lists files with hard parse errors, with per-file error messages, symbol/import/export counts, and optional role. Both output JSON to stdout (all logs to stderr), cap files at 50 sorted by path, exit `0` on success, and exit `1` when cache is missing or unreadable. The two flags cannot be used together.
+`--recovered` and `--parse-errors` are read-only parser drilldown commands (v1.22.0+). `--recovered` lists files recovered via fallback parser (`ascii-fallback` or `lexical-fallback`), with per-file parser mode, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). `--parse-errors` lists files with hard parse errors, with per-file error messages, symbol/import/export counts, optional role, and `suggestedCommands` (v1.24.0+). Both output JSON to stdout (all logs to stderr), cap files at 50 sorted by path, exit `0` on success, and exit `1` when cache is missing or unreadable. The two flags cannot be used together.
 
 ### Health → Drilldown Workflow (v1.23.0+)
 Start with a health check to see if parser issues exist, then drill into specifics.
@@ -97,6 +97,8 @@ npx mp-sentinel indexing --recovered --index-format json
 npx mp-sentinel indexing --parse-errors --index-format json
 ```
 The health JSON output includes `suggestedCommands` with drilldown command recommendations when `recoveredFiles > 0` or `parseErrorCount > 0`. The doctor diagnostic surfaces drilldown commands in `index.suggestedCommands` when parser issues exist (advisory for recovered-only, action-required for hard parse errors). Only hard parse error drilldowns (`--parse-errors`) appear in top-level `recommendedCommands`.
+
+Each file entry in drilldown output includes `suggestedCommands` (v1.24.0+) with `--explain-index` and `--agent-context` commands pointing to that file, enabling agents to get per-file dependency and symbol diagnostics directly.
 
 `--find-symbol`, `--find-import`, and `--agent-context` are read-only queries that use the existing source index cache (building/updating it only if absent). `--find-symbol` searches for functions, classes, interfaces, types, enums, variables, methods, and arrow functions by exact or partial name. `--find-import` searches for files that import a given package or local path. Both return results capped at 20 entries, sorted by match score (exact > case-insensitive > starts-with > contains).
 
