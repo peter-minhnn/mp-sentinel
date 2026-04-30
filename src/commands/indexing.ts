@@ -7,7 +7,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import type {
+  FileRole,
   IndexingConfig,
+  ParserMode,
   SourceIndex,
   SourceIndexFile,
   IndexHealthOutput,
@@ -673,6 +675,8 @@ export async function runIndexingCommand(
     findSymbol?: string;
     findImport?: string;
     agentContext?: string;
+    recovered?: boolean;
+    parseErrors?: boolean;
   },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
@@ -682,6 +686,11 @@ export async function runIndexingCommand(
   // --find-symbol, --find-import, and --agent-context are read-only queries: they use the existing index only.
   // Build/update the index if absent, but don't force rebuild.
   const isReadOnlyQuery = !!(values.findSymbol || values.findImport || values.agentContext);
+
+  // --recovered and --parse-errors are read-only cache queries — disallow together.
+  if (values.recovered && values.parseErrors) {
+    throw new UserError("--recovered and --parse-errors cannot be used together.");
+  }
 
   // --health is a read-only diagnostic: examine cache integrity, no build/write/AI.
   if (values.health) {
@@ -704,6 +713,62 @@ export async function runIndexingCommand(
           log.critical(`Health check failed: ${error.message}`);
         } else {
           log.critical("Health check failed with unknown error");
+        }
+      }
+      return 2;
+    } finally {
+      if (format === "json") setLogQuietMode(false);
+    }
+  }
+
+  // --recovered is a read-only diagnostic: list files recovered via fallback parser.
+  if (values.recovered) {
+    if (format === "json") setLogQuietMode(true);
+    try {
+      const config = await loadProjectConfig(projectRoot);
+      const indexingConfig = {
+        ...getIndexingConfig(config),
+        enabled: true,
+      };
+      return await handleRecovered(projectRoot, format, indexingConfig);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Recovered drilldown failed with unknown error";
+      if (format === "json") {
+        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+      } else {
+        if (error instanceof Error) {
+          log.critical(`Recovered drilldown failed: ${error.message}`);
+        } else {
+          log.critical("Recovered drilldown failed with unknown error");
+        }
+      }
+      return 2;
+    } finally {
+      if (format === "json") setLogQuietMode(false);
+    }
+  }
+
+  // --parse-errors is a read-only diagnostic: list files with hard parse errors.
+  if (values.parseErrors) {
+    if (format === "json") setLogQuietMode(true);
+    try {
+      const config = await loadProjectConfig(projectRoot);
+      const indexingConfig = {
+        ...getIndexingConfig(config),
+        enabled: true,
+      };
+      return await handleParseErrors(projectRoot, format, indexingConfig);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Parse-errors drilldown failed with unknown error";
+      if (format === "json") {
+        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+      } else {
+        if (error instanceof Error) {
+          log.critical(`Parse-errors drilldown failed: ${error.message}`);
+        } else {
+          log.critical("Parse-errors drilldown failed with unknown error");
         }
       }
       return 2;
@@ -903,6 +968,164 @@ function handleStats(index: SourceIndex | null, format: "console" | "json"): num
     }
     console.log(`  Duration:         ${(stats.durationMs ?? 0).toFixed(0)}ms`);
     console.log();
+  }
+
+  return 0;
+}
+
+/**
+ * Shared read-only cache loader for drilldown commands.
+ * Returns the parsed index and the cache path, or writes error JSON and returns null.
+ */
+async function loadReadOnlyIndex(
+  projectRoot: string,
+  indexingConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  >,
+  format: "console" | "json",
+): Promise<{ index: SourceIndex; cachePath: string } | null> {
+  const cachePath = resolve(projectRoot, indexingConfig.cachePath);
+
+  if (!existsSync(cachePath)) {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "missing" }, null, 2));
+    }
+    return null;
+  }
+
+  let raw: string;
+  try {
+    raw = await readFile(cachePath, "utf-8");
+  } catch {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+    }
+    return null;
+  }
+
+  let index: SourceIndex;
+  try {
+    index = JSON.parse(raw) as SourceIndex;
+  } catch {
+    if (format === "json") {
+      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+    }
+    return null;
+  }
+
+  return { index, cachePath };
+}
+
+interface DrilldownFileEntry {
+  path: string;
+  parserMode: ParserMode | "tree-sitter";
+  parseWarnings?: string[];
+  parseErrors?: string[];
+  symbolCount: number;
+  importCount: number;
+  exportCount: number;
+  role?: FileRole;
+}
+
+const MAX_DRILLDOWN_FILES = 50;
+
+/**
+ * Handle --recovered option: list files recovered via fallback parser.
+ */
+function handleRecovered(
+  projectRoot: string,
+  format: "console" | "json",
+  indexingConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  >,
+): Promise<number> {
+  return handleDrilldown(projectRoot, format, indexingConfig, "recovered");
+}
+
+/**
+ * Handle --parse-errors option: list files with hard parse errors.
+ */
+function handleParseErrors(
+  projectRoot: string,
+  format: "console" | "json",
+  indexingConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  >,
+): Promise<number> {
+  return handleDrilldown(projectRoot, format, indexingConfig, "parse-errors");
+}
+
+async function handleDrilldown(
+  projectRoot: string,
+  format: "console" | "json",
+  indexingConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  >,
+  mode: "recovered" | "parse-errors",
+): Promise<number> {
+  const loaded = await loadReadOnlyIndex(projectRoot, indexingConfig, format);
+  if (!loaded) return 1;
+
+  const { index } = loaded;
+
+  const matches: SourceIndexFile[] =
+    mode === "recovered"
+      ? index.files.filter(
+          (f) => f.parserMode === "ascii-fallback" || f.parserMode === "lexical-fallback",
+        )
+      : index.files.filter((f) => f.parseErrors && f.parseErrors.length > 0);
+
+  // Sort by path
+  matches.sort((a, b) => a.path.localeCompare(b.path));
+
+  const truncated = matches.length > MAX_DRILLDOWN_FILES;
+  const capped = matches.slice(0, MAX_DRILLDOWN_FILES);
+
+  const files: DrilldownFileEntry[] = capped.map((f) => ({
+    path: f.path,
+    parserMode: f.parserMode ?? "tree-sitter",
+    ...(f.parseWarnings && f.parseWarnings.length > 0 && { parseWarnings: f.parseWarnings }),
+    ...(f.parseErrors && f.parseErrors.length > 0 && { parseErrors: f.parseErrors }),
+    symbolCount: f.symbols.length,
+    importCount: f.imports.length,
+    exportCount: f.exports.length,
+    ...(f.role && { role: f.role }),
+  }));
+
+  if (mode === "recovered") {
+    const recoveredFiles = getRecoveredFileCount(index);
+    const parserModeBreakdown = getParserModeBreakdown(index);
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          totalFiles: index.files.length,
+          recoveredFiles,
+          parserModeBreakdown,
+          files,
+          truncated,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    const parseErrorCount = index.files.filter(
+      (f) => f.parseErrors && f.parseErrors.length > 0,
+    ).length;
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          totalFiles: index.files.length,
+          parseErrorCount,
+          files,
+          truncated,
+        },
+        null,
+        2,
+      ),
+    );
   }
 
   return 0;

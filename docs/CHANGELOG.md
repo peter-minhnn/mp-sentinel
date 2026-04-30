@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-04-30
+
+### Added
+- **Parser recovery drilldown** (`src/commands/indexing.ts`, `src/cli/args.ts`): Two new read-only indexing flags `--recovered` and `--parse-errors` for inspecting parser recovery state. `--recovered` lists files recovered via fallback parser. `--parse-errors` lists files with hard parse errors. Both output JSON to stdout, cap at 50 files sorted by path, exit `0` on success, exit `1` when cache is missing/unreadable. The two flags are mutually exclusive.
+- **Doctor drilldown recommendations** (`src/commands/create-skills.ts`): Recovered file warnings now recommend `mp-sentinel indexing --recovered --index-format json`. Hard parse error failures now recommend `mp-sentinel indexing --parse-errors --index-format json`.
+- **Dogfood parser drilldown step** (`scripts/dogfood.mjs`): New step 12 validates `--recovered` and `--parse-errors` JSON output shape. `TOTAL_STEPS` bumped 11 → 12.
+
+### Changed
+- **Agent preferred commands** (`AGENTS.md`): Added `--recovered` and `--parse-errors` to preferred source index commands list.
+- **Cheat sheet** (`docs/COMMANDS_CHEAT_SHEET.md`): Added both drilldown commands with usage examples and explanation.
+
 ## [1.21.0] - 2026-04-30
 
 ### Added

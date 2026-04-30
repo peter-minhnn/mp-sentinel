@@ -1,3 +1,24 @@
+# What's New in v1.22.0
+
+## Parser Recovery Drilldown
+
+v1.22.0 adds two read-only indexing drilldown commands so users and agents can inspect parser recovery state without reading the full health JSON.
+
+- **`--recovered`** (`src/commands/indexing.ts`, `src/cli/args.ts`): Lists files recovered via fallback parser (`ascii-fallback` or `lexical-fallback`). JSON output includes `status`, `totalFiles`, `recoveredFiles`, `parserModeBreakdown`, `files` (capped at 50, sorted by path), and `truncated`. Each file entry includes `path`, `parserMode`, `parseWarnings`, `symbolCount`, `importCount`, `exportCount`, and optional `role`.
+- **`--parse-errors`** (`src/commands/indexing.ts`): Lists files with hard parse errors. JSON output includes `status`, `totalFiles`, `parseErrorCount`, `files` (capped at 50, sorted by path), and `truncated`. Each file entry includes `path`, `parserMode`, `parseErrors`, `symbolCount`, `importCount`, `exportCount`, and optional `role`.
+- **Mutual exclusion**: Using `--recovered` and `--parse-errors` together throws a `UserError`.
+- **Doctor integration** (`src/commands/create-skills.ts`): Recovered file warnings now recommend `mp-sentinel indexing --recovered --index-format json`. Hard parse error failures now recommend `mp-sentinel indexing --parse-errors --index-format json`.
+- **Docs** (`docs/COMMANDS_CHEAT_SHEET.md`, `AGENTS.md`): Both commands added to cheat sheet and agent preferred source index commands.
+- **Dogfood** (`scripts/dogfood.mjs`): New step 12 `parser drilldown` validates `--recovered` and `--parse-errors` JSON output shape. `TOTAL_STEPS` bumped 11 → 12.
+
+### Tests
+- CLI arg parsing tests for `--recovered`, `--parse-errors`, and mutual exclusion.
+- Runtime JSON tests for recovered output (with files, empty), parse-errors output (with files, empty), missing cache, corrupt cache.
+- Doctor tests for recovered warning recommending `--recovered`, hard parse error failure recommending `--parse-errors`.
+- Dogfood step count test updated: 11 → 12.
+
+---
+
 # What's New in v1.21.0
 
 ## Doctor Parser Recovery Summary & Generated Skills Parser Recovery Note

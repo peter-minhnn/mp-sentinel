@@ -8,13 +8,14 @@
  *   2. build                - tsup compile
  *   3. indexing --stats     - source index build + stats (JSON)
  *   4. indexing --health    - positive health check (status=ok, version fields) (JSON)
- *   5. index queries        - agent-context, find-symbol, find-import (JSON)
- *   6. create-skills --dry-run - all adapters, no writes (JSON)
- *   7. --explain-agents     - agent detection diagnostics (JSON)
- *   8. --explain-context    - context diagnostics (JSON, unavailable path)
- *   9. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
- *  10. create-skills --doctor - doctor diagnostics (JSON)
- *  11. agent:skills:check   - generated skills freshness gate
+ *   5. parser drilldown     - --recovered and --parse-errors drilldown (JSON)
+ *   6. index queries        - agent-context, find-symbol, find-import (JSON)
+ *   7. create-skills --dry-run - all adapters, no writes (JSON)
+ *   8. --explain-agents     - agent detection diagnostics (JSON)
+ *   9. --explain-context    - context diagnostics (JSON, unavailable path)
+ *  10. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
+ *  11. create-skills --doctor - doctor diagnostics (JSON)
+ *  12. agent:skills:check   - generated skills freshness gate
  *
  * Each JSON step is parsed, not just visually inspected.
  * Step 8 validates "unavailable" (indexing.enabled=false repo default).
@@ -34,7 +35,7 @@ import { tmpdir } from "node:os";
 
 // --- helpers -----------------------------------------------------------
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 const STEP_INDENT = "  ";
 
 function fail(step, detail) {
@@ -200,8 +201,82 @@ function stepHealthCheck() {
   return true;
 }
 
+function stepParserDrilldown() {
+  stepHeader(5, "parser drilldown");
+
+  // --recovered drilldown
+  const recOut = run(
+    "node dist/index.js indexing --recovered --index-format json",
+    "parser drilldown --recovered",
+  );
+  if (recOut === null) return false;
+
+  const recJson = parseJson(recOut, "parser drilldown --recovered");
+  if (!recJson) return false;
+
+  if (typeof recJson.status !== "string") {
+    fail("parser drilldown --recovered", "missing 'status' field");
+    return false;
+  }
+  if (typeof recJson.totalFiles !== "number") {
+    fail("parser drilldown --recovered", "missing 'totalFiles' field");
+    return false;
+  }
+  if (typeof recJson.recoveredFiles !== "number") {
+    fail("parser drilldown --recovered", "missing 'recoveredFiles' field");
+    return false;
+  }
+  if (typeof recJson.parserModeBreakdown !== "object" || recJson.parserModeBreakdown === null) {
+    fail("parser drilldown --recovered", "missing 'parserModeBreakdown' field");
+    return false;
+  }
+  if (!Array.isArray(recJson.files)) {
+    fail("parser drilldown --recovered", "'files' is not an array");
+    return false;
+  }
+
+  // --parse-errors drilldown
+  const peOut = run(
+    "node dist/index.js indexing --parse-errors --index-format json",
+    "parser drilldown --parse-errors",
+  );
+  if (peOut === null) return false;
+
+  const peJson = parseJson(peOut, "parser drilldown --parse-errors");
+  if (!peJson) return false;
+
+  if (typeof peJson.status !== "string") {
+    fail("parser drilldown --parse-errors", "missing 'status' field");
+    return false;
+  }
+  if (typeof peJson.totalFiles !== "number") {
+    fail("parser drilldown --parse-errors", "missing 'totalFiles' field");
+    return false;
+  }
+  if (typeof peJson.parseErrorCount !== "number") {
+    fail("parser drilldown --parse-errors", "missing 'parseErrorCount' field");
+    return false;
+  }
+  if (!Array.isArray(peJson.files)) {
+    fail("parser drilldown --parse-errors", "'files' is not an array");
+    return false;
+  }
+
+  const parts = [
+    `recovered=${recJson.recoveredFiles}`,
+    `recoveredFiles:${recJson.files.length}`,
+    `parseErrors=${peJson.parseErrorCount}`,
+    `parseErrorFiles:${peJson.files.length}`,
+  ];
+  if (recJson.truncated) parts.push("recovered-truncated");
+  if (peJson.truncated) parts.push("parseErrors-truncated");
+
+  ok("parser drilldown", parts.join(", "));
+  return true;
+}
+
 function stepIndexQuery() {
-  stepHeader(5, "index queries");
+  stepHeader(6, "index queries");
 
   // --agent-context
   const acOut = run(
@@ -305,7 +380,7 @@ function stepIndexQuery() {
 }
 
 function stepCreateSkills() {
-  stepHeader(6, "create-skills --dry-run");
+  stepHeader(7, "create-skills --dry-run");
   const out = run(
     "node dist/index.js create-skills --all-agents --dry-run --format json",
     "create-skills --dry-run",
@@ -335,7 +410,7 @@ function stepCreateSkills() {
 }
 
 function stepExplainAgents() {
-  stepHeader(7, "explain-agents");
+  stepHeader(8, "explain-agents");
   const out = run(
     "node dist/index.js create-skills --explain-agents --format json",
     "explain-agents",
@@ -395,7 +470,7 @@ function stepExplainAgents() {
 }
 
 function stepExplainContext() {
-  stepHeader(8, "explain-context");
+  stepHeader(9, "explain-context");
   const out = run(
     "node dist/index.js --explain-context --format json --files src/commands/create-skills.ts",
     "explain-context",
@@ -424,7 +499,7 @@ function stepExplainContext() {
 }
 
 function stepPositiveExplainContext() {
-  stepHeader(9, "explain-context (positive path)");
+  stepHeader(10, "explain-context (positive path)");
 
   const repoRoot = process.cwd();
   const tempDir = mkdtempSync(join(tmpdir(), "dogfood-positive-ec-"));
@@ -548,7 +623,7 @@ function stepPositiveExplainContext() {
 }
 
 function stepDoctor() {
-  stepHeader(10, "create-skills --doctor");
+  stepHeader(11, "create-skills --doctor");
   let raw;
   try {
     raw = execSync(
@@ -637,7 +712,7 @@ function stepDoctor() {
 }
 
 function stepAgentSkillsCheck() {
-  stepHeader(11, "agent:skills:check");
+  stepHeader(12, "agent:skills:check");
   let raw;
   try {
     raw = execSync(
@@ -668,6 +743,7 @@ const steps = [
   stepBuild,
   stepIndexing,
   stepHealthCheck,
+  stepParserDrilldown,
   stepIndexQuery,
   stepCreateSkills,
   stepExplainAgents,

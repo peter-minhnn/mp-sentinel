@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.21.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.22.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,11 +43,11 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.21.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.22.0**:
 
-- 🩺 **Doctor Parser Recovery Summary** — Hard parse errors and fallback recoveries surfaced in doctor diagnostics
-- 📝 **Generated Skills Parser Recovery Note** — Parser recovery breakdown in generated skill files
-- 📡 **Parser Recovery Telemetry** — Fallback paths tracked separately from hard parse errors
+- 🔍 **Parser Recovery Drilldown** — `--recovered` and `--parse-errors` read-only indexing flags for inspecting parser recovery state
+- 🩺 **Doctor Drilldown Recommendations** — Recovered file warnings and hard parse error failures now recommend the new drilldown commands
+- 🐕 **Dogfood Parser Drilldown Step** — New step validates both drilldown commands' JSON output shape
 - ⚡ **100% Offline & Secure** — No network dependence for rule fetching during auditing.
 - 🛡️ **Security Layers** — File filtering, secret scrubbing, payload transparency
 - 🔍 **Local Review Mode** — Review commits without CI/CD pipelines

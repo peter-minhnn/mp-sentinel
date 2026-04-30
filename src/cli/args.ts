@@ -38,6 +38,8 @@ export interface CLIValues {
   findSymbol?: string;
   findImport?: string;
   agentContext?: string;
+  recovered?: boolean;
+  parseErrors?: boolean;
   agent?: string;
   "all-agents": boolean;
   "create-skills-format"?: string;
@@ -119,6 +121,16 @@ export const buildProgram = (): Command => {
     .option(
       "--health",
       "Read-only index health check: status, staleness, file integrity (no build, no AI)",
+      false,
+    )
+    .option(
+      "--recovered",
+      "Read-only: list files recovered via fallback parser (no build, no AI)",
+      false,
+    )
+    .option(
+      "--parse-errors",
+      "Read-only: list files with hard parse errors (no build, no AI)",
       false,
     );
 
@@ -311,6 +323,9 @@ export const parseCliArgs = (): {
       }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
       health: command === "indexing" ? Boolean(indexingOptions["health"] ?? false) : false,
+      recovered: command === "indexing" ? Boolean(indexingOptions["recovered"] ?? false) : false,
+      parseErrors:
+        command === "indexing" ? Boolean(indexingOptions["parseErrors"] ?? false) : false,
       ...(typeof createSkillsOptions["agent"] === "string" && {
         agent: createSkillsOptions["agent"],
       }),

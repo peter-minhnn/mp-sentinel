@@ -5974,6 +5974,82 @@ describe("runCreateSkillsCommand --doctor", () => {
     const c2 = generateContent(JSON.parse(JSON.stringify(idx)), "test-project");
     expect(c1.sections.architecture).toBe(c2.sections.architecture);
   });
+
+  it("recovered file warning recommends --recovered drilldown command", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectFallbackParserModes(cwd);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.recommendedCommands).toContain(
+      "mp-sentinel indexing --recovered --index-format json",
+    );
+    const hasRecoveredAction = parsed.recommendedActions.some(
+      (a: string) => a.includes("recovered") && a.includes("fallback"),
+    );
+    expect(hasRecoveredAction).toBe(true);
+  });
+
+  it("hard parse error failure recommends --parse-errors drilldown command", async () => {
+    const cwd = await makeTempDir();
+    await makeCliToolingProject(cwd);
+    await mkdir(join(cwd, ".claude"), { recursive: true });
+
+    await buildSourceIndex(cwd, defaultIndexConfig, true);
+    await injectHardParseErrors(cwd);
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const modifiedIndex = await readIndex(join(cwd, defaultIndexConfig.cachePath));
+    expect(modifiedIndex).not.toBeNull();
+    await writeUpToDateSkills(cwd, modifiedIndex!);
+
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+
+    expect(parsed.recommendedCommands).toContain(
+      "mp-sentinel indexing --parse-errors --index-format json",
+    );
+    const hasHardErrorAction = parsed.recommendedActions.some((a: string) =>
+      a.includes("hard parse error"),
+    );
+    expect(hasHardErrorAction).toBe(true);
+  });
 });
 
 // -- Adapter spec path contract (v1.14+) ------------------------------------

@@ -466,15 +466,16 @@ function categorizeDoctorFindings(
   if (hardErrorCount > 0 && errorSample.length > 0) {
     const firstFile = errorSample[0]!;
     const sampleStr = errorSample.map((f) => `"${f}"`).join(", ");
-    const action = `${hardErrorCount} file(s) have hard parse errors. Run "mp-sentinel indexing --health --index-format json" to assess, then "mp-sentinel indexing --explain-index \"${firstFile}\" --index-format json" to diagnose the first failure.`;
+    const action = `${hardErrorCount} file(s) have hard parse errors. Run "mp-sentinel indexing --parse-errors --index-format json" to list them, or "mp-sentinel indexing --health --index-format json" for the overview.`;
     recommendedActions.push(action);
+    recommendedCommands.push("mp-sentinel indexing --parse-errors --index-format json");
     recommendedCommands.push("mp-sentinel indexing --health --index-format json");
     failItems.push({
       label: `Index: ${hardErrorCount} hard parse error(s)`,
       action: `Sample: ${sampleStr}. ${action}`,
       commands: [
+        "mp-sentinel indexing --parse-errors --index-format json",
         "mp-sentinel indexing --health --index-format json",
-        `mp-sentinel indexing --explain-index "${firstFile}" --index-format json`,
       ],
     });
   }
@@ -486,11 +487,13 @@ function categorizeDoctorFindings(
     const detail = breakdown
       ? ` (${breakdown["ascii-fallback"] ?? 0} ascii-fallback, ${breakdown["lexical-fallback"] ?? 0} lexical-fallback)`
       : "";
-    const action = `${recoveredCount} file(s) recovered via fallback parser${detail}. Run "mp-sentinel indexing --health --index-format json" for full breakdown.`;
+    const action = `${recoveredCount} file(s) recovered via fallback parser${detail}. Run "mp-sentinel indexing --recovered --index-format json" to list them.`;
     recommendedActions.push(action);
+    recommendedCommands.push("mp-sentinel indexing --recovered --index-format json");
     warnItems.push({
       label: `Index: ${recoveredCount} fallback-parsed file(s)`,
       action,
+      commands: ["mp-sentinel indexing --recovered --index-format json"],
     });
   }
 

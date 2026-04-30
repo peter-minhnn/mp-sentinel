@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
+import { describe, it, expect, afterEach, beforeEach, jest } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
 import { buildSourceIndex, getIndexingConfig, runIndexingCommand } from "../commands/indexing.js";
@@ -90,6 +90,39 @@ describe("indexing CLI args", () => {
     const parsed = parseCliArgs();
     expect(parsed.command).toBe("indexing");
     expect(parsed.values.health).toBe(true);
+  });
+
+  it("parses --recovered flag", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--recovered", "--index-format", "json"];
+    const parsed = parseCliArgs();
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.recovered).toBe(true);
+  });
+
+  it("parses --parse-errors flag", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--parse-errors", "--index-format", "json"];
+    const parsed = parseCliArgs();
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.parseErrors).toBe(true);
+  });
+
+  it("rejects --recovered and --parse-errors together", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "test-reject", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    const fakeValues = {
+      "index-format": "json" as const,
+      recovered: true,
+      parseErrors: true,
+      health: false,
+      force: false,
+    };
+    await expect(runIndexingCommand(fakeValues, cwd)).rejects.toThrow(
+      "--recovered and --parse-errors cannot be used together.",
+    );
   });
 });
 
@@ -3534,5 +3567,267 @@ describe("lexicalParse precision", () => {
     // No fake export/symbol from string
     expect(result.exports.some((e) => e.names.includes("fakeExport"))).toBe(false);
     expect(result.symbols.some((s) => s.name === "fakeExport")).toBe(false);
+  });
+});
+
+// ── Parser Drilldown (--recovered / --parse-errors) ──────────────────────────────
+
+describe("indexing --recovered drilldown", () => {
+  it("returns recovered files with correct output shape", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "drilldown-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    // Write a file with Unicode that will trigger ASCII fallback on Windows
+    await writeFile(
+      join(cwd, "src", "unicode.ts"),
+      [
+        'import { foo } from "./lib";',
+        "// — em dash in comment",
+        "export function bar() {",
+        "  return foo() + 1;",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(join(cwd, "src", "lib.ts"), "export function foo() { return 42; }\n", "utf-8");
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n", "utf-8");
+
+    // Build index first
+    const index = await buildSourceIndex(cwd, getIndexingConfig({}), true);
+    expect(index).not.toBeNull();
+
+    // Read the cache directly and invoke runIndexingCommand with --recovered
+    const config = await loadProjectConfig(cwd);
+    const result = await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+  });
+
+  it("returns ok with empty files array when no recovered files", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "clean-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+    // Parse the JSON output
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.status !== undefined && parsed.files !== undefined;
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    const json = JSON.parse(jsonCall![0]);
+    expect(json.status).toBe("ok");
+    expect(Array.isArray(json.files)).toBe(true);
+    expect(typeof json.recoveredFiles).toBe("number");
+    expect(typeof json.parserModeBreakdown).toBe("object");
+    stdoutWrite.mockRestore();
+  });
+
+  it("returns status missing and exit 1 when cache absent", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "no-cache", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(1);
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        return JSON.parse(c[0]).status === "missing";
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    stdoutWrite.mockRestore();
+  });
+
+  it("returns status unreadable and exit 1 when cache is corrupt", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "corrupt-cache", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await writeFile(
+      join(cwd, ".mp-sentinel-cache", "source-index.json"),
+      "not valid json {{{",
+      "utf-8",
+    );
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", recovered: true } as Partial<CLIValues> & {
+        recovered?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(1);
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        return JSON.parse(c[0]).status === "unreadable";
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    stdoutWrite.mockRestore();
+  });
+});
+
+describe("indexing --parse-errors drilldown", () => {
+  it("returns parse error files with correct output shape", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "pe-test", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    // File with syntax error
+    await writeFile(
+      join(cwd, "src", "broken.ts"),
+      "export const x = ;\n", // syntax error
+      "utf-8",
+    );
+    await writeFile(join(cwd, "src", "clean.ts"), "export const y = 1;\n", "utf-8");
+
+    const index = await buildSourceIndex(cwd, getIndexingConfig({}), true);
+    expect(index).not.toBeNull();
+
+    const result = await runIndexingCommand(
+      { "index-format": "json", parseErrors: true } as Partial<CLIValues> & {
+        parseErrors?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+  });
+
+  it("returns ok with empty files array when no parse errors", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "clean-pe", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "clean.ts"), "export const x = 1;\n", "utf-8");
+
+    await buildSourceIndex(cwd, getIndexingConfig({}), true);
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", parseErrors: true } as Partial<CLIValues> & {
+        parseErrors?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(0);
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.status !== undefined && parsed.files !== undefined;
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    const json = JSON.parse(jsonCall![0]);
+    expect(json.status).toBe("ok");
+    expect(Array.isArray(json.files)).toBe(true);
+    expect(typeof json.parseErrorCount).toBe("number");
+    stdoutWrite.mockRestore();
+  });
+
+  it("returns status missing and exit 1 when cache absent", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "no-cache-pe", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", parseErrors: true } as Partial<CLIValues> & {
+        parseErrors?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(1);
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        return JSON.parse(c[0]).status === "missing";
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    stdoutWrite.mockRestore();
+  });
+
+  it("returns status unreadable and exit 1 when cache is corrupt", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "corrupt-pe", type: "module", version: "1.0.0" }, null, 2),
+      "utf-8",
+    );
+    await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+    await writeFile(join(cwd, ".mp-sentinel-cache", "source-index.json"), "{corrupt}", "utf-8");
+
+    const stdoutWrite = jest.spyOn(console, "log");
+    const result = await runIndexingCommand(
+      { "index-format": "json", parseErrors: true } as Partial<CLIValues> & {
+        parseErrors?: boolean;
+      },
+      cwd,
+    );
+    expect(result).toBe(1);
+    const jsonCall = stdoutWrite.mock.calls.find((c) => {
+      try {
+        return JSON.parse(c[0]).status === "unreadable";
+      } catch {
+        return false;
+      }
+    });
+    expect(jsonCall).toBeDefined();
+    stdoutWrite.mockRestore();
   });
 });
