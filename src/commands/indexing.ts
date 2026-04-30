@@ -105,7 +105,7 @@ export const getRecoveredFileCount = (index: SourceIndex): number => {
 
 /**
  * Build a breakdown of files by parser mode.
- * Undefined parserMode (pre-1.3 caches) is treated as tree-sitter.
+ * Absent parserMode (older caches) is treated as tree-sitter.
  */
 export const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
   const breakdown: Record<string, number> = {
@@ -1134,9 +1134,6 @@ async function handleDrilldown(
       `mp-sentinel indexing --explain-index ${quoteCliArg(f.path)} --index-format json`,
       `mp-sentinel indexing --agent-context ${quoteCliArg(f.path)} --index-format json`,
     ],
-    ...(f.chunkCount !== undefined && { chunkCount: f.chunkCount }),
-    ...(f.chunkSize !== undefined && { chunkSize: f.chunkSize }),
-    ...(f.chunkWarningCount !== undefined && { chunkWarningCount: f.chunkWarningCount }),
   }));
 
   if (mode === "recovered") {

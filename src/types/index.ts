@@ -1047,7 +1047,7 @@ export interface DoctorIndexInfo {
   reason?: string;
   /** Fraction of files with parse errors (0-1) */
   parseErrorRate?: number;
-  /** Files recovered via fallback parser (ascii-fallback or lexical-fallback, no parse errors) */
+  /** Files recovered via fallback parser (chunked-tree-sitter, ascii-fallback, or lexical-fallback, no parse errors) */
   recoveredFiles?: number;
   /** Per-mode file count breakdown (tree-sitter / chunked-tree-sitter / ascii-fallback / lexical-fallback) */
   parserModeBreakdown?: Record<string, number>;

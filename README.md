@@ -24,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v1.26.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v1.26.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -43,7 +43,7 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.26.0**:
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v1.26.1**:
 
 - 🛡️ **Chunked Parser Observability & Lexical Fallback Guard** — Chunk-level telemetry fields in drilldown output, dogfood guard to catch silent lexical fallback regressions
 - 🔍 **Parser Drilldown Action Hints** — `--recovered` and `--parse-errors` file entries include `suggestedCommands` with `--explain-index` and `--agent-context` for instant per-file diagnostics

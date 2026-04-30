@@ -1,3 +1,14 @@
+# What's New in v1.26.1
+
+## Hygiene Patch
+
+v1.26.1 is a small cleanup patch removing duplicate chunk telemetry spreads and fixing stale comments.
+
+- **Dedup chunk fields** (`src/commands/indexing.ts`): Removed duplicate `chunkCount`/`chunkSize`/`chunkWarningCount` spreads in `handleDrilldown()` that were emitted twice per entry.
+- **Comment fixes** (`src/commands/indexing.ts`, `src/types/index.ts`): `getParserModeBreakdown()` no longer references pre-1.3 caches. `DoctorIndexInfo.recoveredFiles` JSDoc now includes `chunked-tree-sitter`.
+
+---
+
 # What's New in v1.26.0
 
 ## Chunked Parser Observability & Lexical Fallback Guard
