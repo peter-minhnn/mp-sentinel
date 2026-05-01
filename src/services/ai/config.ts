@@ -56,9 +56,9 @@ export class AIConfig {
   }
 
   /**
-   * Get API key for specific provider
+   * Get API key for specific provider.
    */
-  private static getApiKey(provider: AIProvider): string | undefined {
+  static getApiKey(provider: AIProvider): string | undefined {
     switch (provider) {
       case "gemini":
         return process.env.GEMINI_API_KEY;
@@ -68,6 +68,8 @@ export class AIConfig {
         return process.env.ANTHROPIC_API_KEY;
       case "grok":
         return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+      case "openrouter":
+        return process.env.OPENROUTER_API_KEY;
       default:
         return undefined;
     }
@@ -82,6 +84,7 @@ export class AIConfig {
       openai: "OPENAI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
       grok: "XAI_API_KEY",
+      openrouter: "OPENROUTER_API_KEY",
     };
     return names[provider];
   }

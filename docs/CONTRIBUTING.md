@@ -27,7 +27,7 @@
 
 ## 🏗️ Project Overview
 
-MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supports multiple AI providers (Gemini, OpenAI, Anthropic, Grok) and operates in two modes:
+MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supports multiple AI providers (Gemini, OpenAI, Anthropic, Grok, OpenRouter) and operates in two modes:
 
 - **CI/CD Mode**: Integrates with GitHub Actions and GitLab CI/CD
 - **Local Review Mode**: Runs directly on branches for local commit review
@@ -65,7 +65,8 @@ mp-sentinel/
 │   │   │       ├── gemini.provider.ts
 │   │   │       ├── openai.provider.ts
 │   │   │       ├── anthropic.provider.ts
-│   │   │       └── grok.provider.ts
+│   │   │       ├── grok.provider.ts
+│   │   │       └── openrouter.provider.ts
 │   │   ├── ai.ts             # Legacy exports (backward compatibility)
 │   │   ├── file.ts           # File operations service
 │   │   └── git-provider.ts   # GitHub/GitLab integration
@@ -523,7 +524,7 @@ export interface IAIProvider {
 }
 
 // ✅ Good: Union types for constrained values
-export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'grok';
+export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'grok' | 'openrouter';
 export type AuditStatus = 'PASS' | 'FAIL';
 export type IssueSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
 

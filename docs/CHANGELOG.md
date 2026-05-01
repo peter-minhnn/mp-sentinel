@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-05-01
+
+### Added
+- **OpenRouter provider** (`src/services/ai/providers/openrouter.provider.ts`, `src/__tests__/openrouter.provider.test.ts`): REST provider targeting `https://openrouter.ai/api/v1/chat/completions` with canonical `X-OpenRouter-Title` attribution and model-gated `response_format: { type: "json_object" }` for model families known to support structured output. `HTTP-Referer` sent only when `OPENROUTER_SITE_URL` is configured.
+- **Provider integration** (`src/services/ai/types.ts`, `src/services/ai/factory.ts`, `src/services/ai/config.ts`, `src/services/ai/index.ts`, `src/utils/tokens.ts`): `openrouter` added to `AIProvider` union type, factory routing, fallback chain parsing, token-limits (200K cap), and API key resolution.
+- **AI enrichment coverage** (`src/services/skills-generator/ai-enrichment.ts`, `src/commands/create-skills.ts`): OpenRouter validated as `createSkills.ai.provider` and doctor readiness provider.
+- **CLI regression test** (`src/__tests__/create-skills.test.ts`): Tests for `--no-ai-enrich` default (false) and explicit flag behavior.
+
+### Fixed
+- **`--no-ai-enrich` default inversion** (`src/cli/args.ts`): Flag default changed from `true` to `false` so AI enrichment is enabled when config specifies it, unless explicitly disabled.
+
+### Changed
+- **Header canonicalization** (`src/services/ai/providers/openrouter.provider.ts`): `X-Title` changed to canonical `X-OpenRouter-Title`. Default `OPENROUTER_SITE_URL` removed — `HTTP-Referer` only sent when explicitly configured.
+- **Model-gated structured output** (`src/services/ai/providers/openrouter.provider.ts`): `response_format: { type: "json_object" }` is now sent only for model families known to support it (`openai/gpt-*`). Non-OpenAI models (e.g., `moonshotai/kimi-*`) omit the parameter and rely on the parser's markdown-JSON extraction.
+- **Docs** (`docs/README.md`, `docs/CICD_SETUP.md`, `docs/PROVIDER_COMPARISON.md`, `docs/QUICK_REFERENCE.md`, `docs/CREATE_SKILLS.md`, `docs/AI_ENRICHMENT_CACHE_SPEC.md`, `docs/CONTRIBUTING.md`): OpenRouter added throughout provider documentation.
+
+---
+
 ## [1.32.1] - 2026-05-01
 
 ### Added

@@ -302,6 +302,19 @@ describe("resolveAIEnrichmentConfig", () => {
       /Unsupported createSkills.ai.provider/,
     );
   });
+
+  it("accepts openrouter as valid provider", () => {
+    const aiConfig: CreateSkillsAIConfig = { provider: "openrouter" };
+    const config = resolveAIEnrichmentConfig(aiConfig);
+    expect(config.provider).toBe("openrouter");
+  });
+
+  it("accepts all five providers", () => {
+    for (const p of ["gemini", "openai", "anthropic", "grok", "openrouter"]) {
+      const aiConfig: CreateSkillsAIConfig = { provider: p };
+      expect(() => resolveAIEnrichmentConfig(aiConfig)).not.toThrow();
+    }
+  });
 });
 
 // -- deepSortForHash ---------------------------------------------------------

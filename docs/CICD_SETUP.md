@@ -390,12 +390,14 @@ jobs:
 | Grok | $2.00 | ❌ No |
 | OpenAI | $2.50 | ❌ No |
 | Claude | $3.00 | ❌ No |
+| OpenRouter | Varies by model | ❌ No |
 
 **Example monthly costs** (1000 files/month, 500 tokens each):
 - Gemini: $0.04
 - Grok: $1.00
 - OpenAI: $1.25
 - Claude: $1.50
+- OpenRouter: Varies by underlying model
 
 ---
 

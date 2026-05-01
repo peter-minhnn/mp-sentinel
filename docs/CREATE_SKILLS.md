@@ -167,7 +167,7 @@ By default, generated skills are deterministic and use only the source index. If
 }
 ```
 
-Supported providers: `gemini`, `openai`, `anthropic`, `grok`. Invalid provider names fail with exit code `2`; they are never silently ignored.
+Supported providers: `gemini`, `openai`, `anthropic`, `grok`, `openrouter`. Invalid provider names fail with exit code `2`; they are never silently ignored.
 
 Use `--no-ai-enrich` to temporarily generate deterministic index-only skills even when config enables AI:
 

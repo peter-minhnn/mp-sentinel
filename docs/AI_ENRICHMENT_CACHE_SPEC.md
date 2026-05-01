@@ -18,7 +18,7 @@ The runtime implementation follows this spec. Key behaviors:
 ## 1. Motivation
 
 Every `create-skills` run with `createSkills.ai.enabled: true` calls an AI provider -- currently
-Gemini, OpenAI, Anthropic, or Grok. The AI enrichment output is **deterministic for a given
+Gemini, OpenAI, Anthropic, Grok, or OpenRouter. The AI enrichment output is **deterministic for a given
 input**: the same `SourceIndex` + same provider + same model + same prompt version always
 produces the same result. Without a cache, every invocation burns API credits and adds latency
 (typically 2-10 seconds) even when nothing has changed.
@@ -41,7 +41,7 @@ the concatenation of these components, each separated by `::`:
 | Component | Source | Rationale |
 |-----------|--------|-----------|
 | `sourceIndexHash` | `computeIndexHash(index)` in `metadata.ts` | Captures structural index changes (files, imports, manifest). Covers schema version, manifest hash, all file hashes, dependency lists, scripts, and frameworks. |
-| `provider` | resolved provider name (`"gemini"` / `"openai"` / `"anthropic"` / `"grok"`) | Different providers return different output for the same input. |
+| `provider` | resolved provider name (`"gemini"` / `"openai"` / `"anthropic"` / `"grok"` / `"openrouter"`) | Different providers return different output for the same input. |
 | `model` | resolved model name (e.g. `"gemini-2.5-flash"`) | Same provider, different model -> different output. |
 | `promptVersion` | `ENRICHMENT_PROMPT_VERSION` (`"2026-04-28"`) | Prompt template changes invalidate all prior caches. |
 | `inputHash` | `computeEnrichmentInputHash(input)` from `ai-enrichment.ts` | Captures the derived `AIEnrichmentInput` (KB data, module roles, dependency versions, profile, etc.). |

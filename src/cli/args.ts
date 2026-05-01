@@ -154,7 +154,7 @@ export const buildProgram = (): Command => {
       "CI mode: verify generated skills are up-to-date with source index (exit 1 if stale)",
       false,
     )
-    .option("--no-ai-enrich", "Disable AI enrichment even if enabled in config", false)
+    .option("--no-ai-enrich", "Disable AI enrichment even if enabled in config", true)
     .option(
       "--explain-agents",
       "Diagnostic mode: show which agents/IDEs are detected and why (no file writes)",

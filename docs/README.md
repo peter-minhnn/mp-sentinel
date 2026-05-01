@@ -16,7 +16,7 @@ Traditional tools like **ESLint** or **Prettier** are great for syntax and forma
 
 **MP Sentinel fills that gap.** It introduces agentic parser diagnostics, chunked parser recovery with full observability, and AI-powered code reviews — all 100% offline and secure.
 
-- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, or Grok for code review
+- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, Grok, or OpenRouter for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
 - ❌ **No Anti-Patterns:** (e.g., using `useEffect` for data fetching instead of `useQuery`).
 - ✅ **Clean Code Enforcement:** Checks for readability, SOLID principles, and proper code splitting.
@@ -207,7 +207,7 @@ MP Sentinel now supports multiple AI providers! Choose the one that fits your ne
 
 ```bash
 # Choose your AI provider (default: gemini)
-AI_PROVIDER=gemini  # or openai, anthropic, grok
+AI_PROVIDER=gemini  # or openai, anthropic, grok, openrouter
 
 # Optional: Specify model (uses provider default if not set)
 AI_MODEL=gemini-2.5-flash
@@ -217,6 +217,7 @@ GEMINI_API_KEY=your_key_here      # For Gemini
 # OPENAI_API_KEY=your_key_here    # For OpenAI
 # ANTHROPIC_API_KEY=your_key_here # For Anthropic
 # GROK_API_KEY=your_key_here      # For Grok
+# OPENROUTER_API_KEY=your_key_here # For OpenRouter
 
 # Optional: Fine-tune AI behavior
 AI_TEMPERATURE=0.2
@@ -240,6 +241,7 @@ TARGET_BRANCH=origin/main
 | **OpenAI GPT**       | `gpt-5.3-codex` (best coding, default), `gpt-5.2`, `gpt-5-mini`          | [Get Key](https://platform.openai.com/api-keys) |
 | **Anthropic Claude** | `claude-sonnet-4-6` (default), `claude-opus-4-6`, `claude-haiku-4-5`     | [Get Key](https://console.anthropic.com/)       |
 | **xAI Grok**         | `grok-4-1-fast-reasoning` (default), `grok-4`, `grok-code-fast-1`        | [Get Key](https://console.x.ai/)                |
+| **OpenRouter**       | `openai/gpt-5.2` (default), `anthropic/claude-opus-4-6`, `google/gemini-2.5-flash` | [Get Key](https://openrouter.ai/keys)           |
 
 **Model Selection Guide:**
 

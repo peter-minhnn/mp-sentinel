@@ -6,15 +6,15 @@ This guide helps you choose the best AI provider for your code review needs.
 
 ## Quick Comparison
 
-| Feature | Google Gemini | OpenAI GPT | Anthropic Claude | xAI Grok |
-|---------|--------------|------------|------------------|----------|
-| **Best For** | Fast, cost-effective | Highest accuracy | Long autonomous tasks | Extreme reasoning |
-| **Free Tier** | ✅ Generous | ❌ No | ❌ No | ❌ No |
-| **Speed** | ⚡⚡⚡ Fastest | ⚡⚡ Fast | ⚡⚡ Fast | ⚡⚡⚡ Very Fast |
-| **Coding Accuracy** | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Excellent |
-| **Context Window** | 1M tokens | 1M tokens | 1M tokens | 128k - 512k tokens |
-| **Cost (per 1M tokens)** | $0.075 | $2.50 | $3.00 | $2.00 |
-| **API Stability** | ⭐⭐⭐⭐ Stable | ⭐⭐⭐⭐⭐ Very Stable | ⭐⭐⭐⭐ Stable | ⭐⭐⭐ Beta/Fast-Moving |
+| Feature | Google Gemini | OpenAI GPT | Anthropic Claude | xAI Grok | OpenRouter |
+|---------|--------------|------------|------------------|----------|------------|
+| **Best For** | Fast, cost-effective | Highest accuracy | Long autonomous tasks | Extreme reasoning | Multi-model routing |
+| **Free Tier** | ✅ Generous | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Speed** | ⚡⚡⚡ Fastest | ⚡⚡ Fast | ⚡⚡ Fast | ⚡⚡⚡ Very Fast | Varies by model |
+| **Coding Accuracy** | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Excellent | Varies by model |
+| **Context Window** | 1M tokens | 1M tokens | 1M tokens | 128k - 512k tokens | Varies by model |
+| **Cost (per 1M tokens)** | $0.075 | $2.50 | $3.00 | $2.00 | Varies by model |
+| **API Stability** | ⭐⭐⭐⭐ Stable | ⭐⭐⭐⭐⭐ Very Stable | ⭐⭐⭐⭐ Stable | ⭐⭐⭐ Beta/Fast-Moving | ⭐⭐⭐⭐ Stable |
 
 ## Detailed Comparison
 
@@ -135,6 +135,35 @@ This guide helps you choose the best AI provider for your code review needs.
 - You need deep logical reasoning for bugs
 - Want a faster alternative to GPT-5 without losing much accuracy
 - Doing real-time interactive local reviews
+
+### OpenRouter
+
+**Best for:** Multi-model flexibility without separate API keys.
+
+- 🔀 **Multi-Model Routing**: Access 300+ models from a single API key
+- 📊 **Provider Freedom**: Route to OpenAI, Anthropic, Google, and more
+- 💰 **Pay-as-you-go**: No per-provider setup — one key, one billing account
+- 🏷️ **Cost Transparency**: Per-model pricing visible before sending requests
+
+**Limitations:**
+- 📉 Pricing is slightly marked up vs. direct provider APIs
+- 📉 Response time adds ~50-100ms proxy overhead
+- 📉 Token limits vary by the underlying model chosen
+
+**Recommended models for code review:**
+- `openai/gpt-5.2` - Best overall code review via GPT (recommended)
+- `anthropic/claude-opus-4-6` - Best for autonomous tasks
+- `openai/gpt-5.1` - Good balance of speed and accuracy
+- `google/gemini-2.5-flash` - Fast and cost-effective via Gemini
+
+**Pricing:**
+- Varies by underlying model (typically ~5-10% above direct provider rates)
+- Per-token billing with model-specific rate cards
+
+**Use When:**
+- You want to access multiple providers through one API
+- You need flexibility to switch models without managing multiple API keys
+- You're evaluating different models for your code review needs
 
 ## Benchmark Comparison
 
@@ -273,6 +302,13 @@ AI_MODEL=grok-4-1-fast-reasoning
 GROK_API_KEY=your_key
 ```
 
+### Multi-Provider (OpenRouter)
+```bash
+AI_PROVIDER=openrouter
+AI_MODEL=openai/gpt-5.2
+OPENROUTER_API_KEY=your_key
+```
+
 ## Decision Tree
 
 ```
@@ -283,6 +319,7 @@ Do you have budget for paid API?
    ├─ Need autonomous agents? → Use Claude Opus 4.6
    ├─ Need extreme reasoning? → Use Grok-4-1-fast-reasoning
    ├─ Need speed + accuracy? → Use GPT-5.3-Codex or Grok-4
+   ├─ Need multi-model flexibility? → Use OpenRouter
    └─ Need cost efficiency? → Use Gemini (Paid)
 ```
 
@@ -306,5 +343,6 @@ Do you have budget for paid API?
 - **Autonomous tasks?** → Claude Opus 4.6
 - **Reasoning/Logic heavy?** → Grok-4-1-fast-reasoning
 - **Balanced needs?** → GPT-5.3-Codex, Grok-4, or Claude Sonnet 4.6
+- **Multi-model?** → OpenRouter
 
 **Pro Tip:** Start with Gemini's free tier, then upgrade based on your specific needs.

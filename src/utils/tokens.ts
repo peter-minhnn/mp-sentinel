@@ -10,6 +10,7 @@ export const PROVIDER_TOKEN_LIMITS: Record<string, number> = {
   openai: 128_000, // GPT-4o / GPT-4 Turbo
   anthropic: 200_000, // Claude 3.5 Sonnet / Opus
   grok: 131_072, // Grok models
+  openrouter: 200_000, // OpenRouter (varies by underlying model; conservative cap)
 };
 
 export const DEFAULT_TOKEN_LIMIT = 100_000; // Conservative default

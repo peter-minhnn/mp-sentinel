@@ -29,6 +29,7 @@ import type { AIProvider } from "../ai/types.js";
 import { log } from "../../utils/logger.js";
 import { ProviderError } from "../../utils/errors.js";
 import { AIProviderFactory } from "../ai/factory.js";
+import { AIConfig } from "../ai/config.js";
 import { detectProfile } from "./profile.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
 import { computeIndexHash } from "./metadata.js";
@@ -429,7 +430,13 @@ export async function writeEnrichmentCache(
 
 // ── Provider validation ────────────────────────────────────────────────────
 
-const VALID_AI_PROVIDERS: readonly AIProvider[] = ["gemini", "openai", "anthropic", "grok"];
+const VALID_AI_PROVIDERS: readonly AIProvider[] = [
+  "gemini",
+  "openai",
+  "anthropic",
+  "grok",
+  "openrouter",
+];
 
 function isAIProvider(s: string): s is AIProvider {
   return (VALID_AI_PROVIDERS as readonly string[]).includes(s);
@@ -594,5 +601,7 @@ function getApiKeyForProvider(provider: AIProvider): string | undefined {
       return process.env.ANTHROPIC_API_KEY;
     case "grok":
       return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    case "openrouter":
+      return process.env.OPENROUTER_API_KEY ?? AIConfig.getApiKey("openrouter");
   }
 }

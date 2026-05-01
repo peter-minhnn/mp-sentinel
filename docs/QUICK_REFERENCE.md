@@ -47,7 +47,7 @@ mp-sentinel review --format json
 ## Env Vars
 
 ```bash
-AI_PROVIDER=gemini|openai|anthropic
+AI_PROVIDER=gemini|openai|anthropic|grok|openrouter
 AI_MODEL=model_name
 AI_TEMPERATURE=0.2
 AI_MAX_TOKENS=2048

@@ -52,6 +52,7 @@ import {
 } from "../services/skills-generator/index.js";
 import { buildSourceIndex, getIndexingConfig, getParserModeBreakdown } from "./indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
+import { AIConfig } from "../services/ai/config.js";
 
 const GENERATOR_VERSION = getToolVersion();
 
@@ -608,7 +609,7 @@ const DOCTOR_SCRIPTS = [
   { name: "release:check", description: "Verifies version consistency and lockfile integrity" },
 ];
 
-const VALID_AI_PROVIDERS = ["gemini", "openai", "anthropic", "grok"] as const;
+const VALID_AI_PROVIDERS = ["gemini", "openai", "anthropic", "grok", "openrouter"] as const;
 
 function getApiKeyForProviderName(provider: string): string | undefined {
   switch (provider) {
@@ -620,6 +621,8 @@ function getApiKeyForProviderName(provider: string): string | undefined {
       return process.env.ANTHROPIC_API_KEY;
     case "grok":
       return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    case "openrouter":
+      return process.env.OPENROUTER_API_KEY ?? AIConfig.getApiKey("openrouter");
     default:
       return undefined;
   }

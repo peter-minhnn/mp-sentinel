@@ -1,3 +1,19 @@
+# What's New in v1.33.0
+
+## OpenRouter Provider — Multi-Model AI Routing
+
+v1.33.0 adds OpenRouter as a first-class AI provider, giving you access to 300+ models through a single API key.
+
+- **OpenRouter provider** (`src/services/ai/providers/openrouter.provider.ts`): REST client targeting `https://openrouter.ai/api/v1/chat/completions` with canonical `X-OpenRouter-Title` and `HTTP-Referer` attribution headers. `HTTP-Referer` is only sent when `OPENROUTER_SITE_URL` is configured.
+- **Provider integration** (`src/services/ai/types.ts`, `src/services/ai/factory.ts`, `src/services/ai/config.ts`, `src/services/ai/index.ts`, `src/utils/tokens.ts`): `openrouter` added to the `AIProvider` union, factory routing, fallback chain parsing, and token-limits map (200K conservative cap).
+- **AI enrichment support** (`src/services/skills-generator/ai-enrichment.ts`, `src/commands/create-skills.ts`): OpenRouter is a validated provider for `createSkills.ai.provider` and doctor readiness checks.
+- **`--no-ai-enrich` default fix** (`src/cli/args.ts`): The `--no-ai-enrich` flag now defaults to `false` (AI enrichment enabled when config says so) rather than inverting the default.
+- **Model-gated structured output** (`src/services/ai/providers/openrouter.provider.ts`): `response_format: { type: "json_object" }` is sent only for model families known to support it (e.g., `openai/gpt-*`). Other models (including `moonshotai/kimi-*`) omit the parameter, relying on the existing parser's markdown-JSON extraction.
+
+- **Docs** (`docs/README.md`, `docs/CICD_SETUP.md`, `docs/PROVIDER_COMPARISON.md`, `docs/QUICK_REFERENCE.md`, `docs/CREATE_SKILLS.md`, `docs/AI_ENRICHMENT_CACHE_SPEC.md`, `docs/CONTRIBUTING.md`): OpenRouter added to provider tables, config examples, cost comparisons, and decision trees.
+
+---
+
 # What's New in v1.32.1
 
 ## Release Finalization

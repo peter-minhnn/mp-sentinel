@@ -2,7 +2,7 @@
  * AI Provider types and interfaces
  */
 
-export type AIProvider = "gemini" | "openai" | "anthropic" | "grok";
+export type AIProvider = "gemini" | "openai" | "anthropic" | "grok" | "openrouter";
 
 export interface AIModelConfig {
   provider: AIProvider;

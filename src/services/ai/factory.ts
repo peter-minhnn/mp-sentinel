@@ -8,6 +8,7 @@ import { GeminiProvider } from "./providers/gemini.provider.js";
 import { OpenAIProvider } from "./providers/openai.provider.js";
 import { AnthropicProvider } from "./providers/anthropic.provider.js";
 import { GrokProvider } from "./providers/grok.provider.js";
+import { OpenRouterProvider } from "./providers/openrouter.provider.js";
 
 export class AIProviderFactory {
   static createProvider(config: AIModelConfig): IAIProvider {
@@ -20,6 +21,8 @@ export class AIProviderFactory {
         return new AnthropicProvider(config);
       case "grok":
         return new GrokProvider(config);
+      case "openrouter":
+        return new OpenRouterProvider(config);
       default:
         throw new Error(`Unsupported AI provider: ${config.provider}`);
     }
@@ -31,6 +34,7 @@ export class AIProviderFactory {
       openai: "gpt-5.3-codex",
       anthropic: "claude-sonnet-4-6",
       grok: "grok-4-1-fast-reasoning",
+      openrouter: "openai/gpt-5.2",
     };
     return defaults[provider];
   }
@@ -46,6 +50,12 @@ export class AIProviderFactory {
       openai: ["gpt-5.3-codex", "gpt-5.2", "gpt-5.2-pro", "gpt-5-mini"],
       anthropic: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
       grok: ["grok-4", "grok-4-1-fast-reasoning", "grok-code-fast-1"],
+      openrouter: [
+        "openai/gpt-5.2",
+        "openai/gpt-5.1",
+        "anthropic/claude-opus-4-6",
+        "google/gemini-2.5-flash",
+      ],
     };
     return recommendations[provider];
   }

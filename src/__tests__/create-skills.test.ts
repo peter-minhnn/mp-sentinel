@@ -1223,6 +1223,18 @@ describe("create-skills new CLI flags", () => {
     expect(parsed.values["create-skills-dry-run"]).toBe(false);
     expect(parsed.values["create-skills-check"]).toBe(false);
   });
+
+  it("--no-ai-enrich defaults to false (AI enrichment enabled by default)", () => {
+    process.argv = ["node", "mp-sentinel", "create-skills"];
+    const parsed = parseCliArgs();
+    expect(parsed.values["create-skills-no-ai-enrich"]).toBe(false);
+  });
+
+  it("--no-ai-enrich flag sets value to true", () => {
+    process.argv = ["node", "mp-sentinel", "create-skills", "--no-ai-enrich"];
+    const parsed = parseCliArgs();
+    expect(parsed.values["create-skills-no-ai-enrich"]).toBe(true);
+  });
 });
 
 // -- Hash correctness ----------------------------------------------------------
@@ -5191,6 +5203,74 @@ describe("runCreateSkillsCommand --doctor", () => {
     for (const r of risky) {
       expect(out).not.toContain(r);
     }
+  });
+
+  it("--doctor AI enrichment readiness recognizes openrouter as valid provider", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({
+        createSkills: { ai: { enabled: true, provider: "openrouter" } },
+      }),
+    );
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": false,
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    delete process.env.OPENROUTER_API_KEY;
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.aiEnrichment.status).toBe("ready");
+    expect(parsed.aiEnrichment.provider).toBe("openrouter");
+    expect(parsed.aiEnrichment.apiKeyPresent).toBe(true);
+    // Missing index → action-required → exit 1
+    expect(exitCode).toBe(1);
+  });
+
+  it("--doctor AI enrichment with --no-ai-enrich still reports readiness (doctor is read-only)", async () => {
+    // Doctor mode is always read-only and never calls AI providers,
+    // so --no-ai-enrich does not affect its aiEnrichment readiness report.
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".sentinelrc.json"),
+      JSON.stringify({
+        createSkills: { ai: { enabled: true, provider: "openrouter" } },
+      }),
+    );
+    process.env.OPENROUTER_API_KEY = "test-key";
+    const cap = captureStdout();
+    await runCreateSkillsCommand(
+      {
+        "all-agents": false,
+        "create-skills-format": "json",
+        "create-skills-force": false,
+        "skip-index-refresh": false,
+        "create-skills-dry-run": false,
+        "create-skills-check": false,
+        "create-skills-no-ai-enrich": true, // Flag passed — but doctor is read-only
+        doctor: true,
+      },
+      cwd,
+    );
+    cap.restore();
+    delete process.env.OPENROUTER_API_KEY;
+    const parsed = JSON.parse(cap.stdout);
+    // Doctor always reports readiness based on config + env, regardless of --no-ai-enrich
+    expect(parsed.aiEnrichment.status).toBe("ready");
+    expect(parsed.aiEnrichment.provider).toBe("openrouter");
   });
 
   it("--doctor legacy index without manifestHash reports status stale", async () => {
