@@ -5,7 +5,7 @@ MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) 
 ## Overview
 
 When enabled, MP Sentinel will:
-1. Parse your `techStack` from `.sentinelrc.json`
+1. Parse your `techStack` from `.mp-sentinelrc.json`
 2. Scan local directories (like `.skills`, `.agent/skills`, `.cursor/rules`, `.sentinel/skills`) for `.md` or `.mdc` files
 3. Boost relevance for skill files whose names match technologies defined in your `techStack`
 4. Integrate these markdown rules into the AI review prompts directly
@@ -14,7 +14,7 @@ Unlike the older implementation, **this process is 100% offline, highly secure, 
 
 ## Configuration
 
-Add these fields to your `.sentinelrc.json`:
+Add these fields to your `.mp-sentinelrc.json`:
 
 ```json
 {
@@ -79,7 +79,7 @@ The top-scoring skills are concatenated and embedded cleanly into the AI's instr
 Because the Markdown rules reside purely inside your version control system (or locally), MP Sentinel avoids networking latency and potential HTTP 404s from third-party APIs.
 
 ### Extensible
-You can put custom instructions in `.sentinel/skills/my-company-rules.md` and Sentinel will pick it up automatically, enabling enterprise-scale customized AI review standardization without tweaking `.sentinelrc.json` rules array.
+You can put custom instructions in `.sentinel/skills/my-company-rules.md` and Sentinel will pick it up automatically, enabling enterprise-scale customized AI review standardization without tweaking `.mp-sentinelrc.json` rules array.
 
 ## Examples
 

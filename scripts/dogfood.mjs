@@ -893,7 +893,7 @@ function stepPositiveExplainContext() {
       "utf-8",
     );
     writeFileSync(
-      join(tempDir, ".sentinelrc.json"),
+      join(tempDir, ".mp-sentinelrc.json"),
       JSON.stringify({ indexing: { enabled: true } }, null, 2),
       "utf-8",
     );

@@ -165,7 +165,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 1;
   }
 
-  // 1. FILTER FILES WITH .sentinelrc.json IGNORE PATTERNS
+  // 1. FILTER FILES WITH .mp-sentinelrc.json IGNORE PATTERNS
   const fileHandler = new FileHandler();
   const filterResult = await fileHandler.filterPathsWithIgnores(
     fileReadResult.success.map((f) => f.path),

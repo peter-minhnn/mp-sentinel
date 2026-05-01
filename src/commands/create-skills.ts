@@ -581,7 +581,7 @@ function categorizeDoctorFindings(
     failItems.push({ label: "AI enrichment: action-required", action });
   } else if (aiEnrichment.status === "disabled") {
     const action =
-      "AI enrichment is disabled. Enable it in .sentinelrc.json (createSkills.ai.enabled) for richer generated skills.";
+      "AI enrichment is disabled. Enable it in .mp-sentinelrc.json (createSkills.ai.enabled) for richer generated skills.";
     recommendedActions.push(action);
     warnItems.push({ label: "AI enrichment: disabled", action });
   }

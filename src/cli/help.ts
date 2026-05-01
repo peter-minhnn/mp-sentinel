@@ -55,7 +55,7 @@ Examples:
   # - staged mode defaults to AI OFF unless --ai or MP_SENTINEL_AI=1
   # - other modes default to AI ON
 
-Configuration (.mp-sentinelrc.json or .sentinelrc.json):
+Configuration (.mp-sentinelrc.json):
   {
     "ai": {
       "enabled": true,

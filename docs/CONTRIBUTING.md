@@ -190,7 +190,7 @@ export const processEverything = async (input: any) => {
 ```typescript
 // ✅ Good: Explicit error handling with informative messages
 export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<ProjectConfig> => {
-  const configPath = resolve(cwd, '.sentinelrc.json');
+  const configPath = resolve(cwd, '.mp-sentinelrc.json');
   
   if (!existsSync(configPath)) {
     return { ...DEFAULT_CONFIG };
@@ -201,7 +201,7 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
     const userConfig = JSON.parse(content) as Partial<ProjectConfig>;
     return { ...DEFAULT_CONFIG, ...userConfig };
   } catch (error) {
-    console.warn('⚠️  Found .sentinelrc.json but failed to parse it.');
+    console.warn('⚠️  Found .mp-sentinelrc.json but failed to parse it.');
     return { ...DEFAULT_CONFIG };
   }
 };

@@ -4234,8 +4234,11 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json stdout is clean even with project config present", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
-    // Write a .sentinelrc.json so loadProjectConfig has a config to find
-    await writeFile(join(cwd, ".sentinelrc.json"), JSON.stringify({ indexing: { enabled: true } }));
+    // Write a .mp-sentinelrc.json so loadProjectConfig has a config to find
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({ indexing: { enabled: true } }),
+    );
     const cap = captureStdout();
     await runCreateSkillsCommand(
       createSkillsValues({
@@ -5139,7 +5142,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({
         createSkills: { ai: { enabled: true, provider: "openrouter" } },
       }),
@@ -5175,7 +5178,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({
         createSkills: { ai: { enabled: true, provider: "openrouter" } },
       }),
@@ -5415,7 +5418,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     // Write config with AI enrichment enabled, no API key set
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
     );
 
@@ -5460,7 +5463,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
     );
 
@@ -5505,7 +5508,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({ createSkills: { ai: { enabled: true, provider: "invalid-provider" } } }),
     );
 
@@ -5539,7 +5542,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({
         createSkills: { ai: { enabled: true, provider: "anthropic", model: "claude-sonnet-4-6" } },
       }),
@@ -5586,7 +5589,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     // Enable AI enrichment with a provider that would need a network call
     await writeFile(
-      join(cwd, ".sentinelrc.json"),
+      join(cwd, ".mp-sentinelrc.json"),
       JSON.stringify({ createSkills: { ai: { enabled: true, provider: "gemini" } } }),
     );
 

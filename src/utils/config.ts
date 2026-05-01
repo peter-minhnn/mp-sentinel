@@ -12,7 +12,7 @@ import { log } from "./logger.js";
 import { UserError } from "./errors.js";
 
 let cachedConfig: ProjectConfig | null = null;
-const CONFIG_FILENAMES = [".mp-sentinelrc.json", ".sentinelrc.json"] as const;
+const CONFIG_FILENAME = ".mp-sentinelrc.json" as const;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Zod schemas
@@ -145,13 +145,8 @@ export const ProjectConfigSchema = z.object({
 // ──────────────────────────────────────────────────────────────────────────────
 
 const resolveConfigPath = (cwd: string): string | null => {
-  for (const filename of CONFIG_FILENAMES) {
-    const fullPath = resolve(cwd, filename);
-    if (existsSync(fullPath)) {
-      return fullPath;
-    }
-  }
-  return null;
+  const fullPath = resolve(cwd, CONFIG_FILENAME);
+  return existsSync(fullPath) ? fullPath : null;
 };
 
 const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({

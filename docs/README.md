@@ -110,10 +110,9 @@ mp-sentinel
 
 ---
 
-## ⚙️ Configuration (`.mp-sentinelrc.json` or `.sentinelrc.json`)
+## ⚙️ Configuration (`.mp-sentinelrc.json`)
 
-Create a config file in your project root to customize rules and performance.
-Config file precedence: `.mp-sentinelrc.json` first, then `.sentinelrc.json`.
+Create a `.mp-sentinelrc.json` file in your project root to customize rules and performance.
 
 ### Basic Configuration
 
@@ -572,7 +571,7 @@ MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) 
 
 ### How It Works
 
-1. **Parse TechStack**: Extracts technologies from your `.sentinelrc.json`
+1. **Parse TechStack**: Extracts technologies from your `.mp-sentinelrc.json`
 2. **Scan Directories**: Automatically scans local folders like `.skills`, `.agent/skills`, `.cursor/rules`, or `.sentinel/skills`.
 3. **Smart Relevance**: Boosts priority of Markdown files (`.md` or `.mdc`) whose names match your parsed tech stack.
 4. **Enhance Prompts**: Concatenates and injects the top rules directly into the AI context window.

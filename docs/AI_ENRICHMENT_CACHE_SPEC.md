@@ -244,7 +244,7 @@ These three output modes must never be polluted by cache state.
   does not change. The caching is transparent to the caller.
 - `src/types/index.ts` `AIEnrichmentInput` / `AIEnrichmentOutput` / `EnrichmentMetadata` --
   existing types suffice. The cache envelope is internal to `ai-enrichment.ts`.
-- Config schema (`.sentinelrc.json`) -- no new config fields. The cache directory is derived
+- Config schema (`.mp-sentinelrc.json`) -- no new config fields. The cache directory is derived
   from the existing convention.
 
 ### 8.3 Atomic write helper

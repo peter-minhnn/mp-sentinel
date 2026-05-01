@@ -151,7 +151,7 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 ### Behavioral contract
 
 - `mp-sentinel indexing` (direct invocation) **always** builds/rebuilds the cache — no dry-run by default.
-- `indexing.enabled` in `.sentinelrc.json` only controls whether `review` **consumes** the cache. It does not affect the `indexing` command itself.
+- `indexing.enabled` in `.mp-sentinelrc.json` only controls whether `review` **consumes** the cache. It does not affect the `indexing` command itself.
 - Never auto-trigger indexing inside the review pipeline. If cache is stale or absent, review continues without index context.
 
 ### Output / caching rules
@@ -279,6 +279,6 @@ Do not put business logic in `src/index.ts` (CLI entry). It should only handle S
 
 These rules govern **mp-sentinel development**. They do not apply to:
 
-- End-user `.sentinelrc.json` configuration advice.
+- End-user `.mp-sentinelrc.json` configuration advice.
 - Skills/rules that mp-sentinel injects into review prompts (those live in `.sentinel/skills/`).
 - Generic TypeScript project conventions outside this repo.

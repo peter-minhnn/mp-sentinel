@@ -6,7 +6,7 @@ Version 1.0.4 introduces major enhancements to **Local Review Mode**, making it 
 
 ## 🔄 Breaking Changes
 
-**None.** Version 1.0.4 is fully backward compatible with all `.sentinelrc.json` configurations.
+**None.** Version 1.0.4 preserved the existing project config format and did not require a migration.
 
 ## ✨ New Features
 

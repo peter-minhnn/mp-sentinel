@@ -12,7 +12,7 @@ npx skills add vercel-labs/agent-skills@vercel-react-best-practices
 
 ### Step 2: Update Configuration
 
-Add to your `.sentinelrc.json`:
+Add to your `.mp-sentinelrc.json`:
 
 ```json
 {
@@ -77,7 +77,7 @@ If you don't want skills integration, simply delete the local `.skills/` directo
 ## 📚 Learn More
 
 - [Full Documentation](./SKILLS_INTEGRATION.md)
-- [Configuration Guide](./README.md#⚙️-configuration-sentinelrcjson)
+- [Configuration Guide](./README.md)
 
 ## 💡 Pro Tips
 
@@ -85,4 +85,4 @@ If you don't want skills integration, simply delete the local `.skills/` directo
 
 2. **Commit Your Skills**: Check the `.skills/` directories into Git. This ensures your CI/CD pipelines automatically enforce the exact same standard as your local environment.
 
-3. **Fallback Supported**: The deprecated fields `enableSkillsFetch` or `skillsFetchTimeout` in `.sentinelrc.json` will be safely ignored if you leave them in your existing project configuration.
+3. **Fallback Supported**: The deprecated fields `enableSkillsFetch` or `skillsFetchTimeout` in `.mp-sentinelrc.json` will be safely ignored if you leave them in your existing project configuration.

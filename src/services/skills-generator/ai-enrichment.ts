@@ -3,7 +3,7 @@
  * best-practice notes for skill files.
  *
  * This is an **opt-in** feature controlled by `createSkills.ai.enabled` in
- * `.sentinelrc.json`. When disabled (the default), all skill generation is
+ * `.mp-sentinelrc.json`. When disabled (the default), all skill generation is
  * purely deterministic from the source index.
  *
  * The AI enrichment pipeline:

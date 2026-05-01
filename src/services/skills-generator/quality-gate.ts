@@ -48,7 +48,7 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   ".codex/",
   ".codex",
   ".mp-sentinel-cache/source-index.json",
-  ".sentinelrc.json",
+  ".mp-sentinelrc.json",
   "references/codebase-map.md",
   "references/testing-map.md",
   "references/dependencies.md",

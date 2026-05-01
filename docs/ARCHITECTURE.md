@@ -191,7 +191,7 @@ The `--explain-context` flag on the `review` command provides diagnostic output 
 
 ## Guardrails
 
-Configured in `.mp-sentinelrc.json` / `.sentinelrc.json`:
+Configured in `.mp-sentinelrc.json`:
 
 ```json
 {

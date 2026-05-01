@@ -52,7 +52,7 @@ mp-sentinel
 
 ## 4) Guardrails (Less Tokens, Better Signal)
 
-Create `.mp-sentinelrc.json` (preferred) or `.sentinelrc.json`:
+Create `.mp-sentinelrc.json`:
 
 ```json
 {

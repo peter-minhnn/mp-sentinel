@@ -54,7 +54,7 @@ export function getProfileReviewPitfalls(profile: SkillProfile): string[] {
       ];
     default:
       return [
-        "Follow project-specific rules from .sentinelrc.json",
+        "Follow project-specific rules from .mp-sentinelrc.json",
         "Prioritize security and error handling",
         "Keep code simple and testable",
       ];
