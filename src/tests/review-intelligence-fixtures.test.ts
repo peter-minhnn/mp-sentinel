@@ -225,9 +225,8 @@ describe("evidenceSummary for dependency signals", () => {
 
 describe("legacy index (no insights)", () => {
   it("degrades gracefully without insights (returns empty context, no crash)", async () => {
-    const index = makeBaseIndex({
+    const baseIndex = makeBaseIndex({
       schemaVersion: "1.0",
-      insights: undefined,
       files: [
         makeFile("src/app.ts", {
           importsFrom: [],
@@ -235,6 +234,7 @@ describe("legacy index (no insights)", () => {
         }),
       ],
     });
+    const { insights: _insights, ...index } = baseIndex;
 
     const result = await buildReviewContext(index, [{ path: "src/app.ts" }]);
 

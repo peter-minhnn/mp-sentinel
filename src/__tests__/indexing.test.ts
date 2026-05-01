@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, it, expect, afterEach, beforeEach, jest } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
+import type { CLIValues } from "../cli/args.js";
 import { buildSourceIndex, getIndexingConfig, runIndexingCommand } from "../commands/indexing.js";
 import { setLogQuietMode } from "../utils/logger.js";
 import { clearConfigCache, loadProjectConfig } from "../utils/config.js";

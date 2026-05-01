@@ -14,7 +14,31 @@ import { tmpdir } from "node:os";
 
 const SCRIPT = resolve("scripts/release-check.mjs");
 
-function fixture(files) {
+type FixtureFiles = Record<string, string>;
+
+interface RunResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+interface ReleaseCheckOptions {
+  scripts?: Record<string, string>;
+  files?: string[];
+  helpFlags?: string[];
+  distVersion?: string;
+}
+
+interface ExecErrorLike {
+  status?: number;
+  stdout?: { toString(): string };
+  stderr?: { toString(): string };
+}
+
+const isExecErrorLike = (error: unknown): error is ExecErrorLike =>
+  typeof error === "object" && error !== null;
+
+function fixture(files: FixtureFiles): string {
   const dir = mkdtempSync(join(tmpdir(), "mp-sentinel-relcheck-"));
   for (const [name, content] of Object.entries(files)) {
     const full = join(dir, name);
@@ -24,7 +48,7 @@ function fixture(files) {
   return dir;
 }
 
-function run(dir) {
+function run(dir: string): RunResult {
   try {
     const out = execSync(`node "${SCRIPT}"`, {
       cwd: dir,
@@ -32,7 +56,10 @@ function run(dir) {
       timeout: 10000,
     });
     return { code: 0, stdout: out, stderr: "" };
-  } catch (e) {
+  } catch (e: unknown) {
+    if (!isExecErrorLike(e)) {
+      throw e;
+    }
     return {
       code: e.status ?? 1,
       stdout: e.stdout?.toString() ?? "",
@@ -43,17 +70,18 @@ function run(dir) {
 
 // ---- helpers to build minimal fixture content -----------------------
 
-const README_BADGE = (v) =>
+const README_BADGE = (v: string): string =>
   `[![NPM Version](https://img.shields.io/badge/npm-v${v}-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)`;
 
-const README_WHATS_NEW = (v) =>
+const README_WHATS_NEW = (v: string): string =>
   `## What's New\n\nSee [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v${v}**:`;
 
-const WHATS_NEW = (v) => `# What's New in v${v}\n\n## Some Feature\n\nDescription.`;
+const WHATS_NEW = (v: string): string => `# What's New in v${v}\n\n## Some Feature\n\nDescription.`;
 
-const CHANGELOG = (v) => `# Changelog\n\n## [${v}] - 2026-04-28\n\n### Fixed\n- Something.`;
+const CHANGELOG = (v: string): string =>
+  `# Changelog\n\n## [${v}] - 2026-04-28\n\n### Fixed\n- Something.`;
 
-function validFiles(version, opts) {
+function validFiles(version: string, opts: ReleaseCheckOptions = {}): FixtureFiles {
   const scripts = opts?.scripts ?? { "release:check": "node scripts/release-check.mjs" };
   const files = opts?.files ?? [
     "dist",
@@ -280,7 +308,7 @@ describe("release-check", () => {
 
   // ── Dist CLI freshness ──────────────────────────────────────────────
 
-  function distFixture(version, opts) {
+  function distFixture(version: string, opts: ReleaseCheckOptions = {}): FixtureFiles {
     const helpFlags = opts?.helpFlags ?? [
       "--health",
       "--agent-context",
@@ -328,10 +356,14 @@ describe("release-check", () => {
 
   // ── WHATS_NEW symbol hygiene ────────────────────────────────────────
 
-  const WHATS_NEW_WITH_SYMBOLS = (v) =>
+  const WHATS_NEW_WITH_SYMBOLS = (v: string): string =>
     `# What's New in v${v}\n\n## Feature\n\nUses \`realFunc()\` helper.\n\n---\n\n# What's New in v0.0.0\n\nOld.`;
 
-  function validFilesWithSrc(version, whatsNew, opts) {
+  function validFilesWithSrc(
+    version: string,
+    whatsNew: string,
+    opts?: ReleaseCheckOptions,
+  ): FixtureFiles {
     const base = validFiles(version, opts);
     base["WHATS_NEW.md"] = whatsNew;
     base["src/exists.ts"] = "export function realFunc() {}";

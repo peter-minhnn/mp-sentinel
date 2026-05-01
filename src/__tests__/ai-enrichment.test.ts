@@ -753,7 +753,9 @@ describe("enrichIndex cache integration", () => {
     });
     return {
       isAvailable: () => true,
-      generateContent: jest.fn<Promise<string>>().mockResolvedValue(validOutput),
+      generateContent: jest
+        .fn<(systemPrompt: string, userPrompt: string) => Promise<string>>()
+        .mockResolvedValue(validOutput),
     };
   }
 

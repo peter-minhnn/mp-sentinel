@@ -35,6 +35,7 @@
     "demo:skills": "tsx examples/skills-demo.ts",
     "indexing": "tsx src/index.ts indexing",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "prepublishOnly": "npm run build",
     "agent:skills:check": "node scripts/agent-skills-check.mjs",
     "agent:skills:refresh": "node scripts/agent-skills-refresh.mjs",
@@ -111,7 +112,8 @@
           "useESM": true,
           "tsconfig": {
             "module": "ESNext",
-            "moduleResolution": "bundler"
+            "moduleResolution": "bundler",
+            "types": ["node"]
           }
         }
       ]

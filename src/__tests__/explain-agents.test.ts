@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, it, expect, afterEach } from "@jest/globals";
 
 import { runCreateSkillsCommand } from "../commands/create-skills.js";
+import type { CreateSkillsValues } from "../commands/create-skills.js";
 import {
   ADAPTER_REGISTRY,
   detectAdapters,
@@ -30,6 +31,44 @@ const makeMinimalProject = async (cwd: string): Promise<void> => {
   );
   await writeFile(join(cwd, "src", "index.ts"), `export function hello() { return "hi"; }`);
 };
+
+type CreateSkillsValuesInput = Omit<
+  Partial<CreateSkillsValues>,
+  | "agent"
+  | "create-skills-format"
+  | "create-skills-dry-run"
+  | "create-skills-check"
+  | "explain-agents"
+  | "doctor"
+> & {
+  agent?: string | undefined;
+  "create-skills-format"?: string | undefined;
+  "create-skills-dry-run"?: boolean | undefined;
+  "create-skills-check"?: boolean | undefined;
+  "explain-agents"?: boolean | undefined;
+  doctor?: boolean | undefined;
+};
+
+const createSkillsValues = (overrides: CreateSkillsValuesInput = {}): CreateSkillsValues => ({
+  "all-agents": overrides["all-agents"] ?? false,
+  "create-skills-force": overrides["create-skills-force"] ?? false,
+  "skip-index-refresh": overrides["skip-index-refresh"] ?? false,
+  "create-skills-no-ai-enrich": overrides["create-skills-no-ai-enrich"] ?? false,
+  ...(overrides.agent !== undefined && { agent: overrides.agent }),
+  ...(overrides["create-skills-format"] !== undefined && {
+    "create-skills-format": overrides["create-skills-format"],
+  }),
+  ...(overrides["create-skills-dry-run"] !== undefined && {
+    "create-skills-dry-run": overrides["create-skills-dry-run"],
+  }),
+  ...(overrides["create-skills-check"] !== undefined && {
+    "create-skills-check": overrides["create-skills-check"],
+  }),
+  ...(overrides["explain-agents"] !== undefined && {
+    "explain-agents": overrides["explain-agents"],
+  }),
+  ...(overrides.doctor !== undefined && { doctor: overrides.doctor }),
+});
 
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -280,13 +319,13 @@ describe("create-skills --explain-agents CLI", () => {
 
     try {
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "explain-agents": true,
-        },
+        }),
         cwd,
       );
       expect(exitCode).toBe(0);
@@ -316,13 +355,13 @@ describe("create-skills --explain-agents CLI", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "explain-agents": true,
-        },
+        }),
         cwd,
       );
 
@@ -347,13 +386,13 @@ describe("create-skills --explain-agents CLI", () => {
     await makeMinimalProject(cwd);
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "explain-agents": true,
-      },
+      }),
       cwd,
     );
 
@@ -365,13 +404,13 @@ describe("create-skills --explain-agents CLI", () => {
     await makeMinimalProject(cwd);
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": true,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "explain-agents": true,
-      },
+      }),
       cwd,
     );
 
@@ -405,26 +444,26 @@ describe("create-skills --explain-agents CLI", () => {
 
     // Console mode
     const ec1 = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "explain-agents": true,
-      },
+      }),
       cwd,
     );
     expect(ec1).toBe(0);
 
     // JSON mode
     const ec2 = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
         "skip-index-refresh": false,
         "explain-agents": true,
-      },
+      }),
       cwd,
     );
     expect(ec2).toBe(0);
@@ -444,13 +483,13 @@ describe("create-skills --explain-agents CLI", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "explain-agents": true,
-        },
+        }),
         cwd,
       );
       const parsed = JSON.parse(captured!);
@@ -474,13 +513,13 @@ describe("create-skills --explain-agents CLI", () => {
 
     try {
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "explain-agents": true,
-        },
+        }),
         cwd,
       );
       expect(exitCode).toBe(0);
@@ -507,13 +546,13 @@ describe("create-skills --explain-agents CLI", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "explain-agents": true,
-        },
+        }),
         cwd,
       );
       const parsed = JSON.parse(captured!);

@@ -9,8 +9,32 @@ import { AIConfig } from "../services/ai/config.js";
 import { OpenRouterProvider } from "../services/ai/providers/openrouter.provider.js";
 
 // Mock the global fetch
-const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
-(globalThis as typeof globalThis & { fetch: jest.MockedFunction<typeof fetch> }).fetch = mockFetch;
+const mockFetch = jest.fn<typeof fetch>();
+globalThis.fetch = mockFetch;
+
+const jsonResponse = (body: unknown): Response => new Response(JSON.stringify(body));
+
+const textResponse = (body: string, init: ResponseInit): Response => new Response(body, init);
+
+const getFetchInit = (): RequestInit => {
+  const firstCall = mockFetch.mock.calls[0];
+  expect(firstCall).toBeDefined();
+  const init = firstCall![1];
+  expect(init).toBeDefined();
+  return init as RequestInit;
+};
+
+const getRequestBody = (): Record<string, unknown> => {
+  const body = getFetchInit().body;
+  expect(typeof body).toBe("string");
+  return JSON.parse(body as string) as Record<string, unknown>;
+};
+
+const getRequestHeaders = (): Record<string, string> => {
+  const headers = getFetchInit().headers;
+  expect(headers).toBeDefined();
+  return headers as Record<string, string>;
+};
 
 describe("OpenRouterProvider", () => {
   const mockConfig = {
@@ -59,12 +83,9 @@ describe("OpenRouterProvider", () => {
 
   describe("generateContent", () => {
     it("successfully generates content from OpenRouter API", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: "Mocked OpenRouter response" } }],
-        }),
-      };
+      const mockResponse = jsonResponse({
+        choices: [{ message: { content: "Mocked OpenRouter response" } }],
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
@@ -82,7 +103,7 @@ describe("OpenRouterProvider", () => {
           }),
         }),
       );
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      const callBody = getRequestBody();
       expect(callBody.model).toBe("openai/gpt-5.2");
       expect(callBody.messages).toEqual([
         { role: "system", content: "system prompt" },
@@ -97,18 +118,15 @@ describe("OpenRouterProvider", () => {
     it("overrides default attribution headers with environment variables", async () => {
       process.env.OPENROUTER_SITE_URL = "https://myapp.com";
       process.env.OPENROUTER_APP_NAME = "MyApp";
-      const mockResponse = {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: "response" } }],
-        }),
-      };
+      const mockResponse = jsonResponse({
+        choices: [{ message: { content: "response" } }],
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
       await provider.generateContent("system", "user");
 
-      const callHeaders = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      const callHeaders = getRequestHeaders();
       expect(callHeaders["HTTP-Referer"]).toBe("https://myapp.com");
       expect(callHeaders["X-OpenRouter-Title"]).toBe("MyApp");
       delete process.env.OPENROUTER_SITE_URL;
@@ -116,12 +134,10 @@ describe("OpenRouterProvider", () => {
     });
 
     it("handles API errors gracefully", async () => {
-      const mockResponse = {
-        ok: false,
+      const mockResponse = textResponse("Invalid API key", {
         status: 400,
         statusText: "Bad Request",
-        text: async () => "Invalid API key",
-      };
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
@@ -132,10 +148,7 @@ describe("OpenRouterProvider", () => {
     });
 
     it("returns empty string when choices array is empty", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({ choices: [] }),
-      };
+      const mockResponse = jsonResponse({ choices: [] });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
@@ -144,10 +157,7 @@ describe("OpenRouterProvider", () => {
     });
 
     it("returns empty string when choices[0].message is undefined", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({ choices: [{}] }),
-      };
+      const mockResponse = jsonResponse({ choices: [{}] });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
@@ -156,10 +166,7 @@ describe("OpenRouterProvider", () => {
     });
 
     it("returns empty string when choices[0].message.content is undefined", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({ choices: [{ message: {} }] }),
-      };
+      const mockResponse = jsonResponse({ choices: [{ message: {} }] });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider(mockConfig);
@@ -168,12 +175,9 @@ describe("OpenRouterProvider", () => {
     });
 
     it("omits response_format for moonshotai/kimi models", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
-        }),
-      };
+      const mockResponse = jsonResponse({
+        choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider({
@@ -183,21 +187,15 @@ describe("OpenRouterProvider", () => {
       });
       await provider.generateContent("system", "user");
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string) as Record<
-        string,
-        unknown
-      >;
+      const callBody = getRequestBody();
       expect(callBody.model).toBe("moonshotai/kimi-k2.6");
       expect(callBody).not.toHaveProperty("response_format");
     });
 
     it("omits response_format for anthropic/claude models via OpenRouter", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
-        }),
-      };
+      const mockResponse = jsonResponse({
+        choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider({
@@ -207,21 +205,15 @@ describe("OpenRouterProvider", () => {
       });
       await provider.generateContent("system", "user");
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string) as Record<
-        string,
-        unknown
-      >;
+      const callBody = getRequestBody();
       expect(callBody.model).toBe("anthropic/claude-opus-4-6");
       expect(callBody).not.toHaveProperty("response_format");
     });
 
     it("includes response_format for openai/gpt models", async () => {
-      const mockResponse = {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
-        }),
-      };
+      const mockResponse = jsonResponse({
+        choices: [{ message: { content: '{\n  "status": "PASS",\n  "issues": []\n}' } }],
+      });
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const provider = new OpenRouterProvider({
@@ -231,10 +223,7 @@ describe("OpenRouterProvider", () => {
       });
       await provider.generateContent("system", "user");
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string) as Record<
-        string,
-        unknown
-      >;
+      const callBody = getRequestBody();
       expect(callBody.model).toBe("openai/gpt-5.2");
       expect(callBody.response_format).toEqual({ type: "json_object" });
     });

@@ -22,8 +22,8 @@ import {
   createReactNextFixture,
   type IndexedFixture,
 } from "./helpers/fixture-builder.js";
-import type { CLIValues, SkillProfile } from "../types/index.js";
-import type { IndexingConfig, SourceIndex } from "../types/index.js";
+import type { CLIValues } from "../cli/args.js";
+import type { IndexingConfig, SourceIndex, SkillProfile } from "../types/index.js";
 
 // -- Setup -----------------------------------------------------------------------
 
@@ -33,6 +33,35 @@ const makeTempDir = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "mp-sentinel-rif-"));
   tempDirs.push(dir);
   return dir;
+};
+
+interface ExplainJsonOutput {
+  status?: string;
+  reason?: string;
+  profile?: string;
+  budgetChars?: number;
+  indexUsed?: boolean;
+  includedFiles?: string[];
+  includedSignals?: string[];
+  relationTypes?: string[];
+  contextPreview?: string;
+  intelligenceSignals?: Array<{
+    type: string;
+    file?: string;
+    reason?: string;
+    evidence?: string;
+    [key: string]: unknown;
+  }>;
+  suggestedCommands?: string[];
+  [key: string]: unknown;
+}
+
+const parseFirstJsonLog = (calls: ReadonlyArray<ReadonlyArray<unknown>>): ExplainJsonOutput => {
+  const firstCall = calls[0];
+  expect(firstCall).toBeDefined();
+  const firstArg = firstCall![0];
+  expect(typeof firstArg).toBe("string");
+  return JSON.parse(firstArg as string) as ExplainJsonOutput;
 };
 
 beforeEach(() => {
@@ -154,8 +183,7 @@ describe("Review Intelligence \u2014 signal precision", () => {
         languages: ["typescript", "tsx", "javascript", "jsx"],
         cachePath: ".mp-sentinel-cache/source-index.json",
         maxFileSize: 512000,
-        maxRelatedFiles: 3,
-      } satisfies IndexingConfig,
+      },
       true,
     );
     if (!index) throw new Error("Failed to build index");
@@ -383,7 +411,7 @@ describe("Review Intelligence \u2014 signal precision", () => {
       "src/plain.ts": `export const x = 1;`,
     });
 
-    const stripped = { ...index, insights: undefined };
+    const { insights: _insights, ...stripped } = index;
     const result = await buildReviewContext(stripped, [{ path: "src/plain.ts" }]);
     expect(result.metadata.intelligenceSignals).toBeUndefined();
   });
@@ -438,8 +466,7 @@ describe("Review Intelligence \u2014 quality assertions", () => {
         languages: ["typescript", "tsx", "javascript", "jsx"],
         cachePath: ".mp-sentinel-cache/source-index.json",
         maxFileSize: 512000,
-        maxRelatedFiles: 3,
-      } satisfies IndexingConfig,
+      },
       true,
     );
     if (!built) throw new Error("Failed to build quality test index");
@@ -527,30 +554,25 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
     local: false,
     interactive: false,
     "target-branch": "origin/main",
-    concurrency: undefined,
     "branch-diff": false,
     fetch: false,
     "include-uncommitted": false,
     staged: false,
-    commit: undefined,
-    range: undefined,
     files: [],
     "no-skills-fetch": false,
     "dry-run": false,
     "verbose-dry-run": false,
-    "token-limit": undefined,
     "explain-context": true,
-    "index-format": undefined,
     stats: false,
-    explainIndex: undefined,
-    agent: undefined,
     "all-agents": false,
-    "create-skills-format": undefined,
     "create-skills-force": false,
     "skip-index-refresh": false,
     "create-skills-dry-run": false,
     "create-skills-check": false,
-    ...overrides,
+    "create-skills-no-ai-enrich": false,
+    ...(Object.fromEntries(
+      Object.entries(overrides).filter(([, value]) => value !== undefined),
+    ) as Partial<CLIValues>),
   });
 
   it("JSON output is parseable and includes indexUsed, includedFiles, relationTypes, includedSignals", async () => {
@@ -600,7 +622,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("available");
       expect(jsonOutput.indexUsed).toBe(true);
       expect(jsonOutput.includedFiles).toBeDefined();
@@ -614,21 +636,21 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
       // v1.4.0: intelligenceSignals should be present with structured metadata
       expect(jsonOutput.intelligenceSignals).toBeDefined();
       expect(Array.isArray(jsonOutput.intelligenceSignals)).toBe(true);
-      expect(jsonOutput.intelligenceSignals.length).toBeGreaterThan(0);
-      const publicApiSignal = jsonOutput.intelligenceSignals.find(
+      expect(jsonOutput.intelligenceSignals!.length).toBeGreaterThan(0);
+      const publicApiSignal = jsonOutput.intelligenceSignals!.find(
         (s: { type: string }) => s.type === "public-api",
       );
       expect(publicApiSignal).toBeDefined();
-      expect(publicApiSignal.file).toBe("src/index.ts");
-      expect(publicApiSignal.reason).toBeTruthy();
-      expect(publicApiSignal.evidence).toBeTruthy();
+      expect(publicApiSignal!.file).toBe("src/index.ts");
+      expect(publicApiSignal!.reason).toBeTruthy();
+      expect(publicApiSignal!.evidence).toBeTruthy();
       expect(jsonOutput.contextPreview).toBeDefined();
       expect(jsonOutput.profile).toBeDefined();
       expect(jsonOutput.budgetChars).toBe(12000);
       // v1.16.0: suggestedCommands should be present when context is available
       expect(jsonOutput.suggestedCommands).toBeDefined();
       expect(Array.isArray(jsonOutput.suggestedCommands)).toBe(true);
-      expect(jsonOutput.suggestedCommands.length).toBeGreaterThan(0);
+      expect(jsonOutput.suggestedCommands!.length).toBeGreaterThan(0);
     } finally {
       logSpy.mockRestore();
       process.chdir(originalCwd);
@@ -679,7 +701,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.reason).toContain("Indexing disabled");
       expect(jsonOutput.reason).toContain("indexing.enabled");
@@ -739,7 +761,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.reason).toContain("No source index found");
     } finally {
@@ -774,8 +796,7 @@ describe("Review Intelligence \u2014 edge cases", () => {
         languages: ["typescript", "tsx", "javascript", "jsx"],
         cachePath: ".mp-sentinel-cache/source-index.json",
         maxFileSize: 512000,
-        maxRelatedFiles: 3,
-      } satisfies IndexingConfig,
+      },
       true,
     );
     if (!index) throw new Error("Failed to build edge test index");
@@ -821,7 +842,7 @@ describe("Review Intelligence \u2014 edge cases", () => {
       "src/plain.ts": `export const x = 1;`,
     });
 
-    const stripped = { ...index, insights: undefined };
+    const { insights: _insights, ...stripped } = index;
     const result = await buildReviewContext(stripped, [{ path: "src/plain.ts" }]);
     if (result.metadata.includedSignals) {
       // Even when no insights, signals should be undefined, not an empty array
@@ -877,8 +898,7 @@ describe("Review Intelligence \u2014 Lane A precision", () => {
         languages: ["typescript", "tsx", "javascript", "jsx"],
         cachePath: ".mp-sentinel-cache/source-index.json",
         maxFileSize: 512000,
-        maxRelatedFiles: 3,
-      } satisfies IndexingConfig,
+      },
       true,
     );
     if (!index) throw new Error("Failed to build index");
@@ -913,8 +933,7 @@ describe("Review Intelligence \u2014 Lane A precision", () => {
           languages: ["typescript", "tsx", "javascript", "jsx"],
           cachePath: ".mp-sentinel-cache/source-index.json",
           maxFileSize: 512000,
-          maxRelatedFiles: 3,
-        } satisfies IndexingConfig,
+        },
         true,
       );
       if (!index) throw new Error("Failed to build index");

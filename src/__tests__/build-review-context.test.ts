@@ -600,7 +600,7 @@ describe("buildReviewContext", () => {
     );
 
     // Strip insights to simulate legacy index
-    const strippedIndex = { ...index!, insights: undefined };
+    const { insights: _insights, ...strippedIndex } = index!;
 
     const result = await buildReviewContext(strippedIndex, [{ path: "src/plain.ts" }]);
     expect(result.metadata.includedSignals).toBeUndefined();

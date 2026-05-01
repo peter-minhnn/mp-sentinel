@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 
 import { parseCliArgs } from "../cli/args.js";
 import { runCreateSkillsCommand } from "../commands/create-skills.js";
+import type { CreateSkillsValues } from "../commands/create-skills.js";
 import {
   ADAPTER_REGISTRY,
   detectAdapters,
@@ -42,6 +43,44 @@ const makeMinimalProject = async (cwd: string): Promise<void> => {
   );
   await writeFile(join(cwd, "src", "index.ts"), `export function hello() { return "hi"; }`);
 };
+
+type CreateSkillsValuesInput = Omit<
+  Partial<CreateSkillsValues>,
+  | "agent"
+  | "create-skills-format"
+  | "create-skills-dry-run"
+  | "create-skills-check"
+  | "explain-agents"
+  | "doctor"
+> & {
+  agent?: string | undefined;
+  "create-skills-format"?: string | undefined;
+  "create-skills-dry-run"?: boolean | undefined;
+  "create-skills-check"?: boolean | undefined;
+  "explain-agents"?: boolean | undefined;
+  doctor?: boolean | undefined;
+};
+
+const createSkillsValues = (overrides: CreateSkillsValuesInput = {}): CreateSkillsValues => ({
+  "all-agents": overrides["all-agents"] ?? false,
+  "create-skills-force": overrides["create-skills-force"] ?? false,
+  "skip-index-refresh": overrides["skip-index-refresh"] ?? false,
+  "create-skills-no-ai-enrich": overrides["create-skills-no-ai-enrich"] ?? false,
+  ...(overrides.agent !== undefined && { agent: overrides.agent }),
+  ...(overrides["create-skills-format"] !== undefined && {
+    "create-skills-format": overrides["create-skills-format"],
+  }),
+  ...(overrides["create-skills-dry-run"] !== undefined && {
+    "create-skills-dry-run": overrides["create-skills-dry-run"],
+  }),
+  ...(overrides["create-skills-check"] !== undefined && {
+    "create-skills-check": overrides["create-skills-check"],
+  }),
+  ...(overrides["explain-agents"] !== undefined && {
+    "explain-agents": overrides["explain-agents"],
+  }),
+  ...(overrides.doctor !== undefined && { doctor: overrides.doctor }),
+});
 
 beforeEach(() => {
   clearParserCache();
@@ -363,13 +402,13 @@ describe("runCreateSkillsCommand", () => {
     );
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
@@ -396,25 +435,25 @@ describe("runCreateSkillsCommand", () => {
 
     // First run
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
     // Second run without --force \u2014 should return 1 (all skipped)
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
@@ -436,23 +475,23 @@ describe("runCreateSkillsCommand", () => {
     );
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": true,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
@@ -474,13 +513,13 @@ describe("runCreateSkillsCommand", () => {
     );
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: undefined,
         "all-agents": true,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
@@ -525,13 +564,13 @@ describe("runCreateSkillsCommand", () => {
 
     try {
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "generic",
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
-        },
+        }),
         cwd,
       );
       expect(exitCode).toBe(0);
@@ -550,13 +589,13 @@ describe("runCreateSkillsCommand", () => {
     await makeMinimalProject(cwd);
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": true,
-      },
+      }),
       cwd,
     );
 
@@ -577,13 +616,13 @@ describe("runCreateSkillsCommand", () => {
 
     try {
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: undefined,
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
-        },
+        }),
         cwd,
       );
       expect(exitCode).toBe(2);
@@ -601,13 +640,13 @@ describe("runCreateSkillsCommand", () => {
 
     // No index pre-built
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "generic",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": false,
-      },
+      }),
       cwd,
     );
 
@@ -624,13 +663,13 @@ describe("runCreateSkillsCommand", () => {
     await writeFile(join(cwd, ".mp-sentinel-cache", "source-index.json"), "not-valid-json");
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
         "create-skills-force": false,
         "skip-index-refresh": true,
-      },
+      }),
       cwd,
     );
 
@@ -651,13 +690,13 @@ describe("runCreateSkillsCommand", () => {
 
     try {
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "claude",
           "all-agents": false,
           "create-skills-format": "xml",
           "create-skills-force": false,
           "skip-index-refresh": false,
-        },
+        }),
         cwd,
       );
       expect(exitCode).toBe(2);
@@ -758,7 +797,7 @@ describe("metadata utilities", () => {
     await makeMinimalProject(cwd);
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -766,7 +805,7 @@ describe("metadata utilities", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
     expect(exitCode).toBe(0);
@@ -792,7 +831,7 @@ describe("metadata utilities", () => {
     await makeMinimalProject(cwd);
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "generic",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -800,7 +839,7 @@ describe("metadata utilities", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
     expect(exitCode).toBe(0);
@@ -821,7 +860,7 @@ describe("metadata utilities", () => {
 
     // Generate first
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -829,12 +868,12 @@ describe("metadata utilities", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -842,7 +881,7 @@ describe("metadata utilities", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": true,
-      },
+      }),
       cwd,
     );
 
@@ -890,7 +929,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
     await makeMinimalProject(cwd);
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -898,7 +937,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": true,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -920,7 +959,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "claude",
           "all-agents": false,
           "create-skills-format": "json",
@@ -928,7 +967,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
@@ -949,7 +988,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
 
     // Generate once
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -957,7 +996,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -972,7 +1011,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "claude",
           "all-agents": false,
           "create-skills-format": "json",
@@ -980,14 +1019,14 @@ describe("runCreateSkillsCommand --dry-run", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
       console.log = orig;
     }
 
-    const parsed = output as { dryRun: Array<{ files: Array<{ action: string }> }> };
+    const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
     const actions = parsed.dryRun[0]!.files.map((f) => f.action);
     expect(actions.every((a) => a === "skip")).toBe(true);
   });
@@ -997,7 +1036,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
     await makeMinimalProject(cwd);
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1005,7 +1044,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -1019,7 +1058,7 @@ describe("runCreateSkillsCommand --dry-run", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "claude",
           "all-agents": false,
           "create-skills-format": "json",
@@ -1027,14 +1066,14 @@ describe("runCreateSkillsCommand --dry-run", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
       console.log = orig;
     }
 
-    const parsed = output as { dryRun: Array<{ files: Array<{ action: string }> }> };
+    const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
     const actions = parsed.dryRun[0]!.files.map((f) => f.action);
     expect(actions.every((a) => a === "overwrite")).toBe(true);
   });
@@ -1049,7 +1088,7 @@ describe("runCreateSkillsCommand --check", () => {
 
     // Generate first
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1057,13 +1096,13 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
     // Check \u2014 same index, should be up-to-date
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1071,7 +1110,7 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": true,
-      },
+      }),
       cwd,
     );
 
@@ -1084,7 +1123,7 @@ describe("runCreateSkillsCommand --check", () => {
 
     // Check without generating first
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1092,7 +1131,7 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": true,
-      },
+      }),
       cwd,
     );
 
@@ -1105,7 +1144,7 @@ describe("runCreateSkillsCommand --check", () => {
 
     // Generate first
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1113,7 +1152,7 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -1128,7 +1167,7 @@ describe("runCreateSkillsCommand --check", () => {
     await writeFile(skillFile, tampered, "utf-8");
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1136,7 +1175,7 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": true,
-      },
+      }),
       cwd,
     );
 
@@ -1157,7 +1196,7 @@ describe("runCreateSkillsCommand --check", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "claude",
           "all-agents": false,
           "create-skills-format": "json",
@@ -1165,7 +1204,7 @@ describe("runCreateSkillsCommand --check", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": false,
           "create-skills-check": true,
-        },
+        }),
         cwd,
       );
     } finally {
@@ -1186,7 +1225,7 @@ describe("runCreateSkillsCommand --check", () => {
     await writeFile(join(cwd, ".mp-sentinel-cache", "source-index.json"), "not-valid-json");
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1194,7 +1233,7 @@ describe("runCreateSkillsCommand --check", () => {
         "skip-index-refresh": true,
         "create-skills-dry-run": false,
         "create-skills-check": true,
-      },
+      }),
       cwd,
     );
 
@@ -1239,7 +1278,59 @@ describe("create-skills new CLI flags", () => {
 
 // -- Hash correctness ----------------------------------------------------------
 
-import type { SourceIndex, ProjectManifest } from "../types/index.js";
+import type {
+  SourceIndex,
+  ProjectManifest,
+  IndexingConfig,
+  IndexInsights,
+  QualityReport,
+} from "../types/index.js";
+
+const makeIndexFile = ({
+  path,
+  ...overrides
+}: Pick<SourceIndex["files"][number], "path"> &
+  Partial<SourceIndex["files"][number]>): SourceIndex["files"][number] => ({
+  path,
+  language: "typescript",
+  sha256: "abc123",
+  sizeBytes: 100,
+  mtimeMs: 0,
+  imports: [],
+  exports: [],
+  symbols: [],
+  ...overrides,
+});
+
+const makeNamedExport = (name: string): SourceIndex["files"][number]["exports"][number] => ({
+  kind: "named",
+  names: [name],
+  line: 1,
+});
+
+const makeIndexInsights = (overrides: Partial<IndexInsights>): IndexInsights => ({
+  fileRoles: {},
+  publicApiFiles: [],
+  testMap: {},
+  commandMap: {},
+  dependencyUsage: {},
+  defaultExportFiles: [],
+  reExportFiles: [],
+  typeOnlyImportFiles: [],
+  dynamicImportFiles: [],
+  ...overrides,
+});
+
+type BuildIndexConfig = Required<
+  Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+>;
+
+const buildIndexConfig = (): BuildIndexConfig => ({
+  enabled: true,
+  languages: ["typescript", "tsx", "javascript", "jsx"],
+  cachePath: ".mp-sentinel-cache/source-index.json",
+  maxFileSize: 512000,
+});
 
 function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
   const project: ProjectManifest = {
@@ -1425,7 +1516,7 @@ describe("--check wrong-agent detection", () => {
 
     // Generate with generic
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "generic",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -1433,7 +1524,7 @@ describe("--check wrong-agent detection", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -1455,7 +1546,7 @@ describe("--check wrong-agent detection", () => {
     let exitCode: number;
     try {
       exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "generic",
           "all-agents": false,
           "create-skills-format": "json",
@@ -1463,7 +1554,7 @@ describe("--check wrong-agent detection", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": false,
           "create-skills-check": true,
-        },
+        }),
         cwd,
       );
     } finally {
@@ -1649,14 +1740,14 @@ describe("--all-agents generic exclusion", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": true,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
@@ -1682,7 +1773,7 @@ describe("--all-agents generic exclusion", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           agent: "codex,generic",
           "all-agents": false,
           "create-skills-format": "json",
@@ -1690,7 +1781,7 @@ describe("--all-agents generic exclusion", () => {
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
@@ -1859,25 +1950,17 @@ describe("agentWorkflow v2 content", () => {
 describe("referenceRouting section", () => {
   it("is present in generateContent output with ## Reference Routing heading", () => {
     const idx = makeMinimalIndex();
-    idx.files.push({
-      path: "src/cli/main.ts",
-      language: "typescript",
-      imports: [],
-      exports: [],
-      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
-      importsFrom: [],
-      importedBy: [],
-    });
-    idx.insights = {
+    idx.files.push(
+      makeIndexFile({
+        path: "src/cli/main.ts",
+        symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      }),
+    );
+    idx.insights = makeIndexInsights({
       fileRoles: { "src/cli/main.ts": "cli-entry" },
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    });
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -1891,35 +1974,22 @@ describe("referenceRouting section", () => {
   it("routes CLI/command dirs to commands, testing-map", () => {
     const idx = makeMinimalIndex();
     idx.files.push(
-      {
+      makeIndexFile({
         path: "src/cli/main.ts",
-        language: "typescript",
-        imports: [],
-        exports: [],
         symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
         importsFrom: [],
         importedBy: [],
-      },
-      {
+      }),
+      makeIndexFile({
         path: "src/commands/build.ts",
-        language: "typescript",
-        imports: [],
-        exports: [],
         symbols: [{ name: "build", type: "function", line: 1, column: 1 }],
         importsFrom: [],
         importedBy: [],
-      },
+      }),
     );
-    idx.insights = {
+    idx.insights = makeIndexInsights({
       fileRoles: { "src/cli/main.ts": "cli-entry", "src/commands/build.ts": "command" },
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    });
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -1930,25 +2000,19 @@ describe("referenceRouting section", () => {
 
   it("routes public API dirs to public-api, codebase-map", () => {
     const idx = makeMinimalIndex();
-    idx.files.push({
-      path: "src/types/public.ts",
-      language: "typescript",
-      imports: [],
-      exports: [{ name: "ApiType", type: "type", line: 1, column: 1 }],
-      symbols: [{ name: "ApiType", type: "type", line: 1, column: 1 }],
-      importsFrom: [],
-      importedBy: ["src/cli/main.ts"],
-    });
-    idx.insights = {
+    idx.files.push(
+      makeIndexFile({
+        path: "src/types/public.ts",
+        exports: [makeNamedExport("ApiType")],
+        symbols: [{ name: "ApiType", type: "type", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: ["src/cli/main.ts"],
+      }),
+    );
+    idx.insights = makeIndexInsights({
       fileRoles: { "src/types/public.ts": "type" },
       publicApiFiles: ["src/types/public.ts"],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    });
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -1958,25 +2022,18 @@ describe("referenceRouting section", () => {
 
   it("routes hub files (imported by >= 3) to architecture, codebase-map", () => {
     const idx = makeMinimalIndex();
-    idx.files.push({
-      path: "src/services/hub.ts",
-      language: "typescript",
-      imports: [],
-      exports: [{ name: "core", type: "function", line: 1, column: 1 }],
-      symbols: [{ name: "core", type: "function", line: 1, column: 1 }],
-      importsFrom: [],
-      importedBy: ["a.ts", "b.ts", "c.ts"],
+    idx.files.push(
+      makeIndexFile({
+        path: "src/services/hub.ts",
+        exports: [makeNamedExport("core")],
+        symbols: [{ name: "core", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: ["a.ts", "b.ts", "c.ts"],
+      }),
+    );
+    idx.insights = makeIndexInsights({
+      fileRoles: { "src/services/hub.ts": "service" },
     });
-    idx.insights = {
-      fileRoles: { "src/services/hub.ts": "core" },
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -1998,25 +2055,17 @@ describe("referenceRouting section", () => {
 
   it("is deterministic \u2014 same index produces byte-identical routing", () => {
     const idx = makeMinimalIndex();
-    idx.files.push({
-      path: "src/cli/main.ts",
-      language: "typescript",
-      imports: [],
-      exports: [],
-      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
-      importsFrom: [],
-      importedBy: [],
-    });
-    idx.insights = {
+    idx.files.push(
+      makeIndexFile({
+        path: "src/cli/main.ts",
+        symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      }),
+    );
+    idx.insights = makeIndexInsights({
       fileRoles: { "src/cli/main.ts": "cli-entry" },
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    });
 
     const kb = buildSkillKnowledgeBase(idx);
     const a = generateContent(idx, "test", null, kb);
@@ -2026,25 +2075,17 @@ describe("referenceRouting section", () => {
 
   it("is ASCII-safe \u2014 no risky Unicode characters", () => {
     const idx = makeMinimalIndex();
-    idx.files.push({
-      path: "src/cli/main.ts",
-      language: "typescript",
-      imports: [],
-      exports: [],
-      symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
-      importsFrom: [],
-      importedBy: [],
-    });
-    idx.insights = {
+    idx.files.push(
+      makeIndexFile({
+        path: "src/cli/main.ts",
+        symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
+        importsFrom: [],
+        importedBy: [],
+      }),
+    );
+    idx.insights = makeIndexInsights({
       fileRoles: { "src/cli/main.ts": "cli-entry" },
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    });
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -2057,44 +2098,28 @@ describe("referenceRouting section", () => {
   it("does not render file paths with trailing slashes (no file.ext/ patterns)", () => {
     const idx = makeMinimalIndex();
     idx.files.push(
-      {
+      makeIndexFile({
         path: "src/lib.ts",
-        language: "typescript",
-        imports: [],
-        exports: [{ name: "helper", type: "function", line: 1, column: 1 }],
+        exports: [makeNamedExport("helper")],
         symbols: [{ name: "helper", type: "function", line: 1, column: 1 }],
         importsFrom: [],
         importedBy: ["src/cli/main.ts"],
-      },
-      {
+      }),
+      makeIndexFile({
         path: "src/index.ts",
-        language: "typescript",
-        imports: [],
-        exports: [{ name: "main", type: "function", line: 1, column: 1 }],
+        exports: [makeNamedExport("main")],
         symbols: [{ name: "main", type: "function", line: 1, column: 1 }],
         importsFrom: [],
         importedBy: [],
-      },
-      {
+      }),
+      makeIndexFile({
         path: "src/cli/main.ts",
-        language: "typescript",
-        imports: [],
-        exports: [],
         symbols: [{ name: "run", type: "function", line: 1, column: 1 }],
         importsFrom: [],
         importedBy: [],
-      },
+      }),
     );
-    idx.insights = {
-      fileRoles: {},
-      publicApiFiles: [],
-      testMap: {},
-      dependencyUsage: {},
-      defaultExportFiles: [],
-      reExportFiles: [],
-      typeOnlyImportFiles: [],
-      dynamicImportFiles: [],
-    };
+    idx.insights = makeIndexInsights({});
 
     const kb = buildSkillKnowledgeBase(idx);
     const content = generateContent(idx, "test", null, kb);
@@ -2134,7 +2159,7 @@ describe("--all-agents includes new reference files", () => {
     );
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -2142,7 +2167,7 @@ describe("--all-agents includes new reference files", () => {
         "skip-index-refresh": false,
         "create-skills-dry-run": false,
         "create-skills-check": false,
-      },
+      }),
       cwd,
     );
 
@@ -2242,7 +2267,7 @@ describe("quality gate integration", () => {
 
     // First generate to have files on disk
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -2251,7 +2276,7 @@ describe("quality gate integration", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -2263,7 +2288,7 @@ describe("quality gate integration", () => {
     };
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -2272,7 +2297,7 @@ describe("quality gate integration", () => {
         "create-skills-dry-run": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -2305,7 +2330,7 @@ describe("quality gate integration", () => {
     };
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -2314,7 +2339,7 @@ describe("quality gate integration", () => {
         "create-skills-dry-run": true,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -2346,7 +2371,7 @@ describe("quality gate integration", () => {
     };
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -2355,7 +2380,7 @@ describe("quality gate integration", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -2910,12 +2935,7 @@ describe("fixture project quality gate (zero errors, zero warnings)", () => {
       it("Claude adapter: quality.errors = 0, quality.warnings = 0", async () => {
         const cwd = await makeTempDir();
         await PROJECT_MAKERS[profile](cwd);
-        const config = {
-          enabled: true,
-          languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-          cachePath: ".mp-sentinel-cache/source-index.json" as const,
-          maxFileSize: 512000,
-        };
+        const config = buildIndexConfig();
         const index = await buildSourceIndex(cwd, config, true);
         expect(index).not.toBeNull();
         const adapter = getAdapter("claude")!;
@@ -2936,12 +2956,7 @@ describe("fixture project quality gate (zero errors, zero warnings)", () => {
       it("single-file adapter: quality.errors = 0, quality.warnings = 0", async () => {
         const cwd = await makeTempDir();
         await PROJECT_MAKERS[profile](cwd);
-        const config = {
-          enabled: true,
-          languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-          cachePath: ".mp-sentinel-cache/source-index.json" as const,
-          maxFileSize: 512000,
-        };
+        const config = buildIndexConfig();
         const index = await buildSourceIndex(cwd, config, true);
         expect(index).not.toBeNull();
         // Test the first single-file adapter only (they all delegate to generateContent)
@@ -2961,12 +2976,7 @@ describe("fixture project quality gate (zero errors, zero warnings)", () => {
       it("content mentions real scripts from package.json", async () => {
         const cwd = await makeTempDir();
         await PROJECT_MAKERS[profile](cwd);
-        const config = {
-          enabled: true,
-          languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-          cachePath: ".mp-sentinel-cache/source-index.json" as const,
-          maxFileSize: 512000,
-        };
+        const config = buildIndexConfig();
         const index = await buildSourceIndex(cwd, config, true);
         expect(index).not.toBeNull();
         const scripts = index!.project.scripts ?? {};
@@ -2996,12 +3006,7 @@ describe("fixture project quality gate (zero errors, zero warnings)", () => {
       it("content mentions real top-level source directories", async () => {
         const cwd = await makeTempDir();
         await PROJECT_MAKERS[profile](cwd);
-        const config = {
-          enabled: true,
-          languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-          cachePath: ".mp-sentinel-cache/source-index.json" as const,
-          maxFileSize: 512000,
-        };
+        const config = buildIndexConfig();
         const index = await buildSourceIndex(cwd, config, true);
         expect(index).not.toBeNull();
         // Find top-level source directories
@@ -3035,12 +3040,7 @@ describe("adapter output determinism", () => {
   it("Claude adapter produces byte-identical output for same index", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    const config = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const config = buildIndexConfig();
     const index = await buildSourceIndex(cwd, config, true);
     expect(index).not.toBeNull();
     const adapter = getAdapter("claude")!;
@@ -3063,12 +3063,7 @@ describe("adapter output determinism", () => {
   it("Cursor adapter produces byte-identical output for same index", async () => {
     const cwd = await makeTempDir();
     await makeLibraryProject(cwd);
-    const config = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const config = buildIndexConfig();
     const index = await buildSourceIndex(cwd, config, true);
     expect(index).not.toBeNull();
     const adapter = getAdapter("cursor")!;
@@ -3098,7 +3093,7 @@ describe("--check regression (quality gate exit codes)", () => {
 
     // Generate first
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -3107,13 +3102,13 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
     // Check immediately \u2014 should be up-to-date with zero quality errors
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -3122,7 +3117,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3135,7 +3130,7 @@ describe("--check regression (quality gate exit codes)", () => {
 
     // Generate first
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -3144,7 +3139,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3158,7 +3153,7 @@ describe("--check regression (quality gate exit codes)", () => {
     await writeFile(skillFile, tampered, "utf-8");
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": undefined,
@@ -3167,7 +3162,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3185,7 +3180,7 @@ describe("--check regression (quality gate exit codes)", () => {
     };
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "cursor",
         "all-agents": false,
         "create-skills-format": "json",
@@ -3194,7 +3189,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3219,7 +3214,7 @@ describe("--check regression (quality gate exit codes)", () => {
     };
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -3228,7 +3223,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3243,7 +3238,7 @@ describe("--check regression (quality gate exit codes)", () => {
     };
 
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -3252,7 +3247,7 @@ describe("--check regression (quality gate exit codes)", () => {
         "create-skills-dry-run": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -3342,21 +3337,21 @@ describe("adapter layout v1.0.17", () => {
 
     try {
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": true,
           "create-skills-format": "json",
           "create-skills-force": false,
           "skip-index-refresh": false,
           "create-skills-dry-run": true,
           "create-skills-check": false,
-        },
+        }),
         cwd,
       );
     } finally {
       console.log = orig;
     }
 
-    const parsed = output as { dryRun: Array<{ files: Array<{ action: string }> }> };
+    const parsed = output as { dryRun: Array<{ agent: string; files: Array<{ action: string }> }> };
     // No conflicts across any adapter
     for (const result of parsed.dryRun) {
       const conflicts = result.files.filter((f) => f.action === "conflict");
@@ -3621,25 +3616,25 @@ describe("runCreateSkillsCommand --check with legacy files", () => {
     await writeFile(join(cwd, ".agents", "rules", "fixture-best-practices.md"), legacyContent);
     // Generate current Codex skills
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "codex",
         "all-agents": false,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "create-skills-no-ai-enrich": false,
-      },
+      }),
       cwd,
     );
     // Run --check \u2014 legacy files should not affect exit code
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "codex",
         "all-agents": false,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": false,
-      },
+      }),
       cwd,
     );
     expect(exitCode).toBe(0);
@@ -3661,14 +3656,14 @@ describe("runCreateSkillsCommand --check with legacy files", () => {
     await writeFile(join(cwd, ".agents", "rules", "fixture-best-practices.md"), legacyContent);
     // --check without generating current files \u2192 missing \u2192 exit 1
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "codex",
         "all-agents": false,
         "create-skills-force": false,
         "skip-index-refresh": false,
         "create-skills-check": true,
         "create-skills-no-ai-enrich": false,
-      },
+      }),
       cwd,
     );
     expect(exitCode).toBe(1);
@@ -3711,7 +3706,7 @@ describe("runCreateSkillsCommand --dry-run with legacy files", () => {
       stdout += data;
     };
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "codex",
         "all-agents": false,
         "create-skills-dry-run": true,
@@ -3719,7 +3714,7 @@ describe("runCreateSkillsCommand --dry-run with legacy files", () => {
         "create-skills-force": false,
         "skip-index-refresh": false,
         "create-skills-no-ai-enrich": false,
-      },
+      }),
       cwd,
     );
     console.log = origLog;
@@ -3764,7 +3759,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3773,7 +3768,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3824,7 +3819,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3833,7 +3828,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3848,7 +3843,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -3858,7 +3853,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3872,7 +3867,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": true,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3881,7 +3876,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3898,7 +3893,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3907,7 +3902,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3929,7 +3924,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3938,7 +3933,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3952,7 +3947,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3961,7 +3956,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -3983,7 +3978,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     );
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -3992,7 +3987,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4008,12 +4003,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeCliToolingProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4048,7 +4038,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4057,7 +4047,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4077,12 +4067,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeCliToolingProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4109,7 +4094,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4118,7 +4103,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4134,12 +4119,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     // Detect both claude and codex so they both get current skills
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4208,7 +4188,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4217,7 +4197,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4232,7 +4212,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4241,7 +4221,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4258,7 +4238,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await writeFile(join(cwd, ".sentinelrc.json"), JSON.stringify({ indexing: { enabled: true } }));
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4267,7 +4247,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4294,12 +4274,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     // Build index and write up-to-date skills so recommendedCommands stays empty,
     // exercising the "(none - no automated commands recommended)" rendering path.
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4333,7 +4308,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "console",
         "create-skills-force": false,
@@ -4342,7 +4317,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4379,7 +4354,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4388,7 +4363,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4410,12 +4385,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
     // Build index
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4441,7 +4411,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -4451,7 +4421,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4473,12 +4443,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4505,7 +4470,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -4515,7 +4480,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4532,12 +4497,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeCliToolingProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4571,7 +4531,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4580,7 +4540,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4599,7 +4559,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4608,7 +4568,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4630,12 +4590,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeCliToolingProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4646,7 +4601,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     };
 
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": true,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -4654,7 +4609,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-dry-run": true,
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true,
-      },
+      }),
       cwd,
     );
 
@@ -4675,12 +4630,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeCliToolingProject(cwd);
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
 
@@ -4747,12 +4697,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await mkdir(join(cwd, ".cursor"), { recursive: true });
 
     // Build index so skills are verifiable and legacy is the focus
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     const projectName = (index!.project.packageName ?? "fixture")
@@ -4797,7 +4742,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -4807,7 +4752,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4834,12 +4779,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
     await mkdir(join(cwd, ".clinerules"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     const projectName = (index!.project.packageName ?? "fixture")
@@ -4886,7 +4826,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -4896,7 +4836,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -4927,12 +4867,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
     await mkdir(join(cwd, ".clinerules"), { recursive: true });
 
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     const projectName = (index!.project.packageName ?? "fixture")
@@ -4974,7 +4909,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         agent: "claude",
         "all-agents": false,
         "create-skills-format": "json",
@@ -4984,7 +4919,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5014,7 +4949,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5023,7 +4958,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5045,7 +4980,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     // No .mp-sentinel-cache/ai-enrichment/ directory exists
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5054,7 +4989,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5078,7 +5013,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5087,7 +5022,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5112,7 +5047,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     // that doctor doesn't crash by asserting the field exists regardless.
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5121,7 +5056,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5142,12 +5077,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await writeFile(join(cacheDir, "abc123.json"), JSON.stringify({ cacheKey: "abc123" }));
 
     // Build index and write up-to-date skills
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     const projectName = (index!.project.packageName ?? "fixture")
@@ -5179,7 +5109,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "console",
         "create-skills-force": false,
@@ -5188,7 +5118,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5217,7 +5147,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5226,7 +5156,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5253,7 +5183,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5262,7 +5192,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": true, // Flag passed — but doctor is read-only
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5316,7 +5246,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5325,7 +5255,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5341,12 +5271,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
 
     // Build a valid index with manifestHash
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     expect(index!.manifestHash).toBeDefined();
@@ -5364,7 +5289,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5373,7 +5298,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5395,12 +5320,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await makeMinimalProject(cwd);
 
     // Build a valid index with manifestHash
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     expect(index!.manifestHash).toBeDefined();
@@ -5408,7 +5328,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     // Do NOT modify package.json \u2014 manifest should still match
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5417,7 +5337,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5435,12 +5355,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     await mkdir(join(cwd, ".claude"), { recursive: true });
 
     // Build index and write up-to-date skills (healthy project)
-    const indexConfig = {
-      enabled: true,
-      languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-      cachePath: ".mp-sentinel-cache/source-index.json" as const,
-      maxFileSize: 512000,
-    };
+    const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
     expect(index).not.toBeNull();
     const adapter = getAdapter("claude")!;
@@ -5473,7 +5388,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     // No AI config \u2192 disabled by default
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5482,7 +5397,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5513,7 +5428,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     try {
       const cap = captureStdout();
       exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
@@ -5522,7 +5437,7 @@ describe("runCreateSkillsCommand --doctor", () => {
           "create-skills-check": false,
           "create-skills-no-ai-enrich": false,
           doctor: true,
-        },
+        }),
         cwd,
       );
       cap.restore();
@@ -5557,7 +5472,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     try {
       const cap = captureStdout();
       exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
@@ -5566,7 +5481,7 @@ describe("runCreateSkillsCommand --doctor", () => {
           "create-skills-check": false,
           "create-skills-no-ai-enrich": false,
           doctor: true,
-        },
+        }),
         cwd,
       );
       cap.restore();
@@ -5596,7 +5511,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5605,7 +5520,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5637,7 +5552,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     try {
       const cap = captureStdout();
       await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
@@ -5646,7 +5561,7 @@ describe("runCreateSkillsCommand --doctor", () => {
           "create-skills-check": false,
           "create-skills-no-ai-enrich": false,
           doctor: true,
-        },
+        }),
         cwd,
       );
       cap.restore();
@@ -5683,7 +5598,7 @@ describe("runCreateSkillsCommand --doctor", () => {
       const cap = captureStdout();
       const start = Date.now();
       const exitCode = await runCreateSkillsCommand(
-        {
+        createSkillsValues({
           "all-agents": false,
           "create-skills-format": "json",
           "create-skills-force": false,
@@ -5692,7 +5607,7 @@ describe("runCreateSkillsCommand --doctor", () => {
           "create-skills-check": false,
           "create-skills-no-ai-enrich": false,
           doctor: true,
-        },
+        }),
         cwd,
       );
       const elapsed = Date.now() - start;
@@ -5742,10 +5657,12 @@ describe("runCreateSkillsCommand --doctor", () => {
     }
   }
 
-  const defaultIndexConfig = {
+  const defaultIndexConfig: Required<
+    Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
+  > = {
     enabled: true,
-    languages: ["typescript", "tsx", "javascript", "jsx"] as const,
-    cachePath: ".mp-sentinel-cache/source-index.json" as const,
+    languages: ["typescript", "tsx", "javascript", "jsx"],
+    cachePath: ".mp-sentinel-cache/source-index.json",
     maxFileSize: 512000,
   };
 
@@ -5820,7 +5737,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5829,7 +5746,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5860,7 +5777,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5869,7 +5786,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5898,7 +5815,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5907,7 +5824,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5943,7 +5860,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5952,7 +5869,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -5974,7 +5891,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -5983,7 +5900,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -6007,7 +5924,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -6016,7 +5933,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -6046,7 +5963,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     const exitCode = await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -6055,7 +5972,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -6184,7 +6101,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -6193,7 +6110,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();
@@ -6226,7 +6143,7 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const cap = captureStdout();
     await runCreateSkillsCommand(
-      {
+      createSkillsValues({
         "all-agents": false,
         "create-skills-format": "json",
         "create-skills-force": false,
@@ -6235,7 +6152,7 @@ describe("runCreateSkillsCommand --doctor", () => {
         "create-skills-check": false,
         "create-skills-no-ai-enrich": false,
         doctor: true,
-      },
+      }),
       cwd,
     );
     cap.restore();

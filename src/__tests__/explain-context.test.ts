@@ -23,6 +23,37 @@ const makeTempDir = async (): Promise<string> => {
   return dir;
 };
 
+interface ExplainJsonOutput {
+  status?: string;
+  reason?: string;
+  profile?: string;
+  budgetChars?: number;
+  truncated?: boolean;
+  relatedFileCount?: number;
+  relationTypes?: string[];
+  indexUsed?: boolean;
+  includedSignals?: string[];
+  includedFiles?: string[];
+  contextPreview?: string;
+  intelligenceSignals?: Array<{
+    type: string;
+    file?: string;
+    reason?: string;
+    evidence?: string;
+    [key: string]: unknown;
+  }>;
+  suggestedCommands?: string[];
+  [key: string]: unknown;
+}
+
+const parseFirstJsonLog = (calls: ReadonlyArray<ReadonlyArray<unknown>>): ExplainJsonOutput => {
+  const firstCall = calls[0];
+  expect(firstCall).toBeDefined();
+  const firstArg = firstCall![0];
+  expect(typeof firstArg).toBe("string");
+  return JSON.parse(firstArg as string) as ExplainJsonOutput;
+};
+
 beforeEach(() => {
   clearParserCache();
   process.argv = ["node", "mp-sentinel"];
@@ -127,30 +158,25 @@ describe("renderExplainContext", () => {
     local: false,
     interactive: false,
     "target-branch": "origin/main",
-    concurrency: undefined,
     "branch-diff": false,
     fetch: false,
     "include-uncommitted": false,
     staged: false,
-    commit: undefined,
-    range: undefined,
     files: [],
     "no-skills-fetch": false,
     "dry-run": false,
     "verbose-dry-run": false,
-    "token-limit": undefined,
     "explain-context": true,
-    "index-format": undefined,
     stats: false,
-    explainIndex: undefined,
-    agent: undefined,
     "all-agents": false,
-    "create-skills-format": undefined,
     "create-skills-force": false,
     "skip-index-refresh": false,
     "create-skills-dry-run": false,
     "create-skills-check": false,
-    ...overrides,
+    "create-skills-no-ai-enrich": false,
+    ...(Object.fromEntries(
+      Object.entries(overrides).filter(([, value]) => value !== undefined),
+    ) as Partial<CLIValues>),
   });
 
   it("returns JSON with status 'unavailable' when indexing is disabled", async () => {
@@ -170,7 +196,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.reason).toContain("disabled");
     } finally {
@@ -196,7 +222,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.reason).toContain("No source index found");
     } finally {
@@ -223,7 +249,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("available");
       expect(jsonOutput.profile).toBe("library");
       expect(jsonOutput.budgetChars).toBe(12000);
@@ -232,7 +258,7 @@ describe("renderExplainContext", () => {
       expect(jsonOutput.relationTypes).toContain("changed");
       expect(jsonOutput.includedFiles).toContain("src/index.ts");
       expect(jsonOutput.contextPreview).toBeDefined();
-      expect(jsonOutput.contextPreview.length).toBeLessThanOrEqual(500);
+      expect(jsonOutput.contextPreview!.length).toBeLessThanOrEqual(500);
       expect(jsonOutput.indexUsed).toBe(true);
     } finally {
       logSpy.mockRestore();
@@ -343,7 +369,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("available");
       expect(jsonOutput.indexUsed).toBe(true);
       expect(jsonOutput.includedSignals).toBeDefined();
@@ -351,12 +377,12 @@ describe("renderExplainContext", () => {
       // v1.4.0: intelligenceSignals should be present with structured metadata
       expect(jsonOutput.intelligenceSignals).toBeDefined();
       expect(Array.isArray(jsonOutput.intelligenceSignals)).toBe(true);
-      expect(jsonOutput.intelligenceSignals.length).toBeGreaterThan(0);
-      const publicApiSignal = jsonOutput.intelligenceSignals.find(
+      expect(jsonOutput.intelligenceSignals!.length).toBeGreaterThan(0);
+      const publicApiSignal = jsonOutput.intelligenceSignals!.find(
         (s: { type: string }) => s.type === "public-api",
       );
       expect(publicApiSignal).toBeDefined();
-      expect(publicApiSignal.file).toBe("src/api.ts");
+      expect(publicApiSignal!.file).toBe("src/api.ts");
     } finally {
       logSpy.mockRestore();
       process.chdir(originalCwd);
@@ -380,7 +406,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.reason).toContain("Indexing disabled");
       expect(jsonOutput.reason).toContain("indexing.enabled");
@@ -440,17 +466,17 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("available");
       expect(jsonOutput.suggestedCommands).toBeDefined();
       expect(Array.isArray(jsonOutput.suggestedCommands)).toBe(true);
       // At minimum, --agent-context commands for included files
-      const hasAgentContext = jsonOutput.suggestedCommands.some((cmd: string) =>
+      const hasAgentContext = jsonOutput.suggestedCommands!.some((cmd: string) =>
         cmd.includes("--agent-context"),
       );
       expect(hasAgentContext).toBe(true);
       // Commands are capped
-      const agentContextCmds = jsonOutput.suggestedCommands.filter((cmd: string) =>
+      const agentContextCmds = jsonOutput.suggestedCommands!.filter((cmd: string) =>
         cmd.includes("--agent-context"),
       );
       expect(agentContextCmds.length).toBeLessThanOrEqual(3);
@@ -477,7 +503,7 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.status).toBe("unavailable");
       expect(jsonOutput.suggestedCommands).toBeUndefined();
     } finally {
@@ -536,10 +562,10 @@ describe("renderExplainContext", () => {
         startTime: performance.now(),
       });
 
-      const jsonOutput = JSON.parse(logSpy.mock.calls[0][0]);
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
       expect(jsonOutput.suggestedCommands).toBeDefined();
 
-      for (const cmd of jsonOutput.suggestedCommands) {
+      for (const cmd of jsonOutput.suggestedCommands!) {
         // Every command argument value must be wrapped in double quotes
         if (cmd.includes("--agent-context ")) {
           expect(cmd).toMatch(/--agent-context "([^"]*)"/);
