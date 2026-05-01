@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 
 import { buildSourceIndex } from "../commands/indexing.js";
 import { clearConfigCache } from "../utils/config.js";
+import { clearParserCache } from "../services/source-index/parser.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import type { SourceIndex } from "../types/index.js";
 
@@ -17,11 +18,13 @@ const makeTempDir = async (): Promise<string> => {
 };
 
 beforeEach(() => {
+  clearParserCache();
   process.argv = ["node", "mp-sentinel"];
 });
 
 afterEach(async () => {
   clearConfigCache();
+  clearParserCache();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 

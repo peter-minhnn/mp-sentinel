@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -39,8 +39,8 @@
     "agent:skills:check": "node scripts/agent-skills-check.mjs",
     "agent:skills:refresh": "node scripts/agent-skills-refresh.mjs",
     "release:check": "node scripts/release-check.mjs",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js --coverage",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\""
   },
@@ -98,8 +98,8 @@
   "jest": {
     "preset": "ts-jest/presets/default-esm",
     "testEnvironment": "node",
-    "extensionsToTreatAsEsm": [
-      ".ts"
+    "setupFiles": [
+      "./jest.setup.cjs"
     ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"

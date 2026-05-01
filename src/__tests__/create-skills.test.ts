@@ -21,6 +21,7 @@ import { generateContent } from "../services/skills-generator/content.js";
 import { buildSourceIndex } from "../commands/indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { clearConfigCache } from "../utils/config.js";
+import { clearParserCache } from "../services/source-index/parser.js";
 import { setLogQuietMode } from "../utils/logger.js";
 
 // -- Fixtures ------------------------------------------------------------------
@@ -43,11 +44,13 @@ const makeMinimalProject = async (cwd: string): Promise<void> => {
 };
 
 beforeEach(() => {
+  clearParserCache();
   process.argv = ["node", "mp-sentinel"];
 });
 
 afterEach(async () => {
   clearConfigCache();
+  clearParserCache();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 

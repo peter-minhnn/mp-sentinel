@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-05-01
+
+### Fixed
+- **Serial isolation** (`jest.setup.cjs`, `src/services/source-index/parser.ts`): Tree-sitter parser pool preloaded in root CJS context and shared across Jest VM contexts, preventing per-suite native addon loads that caused Windows EPERM errors in concurrent VM contexts. `getParser()` cycles through pooled parsers; `clearParserCache()` resets pools and caches between suites.
+- **Stale cache cleanup** (`src/services/source-index/storage.ts`, `src/commands/indexing.ts`): `validateCache()` detects indexed files removed from the current file set and marks them as missing so rebuilts drop stale entries. Index graph is now rebuilt when the file set shrinks even if all remaining files are cached.
+
+### Changed
+- **Chunk boundary accuracy** (`src/services/source-index/parser.ts`): `netBraceChange()` skips braces inside comments, string literals, and template literal bodies (counting only braces inside `${}` expressions). Prevents boundary-detection skew from comment and string content.
+
+### Added
+- **Serial isolation canary** (`scripts/serial-isolation-check.cjs`): Runs historically fragile tree-sitter suites with `--runInBand` in one Jest process as a regression guard.
+
 ## [1.31.0] - 2026-04-30
 
 ### Changed

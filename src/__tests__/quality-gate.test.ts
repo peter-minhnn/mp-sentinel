@@ -126,8 +126,8 @@ describe("validateSkillQuality", () => {
       expect(sizeErrors.length).toBe(1);
     });
 
-    it("flags single-file adapter output over 22000 chars", () => {
-      const longContent = "# Big\n\n" + "x".repeat(22001);
+    it("flags single-file adapter output over 22500 chars", () => {
+      const longContent = "# Big\n\n" + "x".repeat(22501);
       const files = [makeFile(".cursor/rules/test.mdc", longContent)];
       const report = validateSkillQuality(files, "cursor", null);
       const sizeErrors = report.checks.filter(

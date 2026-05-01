@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach, beforeEach, jest } from "@jest/globals";
@@ -28,8 +28,10 @@ import {
   sanitizeContent,
   lexicalParse,
   chunkedParse,
+  clearParserCache,
 } from "../services/source-index/parser.js";
 import { getLanguageForFile } from "../services/source-index/manifest.js";
+import { calculateSHA256 } from "../services/source-index/storage.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
 const tempDirs: string[] = [];
@@ -41,11 +43,13 @@ const makeTempDir = async (): Promise<string> => {
 };
 
 beforeEach(() => {
+  clearParserCache();
   process.argv = ["node", "mp-sentinel"];
 });
 
 afterEach(async () => {
   clearConfigCache();
+  clearParserCache();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -456,14 +460,17 @@ describe("indexing command output", () => {
     await runIndexingCommand({ "index-format": "json", force: true }, cwd);
 
     // Inject chunked files
+    const largeContent = "export const large = 1;\n";
+    const largePath = join(cwd, "src", "large.ts");
+    await writeFile(largePath, largeContent);
     const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
     const cached = JSON.parse(await readFile(cachePath, "utf-8"));
     cached.files.push({
       path: "src/large.ts",
       language: "typescript",
-      sha256: "abc123",
+      sha256: await calculateSHA256(largeContent),
       sizeBytes: 50000,
-      mtimeMs: Date.now(),
+      mtimeMs: (await stat(largePath)).mtimeMs,
       imports: [],
       exports: [],
       symbols: [],
@@ -852,6 +859,34 @@ describe("manifest hash cache invalidation", () => {
     expect(idx2!.stats.parsedFiles).toBe(0);
     expect(idx2!.stats.cacheHitFiles).toBe(1);
     expect(idx2!.project.scripts).toEqual({ test: "vitest" });
+  });
+
+  it("drops deleted indexed files on incremental rebuild", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }),
+    );
+    await writeFile(join(cwd, "src", "keep.ts"), `export const keep = 1;`);
+    await writeFile(join(cwd, "src", "deleted.ts"), `export const deleted = 1;`);
+
+    const config = {
+      enabled: true,
+      languages: ["typescript", "tsx", "javascript", "jsx"] as IndexableLanguage[],
+      cachePath: ".mp-sentinel-cache/source-index.json",
+      maxFileSize: 512000,
+    };
+
+    const idx1 = await buildSourceIndex(cwd, config, false);
+    expect(idx1!.files.map((file) => file.path).sort()).toEqual(["src/deleted.ts", "src/keep.ts"]);
+
+    await rm(join(cwd, "src", "deleted.ts"));
+
+    const idx2 = await buildSourceIndex(cwd, config, false);
+    expect(idx2!.files.map((file) => file.path)).toEqual(["src/keep.ts"]);
+    expect(idx2!.stats.indexedFiles).toBe(1);
+    expect(idx2!.stats.skippedFiles).toBe(0);
   });
 
   it("treats legacy index without manifestHash as manifest-stale", async () => {
@@ -4755,12 +4790,11 @@ describe("chunkedParse line offsets", () => {
     expect(content.length).toBeGreaterThan(30000);
 
     const doParse = async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       const errors: string[] = [];
       if (
@@ -4813,12 +4847,11 @@ describe("chunkedParse line offsets", () => {
     expect(content.length).toBeGreaterThan(30000);
 
     const doParse = async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       const errors: string[] = [];
       if (
@@ -4860,12 +4893,11 @@ describe("chunkedParse line offsets", () => {
     expect(content.length).toBeGreaterThan(30000);
 
     const doParse = async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       const errors: string[] = [];
       if (
@@ -4908,12 +4940,11 @@ describe("chunkedParse observability fields", () => {
 
   const makeDoParse = () => {
     return async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       const errors: string[] = [];
       if (tree && tree.rootNode) {
@@ -4972,12 +5003,11 @@ describe("chunkedParse observability fields", () => {
     const content = 'export const x = 1;\nexport function foo() { return "bar"; }\n';
 
     const doParse = async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       return { tree, parseErrors: [] };
     };
@@ -5017,12 +5047,11 @@ describe("chunkedParse safe-boundary chunking", () => {
 
   const makeDoParse = () => {
     return async (parseContent: string) => {
-      const parser = await import("tree-sitter");
-      const tsModule = await import("tree-sitter-typescript");
-      const Parser = parser.default;
-      const grammars = tsModule.default as { typescript: unknown };
-      const p = new Parser();
-      p.setLanguage(grammars.typescript);
+      const g = (globalThis as any).__mpTreeSitter;
+      const pool = g.pools.typescript;
+      const idx = g._nextIdx.typescript;
+      g._nextIdx.typescript = (idx + 1) % pool.length;
+      const p = pool[idx];
       const tree = p.parse(parseContent);
       const errors: string[] = [];
       if (tree && tree.rootNode) {
@@ -5707,14 +5736,17 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
     await runIndexingCommand({ "index-format": "json", force: true }, cwd);
 
     // Inject a chunked-tree-sitter file into the cache
+    const chunkedContent = "export function largeFn() { return 1; }\n";
+    const chunkedPath = join(cwd, "src", "chunked.ts");
+    await writeFile(chunkedPath, chunkedContent);
     const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
     const cached = JSON.parse(await readFile(cachePath, "utf-8"));
     cached.files.push({
       path: "src/chunked.ts",
       language: "typescript",
-      sha256: "chk456",
+      sha256: await calculateSHA256(chunkedContent),
       sizeBytes: 60000,
-      mtimeMs: Date.now(),
+      mtimeMs: (await stat(chunkedPath)).mtimeMs,
       imports: [],
       exports: [],
       symbols: [{ name: "largeFn", type: "function", line: 1, column: 1 }],
@@ -5776,14 +5808,17 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
     await runIndexingCommand({ "index-format": "json", force: true }, cwd);
 
     // Inject a chunked-tree-sitter file into the cache
+    const chunkedContent = "export function largeFn() { return 1; }\n";
+    const chunkedPath = join(cwd, "src", "chunked.ts");
+    await writeFile(chunkedPath, chunkedContent);
     const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
     const cached = JSON.parse(await readFile(cachePath, "utf-8"));
     cached.files.push({
       path: "src/chunked.ts",
       language: "typescript",
-      sha256: "chk789",
+      sha256: await calculateSHA256(chunkedContent),
       sizeBytes: 60000,
-      mtimeMs: Date.now(),
+      mtimeMs: (await stat(chunkedPath)).mtimeMs,
       imports: [],
       exports: [],
       symbols: [{ name: "largeFn", type: "function", line: 1, column: 1 }],

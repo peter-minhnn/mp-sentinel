@@ -342,3 +342,19 @@ describe("Script unicode safety", () => {
     expect(result.stdout).toContain("Script ASCII safety");
   });
 });
+
+// Serial Isolation Guard
+
+describe("serial-isolation-check.cjs", () => {
+  it("exits 0 when vulnerable suites pass serially", () => {
+    const result = runScript(scriptPath("serial-isolation-check.cjs"), REPO_ROOT);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("PASS: Serial tree-sitter suites passed.");
+  });
+
+  it("preloads the Jest setup file in the root process", () => {
+    const content = readFileSync(scriptPath("serial-isolation-check.cjs"), "utf-8");
+    expect(content).toContain("--require");
+    expect(content).toContain("jest.setup.cjs");
+  });
+});

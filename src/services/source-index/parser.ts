@@ -1,6 +1,5 @@
 /**
  * Tree-sitter Parser - AST-based code analysis for JS/TS files
- * Uses dynamic imports for ESM compatibility
  */
 
 import { getLanguageForFile } from "./manifest.js";
@@ -20,20 +19,47 @@ import { log } from "../../utils/logger.js";
 const grammarCaches: Map<string, any> = new Map();
 const parserCaches: Map<IndexableLanguage, any> = new Map();
 
+function getSharedTreeSitter(): NonNullable<typeof globalThis.__mpTreeSitter> | undefined {
+  return globalThis.__mpTreeSitter ?? process.__mpTreeSitter;
+}
+
+/** Reset all parser caches used by tests to ensure isolation between suites. */
+export function clearParserCache(): void {
+  grammarCaches.clear();
+  parserCaches.clear();
+  getSharedTreeSitter()?.resetPools();
+}
+
 /**
- * Get or create parser for a language
+ * Get or create parser for a language.
+ *
+ * In tests, returns a parser from the prebuilt pool in jest.setup.cjs,
+ * cycling through parsers to limit reuse of any single instance.  The pool
+ * is created once in the root CJS context and never garbage-collected.
+ *
+ * In production, parsers are created lazily and cached.
  */
 async function getParser(language: IndexableLanguage): Promise<any> {
+  const sharedTreeSitter = getSharedTreeSitter();
+  if (sharedTreeSitter) {
+    const pool = sharedTreeSitter.pools[language];
+    if (!pool || pool.length === 0) {
+      throw new Error(`No parser pool available for language: ${language}`);
+    }
+    const idx = sharedTreeSitter._nextIdx[language] ?? 0;
+    sharedTreeSitter._nextIdx[language] = (idx + 1) % pool.length;
+    return pool[idx];
+  }
+
+  // Production path: create parser lazily and cache.
   const cachedParser = parserCaches.get(language);
   if (cachedParser) {
     return cachedParser;
   }
 
-  // Dynamic import tree-sitter
   const treeSitter = await import("tree-sitter");
   const Parser = treeSitter.default;
 
-  // Load grammar
   let grammar: any;
   if (language === "typescript" || language === "tsx") {
     if (!grammarCaches.has("typescript")) {
@@ -636,18 +662,70 @@ const MAX_CHUNK_SIZE = 30000;
 /**
  * Hard upper bound for any chunk (including safe-boundary extensions).
  * Tree-sitter on Windows throws "Invalid argument" for content > ~32768 bytes.
- * Keeping chunks ≤ 32000 leaves a safe margin.
+ * Keeping chunks <= 32000 leaves a safe margin.
  */
 const HARD_CHUNK_LIMIT = 32000;
 
 /**
  * Approximate net brace-depth change in a line.
- * Used as a heuristic for finding safe chunk split points — strings may
- * skew the count slightly but the fallback handles false negatives.
+ * Ignores braces inside comments, strings, and template literal bodies
+ * so that chunk boundary detection is not skewed by brace characters in
+ * those contexts.
  */
 function netBraceChange(line: string): number {
   let depth = 0;
-  for (const ch of line) {
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    const next = line[i + 1] ?? "";
+
+    // Skip line comments
+    if (ch === "/" && next === "/") {
+      return depth;
+    }
+
+    // Skip block comments
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < line.length && !(line[i] === "*" && line[i + 1] === "/")) {
+        i++;
+      }
+      i++; // skip the closing '/'
+      continue;
+    }
+
+    // Skip strings
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      i++;
+      while (i < line.length && line[i] !== quote) {
+        if (line[i] === "\\") i++; // skip escaped char
+        i++;
+      }
+      continue;
+    }
+
+    // Skip template literal bodies (but count braces inside ${} expressions)
+    if (ch === "`") {
+      i++;
+      while (i < line.length && line[i] !== "`") {
+        if (line[i] === "\\") {
+          i++; // skip escaped char
+        } else if (line[i] === "$" && line[i + 1] === "{") {
+          // Enter template expression - count braces here.
+          i += 2;
+          let exprDepth = 1;
+          while (i < line.length && exprDepth > 0) {
+            if (line[i] === "{" && line[i - 1] !== "$") exprDepth++;
+            else if (line[i] === "}") exprDepth--;
+            i++;
+          }
+          continue;
+        }
+        i++;
+      }
+      continue;
+    }
+
     if (ch === "{") depth++;
     else if (ch === "}") depth--;
   }
@@ -752,7 +830,7 @@ export async function chunkedParse(
   }
 
   if (chunks.length <= 1) {
-    // Not enough chunks to be meaningful — let the caller fall through
+    // Not enough chunks to be meaningful - let the caller fall through.
     return null;
   }
 
@@ -800,7 +878,7 @@ export async function chunkedParse(
         allParseWarnings.push(`Chunk at line ${chunk.startLine}: ${err}`);
         // Chunked parsing splits files on line boundaries, breaking multi-line
         // constructs.  Parse errors in any chunk are overwhelmingly truncation
-        // artifacts rather than real syntax errors — real errors are caught by
+        // artifacts rather than real syntax errors - real errors are caught by
         // linters, IDE tooling, and the primary (non-chunked) parse path.
         boundaryWarningCount++;
       }
@@ -918,7 +996,7 @@ export async function parseFile(
     // Tree-sitter can throw "Invalid argument" on Windows when content contains
     // certain Unicode characters (box-drawing, smart quotes, em dashes, etc.)
     // or when the file is too large for a single parse.
-    // Recovery order: chunked Tree-sitter → ASCII normalization → lexical fallback.
+    // Recovery order: chunked Tree-sitter -> ASCII normalization -> lexical fallback.
     if (message.includes("Invalid argument")) {
       // Step 1: Try chunked Tree-sitter parse (handles large files and some Unicode cases).
       const chunked = await chunkedParse(content, language, doParse);
@@ -980,7 +1058,7 @@ export async function parseFile(
             return result;
           }
         } catch {
-          // ASCII fallback also failed — try lexical fallback below.
+          // ASCII fallback also failed - try lexical fallback below.
         }
       } else {
         // Content is already ASCII but Tree-sitter still threw. Retry once with
@@ -1012,11 +1090,11 @@ export async function parseFile(
             return result;
           }
         } catch {
-          // Retry also failed — use lexical fallback below.
+          // Retry also failed - use lexical fallback below.
         }
       }
 
-      // Step 3: Tree-sitter failed entirely — use lexical regex-based fallback.
+      // Step 3: Tree-sitter failed entirely - use lexical regex-based fallback.
       log.warning(
         `Lexical fallback used for ${filePath}: Tree-sitter + chunked + ASCII all failed`,
       );

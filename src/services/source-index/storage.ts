@@ -103,6 +103,7 @@ export async function validateCache(
 
   // Build map of indexed files by path
   const indexedFiles = new Map(index.files.map((f) => [f.path, f]));
+  const currentFiles = new Set(files);
 
   for (const filePath of files) {
     const absolutePath = resolve(projectRoot, filePath);
@@ -126,6 +127,12 @@ export async function validateCache(
     } catch {
       // File might have been deleted
       missingFiles.push(filePath);
+    }
+  }
+
+  for (const indexedPath of indexedFiles.keys()) {
+    if (!currentFiles.has(indexedPath)) {
+      missingFiles.push(indexedPath);
     }
   }
 

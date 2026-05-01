@@ -19,7 +19,7 @@ import type {
 
 const SKILL_MD_MAX = 4200;
 const REF_MD_MAX = 6000;
-const SINGLE_FILE_MAX = 22000;
+const SINGLE_FILE_MAX = 22500;
 
 // ── Unknown-path allowlist ──────────────────────────────────────────────────
 // These paths are valid references in generated skills but are not source files

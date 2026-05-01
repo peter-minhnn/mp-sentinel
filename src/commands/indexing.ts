@@ -59,6 +59,12 @@ interface ExplainOptions {
 }
 
 async function assertTreeSitterAvailable(): Promise<void> {
+  // In tests, tree-sitter is preloaded by jest.setup.cjs onto globalThis.
+  // Skipping the dynamic import() avoids loading the native addon a second
+  // time when it's already alive in the root CJS context.
+  if (globalThis.__mpTreeSitter || process.__mpTreeSitter) {
+    return;
+  }
   try {
     await Promise.all([
       import("tree-sitter"),
@@ -304,9 +310,9 @@ export async function buildSourceIndex(
       }
 
       if (filesToIndex.length === 0 && !manifestChanged) {
-        // All files are cached and manifest unchanged
-        log.info("Cache is up-to-date, skipping re-index");
-        return existingIndex!;
+        // The file set can change only by deleting indexed files. Reuse the
+        // remaining cached parsed files and rebuild the graph/cache below.
+        log.info("Indexed file set changed - reusing cached parsed files, rebuilding graph");
       }
 
       log.info(`Cache invalid: ${filesToIndex.length} files need re-indexing`);

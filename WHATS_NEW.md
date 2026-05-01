@@ -1,3 +1,16 @@
+# What's New in v1.32.0
+
+## Serial Isolation & Stale Cache Fixes
+
+v1.32.0 fixes the historical tree-sitter serial isolation failures in Jest and drops stale index entries when files are deleted from the project.
+
+- **Serial isolation fix** (`jest.setup.cjs`, `src/services/source-index/parser.ts`): Tree-sitter parsers are now preloaded in the root CJS context via `jest.setup.cjs` and shared across Jest VM contexts. `getParser()` detects the pool through `globalThis.__mpTreeSitter` and cycles through pooled parsers to limit reuse per test. `clearParserCache()` resets pools and caches between suites. This avoids loading the native addon per-suite, preventing Windows EPERM errors when Jest creates concurrent VM contexts.
+- **Serial isolation guard** (`scripts/serial-isolation-check.cjs`): New script runs the historically fragile tree-sitter suites with `--runInBand` in one Jest process. Acts as a regression canary for serial isolation issues.
+- **Stale cache cleanup** (`src/services/source-index/storage.ts`, `src/commands/indexing.ts`): `validateCache()` now detects indexed files that were removed from the current file set and marks them as missing, so cache rebuilds drop stale entries. When all remaining files are cached but the file set shrank, the index graph is rebuilt instead of short-circuiting.
+- **Chunk boundary accuracy** (`src/services/source-index/parser.ts`): `netBraceChange()` now skips braces inside line comments, block comments, string literals, and template literal bodies (while continuing to count braces inside `${}` template expressions). Prevents brace-depth skew from comment and string content when finding safe chunk split points.
+
+---
+
 # What's New in v1.31.0
 
 ## Smarter Chunk Boundaries for Large Files

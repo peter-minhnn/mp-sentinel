@@ -8,11 +8,12 @@
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, it, expect, afterEach, beforeAll, jest } from "@jest/globals";
+import { describe, it, expect, afterEach, beforeAll, beforeEach, jest } from "@jest/globals";
 
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { renderExplainContext } from "../cli/review.js";
 import { clearConfigCache } from "../utils/config.js";
+import { clearParserCache } from "../services/source-index/parser.js";
 import { buildSourceIndex } from "../commands/indexing.js";
 import {
   createCliToolingFixture,
@@ -34,8 +35,13 @@ const makeTempDir = async (): Promise<string> => {
   return dir;
 };
 
+beforeEach(() => {
+  clearParserCache();
+});
+
 afterEach(async () => {
   clearConfigCache();
+  clearParserCache();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   process.exitCode = undefined;
 });
@@ -60,6 +66,7 @@ describe("Review Intelligence Fixtures \u2014 profile coverage", () => {
       let fixture: IndexedFixture;
 
       beforeAll(async () => {
+        clearParserCache();
         const cwd = await makeTempDir();
         const builder = createFixtureMap.get(profile)!;
         fixture = await builder(cwd);
@@ -389,6 +396,7 @@ describe("Review Intelligence \u2014 quality assertions", () => {
   let index: SourceIndex;
 
   beforeAll(async () => {
+    clearParserCache();
     cwd = await makeTempDir();
     await mkdir(join(cwd, "src"), { recursive: true });
     await writeFile(

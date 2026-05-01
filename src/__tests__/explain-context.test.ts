@@ -11,6 +11,7 @@ import { parseCliArgs } from "../cli/args.js";
 import { renderExplainContext } from "../cli/review.js";
 import { buildSourceIndex } from "../commands/indexing.js";
 import { clearConfigCache } from "../utils/config.js";
+import { clearParserCache } from "../services/source-index/parser.js";
 import type { ProjectConfig, IndexingConfig } from "../types/index.js";
 import type { CLIValues } from "../cli/args.js";
 
@@ -23,12 +24,14 @@ const makeTempDir = async (): Promise<string> => {
 };
 
 beforeEach(() => {
+  clearParserCache();
   process.argv = ["node", "mp-sentinel"];
   process.exitCode = undefined;
 });
 
 afterEach(async () => {
   clearConfigCache();
+  clearParserCache();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   process.exitCode = undefined;
 });
