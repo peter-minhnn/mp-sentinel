@@ -214,7 +214,8 @@ AI_MODEL=gemini-2.5-flash
 # Set API key for your chosen provider
 GEMINI_API_KEY=your_key_here      # For Gemini
 # OPENAI_API_KEY=your_key_here    # For OpenAI
-# ANTHROPIC_API_KEY=your_key_here # For Anthropic
+# ANTHROPIC_API_KEY=your_key_here # For Anthropic (preferred)
+# ANTHROPIC_AUTH_TOKEN=your_key_here # Anthropic fallback alias
 # GROK_API_KEY=your_key_here      # For Grok
 # OPENROUTER_API_KEY=your_key_here # For OpenRouter
 
@@ -231,6 +232,8 @@ MP_SENTINEL_CONCURRENCY=5
 # Optional: Set default target branch
 TARGET_BRANCH=origin/main
 ```
+
+If `AI_PROVIDER`, `AI_MODEL`, or the resolved API key is unsupported or missing, review prints a warning, disables AI for that run, and continues with deterministic security-only source review. The exit code still follows findings: `0` pass, `1` findings, `2` runtime/system errors.
 
 #### Supported AI Models
 

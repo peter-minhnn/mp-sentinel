@@ -151,7 +151,7 @@ The generated content is richest when a schema `1.2` index is available (depende
 
 ## AI Enrichment
 
-By default, generated skills are deterministic and use only the source index. If you enable `createSkills.ai`, `create-skills` asks the configured AI provider to add version-aware dependency rules based on `package.json` versions and the indexed codebase.
+By default, generated skills are deterministic and use only the source index. If you enable `createSkills.ai`, `create-skills` asks the configured AI provider to add version-aware dependency rules based on `package.json` versions, the indexed codebase, and project `rules` from `.mp-sentinelrc.json`.
 
 ```json
 {
@@ -167,7 +167,9 @@ By default, generated skills are deterministic and use only the source index. If
 }
 ```
 
-Supported providers: `gemini`, `openai`, `anthropic`, `grok`, `openrouter`. Invalid provider names fail with exit code `2`; they are never silently ignored.
+Supported providers: `gemini`, `openai`, `anthropic`, `grok`, `openrouter`. Provider, model, and API key readiness are checked before any provider call. If AI is unavailable or unsupported, `create-skills` prints a warning, skips enrichment, and still generates deterministic index-only skills. `create-skills --doctor` reports that state as `aiEnrichment.status = "action-required"` without making network calls.
+
+Anthropic uses `ANTHROPIC_API_KEY` first and also accepts `ANTHROPIC_AUTH_TOKEN` as a fallback alias.
 
 Use `--no-ai-enrich` to temporarily generate deterministic index-only skills even when config enables AI:
 

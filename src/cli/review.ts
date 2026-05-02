@@ -105,7 +105,7 @@ const resolveAIEnabled = (
   return fromFlag ?? fromEnv ?? fromConfig ?? defaultValue;
 };
 
-const createSecurityOnlyResults = (
+export const createSecurityOnlyResults = (
   files: Array<{ path: string; content: string }>,
   redactionReport: Array<{
     path: string;
@@ -147,6 +147,14 @@ const createSecurityOnlyResults = (
       },
     };
   });
+};
+
+const emitFallbackNotice = (message: string, format: ReviewFormat): void => {
+  if (format === "console") {
+    log.warning(message);
+    return;
+  }
+  process.stderr.write(`[warn] ${message}\n`);
 };
 
 const buildReport = (
@@ -292,7 +300,9 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const format = resolveFormat(formatRaw);
   const target = resolveTarget(values, commandPositionals, targetBranch);
   // In dry-run mode, AI is always disabled
-  const aiEnabled = dryRun ? false : resolveAIEnabled(values, target, config);
+  const aiRequested = dryRun ? false : resolveAIEnabled(values, target, config);
+  const aiAvailability = aiRequested ? AIConfig.probeEnvironment() : null;
+  const aiEnabled = aiRequested && aiAvailability?.status === "ready";
 
   const maxFiles = Math.max(1, config.ai?.maxFiles ?? 15);
   const maxDiffLines = Math.max(100, config.ai?.maxDiffLines ?? 1200);
@@ -304,6 +314,13 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     log.warning("DRY-RUN mode: security scan only — AI calls skipped.");
   }
   log.info(`Target: ${target.mode}${target.value ? ` (${target.value})` : ""}`);
+  if (aiRequested && aiAvailability && aiAvailability.status !== "ready") {
+    emitFallbackNotice(
+      `AI review unavailable: ${aiAvailability.reason} Falling back to deterministic security-only review.`,
+      format,
+    );
+  }
+
   log.info(`AI review: ${aiEnabled ? "enabled" : "disabled"}`);
   log.info(
     `Guardrails: maxFiles=${maxFiles}, maxDiffLines=${maxDiffLines}, maxCharsPerFile=${maxCharsPerFile}`,

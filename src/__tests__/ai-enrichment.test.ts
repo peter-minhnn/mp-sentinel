@@ -247,6 +247,14 @@ describe("buildEnrichmentInput", () => {
       expect(fileList).toEqual([]);
     }
   });
+
+  it("includes project rules from .mp-sentinelrc and caps them", () => {
+    const index = makeMinimalIndex();
+    const rules = repeat("Prefer deterministic review paths", 25);
+    const input = buildEnrichmentInput(index, undefined, rules);
+    expect(input.projectRules).toHaveLength(20);
+    expect(input.projectRules[0]).toBe("Prefer deterministic review paths");
+  });
 });
 
 // -- buildEnrichmentPrompt ---------------------------------------------------
@@ -277,6 +285,17 @@ describe("buildEnrichmentPrompt", () => {
     expect(prompt).toContain("testGapCount");
     expect(prompt).toContain("languageRules");
     expect(prompt).toContain("libraryRules");
+  });
+
+  it("includes project rules in the prompt payload", () => {
+    const index = makeMinimalIndex();
+    const input = buildEnrichmentInput(index, undefined, [
+      "Never send full file content when diff context is enough.",
+    ]);
+    const prompt = buildEnrichmentPrompt(input);
+    expect(prompt).toContain("projectRules");
+    expect(prompt).toContain("Never send full file content");
+    expect(prompt).toContain("highest-priority project-specific constraints");
   });
 });
 
@@ -419,8 +438,8 @@ describe("Determinism property test", () => {
 
 describe("computeEnrichmentCacheKey", () => {
   it("same inputs produce same key", () => {
-    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-04-28", "xyz789");
-    const k2 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-04-28", "xyz789");
+    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-02", "xyz789");
+    const k2 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-02", "xyz789");
     expect(k1).toBe(k2);
   });
 
@@ -478,7 +497,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
       mode: "ai" as const,
       provider: "gemini",
       model: "gemini-2.5-flash",
-      promptVersion: "2026-04-28",
+      promptVersion: "2026-05-02",
       inputHash: "abcd1234efgh5678",
       outputHash: "deadbeefcafe1234",
     };
@@ -510,7 +529,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
       mode: "ai" as const,
       provider: "openai",
       model: "gpt-4",
-      promptVersion: "2026-04-28",
+      promptVersion: "2026-05-02",
       inputHash: "input9999999999",
       outputHash: "output88888888",
     };
@@ -769,7 +788,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-04-28",
+      "2026-05-02",
       inputHash,
     );
 
@@ -784,7 +803,7 @@ describe("enrichIndex cache integration", () => {
       mode: "ai" as const,
       provider: "gemini",
       model: "gemini-2.5-flash",
-      promptVersion: "2026-04-28",
+      promptVersion: "2026-05-02",
       inputHash,
       outputHash: "cachedoutputhash",
     };
@@ -842,7 +861,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-04-28",
+      "2026-05-02",
       inputHash,
     );
     const cached = await readEnrichmentCache(tmpDir, cacheKey);
@@ -863,7 +882,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-04-28",
+      "2026-05-02",
       inputHash,
     );
 

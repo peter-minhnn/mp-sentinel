@@ -84,6 +84,7 @@ export function validateAIEnrichmentOutput(raw: string): AIEnrichmentOutput {
 export function buildEnrichmentInput(
   index: SourceIndex,
   knowledgeBase?: SkillKnowledgeBase | null,
+  projectRules: string[] = [],
 ): AIEnrichmentInput {
   const { project } = index;
   const kb = knowledgeBase ?? buildSkillKnowledgeBase(index);
@@ -151,6 +152,7 @@ export function buildEnrichmentInput(
     defaultExportCount: kb.risks.filter((r) => r.type === "default-export").length,
     dynamicImportCount: kb.risks.filter((r) => r.type === "dynamic-import").length,
     hubFileCount: kb.risks.filter((r) => r.type === "hub-file").length,
+    projectRules: projectRules.slice(0, 20),
   };
 }
 
@@ -178,7 +180,7 @@ function roleToCategory(role: FileRole): string {
 
 // ── Prompt template ────────────────────────────────────────────────────────
 
-const ENRICHMENT_PROMPT_VERSION = "2026-04-28";
+const ENRICHMENT_PROMPT_VERSION = "2026-05-02";
 
 export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
   const { projectName, packageVersion, packageManager, dependencies, devDependencies } = input;
@@ -201,6 +203,11 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
 
   const depsWithVersions = Object.entries(input.topDependenciesWithVersions)
     .map(([name, ver]) => `    "${name}": "${ver}"`)
+    .join("\n");
+
+  const projectRuleLines = input.projectRules
+    .slice(0, 20)
+    .map((rule, index) => `    ${index + 1}. ${rule.replace(/"/g, "'")}`)
     .join("\n");
 
   return JSON.stringify({
@@ -228,6 +235,7 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
       engines: input.engines ?? {},
       bin: input.bin ?? null,
     },
+    projectRules: `{\n${projectRuleLines}\n  }`,
     moduleBreakdown: `{\n${roleLines}\n  }`,
     outputFormat: {
       instructions: `Return ONLY valid JSON in the following shape, with no markdown or commentary around it:
@@ -250,7 +258,7 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
   ]
 }
 
-Base all recommendations on actual dependency versions, not generic advice. Do NOT invent rules for packages not listed in the dependencies. Be concise. Do NOT include any text outside the JSON block. Do NOT wrap in markdown code fences.`,
+Base all recommendations on actual dependency versions, not generic advice. Treat projectRules as highest-priority project-specific constraints. Do NOT invent rules for packages not listed in the dependencies. Be concise. Do NOT include any text outside the JSON block. Do NOT wrap in markdown code fences.`,
     },
   });
 }
@@ -453,6 +461,7 @@ export interface AIEnrichmentConfig {
   temperature?: number;
   maxTokens?: number;
   projectRoot?: string;
+  projectRules?: string[];
 }
 
 /**
@@ -492,18 +501,19 @@ export async function enrichIndex(
   metadata: EnrichmentMetadata;
   output: AIEnrichmentOutput;
 } | null> {
-  const input = buildEnrichmentInput(index);
+  const input = buildEnrichmentInput(index, undefined, config.projectRules ?? []);
   const inputHash = computeEnrichmentInputHash(input);
 
-  const envProvider = process.env.AI_PROVIDER || "gemini";
-  const rawProvider = (config.provider ?? envProvider).toLowerCase();
-  if (!isAIProvider(rawProvider)) {
-    throw new ProviderError(
-      `Unsupported AI provider "${rawProvider}". Supported: ${VALID_AI_PROVIDERS.join(", ")}.`,
-    );
+  const probe = AIConfig.probeEnvironment({
+    provider: config.provider,
+    model: config.model,
+  });
+  if (probe.status !== "ready") {
+    throw new ProviderError(probe.reason);
   }
-  const providerName: AIProvider = rawProvider;
-  const modelName = config.model ?? AIProviderFactory.getDefaultModel(providerName);
+
+  const providerName = probe.config.provider;
+  const modelName = probe.config.model;
 
   // ── Cache check ──────────────────────────────────────────────────────────
   if (config.projectRoot) {
@@ -541,11 +551,11 @@ async function callEnrichmentProvider(
   inputHash: string,
   config: AIEnrichmentConfig,
 ): Promise<{ metadata: EnrichmentMetadata & { mode: "ai" }; output: AIEnrichmentOutput } | null> {
-  const apiKey = getApiKeyForProvider(providerName);
+  const apiKey = AIConfig.getApiKey(providerName);
   if (!apiKey) {
     throw new ProviderError(
       `AI enrichment enabled but no API key found for provider "${providerName}". ` +
-        `Set the appropriate environment variable (e.g., GEMINI_API_KEY, OPENAI_API_KEY).`,
+        `Set ${providerName === "anthropic" ? "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN" : providerName === "grok" ? "GROK_API_KEY or XAI_API_KEY" : `${providerName.toUpperCase()}_API_KEY`} environment variable.`,
     );
   }
 
@@ -586,22 +596,4 @@ async function callEnrichmentProvider(
   };
 
   return { metadata, output };
-}
-
-/**
- * Get API key for a provider name from environment variables.
- */
-function getApiKeyForProvider(provider: AIProvider): string | undefined {
-  switch (provider) {
-    case "gemini":
-      return process.env.GEMINI_API_KEY;
-    case "openai":
-      return process.env.OPENAI_API_KEY;
-    case "anthropic":
-      return process.env.ANTHROPIC_API_KEY;
-    case "grok":
-      return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
-    case "openrouter":
-      return process.env.OPENROUTER_API_KEY ?? AIConfig.getApiKey("openrouter");
-  }
 }

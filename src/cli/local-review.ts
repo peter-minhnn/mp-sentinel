@@ -21,6 +21,7 @@ import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
+import { createSecurityOnlyResults } from "./review.js";
 import type { CLIValues } from "./args.js";
 
 export interface LocalReviewOptions {
@@ -125,9 +126,19 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   printCommitList(commitsToReview);
 
   let hasErrors = false;
+  const dryRun = values["dry-run"] || values["verbose-dry-run"];
+  const verboseDryRun = values["verbose-dry-run"];
+  const aiAvailability = AIConfig.probeEnvironment();
+  const aiEnabled = aiAvailability.status === "ready";
+
+  if (!dryRun && !aiEnabled) {
+    log.warning(
+      `AI unavailable: ${aiAvailability.reason}. Skipping commit-message review and using deterministic security-only file review.`,
+    );
+  }
 
   // Audit commit messages
-  if (!values["skip-commit"]) {
+  if (!values["skip-commit"] && aiEnabled) {
     hasErrors = await auditCommitMessages(commitsToReview, config);
   }
 
@@ -188,14 +199,11 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   // 2. SECURITY SANITIZATION
   const securityService = getSecurityService();
-  const { sanitizedFiles } = securityService.sanitizeFiles(
+  const { sanitizedFiles, redactionReport } = securityService.sanitizeFiles(
     acceptedFiles.map((file) => ({ path: file.path, content: file.content })),
   );
 
   // 3. DRY RUN / TOKEN ESTIMATION
-  const dryRun = values["dry-run"] || values["verbose-dry-run"];
-  const verboseDryRun = values["verbose-dry-run"];
-
   if (dryRun) {
     // Attempt token estimation
     let providerName: string | undefined;
@@ -248,7 +256,9 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 0; // End early for dry-run
   }
 
-  const auditResults = await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency);
+  const auditResults = aiEnabled
+    ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
+    : createSecurityOnlyResults(sanitizedFiles, redactionReport);
 
   // Print summary
   const auditDuration = performance.now() - startTime;

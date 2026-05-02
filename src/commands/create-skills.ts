@@ -609,25 +609,6 @@ const DOCTOR_SCRIPTS = [
   { name: "release:check", description: "Verifies version consistency and lockfile integrity" },
 ];
 
-const VALID_AI_PROVIDERS = ["gemini", "openai", "anthropic", "grok", "openrouter"] as const;
-
-function getApiKeyForProviderName(provider: string): string | undefined {
-  switch (provider) {
-    case "gemini":
-      return process.env.GEMINI_API_KEY;
-    case "openai":
-      return process.env.OPENAI_API_KEY;
-    case "anthropic":
-      return process.env.ANTHROPIC_API_KEY;
-    case "grok":
-      return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
-    case "openrouter":
-      return process.env.OPENROUTER_API_KEY ?? AIConfig.getApiKey("openrouter");
-    default:
-      return undefined;
-  }
-}
-
 function computeAIEnrichmentReadiness(
   config: Awaited<ReturnType<typeof loadProjectConfig>>,
 ): DoctorAIEnrichmentReadinessInfo {
@@ -643,43 +624,30 @@ function computeAIEnrichmentReadiness(
     };
   }
 
-  const provider = (aiConfig?.provider ?? process.env.AI_PROVIDER ?? "gemini").toLowerCase();
-  const model = aiConfig?.model;
+  const probe = AIConfig.probeEnvironment({
+    provider: aiConfig?.provider,
+    model: aiConfig?.model,
+  });
 
-  if (!(VALID_AI_PROVIDERS as readonly string[]).includes(provider)) {
+  if (probe.status !== "ready") {
     const result: DoctorAIEnrichmentReadinessInfo = {
       enabled: true,
-      apiKeyPresent: false,
+      apiKeyPresent: probe.apiKeyPresent,
       status: "action-required",
-      reason: `Unsupported AI provider "${aiConfig?.provider ?? "unspecified"}". Supported: ${VALID_AI_PROVIDERS.join(", ")}.`,
+      reason: probe.reason,
     };
-    if (aiConfig?.provider) result.provider = aiConfig.provider;
-    if (model) result.model = model;
-    return result;
-  }
-
-  const apiKey = getApiKeyForProviderName(provider);
-  if (!apiKey) {
-    const envVar =
-      provider === "grok" ? "GROK_API_KEY or XAI_API_KEY" : `${provider.toUpperCase()}_API_KEY`;
-    const result: DoctorAIEnrichmentReadinessInfo = {
-      enabled: true,
-      provider,
-      apiKeyPresent: false,
-      status: "action-required",
-      reason: `AI enrichment enabled but no API key found for provider "${provider}". Set the ${envVar} environment variable.`,
-    };
-    if (model) result.model = model;
+    if (probe.provider) result.provider = probe.provider;
+    if (probe.model) result.model = probe.model;
     return result;
   }
 
   const result: DoctorAIEnrichmentReadinessInfo = {
     enabled: true,
-    provider,
+    provider: probe.config.provider,
     apiKeyPresent: true,
     status: "ready",
+    model: probe.config.model,
   };
-  if (model) result.model = model;
   return result;
 }
 
@@ -1260,15 +1228,36 @@ export async function runCreateSkillsCommand(
     const config = await loadProjectConfig(projectRoot);
     const aiConfig = config.createSkills?.ai;
     const aiEnabled = Boolean(aiConfig?.enabled) && !values["create-skills-no-ai-enrich"];
+    const emitFallbackNotice = (message: string): void => {
+      if (isJson) {
+        process.stderr.write(`[warn] ${message}\n`);
+        return;
+      }
+      log.warning(message);
+    };
+    const aiReadiness = computeAIEnrichmentReadiness(config);
 
     if (aiEnabled) {
-      const aiEnrichConfig = resolveAIEnrichmentConfig(aiConfig ?? {});
-      aiEnrichConfig.projectRoot = projectRoot;
-      const result = await enrichIndex(index, aiEnrichConfig);
-      if (result) {
-        enrichment = result.output;
-        enrichmentMetadata = result.metadata;
-        log.success("AI enrichment complete.");
+      if (aiReadiness.status !== "ready") {
+        emitFallbackNotice(
+          `AI enrichment unavailable: ${aiReadiness.reason ?? "unknown reason"}. Generating deterministic skills only.`,
+        );
+      } else {
+        const aiEnrichConfig = resolveAIEnrichmentConfig(aiConfig ?? {});
+        aiEnrichConfig.projectRoot = projectRoot;
+        aiEnrichConfig.projectRules = config.rules ?? [];
+        try {
+          const result = await enrichIndex(index, aiEnrichConfig);
+          if (result) {
+            enrichment = result.output;
+            enrichmentMetadata = result.metadata;
+            log.success("AI enrichment complete.");
+          }
+        } catch (error) {
+          emitFallbackNotice(
+            `AI enrichment unavailable: ${error instanceof Error ? error.message : String(error)}. Generating deterministic skills only.`,
+          );
+        }
       }
     }
 

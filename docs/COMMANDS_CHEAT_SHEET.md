@@ -200,7 +200,7 @@ npx mp-sentinel create-skills --agent claude --skip-index-refresh
 ```
 
 ### AI-Enriched Skills
-When `createSkills.ai.enabled` is set in config, generated skills include version-aware dependency rules from the configured provider/model. Use `--no-ai-enrich` to force deterministic index-only output for one run.
+When `createSkills.ai.enabled` is set in config, generated skills include version-aware dependency rules from the configured provider/model and project `rules` in `.mp-sentinelrc.json`. If provider/model/key readiness fails, enrichment is skipped and deterministic skills are still generated. Use `--no-ai-enrich` to force deterministic index-only output for one run.
 ```bash
 npx mp-sentinel create-skills --agent claude --no-ai-enrich
 ```

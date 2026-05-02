@@ -804,6 +804,8 @@ export interface AIEnrichmentInput {
   dynamicImportCount: number;
   /** Count of hub files (imported by >1 file) */
   hubFileCount: number;
+  /** Project-specific rules loaded from .mp-sentinelrc.json */
+  projectRules: string[];
 }
 
 /**

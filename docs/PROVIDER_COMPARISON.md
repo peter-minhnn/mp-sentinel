@@ -286,7 +286,10 @@ OPENAI_API_KEY=your_key
 AI_PROVIDER=anthropic
 AI_MODEL=claude-opus-4-6
 ANTHROPIC_API_KEY=your_key
+# ANTHROPIC_AUTH_TOKEN=your_key  # fallback alias
 ```
+
+If a configured provider/model/key cannot be resolved, mp-sentinel warns and uses deterministic non-AI source review for that run instead of failing the review only because AI is unavailable.
 
 ### Balanced (GPT-5.3-Codex)
 ```bash

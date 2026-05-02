@@ -7,15 +7,20 @@ This service provides a unified interface for multi-provider code review.
 - Gemini
 - OpenAI
 - Anthropic
+- Grok
+- OpenRouter
 
 ## Environment Variables
 
 ```bash
-AI_PROVIDER=gemini|openai|anthropic
+AI_PROVIDER=gemini|openai|anthropic|grok|openrouter
 AI_MODEL=model_name
 GEMINI_API_KEY=...
 OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
+ANTHROPIC_API_KEY=...       # preferred Anthropic key name
+ANTHROPIC_AUTH_TOKEN=...    # accepted Anthropic fallback alias
+GROK_API_KEY=...
+OPENROUTER_API_KEY=...
 
 AI_TEMPERATURE=0.2
 AI_MAX_TOKENS=2048
@@ -26,6 +31,8 @@ AI_TIMEOUT_MS=30000
 
 - Uses a singleton provider instance for connection reuse.
 - Accepts diff-hunk payloads from the review runner (not full file by default).
+- Preflights provider/model/key readiness before review commands call a provider.
+- Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing API key disables AI for the run and falls back to deterministic security-only source review.
 - Supports persistent on-disk caching via `.mp-sentinel-cache/`.
 - Cache key includes provider, model, prompt version, tool version, file path, prompt, and payload hash.
 

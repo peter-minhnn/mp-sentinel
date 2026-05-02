@@ -59,4 +59,8 @@ export class AIProviderFactory {
     };
     return recommendations[provider];
   }
+
+  static isSupportedModel(provider: AIProvider, model: string): boolean {
+    return this.getRecommendedModels(provider).includes(model);
+  }
 }

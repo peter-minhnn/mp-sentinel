@@ -419,6 +419,55 @@ describe("runCreateSkillsCommand", () => {
     expect(content).toContain("fixture-best-practices");
   });
 
+  it("skips AI enrichment and still generates deterministic output when model is invalid", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        rules: ["Prefer deterministic fallback when AI is unavailable."],
+        createSkills: {
+          ai: {
+            enabled: true,
+            provider: "openrouter",
+            model: "just-a-bare-model-name",
+          },
+        },
+      }),
+    );
+
+    const prevOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    const originalWarn = console.warn;
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    console.warn = () => {};
+
+    try {
+      const exitCode = await runCreateSkillsCommand(
+        createSkillsValues({
+          agent: "claude",
+          "all-agents": false,
+          "create-skills-force": true,
+          "skip-index-refresh": false,
+        }),
+        cwd,
+      );
+
+      expect(exitCode).toBe(0);
+      const skillPath = join(cwd, ".claude", "skills", "fixture-best-practices", "SKILL.md");
+      const content = await readFile(skillPath, "utf-8");
+      expect(content).toContain("@mp-sentinel-generated");
+      expect(content).not.toContain("AI-Enriched");
+      expect(content).not.toContain("enrichmentMode=ai");
+    } finally {
+      if (prevOpenRouterKey === undefined) {
+        delete process.env.OPENROUTER_API_KEY;
+      } else {
+        process.env.OPENROUTER_API_KEY = prevOpenRouterKey;
+      }
+      console.warn = originalWarn;
+    }
+  });
+
   it("returns exit code 1 when file exists and --force not set", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
@@ -5538,6 +5587,53 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(parsed.status).toBe("action-required");
   });
 
+  it("--doctor invalid model returns status=action-required before provider calls", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        createSkills: {
+          ai: { enabled: true, provider: "anthropic", model: "not-a-real-model" },
+        },
+      }),
+    );
+
+    const prevKey = process.env.ANTHROPIC_AUTH_TOKEN;
+    process.env.ANTHROPIC_AUTH_TOKEN = "sk-ant-test-key";
+
+    try {
+      const cap = captureStdout();
+      const exitCode = await runCreateSkillsCommand(
+        createSkillsValues({
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        }),
+        cwd,
+      );
+      cap.restore();
+      const parsed = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(1);
+      expect(parsed.aiEnrichment.status).toBe("action-required");
+      expect(parsed.aiEnrichment.apiKeyPresent).toBe(true);
+      expect(parsed.aiEnrichment.provider).toBe("anthropic");
+      expect(parsed.aiEnrichment.model).toBe("not-a-real-model");
+      expect(parsed.aiEnrichment.reason).toContain("Unsupported AI model");
+    } finally {
+      if (prevKey === undefined) {
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+      } else {
+        process.env.ANTHROPIC_AUTH_TOKEN = prevKey;
+      }
+    }
+  });
+
   it("--doctor --format json AI enrichment readiness fields parse clean", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
@@ -5582,6 +5678,56 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(["disabled", "ready", "action-required"]).toContain(aiEnrich.status);
     expect(aiEnrich.provider).toBe("anthropic");
     expect(aiEnrich.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("--doctor AI enrichment readiness accepts ANTHROPIC_AUTH_TOKEN alias", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        createSkills: { ai: { enabled: true, provider: "anthropic", model: "claude-sonnet-4-6" } },
+      }),
+    );
+
+    const prevApiKey = process.env.ANTHROPIC_API_KEY;
+    const prevAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_AUTH_TOKEN = "sk-ant-auth-token";
+
+    try {
+      const cap = captureStdout();
+      await runCreateSkillsCommand(
+        createSkillsValues({
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        }),
+        cwd,
+      );
+      cap.restore();
+      const parsed = JSON.parse(cap.stdout);
+      expect(parsed.aiEnrichment.status).toBe("ready");
+      expect(parsed.aiEnrichment.provider).toBe("anthropic");
+      expect(parsed.aiEnrichment.model).toBe("claude-sonnet-4-6");
+      expect(parsed.aiEnrichment.apiKeyPresent).toBe(true);
+    } finally {
+      if (prevApiKey === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+      } else {
+        process.env.ANTHROPIC_API_KEY = prevApiKey;
+      }
+      if (prevAuthToken === undefined) {
+        delete process.env.ANTHROPIC_AUTH_TOKEN;
+      } else {
+        process.env.ANTHROPIC_AUTH_TOKEN = prevAuthToken;
+      }
+    }
   });
 
   it("--doctor AI enrichment readiness makes no provider/network call", async () => {

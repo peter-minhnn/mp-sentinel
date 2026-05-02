@@ -3,7 +3,7 @@
  * Tests the OpenAI-compatible REST endpoint implementation
  */
 
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { AIProviderFactory } from "../services/ai/factory.js";
 import { AIConfig } from "../services/ai/config.js";
 import { OpenRouterProvider } from "../services/ai/providers/openrouter.provider.js";
@@ -301,5 +301,98 @@ describe("AIConfig with openrouter", () => {
 
   it("fromEnvironmentForProvider throws ProviderError when no key for openrouter", () => {
     expect(() => AIConfig.fromEnvironmentForProvider("openrouter")).toThrow(/has no API key/);
+  });
+});
+
+describe("AIConfig environment probing", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.AI_PROVIDER;
+    delete process.env.AI_MODEL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("getApiKey falls back to ANTHROPIC_AUTH_TOKEN", () => {
+    process.env.ANTHROPIC_AUTH_TOKEN = "auth-token";
+    expect(AIConfig.getApiKey("anthropic")).toBe("auth-token");
+  });
+
+  it("fromEnvironment accepts ANTHROPIC_AUTH_TOKEN for Anthropic", () => {
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "claude-sonnet-4-6";
+    process.env.ANTHROPIC_AUTH_TOKEN = "auth-token";
+
+    const config = AIConfig.fromEnvironment();
+    expect(config.provider).toBe("anthropic");
+    expect(config.model).toBe("claude-sonnet-4-6");
+    expect(config.apiKey).toBe("auth-token");
+  });
+
+  it("probeEnvironment rejects unsupported provider models before API calls", () => {
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_AUTH_TOKEN = "auth-token";
+
+    const probe = AIConfig.probeEnvironment();
+    expect(probe.status).toBe("unavailable");
+    if (probe.status !== "unavailable") {
+      throw new Error("Expected AI environment to be unavailable");
+    }
+    expect(probe.provider).toBe("anthropic");
+    expect(probe.model).toBe("not-a-real-model");
+    expect(probe.apiKeyPresent).toBe(true);
+    expect(probe.reason).toContain("Unsupported AI model");
+    expect(() => AIConfig.fromEnvironment()).toThrow(/Unsupported AI model/);
+  });
+
+  it("ANTHROPIC_API_KEY takes priority over ANTHROPIC_AUTH_TOKEN", () => {
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "claude-sonnet-4-6";
+    process.env.ANTHROPIC_API_KEY = "primary-key";
+    process.env.ANTHROPIC_AUTH_TOKEN = "fallback-token";
+
+    const config = AIConfig.fromEnvironment();
+    expect(config.provider).toBe("anthropic");
+    expect(config.apiKey).toBe("primary-key");
+
+    const probe = AIConfig.probeEnvironment();
+    if (probe.status !== "ready") {
+      throw new Error("Expected AI environment to be ready");
+    }
+    expect(probe.config.apiKey).toBe("primary-key");
+  });
+
+  it("probeEnvironment accepts any provider/model format for OpenRouter", () => {
+    process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "moonshotai/kimi-k2.6";
+    process.env.OPENROUTER_API_KEY = "test-key";
+
+    const probe = AIConfig.probeEnvironment();
+    expect(probe.status).toBe("ready");
+    if (probe.status !== "ready") {
+      throw new Error("Expected AI environment to be ready");
+    }
+    expect(probe.config.provider).toBe("openrouter");
+    expect(probe.config.model).toBe("moonshotai/kimi-k2.6");
+  });
+
+  it("probeEnvironment rejects OpenRouter model without provider prefix", () => {
+    process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "gpt-5.2";
+    process.env.OPENROUTER_API_KEY = "test-key";
+
+    const probe = AIConfig.probeEnvironment();
+    expect(probe.status).toBe("unavailable");
+    if (probe.status !== "unavailable") {
+      throw new Error("Expected AI environment to be unavailable");
+    }
+    expect(probe.reason).toContain("Unsupported AI model");
   });
 });

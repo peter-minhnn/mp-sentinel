@@ -7,9 +7,12 @@
 import type { FileAuditResult, ProjectConfig } from "../types/index.js";
 import { getChangedFiles } from "../utils/git.js";
 import { readFilesForAudit } from "../services/file.js";
+import { getSecurityService } from "../services/security/index.js";
 import { auditCommit, auditFilesWithConcurrency } from "../services/ai.js";
+import { AIConfig } from "../services/ai/config.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
+import { createSecurityOnlyResults } from "./review.js";
 import type { CLIValues } from "./args.js";
 
 export interface CICDReviewOptions {
@@ -31,9 +34,17 @@ export const runCICDReview = async (options: CICDReviewOptions): Promise<number>
     options;
 
   let hasErrors = false;
+  const aiAvailability = AIConfig.probeEnvironment();
+  const aiEnabled = aiAvailability.status === "ready";
+
+  if (!aiEnabled) {
+    log.warning(
+      `AI unavailable: ${aiAvailability.reason}. Falling back to deterministic security-only review.`,
+    );
+  }
 
   // Audit commit message
-  if (!values["skip-commit"] && commitMsg) {
+  if (!values["skip-commit"] && commitMsg && aiEnabled) {
     const commitResult = await auditCommit(commitMsg, config);
 
     if (commitResult.status === "PASS") {
@@ -45,6 +56,8 @@ export const runCICDReview = async (options: CICDReviewOptions): Promise<number>
       }
       hasErrors = true;
     }
+  } else if (!values["skip-commit"] && commitMsg && !aiEnabled) {
+    log.warning("Commit-message review skipped because AI is unavailable.");
   }
 
   // Get files to audit
@@ -57,7 +70,13 @@ export const runCICDReview = async (options: CICDReviewOptions): Promise<number>
 
   // Audit files
   if (filesToAudit.length > 0) {
-    const auditExitCode = await auditFileList(filesToAudit, config, maxConcurrency, startTime);
+    const auditExitCode = await auditFileList(
+      filesToAudit,
+      config,
+      maxConcurrency,
+      startTime,
+      aiEnabled,
+    );
     if (auditExitCode !== 0) {
       hasErrors = true;
     }
@@ -121,6 +140,7 @@ const auditFileList = async (
   config: ProjectConfig,
   maxConcurrency: number,
   startTime: number,
+  aiEnabled: boolean,
 ): Promise<number> => {
   const fileReadResult = await readFilesForAudit(filePaths);
 
@@ -129,12 +149,15 @@ const auditFileList = async (
     return 1;
   }
 
-  // Audit with concurrency
-  const auditResults = await auditFilesWithConcurrency(
+  const securityService = getSecurityService();
+  const { sanitizedFiles, redactionReport } = securityService.sanitizeFiles(
     fileReadResult.success.map((f) => ({ path: f.path, content: f.content })),
-    config,
-    maxConcurrency,
   );
+
+  // Audit with concurrency or deterministic security-only fallback
+  const auditResults = aiEnabled
+    ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
+    : createSecurityOnlyResults(sanitizedFiles, redactionReport);
 
   // Git Provider Integration (GitHub/GitLab) — lazy-loaded
   await postGitProviderComments(auditResults);
