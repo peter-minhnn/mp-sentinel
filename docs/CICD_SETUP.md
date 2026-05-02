@@ -317,6 +317,117 @@ code_audit:
 
 ---
 
+### Option 4: OpenRouter (Multi-Model Gateway)
+
+**Best for:** Accessing any model through a single API, flexible model selection, cost optimization across providers
+
+#### Get API Key
+1. Visit: https://openrouter.ai/keys
+2. Sign up or log in
+3. Click "Create Key"
+4. Copy your API key (starts with `sk-or-`)
+
+#### GitHub Actions Setup
+
+**Add Secret:**
+- Name: `OPENROUTER_API_KEY`
+- Value: Your API key (sk-or-...)
+
+**Workflow file** (`.github/workflows/audit.yml`):
+```yaml
+name: MP Sentinel Code Guard
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - name: Run Audit with OpenRouter
+        env:
+          AI_PROVIDER: openrouter
+          AI_MODEL: openai/gpt-5.2  # Slash-form: provider/model
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: origin/${{ github.base_ref }}
+          # Optional: attribution headers
+          OPENROUTER_SITE_URL: https://github.com/${{ github.repository }}
+          OPENROUTER_APP_NAME: MP Sentinel
+        run: npx mp-sentinel --target-branch $TARGET_BRANCH
+```
+
+#### GitLab CI Setup
+
+**Add Variable:**
+- Key: `OPENROUTER_API_KEY`
+- Value: Your API key (sk-or-...)
+- Flags: ☑️ Protect, ☑️ Mask
+
+**CI file** (`.gitlab-ci.yml`):
+```yaml
+image: node:20
+
+stages:
+  - audit
+
+code_audit:
+  stage: audit
+  before_script:
+    - npm ci
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+  script:
+    - npm run build
+    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - npx mp-sentinel --target-branch $TARGET_BRANCH
+  variables:
+    AI_PROVIDER: openrouter
+    AI_MODEL: openai/gpt-5.2
+    OPENROUTER_API_KEY: $OPENROUTER_API_KEY
+    # Optional: attribution headers
+    OPENROUTER_SITE_URL: $CI_PROJECT_URL
+    OPENROUTER_APP_NAME: MP Sentinel
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+```
+
+**Supported models include:**
+- `openai/gpt-5.2` — OpenAI GPT-5.2
+- `openai/gpt-5.3-codex` — OpenAI GPT-5.3 Codex
+- `anthropic/claude-sonnet-4-6` — Claude Sonnet 4.6
+- `anthropic/claude-opus-4-6` — Claude Opus 4.6
+- `google/gemini-2.5-flash` — Gemini 2.5 Flash (free tier via OpenRouter)
+
+> **Note:** OpenRouter also supports optional `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` env vars for attribution on the OpenRouter dashboard. These are recommended but not required.
+
+---
+
+## PR/MR Comment Posting: Runtime vs Config
+
+The runtime source of truth for PR/MR comment posting is **CI environment variables**, not `.mp-sentinelrc.json`.
+
+| Behavior | Runtime source (authoritative) | Config field (informational only) |
+|----------|-------------------------------|-----------------------------------|
+| GitHub PR comments | `GITHUB_ACTIONS` env + `GITHUB_TOKEN` env | `gitProvider: "github"` |
+| GitLab MR comments | `GITLAB_CI` env + `CI_JOB_TOKEN` or `GITLAB_TOKEN` env | `gitProvider: "gitlab"`, `projectId` |
+| Repository URL | `GITHUB_REPOSITORY` or `CI_PROJECT_URL` env | `repoUrl` |
+
+The fields `gitProvider`, `repoUrl`, and `projectId` in `.mp-sentinelrc.json` are **documentation hints** — they record intent but are not consumed at runtime. The CLI detects the platform from standard CI environment variables and uses CI-provided tokens for authentication. Do not rely on config alone to enable PR/MR comments; ensure the required CI env vars are set.
+
+---
+
 ## Advanced Configuration
 
 ### Fine-Tuning AI Behavior
@@ -435,6 +546,7 @@ AI_MODEL: gemini-2.5-flash  # Gemini
 AI_MODEL: grok-4-1-fast-reasoning  # xAI Grok
 AI_MODEL: gpt-5.3-codex            # OpenAI
 AI_MODEL: claude-sonnet-4-6 # Claude
+AI_MODEL: openai/gpt-5.2   # OpenRouter (slash-form: provider/model)
 ```
 
 ### Workflow not triggering
@@ -453,23 +565,22 @@ AI_MODEL: claude-sonnet-4-6 # Claude
 
 ## Example Files
 
-We provide ready-to-use example files:
+Example workflow files are available in the [`examples/workflows/`](../examples/workflows/) directory:
 
 ### GitHub Actions
-- `.github/workflows/audit.yml` - Default (Gemini)
-- `.github/workflows/audit-openai.yml.example` - OpenAI
-- `.github/workflows/audit-claude.yml.example` - Claude
+- [`examples/workflows/github/audit-openai.yml.example`](../examples/workflows/github/audit-openai.yml.example) — OpenAI
+- [`examples/workflows/github/audit-claude.yml.example`](../examples/workflows/github/audit-claude.yml.example) — Claude
 
 ### GitLab CI
-- `.gitlab-ci.yml` - Default (Gemini)
-- `.gitlab-ci-openai.yml.example` - OpenAI
-- `.gitlab-ci-claude.yml.example` - Claude
+- [`examples/workflows/gitlab/.gitlab-ci-openai.yml.example`](../examples/workflows/gitlab/.gitlab-ci-openai.yml.example) — OpenAI
+- [`examples/workflows/gitlab/.gitlab-ci-claude.yml.example`](../examples/workflows/gitlab/.gitlab-ci-claude.yml.example) — Claude
+
+For Gemini, Grok, and OpenRouter setups, copy one of the provider examples above and swap the `AI_PROVIDER`, `AI_MODEL`, and API key env var as shown in the provider-specific sections earlier in this guide.
 
 **To use an example:**
-1. Copy the example file
-2. Remove `.example` extension
-3. Update API key secret/variable
-4. Commit and push
+1. Copy the example file to the correct CI location (e.g. `.github/workflows/audit.yml` or `.gitlab-ci.yml`)
+2. Update the provider, model, and API key secret/variable
+3. Commit and push
 
 ---
 

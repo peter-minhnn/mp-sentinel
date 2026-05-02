@@ -17,7 +17,7 @@ code_audit:
     - npm ci --cache .npm --prefer-offline
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
-    - echo "🔍 Starting AI Code Audit v1.2.0 with OpenAI GPT-4..."
+    - echo "🔍 Starting MP Sentinel audit with OpenAI..."
     - npm run build
     - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
     - npx mp-sentinel --target-branch $TARGET_BRANCH
@@ -28,9 +28,9 @@ code_audit:
   variables:
     # OpenAI Configuration
     AI_PROVIDER: openai
-    AI_MODEL: gpt-4o  # Best balance of speed and accuracy
-    # AI_MODEL: gpt-4.1  # Best for complex coding tasks
-    # AI_MODEL: gpt-4-turbo  # Alternative option
+    AI_MODEL: gpt-5.3-codex  # Best balance of speed and accuracy
+    # AI_MODEL: gpt-5.2  # Best for complex coding tasks
+    # AI_MODEL: gpt-5-mini  # Alternative option
     OPENAI_API_KEY: $OPENAI_API_KEY
     
     # Optional: Fine-tune behavior

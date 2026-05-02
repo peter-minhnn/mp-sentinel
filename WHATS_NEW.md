@@ -1,3 +1,16 @@
+# What's New in v1.33.1
+
+## Review Prompt Intelligence & Local Workflow Polish
+
+v1.33.1 improves review quality and local safety without changing the review contract or exit code semantics.
+
+- **Stack-aware review focus** (`src/services/tech-profile.ts`, `src/config/prompts.ts`): Review prompts now receive concise technology-specific cues from `techStack` or `package.json`, even when the source index is unavailable.
+- **Index-independent profile detection** (`src/cli/review.ts`): Explain-context and review prompt construction now fall back through config, package manifest, and generic profile detection instead of relying solely on source indexing.
+- **Foreground-only review exit** (`src/index.ts`): Review commands flush output and terminate immediately after printing the report so long-lived handles cannot keep an agent terminal open after the paid AI scan finishes.
+- **OpenRouter CI and local setup docs** (`docs/CICD_SETUP.md`, `docs/CONTRIBUTING.md`, `docs/CODE_STYLE.md`, `docs/README.md`, `examples/workflows/gitlab/`): GitHub/GitLab guidance, GitLab examples, and Husky pre-commit review setup are aligned with the current CLI entrypoint and provider configuration.
+
+---
+
 # What's New in v1.33.0
 
 ## OpenRouter Provider — Multi-Model AI Routing

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.1] - 2026-05-02
+
+### Added
+- **Stack-aware review cues** (`src/services/tech-profile.ts`, `src/config/prompts.ts`, `src/__tests__/tech-profile.test.ts`): Review prompts now include capped, technology-specific checks derived from `techStack` or `package.json`, with generic fallback behavior when neither source is available.
+- **Local Husky review workflow docs** (`docs/CONTRIBUTING.md`, `package.json`): Added `npm run review:staged` and documented a Husky pre-commit setup that blocks commits when staged review fails.
+
+### Changed
+- **Review process termination** (`src/index.ts`): Review commands now flush output streams and exit immediately after printing the report, preventing lingering event-loop handles after AI work is complete.
+- **CI/CD provider documentation** (`docs/CICD_SETUP.md`, `docs/README.md`, `docs/CODE_STYLE.md`, `examples/workflows/gitlab/`): OpenRouter setup, GitHub/GitLab runtime notes, example paths, and GitLab model examples are aligned with current provider behavior.
+- **Explain-context profile fallback** (`src/cli/review.ts`): Diagnostic output now reports the detected review profile even when source indexing is unavailable.
+
+---
+
 ## [1.33.0] - 2026-05-01
 
 ### Added

@@ -568,6 +568,19 @@ export interface CacheValidity {
 export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "library";
 
 /**
+ * Unified tech profile carrying both the high-level SkillProfile
+ * and the specific technologies detected, along with the signal source.
+ */
+export interface TechProfile {
+  /** High-level project classification */
+  profile: SkillProfile;
+  /** Lowercase technology/package keywords, e.g. ["typescript", "react", "vitest", "express"] */
+  technologies: string[];
+  /** Which source provided the primary signal for this profile */
+  source: "config" | "package-json" | "generic";
+}
+
+/**
  * Structured intelligence signal explaining why a signal exists in the review.
  * Each signal links a type, file, reason, and evidence so users and agents can
  * understand why a particular risk/concern was flagged.

@@ -789,6 +789,46 @@ refactor(config): extract validation logic
 
 ---
 
+### Pre-Commit Review with Husky
+
+Catch issues before they hit CI by running MP Sentinel on staged changes at commit time.
+
+#### 1. Install and initialize Husky
+
+```bash
+npm install --save-dev husky
+npx husky init
+```
+
+This creates a `.husky/` directory with a `pre-commit` hook file.
+
+#### 2. Wire the pre-commit hook
+
+Edit `.husky/pre-commit`:
+
+```bash
+npm run review:staged
+```
+
+The hook runs `tsx src/index.ts --staged`, which audits only staged changes. If the review fails (exit code 1 or 2), the commit is blocked.
+
+#### 3. Skip the hook (emergency only)
+
+```bash
+git commit --no-verify -m "chore: emergency hotfix"
+```
+
+Use sparingly — this bypasses the review gate entirely.
+
+#### How it works
+
+- `npm run review:staged` targets only `git diff --cached` output (staged files)
+- Exit code 0 (PASS) allows the commit; 1 (FAIL) or 2 (ERROR) blocks it
+- The script uses `tsx` to run TypeScript source directly — no build step required per commit
+- AI review is onboard: if no API key is configured, the hook still runs deterministic security scanning (secret detection) and blocks on critical findings
+
+---
+
 ## 📋 Pull Request Process
 
 ### Before Submitting
@@ -805,7 +845,7 @@ refactor(config): extract validation logic
 
 3. **Test your changes locally:**
    ```bash
-   npm start -- review --staged
+   npm run review:staged
    ```
 
 4. **Update documentation** if adding new features

@@ -30,7 +30,7 @@ const MAX_SKILL_PROMPT_LENGTH = 8000; // Increased to accommodate full local mar
  * Parse techStack string to extract technologies
  * Example: "TypeScript 5.7, Node.js 18" -> ["typescript", "nodejs"]
  */
-const parseTechStack = (techStack: string): string[] => {
+export const parseTechStack = (techStack: string): string[] => {
   if (!techStack) return [];
 
   return techStack

@@ -31,6 +31,28 @@ process.on("SIGINT", () => {
 });
 
 /**
+ * Force process exit after ensuring output streams are drained.
+ * Review commands use this to prevent lingering after the report is printed.
+ */
+const exitAfterFlush = (code: number): void => {
+  const flushStream = (stream: typeof process.stdout, done: () => void): void => {
+    if (stream.writableLength > 0) {
+      stream.write("", done);
+      return;
+    }
+    done();
+  };
+
+  flushStream(process.stdout, () => {
+    if (process.stderr.writableLength > 0) {
+      process.stderr.write("", () => process.exit(code));
+      return;
+    }
+    process.exit(code);
+  });
+};
+
+/**
  * Main CLI execution
  */
 const run = async (): Promise<void> => {
@@ -151,20 +173,21 @@ const run = async (): Promise<void> => {
     logVerboseInfo(values, config, currentBranch, targetBranch, maxConcurrency, isLocalMode);
   }
 
-  // Execute mode (review commands)
+  // Execute mode (review commands): force exit after report to prevent lingering.
   if (isLocalMode) {
-    process.exitCode = await runLocalReview({
+    const exitCode = await runLocalReview({
       values,
       config,
       currentBranch,
       maxConcurrency,
       startTime,
     });
+    exitAfterFlush(exitCode);
   } else {
     const cliTokenLimitRaw = values["token-limit"] ? parseInt(values["token-limit"], 10) : 0;
     const cliTokenLimit =
       Number.isFinite(cliTokenLimitRaw) && cliTokenLimitRaw > 0 ? cliTokenLimitRaw : 0;
-    process.exitCode = await runReview({
+    const exitCode = await runReview({
       values,
       commandPositionals: command === "review" ? commandPositionals : positionals,
       config,
@@ -175,6 +198,7 @@ const run = async (): Promise<void> => {
       verboseDryRun: values["verbose-dry-run"],
       ...(cliTokenLimit > 0 && { tokenLimitOverride: cliTokenLimit }),
     });
+    exitAfterFlush(exitCode);
   }
 };
 

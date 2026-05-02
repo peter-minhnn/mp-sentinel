@@ -2,8 +2,9 @@
  * Prompt templates for AI-powered code auditing
  */
 
-import type { ProjectConfig } from "../types/index.js";
+import type { ProjectConfig, TechProfile } from "../types/index.js";
 import { fetchSkillsForTechStack, buildSkillsPromptSection } from "../services/skills-fetcher.js";
+import { detectTechProfile, getReviewCues } from "../services/tech-profile.js";
 
 export const DEFAULT_PROMPT_VERSION = "2026-02-16";
 
@@ -38,10 +39,14 @@ Focus on changed lines and nearby context only.
 export const buildSystemPrompt = async (
   config: ProjectConfig,
   indexContext?: string,
+  techProfile?: TechProfile,
 ): Promise<string> => {
   const parts: string[] = [BASE_AUDIT_PROMPT];
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   parts.push(`\n### PROMPT VERSION\n${promptVersion}\n`);
+
+  // Detect tech profile if not provided (fallback internal so all callers benefit)
+  const profile = techProfile ?? (await detectTechProfile(config));
 
   // Add source index context first (highest priority for architectural understanding)
   if (indexContext) {
@@ -64,6 +69,19 @@ export const buildSystemPrompt = async (
       }
     }
     // If fetch fails or disabled, we simply continue without skills (no error thrown)
+  }
+
+  // Stack-aware review focus — concise, technology-specific cues
+  const cues = getReviewCues(profile);
+  if (cues.length > 0) {
+    const techList =
+      profile.technologies.length > 0
+        ? profile.technologies.slice(0, 6).join(", ")
+        : profile.profile;
+    parts.push(`\n### STACK-AWARE REVIEW FOCUS\nStack: ${techList}\n`);
+    for (const cue of cues) {
+      parts.push(`- ${cue}\n`);
+    }
   }
 
   if (config.rules && config.rules.length > 0) {

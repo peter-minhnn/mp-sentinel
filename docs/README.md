@@ -104,6 +104,8 @@ mp-sentinel
 
 ### Exit Codes
 
+Review commands run in the foreground and exit immediately after the report is printed — no lingering background handles or daemon processes.
+
 - `0`: no blocking issues
 - `1`: review findings detected
 - `2`: runtime/system/provider error
@@ -555,16 +557,9 @@ code_audit:
 
 </details>
 
-### Example Files Included
+### Example Files
 
-We provide ready-to-use example files for all providers:
-
-- `.github/workflows/audit-openai.yml.example`
-- `.github/workflows/audit-claude.yml.example`
-- `.gitlab-ci-openai.yml.example`
-- `.gitlab-ci-claude.yml.example`
-
-Simply copy, rename (remove `.example`), and configure your API key!
+Example workflow files are shipped in the [`examples/workflows/`](../examples/workflows/) directory. See the [CI/CD Setup Guide](./CICD_SETUP.md) for the complete list and usage instructions.
 
 ---
 

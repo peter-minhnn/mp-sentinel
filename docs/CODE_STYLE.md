@@ -169,8 +169,8 @@ npm run build
 # Watch mode
 npm run dev
 
-# Run CLI
-npm start -- review --staged
+# Run staged review
+npm run review:staged
 ```
 
 ---

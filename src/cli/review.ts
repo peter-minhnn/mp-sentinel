@@ -13,6 +13,7 @@ import type {
   ReviewTarget,
   SkillProfile,
   RelationType,
+  TechProfile,
 } from "../types/index.js";
 import type { CLIValues } from "./args.js";
 import { log } from "../utils/logger.js";
@@ -25,6 +26,7 @@ import { formatMarkdownReport, printConsoleReport } from "../formatters/report.j
 import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
+import { detectTechProfile } from "../services/tech-profile.js";
 import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
@@ -377,6 +379,9 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     process.cwd(),
   );
 
+  // Detect tech profile for stack-aware review cues (works without source index)
+  const techProfile = await detectTechProfile(config);
+
   const runtimeErrors: string[] = [];
   let auditResults: FileAuditResult[] = [];
 
@@ -399,7 +404,11 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     // Build system prompt for token accounting
     let systemPromptForEstimate: string | undefined;
     try {
-      systemPromptForEstimate = await buildSystemPrompt(config, indexContext ?? undefined);
+      systemPromptForEstimate = await buildSystemPrompt(
+        config,
+        indexContext ?? undefined,
+        techProfile,
+      );
     } catch {
       // Non-critical — skip system prompt in estimate
     }
@@ -556,12 +565,22 @@ export async function renderExplainContext(opts: {
       error instanceof Error ? error.message : "Failed to read source index (corrupt or missing).";
   }
 
+  // Detect tech profile fallback (always available — works without source index)
+  let fallbackProfile: SkillProfile = "library";
+  try {
+    const tp = await detectTechProfile(config);
+    fallbackProfile = tp.profile;
+  } catch {
+    // Non-critical — keep default
+  }
+
   // Build typed output object
   const output: ExplainContextOutput = {
     status: indexStatus,
   };
   if (unavailableReason) {
     output.reason = unavailableReason;
+    output.profile = fallbackProfile;
   } else {
     output.profile = profile;
     output.budgetChars = budgetChars;
@@ -594,6 +613,7 @@ export async function renderExplainContext(opts: {
     console.log(`Status: ${output.status}`);
     if (output.reason) {
       console.log(`Reason: ${output.reason}`);
+      console.log(`Profile: ${output.profile ?? "library"}`);
     } else {
       console.log(`Profile: ${output.profile}`);
       console.log(`Budget: ${output.budgetChars} chars`);
