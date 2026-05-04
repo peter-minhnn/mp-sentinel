@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.34.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.34.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()

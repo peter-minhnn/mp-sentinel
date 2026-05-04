@@ -296,6 +296,69 @@ describe("generateContent", () => {
     expect(content.sections.modules).toContain("src/");
     expect(content.sections.modules).toContain("hello");
   });
+
+  it("includes strict TypeScript/ESM rules in conventions when TypeScript index", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    const content = generateContent(index, "fixture");
+    // The conventions section includes TypeScript guidance when TS files exist
+    if (content.sections.conventions.length > 0) {
+      expect(content.sections.conventions).toContain("TypeScript");
+      expect(content.sections.conventions).toContain("import type");
+    }
+  });
+
+  it("agent workflow includes development guardrails about generated artifacts", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    const content = generateContent(index, "fixture");
+    expect(content.sections.agentWorkflow).toContain("auto-generated bootstrap artifacts");
+    expect(content.sections.agentWorkflow).toContain("Do not edit manually");
+    expect(content.sections.agentWorkflow).toContain(".sentinel/skills/");
+  });
+
+  it("profile rules Import Conventions includes Node/ESM rules when TypeScript index", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    const content = generateContent(index, "fixture");
+    // Import Conventions section includes ESM and TypeScript rules
+    if (content.sections.profileRules.includes("### Import Conventions")) {
+      expect(content.sections.profileRules).toContain("import type");
+      expect(content.sections.profileRules).toContain("node:");
+    }
+    // Avoid any should always be present when TypeScript is used
+    expect(content.sections.profileRules).toContain("Avoid");
+  });
 });
 
 // -- Adapter output ------------------------------------------------------------

@@ -149,6 +149,98 @@ describe("validateSkillQuality", () => {
     });
   });
 
+  // -- Max file lines ---------------------------------------------------------
+
+  describe("max file lines", () => {
+    it("flags generated file over 500 lines as error", () => {
+      const longContent = Array.from({ length: 502 }, (_, i) => `line ${i + 1}`).join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", longContent)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors.length).toBe(1);
+      expect(lineErrors[0]!.message).toContain("502 lines");
+    });
+
+    it("passes generated file at exactly 500 lines without trailing newline", () => {
+      const content = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n");
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors).toHaveLength(0);
+    });
+
+    it("passes generated file at exactly 500 lines with trailing newline", () => {
+      const content = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
+      const files = [makeFile(".claude/skills/test/SKILL.md", content)];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors).toHaveLength(0);
+    });
+
+    it("flags Claude reference file over 500 lines", () => {
+      const longContent = Array.from({ length: 501 }, (_, i) => `line ${i + 1}`).join("\n");
+      const files = [makeFile(".claude/skills/test/references/architecture.md", longContent)];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors.length).toBe(1);
+    });
+
+    it("flags single-file adapter output over 500 lines", () => {
+      const longContent = Array.from({ length: 501 }, (_, i) => `line ${i + 1}`).join("\n");
+      const files = [makeFile(".agents/rules/test.md", longContent)];
+      const report = validateSkillQuality(files, "generic" as AgentAdapterId, null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors.length).toBe(1);
+    });
+
+    it("flags 501 lines with trailing newline as error", () => {
+      const longContent = Array.from({ length: 501 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
+      const files = [makeFile(".claude/skills/test/SKILL.md", longContent)];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors.length).toBe(1);
+    });
+
+    it("passes empty file", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "")];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors).toHaveLength(0);
+    });
+
+    it("passes file with only newlines", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "\n\n\n")];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors).toHaveLength(0);
+    });
+
+    it("passes short file under 500 lines", () => {
+      const files = [makeFile(".claude/skills/test/SKILL.md", "# Short\n\ncontent")];
+      const report = validateSkillQuality(files, "claude", null);
+      const lineErrors = report.checks.filter(
+        (c) => c.type === "max-file-lines" && c.severity === "error",
+      );
+      expect(lineErrors).toHaveLength(0);
+    });
+  });
+
   // -- Required sections ------------------------------------------------------
 
   describe("required sections", () => {
@@ -461,7 +553,7 @@ describe("validateSkillQuality", () => {
   // -- Codebase fidelity ----------------------------------------------------
 
   describe("codebase fidelity (real signals)", () => {
-    it("warns when content does not mention CLI entrypoints present in index", () => {
+    it("errors when content does not mention CLI entrypoints present in index", () => {
       const index = makeMinimalIndex({
         scripts: { test: "jest", build: "tsup" },
       });
@@ -524,7 +616,7 @@ describe("validateSkillQuality", () => {
       const signalChecks = report.checks.filter((c) => c.type === "missing-real-signal");
       const cliChecks = signalChecks.filter((c) => c.message.includes("CLI entrypoint"));
       expect(cliChecks.length).toBe(1);
-      expect(cliChecks[0]!.severity).toBe("warning");
+      expect(cliChecks[0]!.severity).toBe("error");
     });
 
     it("passes when content mentions real entrypoints", () => {
@@ -546,11 +638,11 @@ describe("validateSkillQuality", () => {
         typeOnlyImportFiles: [],
         dynamicImportFiles: [],
       };
-      // Content that DOES mention the CLI entrypoint
+      // Content that mentions CLI entrypoint, command files, and scripts
       const content = [
         "## Required Agent Workflow",
         "",
-        "steps involving src/index.ts and src/cli/args.ts cli-entry stuff",
+        "steps involving src/index.ts and src/cli/args.ts, run \`npm test\` and \`npm run build\`",
         "",
         "## Overview",
         "",
@@ -590,9 +682,13 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "missing-real-signal" && c.message.includes("CLI entrypoint"),
       );
       expect(cliChecks).toHaveLength(0);
+      const scriptChecks = report.checks.filter(
+        (c) => c.type === "missing-real-signal" && c.message.includes("package.json script"),
+      );
+      expect(scriptChecks).toHaveLength(0);
     });
 
-    it("warns when content does not mention package.json scripts", () => {
+    it("errors when content does not mention package.json scripts", () => {
       const index = makeMinimalIndex({
         scripts: { test: "jest", build: "tsup", lint: "eslint" },
       });
@@ -640,7 +736,7 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "missing-real-signal" && c.message.includes("package.json script"),
       );
       expect(signalChecks.length).toBe(1);
-      expect(signalChecks[0]!.severity).toBe("warning");
+      expect(signalChecks[0]!.severity).toBe("error");
     });
 
     it("warns when content does not mention top-level source directories", () => {
@@ -728,6 +824,72 @@ describe("validateSkillQuality", () => {
       const report = validateSkillQuality(files, "claude", index);
       const signalChecks = report.checks.filter((c) => c.type === "missing-real-signal");
       expect(signalChecks).toHaveLength(0);
+    });
+
+    it("errors when content does not mention command files present in index", () => {
+      const index = makeMinimalIndex({
+        scripts: { test: "jest" },
+      });
+      index.insights = {
+        fileRoles: {
+          "src/index.ts": "cli-entry",
+          "src/commands/deploy.ts": "command",
+          "src/commands/build.ts": "command",
+        },
+        publicApiFiles: [],
+        testMap: {},
+        commandMap: {},
+        dependencyUsage: {},
+        defaultExportFiles: [],
+        reExportFiles: [],
+        typeOnlyImportFiles: [],
+        dynamicImportFiles: [],
+      };
+      // Content mentions CLI entrypoint but NOT command files
+      const content = [
+        "## Required Agent Workflow",
+        "",
+        "steps involving src/index.ts but not the command files, run \`npm test\`",
+        "",
+        "## Overview",
+        "",
+        "overview",
+        "",
+        "## Architecture",
+        "",
+        "architecture",
+        "",
+        "## Module Map",
+        "",
+        "modules",
+        "",
+        "## Codebase Map",
+        "",
+        "map",
+        "",
+        "## Testing Map",
+        "",
+        "tests",
+        "",
+        "## Dependencies",
+        "",
+        "deps",
+        "",
+        "## Public API Surface",
+        "",
+        "api",
+        "",
+        "## Project Profile: cli-tooling",
+        "",
+        "profile",
+      ].join("\n");
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", index);
+      const cmdChecks = report.checks.filter(
+        (c) => c.type === "missing-real-signal" && c.message.includes("command file"),
+      );
+      expect(cmdChecks.length).toBe(1);
+      expect(cmdChecks[0]!.severity).toBe("error");
     });
   });
 

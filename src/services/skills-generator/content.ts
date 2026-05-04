@@ -158,6 +158,14 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     lines.push(``, examples);
   }
 
+  // Generated artifact note — development guardrails
+  lines.push(
+    ``,
+    `> **Note:** This skill file and its references are **auto-generated bootstrap artifacts**.`,
+    `> - **Do not edit manually.** Regenerate via \`npm run agent:skills:refresh\` or \`mp-sentinel create-skills --all-agents --force\`.`,
+    `> - \`.sentinel/skills/\` contains **end-user review prompts**, not agent rules -- do not confuse the two.`,
+  );
+
   return lines.join("\n");
 }
 
@@ -681,13 +689,62 @@ function buildConventions(index: SourceIndex | null): string {
   const lines = [`## Code Conventions`];
 
   const hasEsm = index.files.some((f) => f.imports.some((i) => i.source.endsWith(".js")));
-  if (hasEsm) {
-    lines.push(``, `- **Module System:** ESM - internal imports include \`.js\` extension`);
+  const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
+  const hasNodePrefix = index.files.some((f) =>
+    f.imports.some((i) => i.source.startsWith("node:")),
+  );
+  const tsConfig = index.project.tsConfig;
+  const hasStrictFlags = Boolean(
+    tsConfig?.compilerOptions?.exactOptionalPropertyTypes ||
+    tsConfig?.compilerOptions?.noUncheckedIndexedAccess ||
+    tsConfig?.compilerOptions?.noImplicitReturns ||
+    tsConfig?.compilerOptions?.noFallthroughCasesInSwitch ||
+    tsConfig?.compilerOptions?.verbatimModuleSyntax ||
+    tsConfig?.compilerOptions?.strict,
+  );
+
+  // Node engine baseline
+  const nodeEngine = index.project.nodeEngine;
+  if (nodeEngine) {
+    lines.push(``, `- **Node Engine:** ${nodeEngine} - use \`node:\` prefix for built-in modules`);
+  } else if (hasNodePrefix || hasTs) {
+    lines.push(
+      ``,
+      `- **Node:** >=20 - use \`node:\` prefix for built-in modules (e.g., \`node:fs\`, \`node:path\`)`,
+    );
   }
 
-  const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
+  // ESM
+  if (hasEsm || hasTs) {
+    lines.push(
+      `- **Module System:** ESM - internal imports must include \`.js\` extension (NodeNext resolution)`,
+    );
+  }
+
+  // TypeScript
   if (hasTs) {
-    lines.push(`- **Language:** TypeScript - use \`import type\` for type-only imports`);
+    lines.push(
+      `- **Language:** TypeScript - use \`import type\` for type-only imports (\`verbatimModuleSyntax\`)`,
+    );
+    lines.push(
+      `- **Avoid \`any\`** - if unavoidable (e.g., untyped tree-sitter nodes), isolate in one place with a comment`,
+    );
+    if (hasStrictFlags) {
+      const flagNames: string[] = [];
+      if (tsConfig?.compilerOptions?.exactOptionalPropertyTypes)
+        flagNames.push("exactOptionalPropertyTypes");
+      if (tsConfig?.compilerOptions?.noUncheckedIndexedAccess)
+        flagNames.push("noUncheckedIndexedAccess");
+      if (tsConfig?.compilerOptions?.noImplicitReturns) flagNames.push("noImplicitReturns");
+      if (tsConfig?.compilerOptions?.noFallthroughCasesInSwitch)
+        flagNames.push("noFallthroughCasesInSwitch");
+      if (tsConfig?.compilerOptions?.verbatimModuleSyntax) flagNames.push("verbatimModuleSyntax");
+      if (flagNames.length > 0) {
+        lines.push(
+          `- **Strict flags:** \`${flagNames.join("`, `")}\` are enforced - respect all strict tsconfig flags`,
+        );
+      }
+    }
   }
 
   const testFileCount = index.files.filter(
@@ -760,18 +817,31 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   lines.push(``, `### Import Conventions`, ``);
   if (index) {
     const hasEsm = index.files.some((f) => f.imports.some((i) => i.source.endsWith(".js")));
-    if (hasEsm) {
-      lines.push(`- Internal imports **must** include the \`.js\` extension (ESM).`);
-    }
     const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
-    if (hasTs) {
-      lines.push(`- Use \`import type\` for type-only imports.`);
-    }
     const hasNodePrefix = index.files.some((f) =>
       f.imports.some((i) => i.source.startsWith("node:")),
     );
-    if (hasNodePrefix) {
-      lines.push(`- Built-in modules must use the \`node:\` prefix.`);
+
+    // Always include strict TypeScript/ESM rules when TypeScript is used
+    if (hasTs) {
+      lines.push(`- **Runtime:** Node >= 20, ESM (\`"type": "module"\` in package.json).`);
+    }
+    if (hasEsm || hasTs) {
+      lines.push(`- Internal imports **must** include the \`.js\` extension (NodeNext / ESM).`);
+    }
+    if (hasTs) {
+      lines.push(`- Use \`import type\` for type-only imports (\`verbatimModuleSyntax\`).`);
+    }
+    if (hasNodePrefix || hasTs) {
+      lines.push(
+        `- Built-in modules must use the \`node:\` prefix (e.g., \`node:fs\`, \`node:path\`).`,
+      );
+    }
+    if (hasTs) {
+      lines.push(`- **Avoid \`any\`** - if unavoidable, isolate with a comment explaining why.`);
+      lines.push(
+        `- Respect all strict \`tsconfig.json\` flags (\`noUncheckedIndexedAccess\`, \`noImplicitReturns\`, etc.).`,
+      );
     }
     const tsConfigPaths = index.project.tsConfig?.compilerOptions?.paths;
     if (tsConfigPaths && Object.keys(tsConfigPaths as Record<string, unknown>).length > 0) {

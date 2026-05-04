@@ -21,6 +21,11 @@ const SKILL_MD_MAX = 4200;
 const REF_MD_MAX = 6000;
 const SINGLE_FILE_MAX = 22500;
 
+// ── Line-count limit ───────────────────────────────────────────────────────
+// Every generated file must be <= 500 lines to stay concise and readable.
+
+const MAX_FILE_LINES = 500;
+
 // ── Unknown-path allowlist ──────────────────────────────────────────────────
 // These paths are valid references in generated skills but are not source files
 // in the index (config files, agent instructions, cache, etc.).
@@ -49,6 +54,14 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   ".codex",
   ".mp-sentinel-cache/source-index.json",
   ".mp-sentinelrc.json",
+  ".sentinel",
+  ".sentinel/",
+  ".sentinel/skills/",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
   "references/codebase-map.md",
   "references/testing-map.md",
   "references/dependencies.md",
@@ -214,6 +227,29 @@ function checkMaxFileSize(file: GeneratedSkillFile, adapterId: AgentAdapterId): 
     }
   }
 
+  return checks;
+}
+
+/** Count lines in file content — strips trailing newlines so a file ending in \n counts correctly */
+function countFileLines(content: string): number {
+  if (content.length === 0) return 0;
+  // Strip trailing newline(s): "a\nb\n" → ["a","b"] = 2, not ["a","b",""] = 3
+  const trimmed = content.replace(/\n+$/, "");
+  if (trimmed.length === 0) return 0;
+  return trimmed.split("\n").length;
+}
+
+function checkMaxFileLines(file: GeneratedSkillFile): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const lineCount = countFileLines(file.content);
+  if (lineCount > MAX_FILE_LINES) {
+    checks.push({
+      type: "max-file-lines",
+      severity: "error",
+      file: file.outputPath,
+      message: `File has ${lineCount} lines (max ${MAX_FILE_LINES})`,
+    });
+  }
   return checks;
 }
 
@@ -444,8 +480,11 @@ function checkUnknownPaths(
 /**
  * Check that generated content references real project signals from the index.
  * When the index has data (scripts, entrypoints, test files, modules), the
- * content should mention at least some of them. Missing signals are warnings,
- * not errors — adapters may summarize differently.
+ * content should mention at least some of them.
+ *
+ * Critical signals (CLI entrypoint, command files, scripts) are errors —
+ * omitting them makes the skill misleading for agents. Directory-level signals
+ * remain warnings since directory naming is not invariant.
  */
 function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): QualityCheck[] {
   const checks: QualityCheck[] = [];
@@ -474,13 +513,12 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
     const commandFiles = Object.entries(insights.fileRoles).filter(
       ([, role]) => role === "command",
     );
-
     if (cliEntries.length > 0) {
       const mentioned = cliEntries.some(([path]) => content.includes(path));
       if (!mentioned) {
         checks.push({
           type: "missing-real-signal",
-          severity: "warning",
+          severity: "error",
           file: file.outputPath,
           message: `Content does not mention any CLI entrypoint (index has ${cliEntries.length}: ${cliEntries.map(([p]) => p).join(", ")})`,
         });
@@ -492,7 +530,7 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
       if (!mentioned) {
         checks.push({
           type: "missing-real-signal",
-          severity: "warning",
+          severity: "error",
           file: file.outputPath,
           message: `Content does not mention any command file (index has ${commandFiles.length}: ${commandFiles.map(([p]) => p).join(", ")})`,
         });
@@ -519,7 +557,7 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
     if (!anyMentioned) {
       checks.push({
         type: "missing-real-signal",
-        severity: "warning",
+        severity: "error",
         file: file.outputPath,
         message: `Content does not mention any package.json script (available: ${scriptKeys.slice(0, 5).join(", ")}${scriptKeys.length > 5 ? "..." : ""})`,
       });
@@ -1054,6 +1092,7 @@ export function validateSkillQuality(
 
   for (const file of files) {
     allChecks.push(...checkMaxFileSize(file, adapterId));
+    allChecks.push(...checkMaxFileLines(file));
     allChecks.push(...checkRequiredSections(file, adapterId));
     allChecks.push(...checkRequiredReferences(file, adapterId));
     allChecks.push(...checkDuplicateSections(file));

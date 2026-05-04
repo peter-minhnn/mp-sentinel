@@ -1,3 +1,16 @@
+# What's New in v1.34.1
+
+## Generated Skill Quality Gate Hardening
+
+v1.34.1 hardens the create-skills quality gate with stricter validation and fixed line counting.
+
+- **500-line limit per generated file** ([`quality-gate.ts`](src/services/skills-generator/quality-gate.ts#L233-L245)): Every generated skill file is capped at 500 lines. Files exceeding the limit fail `--check` with a hard error.
+- **Trailing-newline-safe line counting**: `countFileLines()` strips trailing newlines before splitting, so a real 500-line file ending in `\n` does not falsely fail as 501 lines.
+- **Critical signal promotion**: Missing CLI entrypoint, command file, and package.json script mentions are now hard errors — omitting them makes the skill misleading for agents.
+- **Known-path allowlist extended**: `.sentinel/skills/`, `.js`, `.ts`, `.tsx`, `.mjs`, `.cjs` added to reduce false-positive unknown-path warnings in generated skills.
+
+---
+
 # What's New in v1.34.0
 
 ## Configurable Model Tier Selection

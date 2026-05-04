@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.1] - 2026-05-05
+
+### Added
+- **500-line limit per generated skill file**: `countFileLines()` trailing-newline-safe helper prevents false 501-line failures on files ending in `\n`.
+- **Critical signal promotion**: CLI entrypoint, command file, and package.json script checks promoted from warnings to hard errors in generated skill quality validation.
+- **Known-path allowlist extension**: `.sentinel/skills/`, `.js`, `.ts`, `.tsx`, `.mjs`, `.cjs` added to reduce false-positive unknown-path warnings in generated skills.
+
+### Fixed
+- **Line-count gate**: A 500-line file ending in `\n` no longer falsely reports as 501 lines and fails `--check`.
+
+### Changed
+- **Quality gate validation**: Generated skills must now mention real CLI entrypoints, command files, and package.json scripts, or `--check` fails with a hard error.
+
 ## [1.34.0] - 2026-05-04
 
 ### Added
