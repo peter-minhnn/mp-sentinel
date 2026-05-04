@@ -1,5 +1,5 @@
 {
-  "techStack": "TypeScript 5.7, Node.js 18 (ESM), React 18, PostgreSQL 15",
+  "techStack": "TypeScript 5.7, Node.js 20 (ESM), React 18, PostgreSQL 15",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,
   "rules": [

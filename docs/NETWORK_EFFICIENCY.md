@@ -55,12 +55,12 @@ This avoids repeated token spend on unchanged diffs.
 
 - Lower cost: reduce `maxDiffLines` and `maxCharsPerFile`.
 - Faster CI: keep `maxConcurrency` near `3-8`.
-- Staged hooks: prefer `mp-sentinel review --staged` without `--ai`.
+- Staged hooks: prefer `mp-sentinel --staged` without `--ai`.
 
 ## Debugging
 
 ```bash
-mp-sentinel review --range origin/main..HEAD --verbose
+mp-sentinel --range origin/main..HEAD --verbose
 ```
 
 ## Exit Codes

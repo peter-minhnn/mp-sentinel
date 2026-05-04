@@ -3,7 +3,7 @@
 ## Core Command
 
 ```bash
-mp-sentinel review [target] [options]
+mp-sentinel [target] [options]
 ```
 
 Shortcut:
@@ -30,10 +30,10 @@ Default target if omitted:
 ## Useful Commands
 
 ```bash
-mp-sentinel review --staged
-mp-sentinel review --staged --ai
-mp-sentinel review --range origin/main..HEAD --format markdown
-mp-sentinel review --format json
+mp-sentinel --staged
+mp-sentinel --staged --ai
+mp-sentinel --range origin/main..HEAD --format markdown
+mp-sentinel --format json
 ```
 
 ## Output Formats
@@ -54,6 +54,7 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ANTHROPIC_AUTH_TOKEN=...  # optional Anthropic fallback alias
 GROK_API_KEY=...
+XAI_API_KEY=...        # Grok fallback alias
 OPENROUTER_API_KEY=...
 AI_TEMPERATURE=0.2
 AI_MAX_TOKENS=2048
@@ -74,7 +75,7 @@ Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key disables AI for th
     "maxFiles": 15,
     "maxDiffLines": 1200,
     "maxCharsPerFile": 12000,
-    "promptVersion": "2026-02-16"
+    "promptVersion": "2026-05-04"
   }
 }
 ```

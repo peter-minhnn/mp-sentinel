@@ -195,7 +195,7 @@ jobs:
       - name: Run Audit with GPT-5
         env:
           AI_PROVIDER: openai
-          AI_MODEL: gpt-5.3-codex  # or gpt-5.2 for best coding
+          AI_MODEL: gpt-5.2  # or gpt-5.2 for best coding
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -227,7 +227,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
-    AI_MODEL: gpt-5.3-codex
+    AI_MODEL: gpt-5.2
     OPENAI_API_KEY: $OPENAI_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
@@ -405,7 +405,7 @@ code_audit:
 
 **Supported models include:**
 - `openai/gpt-5.2` — OpenAI GPT-5.2
-- `openai/gpt-5.3-codex` — OpenAI GPT-5.3 Codex
+- `openai/gpt-5.2` — OpenAI GPT-5.3 Codex
 - `anthropic/claude-sonnet-4-6` — Claude Sonnet 4.6
 - `anthropic/claude-opus-4-6` — Claude Opus 4.6
 - `google/gemini-2.5-flash` — Gemini 2.5 Flash (free tier via OpenRouter)
@@ -495,20 +495,7 @@ jobs:
 
 ### AI Provider Costs
 
-| Provider | Cost per 1M tokens | Free Tier |
-|----------|-------------------|-----------|
-| Gemini | $0.075 | ✅ 60 RPM |
-| Grok | $2.00 | ❌ No |
-| OpenAI | $2.50 | ❌ No |
-| Claude | $3.00 | ❌ No |
-| OpenRouter | Varies by model | ❌ No |
-
-**Example monthly costs** (1000 files/month, 500 tokens each):
-- Gemini: $0.04
-- Grok: $1.00
-- OpenAI: $1.25
-- Claude: $1.50
-- OpenRouter: Varies by underlying model
+Pricing changes frequently. Check each provider's pricing page for current rates. As a general guide, Google Gemini tends to be the most cost-effective, while OpenAI and Anthropic models are typically higher-priced. OpenRouter pricing varies by the underlying model selected.
 
 ---
 
@@ -544,7 +531,7 @@ run: npx mp-sentinel --concurrency 3
 # Correct model names:
 AI_MODEL: gemini-2.5-flash  # Gemini
 AI_MODEL: grok-4-1-fast-reasoning  # xAI Grok
-AI_MODEL: gpt-5.3-codex            # OpenAI
+AI_MODEL: gpt-5.2            # OpenAI
 AI_MODEL: claude-sonnet-4-6 # Claude
 AI_MODEL: openai/gpt-5.2   # OpenRouter (slash-form: provider/model)
 ```

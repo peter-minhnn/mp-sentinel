@@ -16,8 +16,8 @@
  * Exit: 0 = clean, 1 = one or more checks failed.
  */
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { resolve, join, dirname } from "node:path";
 import { execSync } from "node:child_process";
 
 // --- helpers -----------------------------------------------------------
@@ -96,6 +96,92 @@ function checkLockfileRoot(expected) {
     );
   } else {
     ok('package-lock.json packages[""].version');
+  }
+}
+
+function checkLockfileEngine() {
+  const pkg = readJson("package.json");
+  const lock = readJson("package-lock.json");
+  if (!pkg || !lock) return;
+
+  const expectedEngine = pkg.engines?.node;
+  const lockRoot = lock.packages?.[""];
+  if (!lockRoot) return;
+
+  if (lockRoot.engines?.node !== expectedEngine) {
+    fail(
+      `package-lock.json packages[""].engines.node "${lockRoot.engines?.node}" does not match package.json "${expectedEngine}"`,
+    );
+  } else {
+    ok('package-lock.json packages[""].engines.node matches package.json');
+  }
+}
+
+function checkLockfileDeps() {
+  const pkg = readJson("package.json");
+  const lock = readJson("package-lock.json");
+  if (!pkg || !lock) return;
+
+  // Lockfile v3 stores root specs in packages[""].dependencies / .devDependencies
+  const lockPkg = lock.packages?.[""];
+  if (!lockPkg) return;
+
+  const lockDeps = lockPkg.dependencies || {};
+  const lockDevDeps = lockPkg.devDependencies || {};
+
+  const pkgDeps = pkg.dependencies || {};
+  const pkgDevDeps = pkg.devDependencies || {};
+
+  let clean = true;
+  for (const [name, version] of Object.entries(pkgDeps)) {
+    if (lockDeps[name] !== version) {
+      fail(
+        `package-lock.json root dependency "${name}" spec "${lockDeps[name]}" does not match package.json "${version}"`,
+      );
+      clean = false;
+    }
+  }
+  for (const [name, version] of Object.entries(pkgDevDeps)) {
+    if (lockDevDeps[name] !== version) {
+      fail(
+        `package-lock.json root devDependency "${name}" spec "${lockDevDeps[name]}" does not match package.json "${version}"`,
+      );
+      clean = false;
+    }
+  }
+  if (clean) {
+    ok("package-lock.json root dependency specs match package.json");
+  }
+}
+
+function checkDirectDepEngines() {
+  const pkg = readJson("package.json");
+  const lock = readJson("package-lock.json");
+  if (!pkg || !lock || !lock.packages) return;
+
+  const expected = pkg.engines?.node || "";
+  const majorMatch = expected.match(/(\d+)/);
+  if (!majorMatch) return;
+  const engineMajor = parseInt(majorMatch[1], 10);
+
+  const directDeps = {
+    ...pkg.dependencies,
+  };
+
+  let clean = true;
+  for (const depName of Object.keys(directDeps)) {
+    const depPkg = lock.packages[`node_modules/${depName}`];
+    if (!depPkg || !depPkg.engines?.node) continue;
+    const depMajor = parseInt((depPkg.engines.node.match(/(\d+)/) || [])[1], 10);
+    if (depMajor > engineMajor) {
+      fail(
+        `Direct dep "${depName}" requires Node >=${depMajor} (lockfile), but package.json allows >=${engineMajor}`,
+      );
+      clean = false;
+    }
+  }
+  if (clean) {
+    ok("Direct runtime dep engines match package.json baseline");
   }
 }
 
@@ -289,6 +375,125 @@ function checkDistFreshness(expected) {
   }
 }
 
+/**
+ * Files that are allowed to contain retired model IDs and deprecated SDK refs
+ * because they describe historical state or removals.
+ */
+const STALE_REF_ALLOWLIST = [
+  "docs/CHANGELOG.md",
+  "docs/PROVIDER_COMPARISON.md", // may list historical models for context
+  "WHATS_NEW.md",
+  "src/services/ai/cache.ts", // cache version comment describes why bump happened
+];
+
+/**
+ * Patterns that should not appear in published docs/examples outside the allowlist.
+ */
+const RETIRED_PATTERNS = [
+  { pattern: /gpt-5\.3-codex/g, label: "gpt-5.3-codex" },
+  { pattern: /gemini-3-pro-preview/g, label: "gemini-3-pro-preview" },
+  { pattern: /@google\/generative-ai/g, label: "@google/generative-ai" },
+  { pattern: /GoogleGenerativeAI/g, label: "GoogleGenerativeAI" },
+];
+
+function checkPublishedBadgeVersions(expected) {
+  const pkg = readJson("package.json");
+  if (!pkg) return;
+
+  // Scan all published doc files and example workflow files
+  const targets = [
+    "README.md",
+    ...glob("docs/*.md"),
+    ...glob("examples/workflows/github/*.yml.example"),
+    ...glob("examples/workflows/gitlab/*.yml.example"),
+  ];
+
+  let clean = true;
+  for (const file of targets) {
+    try {
+      const content = readFileSync(file, "utf-8");
+      const matches = content.match(/npm-v(\d+\.\d+\.\d+)/g);
+      if (matches) {
+        for (const m of matches) {
+          const v = m.replace("npm-v", "");
+          if (v !== expected) {
+            fail(`${file} npm badge version "${v}" does not match expected "${expected}"`);
+            clean = false;
+          }
+        }
+      }
+    } catch {
+      // skip missing files
+    }
+  }
+  if (clean) {
+    ok("Published file npm badge versions match package.json");
+  }
+}
+
+function checkStaleReferences(expected) {
+  const targets = [
+    "README.md",
+    ...glob("docs/*.md"),
+    ...glob("examples/workflows/github/*.yml.example"),
+    ...glob("examples/workflows/gitlab/*.yml.example"),
+  ];
+
+  let clean = true;
+  for (const file of targets) {
+    if (STALE_REF_ALLOWLIST.includes(file)) continue;
+
+    try {
+      const content = readFileSync(file, "utf-8");
+      for (const { pattern, label } of RETIRED_PATTERNS) {
+        // Reset lastIndex for global regex
+        pattern.lastIndex = 0;
+        if (pattern.test(content)) {
+          fail(`${file} contains retired reference "${label}"`);
+          clean = false;
+        }
+      }
+    } catch {
+      // skip missing files
+    }
+  }
+  if (clean) {
+    ok("Published files contain no retired model/SDK references");
+  }
+}
+
+/**
+ * Minimal glob: expands `docs/*.md` to matching paths.
+ */
+function glob(pattern) {
+  const parts = pattern.split("/");
+  const base = parts[0];
+  const rest = parts.slice(1).join("/");
+
+  if (!existsSync(base)) return [];
+
+  if (rest.includes("*")) {
+    const dirPath = resolve(rest.replace(/\/[^/]*$/, ""));
+    const filePat = rest.split("/").pop().replace(/\*/g, ".*");
+    const re = new RegExp(`^${filePat}$`);
+    try {
+      return readdirSync(dirPath)
+        .filter((f) => re.test(f))
+        .map((f) => `${dirPath}/${f}`);
+    } catch {
+      return [];
+    }
+  }
+
+  const full = resolve(pattern);
+  try {
+    if (statSync(full).isFile()) return [full];
+  } catch {
+    // fall through
+  }
+  return [];
+}
+
 function checkWhatsNewSymbols() {
   const text = readText("WHATS_NEW.md");
   if (!text) return;
@@ -343,8 +548,13 @@ process.stdout.write(`\nRelease check for mp-sentinel v${expected}\n\n`);
 
 checkPackageVersion(expected);
 checkLockfileRoot(expected);
+checkLockfileEngine();
+checkLockfileDeps();
+checkDirectDepEngines();
 checkReadmeBadge(expected);
 checkReadmeWhatsNew(expected);
+checkPublishedBadgeVersions(expected);
+checkStaleReferences(expected);
 checkWhatsNew(expected);
 checkWhatsNewSymbols();
 checkChangelog(expected);

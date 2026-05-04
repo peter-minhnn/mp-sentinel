@@ -1,39 +1,47 @@
 /**
  * Google Gemini AI Provider
- * Best models for code: gemini-3.1-pro-preview, gemini-2.5-pro
+ * Uses the @google/genai SDK.
+ * Reference: https://ai.google.dev/gemini-api/docs
  */
 
-import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import type { IAIProvider, AIModelConfig } from "../types.js";
 
 export class GeminiProvider implements IAIProvider {
-  private readonly model: GenerativeModel;
-  private readonly apiKey: string;
+  private readonly client: GoogleGenAI;
+  private readonly model: string;
+  private readonly temperature: number;
+  private readonly maxTokens: number;
   private readonly timeoutMs: number;
 
+  private readonly apiKey: string;
+
   constructor(config: AIModelConfig) {
+    this.client = new GoogleGenAI({ apiKey: config.apiKey });
     this.apiKey = config.apiKey;
+    this.model = config.model;
+    this.temperature = config.temperature ?? 0.2;
+    this.maxTokens = config.maxTokens ?? 2048;
     this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
-    const genAI = new GoogleGenerativeAI(config.apiKey);
-    this.model = genAI.getGenerativeModel({
-      model: config.model,
-      generationConfig: {
-        temperature: config.temperature ?? 0.2,
-        maxOutputTokens: config.maxTokens ?? 2048,
-      },
-    });
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
     try {
-      // The @google/generative-ai SDK accepts a RequestOptions object as the
-      // second argument to generateContent, which forwards the signal.
-      const result = await this.model.generateContent([systemPrompt, userPrompt], {
-        signal: controller.signal,
-      } as Parameters<GenerativeModel["generateContent"]>[1]);
-      return result.response.text();
+      const result = await this.client.models.generateContent({
+        model: this.model,
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: this.temperature,
+          maxOutputTokens: this.maxTokens,
+          abortSignal: controller.signal,
+        },
+      });
+
+      return result.text ?? "";
     } finally {
       clearTimeout(timeoutId);
     }

@@ -82,7 +82,7 @@ export const buildProgram = (): Command => {
     .option("--format <fmt>", "Output format: console | json | markdown (default: console)")
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
-    .option("--no-skills-fetch", "Disable external skills.sh calls (air-gapped mode)", false)
+    .option("--no-skills-fetch", "Disable local skills fetch (air-gapped mode)", false)
     .option("--dry-run", "Security scan only — skip AI calls and preview results", false)
     .option("--verbose-dry-run", "Dry-run with forced per-file token breakdown", false)
     .option(
@@ -179,7 +179,7 @@ Examples:
   $ npx mp-sentinel --range main..HEAD                    # Review a commit range
   $ npx mp-sentinel --format json                         # Output as JSON
   $ npx mp-sentinel --format markdown                     # Output as Markdown
-  $ npx mp-sentinel --no-skills-fetch                     # Disable external skills.sh calls
+  $ npx mp-sentinel --no-skills-fetch                     # Disable local skills fetch
   $ npx mp-sentinel --dry-run                             # Security-only preview (no AI)
   $ npx mp-sentinel --verbose-dry-run                     # Dry-run with forcing token breakdowns
   $ npx mp-sentinel --token-limit 128000                  # Override token limit for GPT-4o

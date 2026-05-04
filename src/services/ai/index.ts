@@ -4,7 +4,7 @@
  * Features: retry with exponential backoff, fallback provider chain, auto-chunking
  */
 
-import type { AuditResult, ProjectConfig, FileAuditResult } from "../../types/index.js";
+import type { AuditResult, ProjectConfig, FileAuditResult, AuditIssue } from "../../types/index.js";
 import {
   buildSystemPrompt,
   buildCommitPrompt,
@@ -13,8 +13,8 @@ import {
 import { parseAuditResponse } from "../../utils/parser.js";
 import { log } from "../../utils/logger.js";
 import { withRetry, isRetryableError } from "../../utils/retry.js";
-import { chunkFileContent } from "../../utils/tokens.js";
-import type { IAIProvider, AIProvider } from "./types.js";
+import { chunkFileWithMetadata } from "../../utils/tokens.js";
+import type { IAIProvider, AIProvider, ModelTier } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { AIConfig } from "./config.js";
 import { buildAuditCacheKey, readCachedAuditResult, writeCachedAuditResult } from "./cache.js";
@@ -25,23 +25,40 @@ let providerConfigCache: ReturnType<typeof AIConfig.fromEnvironment> | null = nu
 
 const TOOL_VERSION = getToolVersion();
 
-const getProviderConfig = (): ReturnType<typeof AIConfig.fromEnvironment> => {
-  if (providerConfigCache) {
-    return providerConfigCache;
+/**
+ * Resolve provider config with optional modelTier.
+ * Invalidates the cached provider instance when the resolved
+ * provider/model differs from the cached config.
+ */
+const getProviderConfig = (modelTier?: ModelTier): ReturnType<typeof AIConfig.fromEnvironment> => {
+  const config = AIConfig.fromEnvironment({ modelTier });
+
+  // Invalidate provider if resolved config changed
+  if (
+    providerConfigCache &&
+    (providerConfigCache.provider !== config.provider || providerConfigCache.model !== config.model)
+  ) {
+    providerInstance = null;
+    log.info(`AI provider config changed: ${providerConfigCache.model} → ${config.model}`);
   }
-  providerConfigCache = AIConfig.fromEnvironment();
+
+  providerConfigCache = config;
   return providerConfigCache;
 };
 
 /**
- * Initialize AI provider (singleton pattern)
+ * Get or create AI provider instance.
+ * Accepts an optional modelTier so the resolved model can change
+ * without stale cache issues.
  */
-const getProvider = (): IAIProvider => {
+const getProvider = (modelTier?: ModelTier): IAIProvider => {
+  // Always resolve config first (may invalidate cached provider)
+  const config = getProviderConfig(modelTier);
+
   if (providerInstance) {
     return providerInstance;
   }
 
-  const config = getProviderConfig();
   AIConfig.validate(config);
 
   providerInstance = AIProviderFactory.createProvider(config);
@@ -72,10 +89,11 @@ const tryFallbackProviders = async (
   fallbackChain: AIProvider[],
   systemPrompt: string,
   userPrompt: string,
+  modelTier?: ModelTier,
 ): Promise<string | null> => {
   for (const providerName of fallbackChain) {
     try {
-      const fallbackConfig = AIConfig.fromEnvironmentForProvider(providerName);
+      const fallbackConfig = AIConfig.fromEnvironmentForProvider(providerName, { modelTier });
       const fallbackProvider = AIProviderFactory.createProvider(fallbackConfig);
       log.warning(
         `Primary provider failed. Trying fallback: ${providerName} (${fallbackConfig.model})`,
@@ -100,7 +118,8 @@ export const auditCommit = async (message: string, config: ProjectConfig): Promi
   log.audit(`Auditing Commit Message: "${message}"...`);
 
   const systemPrompt = buildCommitPrompt(config.commitFormat);
-  const provider = getProvider();
+  const modelTier = config.ai?.modelTier;
+  const provider = getProvider(modelTier);
 
   try {
     const response = await withRetry(() =>
@@ -123,8 +142,9 @@ export const auditFile = async (
   content: string,
   systemPrompt: string,
   fallbackChain: AIProvider[] = [],
+  modelTier?: ModelTier,
 ): Promise<AuditResult> => {
-  const provider = getProvider();
+  const provider = getProvider(modelTier);
   const userPrompt = `Code to review:\n${content}`;
 
   try {
@@ -135,7 +155,12 @@ export const auditFile = async (
 
     // Attempt fallback providers if primary fails with a retryable error
     if (fallbackChain.length > 0 && isRetryableError(primaryError)) {
-      const fallbackResponse = await tryFallbackProviders(fallbackChain, systemPrompt, userPrompt);
+      const fallbackResponse = await tryFallbackProviders(
+        fallbackChain,
+        systemPrompt,
+        userPrompt,
+        modelTier,
+      );
       if (fallbackResponse !== null) {
         return parseAuditResponse(fallbackResponse);
       }
@@ -151,8 +176,58 @@ export const auditFile = async (
 };
 
 /**
+ * Normalise a concurrency value to a safe positive integer.
+ * - non-finite (NaN, Infinity, -Infinity) → 1
+ * - value <= 0 → 1
+ * - positive float → Math.floor(value), minimum 1
+ */
+const normalizeConcurrency = (value: number): number => {
+  if (!isFinite(value)) return 1;
+  if (value <= 0) return 1;
+  return Math.max(1, Math.floor(value));
+};
+
+/**
+ * Internal concurrency limiter: wraps async functions so that no more than
+ * `concurrency` are executing simultaneously at any point.
+ * Uses a slot reservation protocol to prevent queue bypass: the finishing
+ * task reserves the slot for the next queued task before waking it, so no
+ * external caller can observe a free slot and jump the queue.
+ */
+const createConcurrencyLimiter = <T>(concurrency: number) => {
+  const effective = normalizeConcurrency(concurrency);
+  const queue: Array<() => void> = [];
+  let active = 0;
+
+  const run = async (fn: () => Promise<T>): Promise<T> => {
+    if (active >= effective) {
+      // Must wait — the waker already reserved our slot before waking us,
+      // so we must NOT increment active.
+      await new Promise<void>((resolve) => queue.push(resolve));
+    } else {
+      active++;
+    }
+    try {
+      return await fn();
+    } finally {
+      if (queue.length > 0) {
+        // Reserve the slot for the next queued task before waking it,
+        // so no caller can observe a free slot and jump the queue.
+        // The woken task skips its own active++ because the slot is pre-reserved.
+        queue.shift()!();
+      } else {
+        active--;
+      }
+    }
+  };
+
+  return run;
+};
+
+/**
  * Audit multiple files with concurrency control
- * PERFORMANCE: Uses Promise.allSettled for true parallel processing
+ * PERFORMANCE: Uses a shared concurrency limiter so that individual chunk audits
+ *              within a file also respect maxConcurrency (not just at the file level).
  * ERROR HANDLING: Failed files are tracked and reported, but don't stop the process
  * RETRY: Each file audit uses withRetry internally (via auditFile)
  * FALLBACK: Falls back to config.ai.fallbackProvider chain on retryable errors
@@ -163,9 +238,20 @@ export const auditFilesWithConcurrency = async (
   maxConcurrency: number = 5,
   indexContext?: string,
 ): Promise<FileAuditResult[]> => {
-  // Build system prompt once (with skills.sh integration and optional source index)
+  // Normalise maxConcurrency to a safe positive integer — guards against NaN,
+  // Infinity, negative values, and floats from programmatic API misuse.
+  const effectiveConcurrency = normalizeConcurrency(maxConcurrency);
+
+  // Shared concurrency limiter for ALL provider calls (non-chunked and chunked alike)
+  const limit = createConcurrencyLimiter<AuditResult>(effectiveConcurrency);
+
+  // Model tier from config — passed through to provider resolution so
+  // .mp-sentinelrc.json ai.modelTier affects model selection at runtime
+  const modelTier = config.ai?.modelTier;
+
+  // Build system prompt once (with local skills enrichment and optional source index)
   const systemPrompt = await buildSystemPrompt(config, indexContext);
-  const providerConfig = getProviderConfig();
+  const providerConfig = getProviderConfig(modelTier);
   const cacheEnabled = config.cacheEnabled !== false;
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   const fallbackChain = parseFallbackChain(config.ai?.fallbackProvider);
@@ -177,133 +263,131 @@ export const auditFilesWithConcurrency = async (
 
   const results: FileAuditResult[] = [];
   const failedFiles: Array<{ path: string; error: string }> = [];
+  let completedCount = 0;
 
-  // Process files in batches for concurrency control
-  for (let i = 0; i < files.length; i += maxConcurrency) {
-    const batch = files.slice(i, i + maxConcurrency);
+  // Map every file to a promise. Only the provider audit calls go through the
+  // shared limiter — cache reads/writes and local computation are not throttled.
+  const allFilePromises = files.map(async (file) => {
+    const startTime = performance.now();
 
-    const batchPromises = batch.map(async (file) => {
-      const startTime = performance.now();
+    // Auto-chunk large files that exceed maxCharsPerFile
+    // Uses chunkFileWithMetadata to preserve original file line numbers
+    const chunkMetas = chunkFileWithMetadata(file.content, maxCharsPerFile);
+    const isChunked = chunkMetas.length > 1;
 
-      // Auto-chunk large files that exceed maxCharsPerFile
-      const chunks = chunkFileContent(file.content, maxCharsPerFile);
-      const isChunked = chunks.length > 1;
+    if (isChunked) {
+      log.audit(`Auditing: ${file.path} (${chunkMetas.length} chunks)`);
+    } else {
+      log.audit(`Auditing: ${file.path}`);
+    }
 
-      if (isChunked) {
-        log.audit(`Auditing: ${file.path} (${chunks.length} chunks)`);
-      } else {
-        log.audit(`Auditing: ${file.path}`);
+    try {
+      const cacheKey = buildAuditCacheKey({
+        provider: providerConfig.provider,
+        model: providerConfig.model,
+        promptVersion,
+        systemPrompt,
+        filePath: file.path,
+        payload: file.content,
+        toolVersion: TOOL_VERSION,
+      });
+
+      if (cacheEnabled) {
+        const cached = await readCachedAuditResult(cacheKey);
+        if (cached) {
+          const duration = performance.now() - startTime;
+          return {
+            success: true as const,
+            data: { filePath: file.path, result: cached, duration, cached: true },
+          };
+        }
       }
 
-      try {
-        const cacheKey = buildAuditCacheKey({
-          provider: providerConfig.provider,
-          model: providerConfig.model,
-          promptVersion,
-          systemPrompt,
-          filePath: file.path,
-          payload: file.content,
-          toolVersion: TOOL_VERSION,
-        });
-
-        if (cacheEnabled) {
-          const cached = await readCachedAuditResult(cacheKey);
-          if (cached) {
-            const duration = performance.now() - startTime;
-            return {
-              success: true as const,
-              data: {
-                filePath: file.path,
-                result: cached,
-                duration,
-                cached: true,
-              },
-            };
-          }
-        }
-
-        // For chunked files: audit each chunk and merge issues
-        let result: AuditResult;
-        if (isChunked) {
-          const chunkResults = await Promise.all(
-            chunks.map((chunk, idx) =>
+      // For chunked files: audit each chunk and merge issues with line offset
+      let result: AuditResult;
+      if (isChunked) {
+        // Every chunk audit goes through the shared limiter so chunks from
+        // multiple files never collectively exceed maxConcurrency.
+        // We yield to the microtask queue after each enqueue to allow other
+        // file promises to enqueue their own chunks, creating fair interleaving
+        // rather than one file filling the entire queue before others.
+        const chunkPromises: Array<Promise<AuditResult>> = [];
+        for (const meta of chunkMetas) {
+          chunkPromises.push(
+            limit(() =>
               auditFile(
-                `${file.path} [chunk ${idx + 1}/${chunks.length}]`,
-                chunk,
+                `${file.path} [chunk ${meta.index + 1}/${chunkMetas.length}]`,
+                meta.content,
                 systemPrompt,
                 fallbackChain,
+                modelTier,
               ),
             ),
           );
-          // Merge: FAIL if any chunk fails, collect all issues
-          const allIssues = chunkResults.flatMap((r) => r.issues ?? []);
-          const hasError = chunkResults.some((r) => r.status === "ERROR");
-          const hasFail = chunkResults.some((r) => r.status === "FAIL");
-          result = {
-            status: hasError ? "ERROR" : hasFail ? "FAIL" : "PASS",
-            issues: allIssues,
-            ...(hasError && { message: "One or more chunks failed to audit" }),
-          };
-        } else {
-          result = await auditFile(file.path, file.content, systemPrompt, fallbackChain);
+          // Yield to the microtask queue so other file callbacks get a chance
+          // to enqueue their chunk limit() calls before this file continues.
+          await 0;
         }
-        const duration = performance.now() - startTime;
-
-        if (cacheEnabled && result.status !== "ERROR") {
-          await writeCachedAuditResult(cacheKey, result);
-        }
-
-        return {
-          success: true as const,
-          data: {
-            filePath: file.path,
-            result,
-            duration,
-            cached: false,
-          },
+        const chunkResults = await Promise.all(chunkPromises);
+        // Merge: FAIL if any chunk fails, collect all issues with line offset
+        const allIssues = chunkResults.flatMap((r, idx) =>
+          offsetChunkIssues(r.issues ?? [], chunkMetas[idx]!.startLine),
+        );
+        const hasError = chunkResults.some((r) => r.status === "ERROR");
+        const hasFail = chunkResults.some((r) => r.status === "FAIL");
+        result = {
+          status: hasError ? "ERROR" : hasFail ? "FAIL" : "PASS",
+          issues: allIssues,
+          ...(hasError && { message: "One or more chunks failed to audit" }),
         };
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        log.error(`Failed to audit ${file.path}: ${errorMsg}`);
-
-        return {
-          success: false as const,
-          path: file.path,
-          error: errorMsg,
-        };
-      }
-    });
-
-    // Use Promise.allSettled to ensure all files are processed
-    const batchResults = await Promise.allSettled(batchPromises);
-
-    // Process results
-    for (const promiseResult of batchResults) {
-      if (promiseResult.status === "fulfilled") {
-        const fileResult = promiseResult.value;
-
-        if (fileResult.success) {
-          results.push(fileResult.data);
-        } else {
-          failedFiles.push({
-            path: fileResult.path,
-            error: fileResult.error,
-          });
-        }
       } else {
-        // Promise rejected (shouldn't happen with our error handling, but just in case)
-        log.error(`Unexpected promise rejection: ${promiseResult.reason}`);
+        result = await limit(() =>
+          auditFile(file.path, file.content, systemPrompt, fallbackChain, modelTier),
+        );
       }
-    }
+      const duration = performance.now() - startTime;
 
-    log.progress(
-      Math.min(i + maxConcurrency, files.length),
-      files.length,
-      `${results.length}/${files.length} files audited`,
-    );
+      if (cacheEnabled && result.status !== "ERROR") {
+        await writeCachedAuditResult(cacheKey, result);
+      }
+
+      return {
+        success: true as const,
+        data: { filePath: file.path, result, duration, cached: false },
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      log.error(`Failed to audit ${file.path}: ${errorMsg}`);
+      return { success: false as const, path: file.path, error: errorMsg };
+    }
+  });
+
+  // Live progress tracking — fires as each individual file promise settles,
+  // providing real-time feedback even while other files are still being audited.
+  for (const p of allFilePromises) {
+    p.finally(() => {
+      completedCount++;
+      log.progress(completedCount, files.length, `${completedCount}/${files.length} files audited`);
+    });
   }
 
+  // Resolve all file promises — the limiter handles actual provider concurrency
+  const settled = await Promise.allSettled(allFilePromises);
   log.progressEnd();
+
+  // Process results (maintains input order from Promise.allSettled)
+  for (const promiseResult of settled) {
+    if (promiseResult.status === "fulfilled") {
+      const fileResult = promiseResult.value;
+      if (fileResult.success) {
+        results.push(fileResult.data);
+      } else {
+        failedFiles.push({ path: fileResult.path, error: fileResult.error });
+      }
+    } else {
+      log.error(`Unexpected promise rejection: ${promiseResult.reason}`);
+    }
+  }
 
   // Report failed files at the end
   if (failedFiles.length > 0) {
@@ -319,9 +403,18 @@ export const auditFilesWithConcurrency = async (
 };
 
 /**
+ * Offset chunk-relative issue line numbers back to original file line numbers.
+ * Uses line + Math.max(0, chunkStartLine - 1) so that chunk 1 (startLine=1) is
+ * a no-op on the line value while still returning new objects.
+ * Preserves all issue metadata (category, confidence, evidence, suggestion).
+ */
+export const offsetChunkIssues = (issues: AuditIssue[], chunkStartLine: number): AuditIssue[] =>
+  issues.map((i) => ({ ...i, line: i.line + Math.max(0, chunkStartLine - 1) }));
+
+/**
  * Clear provider cache (useful for testing)
  */
-export const clearProviderCache = (): void => {
+export const clearProviderCache = (modelTier?: ModelTier): void => {
   providerInstance = null;
   providerConfigCache = null;
 };

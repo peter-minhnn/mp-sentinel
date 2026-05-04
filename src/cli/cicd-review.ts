@@ -34,7 +34,7 @@ export const runCICDReview = async (options: CICDReviewOptions): Promise<number>
     options;
 
   let hasErrors = false;
-  const aiAvailability = AIConfig.probeEnvironment();
+  const aiAvailability = AIConfig.probeEnvironment({ modelTier: config.ai?.modelTier });
   const aiEnabled = aiAvailability.status === "ready";
 
   if (!aiEnabled) {

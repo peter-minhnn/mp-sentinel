@@ -193,3 +193,87 @@ export const chunkFileContent = (content: string, maxCharsPerFile: number): stri
 
   return chunks;
 };
+
+// ── Rich chunk metadata for line-number mapping ──────────────────────────
+
+export interface ChunkMetadata {
+  /** Chunk content (same shape as chunkFileContent returns) */
+  content: string;
+  /** 1-based line number of the first line in this chunk */
+  startLine: number;
+  /** 1-based line number of the last line in this chunk */
+  endLine: number;
+  /** 0-based chunk index */
+  index: number;
+}
+
+/**
+ * Like chunkFileContent but returns rich metadata including original
+ * file line numbers. Used by the AI pipeline to offset issue lines
+ * back to the original file position when a file is chunked.
+ */
+export const chunkFileWithMetadata = (
+  content: string,
+  maxCharsPerFile: number,
+): ChunkMetadata[] => {
+  // Compute real file line count (trailing newline doesn't add a line)
+  const countFileLines = (text: string): number => {
+    if (text.length === 0) return 0;
+    const parts = text.split("\n");
+    return text.endsWith("\n") ? parts.length - 1 : parts.length;
+  };
+
+  const totalLines = countFileLines(content);
+
+  if (content.length <= maxCharsPerFile) {
+    return [{ content, startLine: 1, endLine: totalLines, index: 0 }];
+  }
+
+  const result: ChunkMetadata[] = [];
+  // split("\n") on trailing-newline content yields a trailing "" element
+  // that must be kept for content integrity but not counted as a real line
+  const lines = content.split("\n");
+  const isTrailingEmpty = content.endsWith("\n") && lines[lines.length - 1] === "";
+
+  let currentChunk: string[] = [];
+  let currentLength = 0;
+  let chunkStartLine = 1;
+  let realLine = 0; // real line number, skipping trailing split artifact
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const isLastEmpty = isTrailingEmpty && i === lines.length - 1;
+
+    // Only increment real line count for actual content lines
+    if (!isLastEmpty) {
+      realLine++;
+    }
+
+    const lineLength = line.length + 1; // +1 for newline
+    if (currentLength + lineLength > maxCharsPerFile && currentChunk.length > 0) {
+      result.push({
+        content: currentChunk.join("\n"),
+        startLine: chunkStartLine,
+        endLine: realLine - 1,
+        index: result.length,
+      });
+      currentChunk = [];
+      currentLength = 0;
+      chunkStartLine = realLine;
+    }
+
+    currentChunk.push(line);
+    currentLength += lineLength;
+  }
+
+  if (currentChunk.length > 0) {
+    result.push({
+      content: currentChunk.join("\n"),
+      startLine: chunkStartLine,
+      endLine: totalLines,
+      index: result.length,
+    });
+  }
+
+  return result;
+};

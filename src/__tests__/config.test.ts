@@ -97,4 +97,21 @@ describe("validateConfig", () => {
   it("rejects invalid patternMatchMode", () => {
     expect(validateConfig({ localReview: { patternMatchMode: "none" } })).toBe(false);
   });
+
+  it("accepts valid ai.modelTier = premium", () => {
+    expect(validateConfig({ ai: { modelTier: "premium" } })).toBe(true);
+  });
+
+  it("accepts valid ai.modelTier = balanced", () => {
+    expect(validateConfig({ ai: { modelTier: "balanced" } })).toBe(true);
+  });
+
+  it("accepts valid ai.modelTier = budget", () => {
+    expect(validateConfig({ ai: { modelTier: "budget" } })).toBe(true);
+  });
+
+  it("rejects invalid ai.modelTier value", () => {
+    expect(validateConfig({ ai: { modelTier: "ultra" } })).toBe(false);
+    expect(validateConfig({ ai: { modelTier: 123 } })).toBe(false);
+  });
 });

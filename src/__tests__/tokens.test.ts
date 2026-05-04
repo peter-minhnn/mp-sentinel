@@ -8,6 +8,7 @@ import {
   PROVIDER_TOKEN_LIMITS,
   warnIfTokenLimitExceeded,
   chunkFileContent,
+  chunkFileWithMetadata,
   estimatePayloadTokens,
   generatePayloadSummary,
 } from "../utils/tokens.js";
@@ -109,6 +110,68 @@ describe("chunkFileContent", () => {
     const chunks = chunkFileContent("", 1000);
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toBe("");
+  });
+});
+
+// -- chunkFileWithMetadata -----------------------------------------------------
+
+describe("chunkFileWithMetadata", () => {
+  it("returns single chunk with correct line numbering when content fits", () => {
+    const content = "line1\nline2\nline3";
+    const metas = chunkFileWithMetadata(content, 1000);
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.content).toBe(content);
+    expect(metas[0]!.startLine).toBe(1);
+    expect(metas[0]!.endLine).toBe(3);
+    expect(metas[0]!.index).toBe(0);
+  });
+
+  it("splits into multiple chunks with correct line offsets", () => {
+    // 5 lines of ~30 chars each, maxChars=60 → ~2 lines per chunk
+    const line = "const x = 1; // padding for test\n";
+    const content = line.repeat(5);
+    const metas = chunkFileWithMetadata(content, 60);
+
+    expect(metas.length).toBeGreaterThan(1);
+    // First chunk starts at line 1
+    expect(metas[0]!.startLine).toBe(1);
+    // Each subsequent chunk starts right after previous
+    for (let i = 1; i < metas.length; i++) {
+      expect(metas[i]!.startLine).toBe(metas[i - 1]!.endLine + 1);
+    }
+    // Last chunk ends at total line count
+    expect(metas[metas.length - 1]!.endLine).toBe(5);
+
+    // Verify content round-trips
+    const reassembled = metas.map((m) => m.content).join("\n");
+    expect(reassembled).toBe(content);
+  });
+
+  it("handles empty content", () => {
+    const metas = chunkFileWithMetadata("", 1000);
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.content).toBe("");
+    expect(metas[0]!.startLine).toBe(1);
+    expect(metas[0]!.endLine).toBe(0);
+    expect(metas[0]!.index).toBe(0);
+  });
+
+  it("handles trailing newline", () => {
+    const content = "a\nb\n";
+    const metas = chunkFileWithMetadata(content, 1000);
+    expect(metas).toHaveLength(1);
+    expect(metas[0]!.content).toBe(content);
+    expect(metas[0]!.startLine).toBe(1);
+    expect(metas[0]!.endLine).toBe(2);
+  });
+
+  it("has index values that are sequential from 0", () => {
+    const line = "const x = 1;\n";
+    const content = line.repeat(20);
+    const metas = chunkFileWithMetadata(content, 60);
+    for (let i = 0; i < metas.length; i++) {
+      expect(metas[i]!.index).toBe(i);
+    }
   });
 });
 

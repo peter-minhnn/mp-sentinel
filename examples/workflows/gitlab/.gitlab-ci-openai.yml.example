@@ -28,9 +28,8 @@ code_audit:
   variables:
     # OpenAI Configuration
     AI_PROVIDER: openai
-    AI_MODEL: gpt-5.3-codex  # Best balance of speed and accuracy
-    # AI_MODEL: gpt-5.2  # Best for complex coding tasks
-    # AI_MODEL: gpt-5-mini  # Alternative option
+    AI_MODEL_TIER: premium  # Best models; fall back to balanced or budget via env
+    # AI_MODEL: gpt-5.2    # Explicit model overrides AI_MODEL_TIER
     OPENAI_API_KEY: $OPENAI_API_KEY
     
     # Optional: Fine-tune behavior

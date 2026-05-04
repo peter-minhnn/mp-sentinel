@@ -128,7 +128,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   let hasErrors = false;
   const dryRun = values["dry-run"] || values["verbose-dry-run"];
   const verboseDryRun = values["verbose-dry-run"];
-  const aiAvailability = AIConfig.probeEnvironment();
+  const aiAvailability = AIConfig.probeEnvironment({ modelTier: config.ai?.modelTier });
   const aiEnabled = aiAvailability.status === "ready";
 
   if (!dryRun && !aiEnabled) {
@@ -208,7 +208,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     // Attempt token estimation
     let providerName: string | undefined;
     try {
-      const providerConfig = AIConfig.fromEnvironment();
+      const providerConfig = AIConfig.fromEnvironment({ modelTier: config.ai?.modelTier });
       providerName = providerConfig.provider;
     } catch {
       // Ignored

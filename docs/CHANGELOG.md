@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-05-04
+
+### Added
+- **Model tier selection** (`ai.modelTier` in `.mp-sentinelrc.json`, `AI_MODEL_TIER` env): Choose `premium` for security/architecture reviews, `balanced` for everyday CI (default), or `budget` for bulk passes.
+- **Model tier catalog** (`src/services/ai/factory.ts`): Five provider tier catalogs with `getModelForTier()`, `getModelTiers()`, `getPremiumModels()` — premium-first ordering for hard reviews, budget fallback for cost-sensitive passes.
+- **Configurable model resolution** (`src/services/ai/config.ts`): Resolved via `AI_MODEL` > `AI_MODEL_TIER` > `ai.modelTier` > provider default, wired through all audit entrypoints so `.mp-sentinelrc.json` settings affect runtime model selection.
+- **OpenRouter budget tier**: Added `google/gemini-2.5-flash` as the OpenRouter budget fallback.
+- **OpenRouter validation hardening** (`src/services/ai/factory.ts`): Replaced permissive `includes("/")` with strict `isValidOpenRouterModelId()` rejecting empty, malformed, or whitespace-containing IDs.
+- **Mutation-safe tier API** (`src/services/ai/factory.ts`): `getModelTiers()` and `getPremiumModels()` return array copies — callers cannot mutate the internal catalog.
+- **Consistency guard tests** (`src/__tests__/docs-consistency.test.ts`): Lockfile engine check, deprecated SDK scan, doc/factory model cross-reference.
+- **Provider tests** (`src/__tests__/gemini.provider.test.ts`, `src/__tests__/openai.provider.test.ts`): Request shape, response parsing, error handling, `isAvailable()` contract.
+
+### Changed
+- **OpenAI provider migrated to Responses API** (`src/services/ai/providers/openai.provider.ts`): Endpoint changed from `/v1/chat/completions` to `/v1/responses`. Request body uses `instructions`, `input`, `max_output_tokens`, `store: false`. Parser handles `output_text` and nested `output[].content[].text`.
+- **Gemini provider migrated to @google/genai** (`src/services/ai/providers/gemini.provider.ts`): Replaced deprecated `@google/generative-ai` SDK with `@google/genai`. Now uses `GoogleGenAI` with `models.generateContent()` and `abortSignal` support. `isAvailable()` returns correct API-key-based result.
+- **Model catalog refreshed** (`src/services/ai/factory.ts`): Removed shut-down `gemini-3-pro-preview` and stale `gpt-5.3-codex`. Premium tiers updated with current model names (`gemini-3-flash-preview`, `gpt-5.4-mini`, `gpt-5.4-nano`). OpenAI default changed from `gpt-5.3-codex` to `gpt-5.2`.
+- **Node runtime baseline raised to 20** (`package.json`, `tsup.config.ts`, docs): Changed `engines.node` from `>=18.0.0` to `>=20.0.0`. Build target updated to `node20`.
+- **AI cache version bumped to v3** (`src/services/ai/cache.ts`): Invalidates stale entries from previous provider transport and model catalog.
+- **Model tier wired through review runtime** (`src/services/ai/index.ts`, `src/cli/review.ts`, `src/cli/local-review.ts`, `src/cli/cicd-review.ts`): Provider config cache invalidates on model change; all audit functions pass `modelTier` through the call chain.
+- **FromEnvironment/ForProvider tier support** (`src/services/ai/config.ts`): `probeEnvironment()`, `fromEnvironment()`, `fromEnvironmentForProvider()` all accept optional `modelTier`. Fallback providers use the same tier as the primary.
+
+### Docs
+- `README.md`: Model tier table, `AI_MODEL_TIER` env, OpenRouter budget tier.
+- `PROVIDER_COMPARISON.md`: Tier-labeled tables, OpenRouter budget, decision guide updated.
+- `COMMANDS_CHEAT_SHEET.md`: Tier selection examples.
+- `CONTRIBUTING.md`: Model docs rule (factory catalog + tests + docs in one change).
+- `WHATS_NEW.md`: v1.34.0 entry.
+- `src/services/ai/README.md`: `AI_MODEL_TIER` env var doc.
+
 ## [1.33.1] - 2026-05-02
 
 ### Added

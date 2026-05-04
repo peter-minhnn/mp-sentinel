@@ -87,4 +87,47 @@ describe("parseAuditResponse", () => {
     const result = parseAuditResponse(raw);
     expect(result.status).toBe("PASS");
   });
+
+  // ── Status normalization ──
+
+  it("normalises PASS + CRITICAL issue to FAIL", () => {
+    const raw = JSON.stringify({
+      status: "PASS",
+      issues: [{ line: 1, severity: "CRITICAL", message: "XSS risk" }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("FAIL");
+    expect(result.issues).toHaveLength(1);
+  });
+
+  it("normalises PASS + WARNING issue to FAIL", () => {
+    const raw = JSON.stringify({
+      status: "PASS",
+      issues: [{ line: 1, severity: "WARNING", message: "unvalidated input" }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("keeps PASS when issues are INFO-only", () => {
+    const raw = JSON.stringify({
+      status: "PASS",
+      issues: [
+        { line: 1, severity: "INFO", message: "consider refactoring" },
+        { line: 2, severity: "INFO", message: "add docs" },
+      ],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("PASS");
+  });
+
+  it("normalises PASS + invalid severity (normalised to WARNING) to FAIL", () => {
+    const raw = JSON.stringify({
+      status: "PASS",
+      issues: [{ line: 1, severity: "UNKNOWN", message: "something" }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("FAIL");
+    expect(result.issues?.[0]?.severity).toBe("WARNING");
+  });
 });

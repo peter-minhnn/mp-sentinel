@@ -602,7 +602,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
             maxFiles: 15,
             maxDiffLines: 1200,
             maxCharsPerFile: 12000,
-            promptVersion: "2026-02-16",
+            promptVersion: "2026-05-04",
           },
           localReview: {
             enabled: false,
@@ -681,7 +681,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
             maxFiles: 15,
             maxDiffLines: 1200,
             maxCharsPerFile: 12000,
-            promptVersion: "2026-02-16",
+            promptVersion: "2026-05-04",
           },
           localReview: {
             enabled: false,
@@ -741,7 +741,7 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
             maxFiles: 15,
             maxDiffLines: 1200,
             maxCharsPerFile: 12000,
-            promptVersion: "2026-02-16",
+            promptVersion: "2026-05-04",
           },
           localReview: {
             enabled: false,

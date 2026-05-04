@@ -73,6 +73,7 @@ const AIReviewConfigSchema = z.object({
   promptVersion: z.string().optional(),
   fallbackProvider: z.string().optional(),
   tokenLimit: z.number().int().positive("ai.tokenLimit must be a positive integer").optional(),
+  modelTier: z.enum(["premium", "balanced", "budget"]).optional(),
 });
 
 const IndexingConfigSchema = z.object({

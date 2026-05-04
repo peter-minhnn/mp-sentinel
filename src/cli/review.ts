@@ -31,6 +31,7 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
+import { analyzeDiffs, mergeFindings } from "../services/risk-analyzer/index.js";
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -195,8 +196,11 @@ const buildReport = (
   const status: ReviewReport["status"] = hasRuntimeErrors ? "ERROR" : hasFindings ? "FAIL" : "PASS";
 
   const durationMs = performance.now() - startTime;
-  const passedFiles = results.filter((r) => r.result.status === "PASS").length;
-  const failedFiles = results.filter((r) => r.result.status !== "PASS").length;
+  const hasActionable = (entry: FileAuditResult): boolean =>
+    entry.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
+    false;
+  const passedFiles = results.filter((r) => r.result.status === "PASS" && !hasActionable(r)).length;
+  const failedFiles = results.filter((r) => r.result.status !== "PASS" || hasActionable(r)).length;
 
   return {
     schemaVersion: "1.0",
@@ -303,7 +307,9 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const target = resolveTarget(values, commandPositionals, targetBranch);
   // In dry-run mode, AI is always disabled
   const aiRequested = dryRun ? false : resolveAIEnabled(values, target, config);
-  const aiAvailability = aiRequested ? AIConfig.probeEnvironment() : null;
+  const aiAvailability = aiRequested
+    ? AIConfig.probeEnvironment({ modelTier: config.ai?.modelTier })
+    : null;
   const aiEnabled = aiRequested && aiAvailability?.status === "ready";
 
   const maxFiles = Math.max(1, config.ai?.maxFiles ?? 15);
@@ -372,6 +378,26 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     diffResult.files.map((file) => ({ path: file.path, content: file.patch })),
   );
 
+  // ── Deterministic risk analysis (runs before AI, merged after AI) ──────
+  const riskResult = analyzeDiffs(sanitizedFiles);
+  const redactedPaths = new Set(redactionReport.map((r) => r.path));
+
+  if (riskResult.totalCritical > 0) {
+    log.warning(
+      `Risk Analyzer: ${riskResult.totalCritical} CRITICAL, ${riskResult.totalWarning} WARNING, ${riskResult.totalInfo} INFO`,
+    );
+    for (const f of riskResult.files) {
+      if (f.issues.length > 0) {
+        const Sev = {
+          critical: f.localSeverityCounts.critical,
+          warning: f.localSeverityCounts.warning,
+          info: f.localSeverityCounts.info,
+        };
+        log.file(`  ${f.path}: ${Sev.critical}C ${Sev.warning}W ${Sev.info}I`);
+      }
+    }
+  }
+
   // Load source index context for AI if available
   const indexContext = await buildIndexContext(
     config,
@@ -389,7 +415,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     // Resolve provider-specific token limit (priority: CLI flag > env > config > provider default)
     let providerName: string | undefined;
     try {
-      const providerConfig = AIConfig.fromEnvironment();
+      const providerConfig = AIConfig.fromEnvironment({ modelTier: config.ai?.modelTier });
       providerName = providerConfig.provider;
     } catch {
       // No API key configured — use default limit
@@ -464,7 +490,12 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     target,
     aiEnabled,
     promptVersion,
-    auditResults,
+    riskResult.totalCritical > 0 ||
+      riskResult.totalWarning > 0 ||
+      riskResult.totalInfo > 0 ||
+      redactedPaths.size > 0
+      ? mergeFindings(riskResult, auditResults, redactedPaths)
+      : auditResults,
     skipped,
     runtimeErrors,
     diffResult.totalChangedLines,

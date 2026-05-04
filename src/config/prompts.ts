@@ -5,8 +5,9 @@
 import type { ProjectConfig, TechProfile } from "../types/index.js";
 import { fetchSkillsForTechStack, buildSkillsPromptSection } from "../services/skills-fetcher.js";
 import { detectTechProfile, getReviewCues } from "../services/tech-profile.js";
+import { buildDependencyContext } from "../services/dependency-context.js";
 
-export const DEFAULT_PROMPT_VERSION = "2026-02-16";
+export const DEFAULT_PROMPT_VERSION = "2026-05-04";
 
 export const DEFAULT_COMMIT_PROMPT = `
 ### ROLE
@@ -23,16 +24,27 @@ export const BASE_AUDIT_PROMPT = `
 ### ROLE & OBJECTIVE
 You are an Elite Software Architect reviewing git diff hunks.
 Focus on changed lines and nearby context only.
-### GLOBAL STANDARDS
-1. **Clean Code:** Variable/Function names must be semantic. No magic numbers.
-2. **Split Code:** Suggest splitting complex functions/components.
-3. **Performance:** Identify obvious bottlenecks.
-4. **Error Handling:** Ensure proper boundary checks.
-5. **Signal Quality:** Do not report style-only noise unless high-impact.
+
+### MANDATORY RUBRIC
+Evaluate changed code against ALL of the following categories.
+Each issue MUST include the matching category label in its JSON output:
+
+1. **security** — XSS, injection, auth bypass, secret exposure, CORS misconfiguration. Prioritize exploitability.
+2. **runtime-crash** — null pointer dereference, type errors, unhandled promise rejections, race conditions, blocking operations. Prioritize crash paths.
+3. **architecture** — contract violations, layering breaks, circular dependencies, hub-file blast radius. Prioritize codebase-specific contracts from the PROJECT SPECIFIC RULES section.
+4. **dependency-version** — use of deprecated APIs, known-vulnerable version ranges, breaking changes in semver-major upgrades.
+5. **test-gap** — changed code paths with no test coverage, especially error/edge-case handlers.
+6. **performance** — N+1 queries, O(n²) algorithms, unnecessary allocations, large bundles, blocking I/O.
+7. **maintainability** — duplicated logic, excessive complexity, unclear control flow, missing boundary validation.
+
+### PRIORITIES
+1. CRITICAL security issues and crash-causing bugs always cause FAIL.
+2. Flag version-specific risks as WARNING with evidence only — do not claim unsupported certainty.
+3. Style-only issues and subjective preferences are noise — skip them unless they impact correctness.
 `;
 
 /**
- * Build system prompt with optional skills.sh integration and source index context
+ * Build system prompt with optional local skills enrichment and source index context
  * CRITICAL: This function is async now to support skills fetching and index loading
  * If skills fetch fails, it continues with default prompts (no retry)
  */
@@ -53,10 +65,16 @@ export const buildSystemPrompt = async (
     parts.push(`\n### PROJECT ARCHITECTURE CONTEXT (from source index)\n${indexContext}\n`);
   }
 
+  // Compact dependency/version context from package.json/lockfile
+  const depCtx = buildDependencyContext();
+  if (depCtx.summary) {
+    parts.push(`\n### DEPENDENCY VERSION CONTEXT\n${depCtx.summary}\n`);
+  }
+
   if (config.techStack) {
     parts.push(`\n### TECH STACK CONTEXT\nThe code is written in: ${config.techStack}\n`);
 
-    // Fetch skills from skills.sh if enabled (fail-fast, no retry)
+    // Fetch local skills if enabled (fail-fast, no retry)
     if (config.enableSkillsFetch !== false) {
       const timeout = config.skillsFetchTimeout || 3000;
       const skillsResult = await fetchSkillsForTechStack(config.techStack, timeout);
@@ -92,7 +110,7 @@ export const buildSystemPrompt = async (
   }
 
   parts.push(
-    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion": "string" }] }`,
+    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion"?: "string", "category"?: "security" | "runtime-crash" | "architecture" | "dependency-version" | "test-gap" | "performance" | "maintainability", "confidence"?: "low" | "medium" | "high", "evidence"?: "string" }] }`,
   );
 
   return parts.join("");

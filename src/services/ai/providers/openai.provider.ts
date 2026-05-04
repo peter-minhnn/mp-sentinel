@@ -1,22 +1,22 @@
 /**
- * OpenAI GPT Provider
- * Best models for code: gpt-5.3-codex, gpt-5.2
- * Reference: https://openai.com/index/gpt-4-1/
+ * OpenAI GPT Provider (Responses API)
+ * Uses the POST /v1/responses endpoint.
+ * Reference: https://platform.openai.com/docs/api-reference/responses
  */
 
 import type { IAIProvider, AIModelConfig } from "../types.js";
 
-interface OpenAIMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+interface OpenAIResponseOutputContent {
+  text?: string;
+}
+
+interface OpenAIResponseOutput {
+  content?: OpenAIResponseOutputContent[];
 }
 
 interface OpenAIResponse {
-  choices: Array<{
-    message: {
-      content: string;
-    };
-  }>;
+  output_text?: string;
+  output?: OpenAIResponseOutput[];
 }
 
 export class OpenAIProvider implements IAIProvider {
@@ -25,7 +25,7 @@ export class OpenAIProvider implements IAIProvider {
   private temperature: number;
   private maxTokens: number;
   private timeoutMs: number;
-  private baseURL = "https://api.openai.com/v1/chat/completions";
+  private baseURL = "https://api.openai.com/v1/responses";
 
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
@@ -36,35 +36,42 @@ export class OpenAIProvider implements IAIProvider {
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {
-    const messages: OpenAIMessage[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ];
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-    const response = await fetch(this.baseURL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature: this.temperature,
-        max_tokens: this.maxTokens,
-      }),
-    }).finally(() => clearTimeout(timeoutId));
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} ${errorBody}`);
+    try {
+      const response = await fetch(this.baseURL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          instructions: systemPrompt,
+          input: userPrompt,
+          max_output_tokens: this.maxTokens,
+          temperature: this.temperature,
+          store: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} ${errorBody}`);
+      }
+
+      const data = (await response.json()) as OpenAIResponse;
+      // Prefer top-level output_text; fall back to nested output[].content[].text
+      if (data.output_text) return data.output_text;
+      if (data.output?.[0]?.content?.[0]?.text) {
+        return data.output[0].content[0].text;
+      }
+      return "";
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const data = (await response.json()) as OpenAIResponse;
-    return data.choices[0]?.message?.content || "";
   }
 
   isAvailable(): boolean {

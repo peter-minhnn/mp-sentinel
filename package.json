@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "1.33.1",
+  "version": "1.34.0",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -67,10 +67,10 @@
   "author": "Nguyen Nhat Minh",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "@google/generative-ai": "0.21.0",
+    "@google/genai": "1.51.0",
     "commander": "14.0.3",
     "dotenv": "16.6.1",
     "fast-glob": "3.3.3",

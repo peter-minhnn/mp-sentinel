@@ -18,11 +18,11 @@ Add these fields to your `.mp-sentinelrc.json`:
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 18 (ESM), React 18, PostgreSQL 15"
+  "techStack": "TypeScript 5.7, Node.js 20 (ESM), React 18, PostgreSQL 15"
 }
 ```
 
-(The options `enableSkillsFetch` and `skillsFetchTimeout` are now deprecated but will not cause errors if left in the config)
+(The options `enableSkillsFetch` and `skillsFetchTimeout` are still valid config fields. `enableSkillsFetch` controls whether local skills are loaded at all; `skillsFetchTimeout` sets the timeout for skill directory scanning. The `--no-skills-fetch` CLI flag disables local skills loading for a single run.)
 
 ### Configuration Options
 
@@ -45,7 +45,7 @@ Alternatively, users can manually create Markdown files (e.g., `react-architectu
 MP Sentinel automatically parses your `techStack` string to identify keywords:
 
 ```
-Input:  "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)"
+Input:  "TypeScript 5.7, Node.js 20 (ESM), tsup (esbuild)"
 Output: ["typescript", "nodejs", "esm", "tsup", "esbuild"]
 ```
 

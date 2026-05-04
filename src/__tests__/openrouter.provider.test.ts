@@ -252,8 +252,8 @@ describe("AIProviderFactory with openrouter", () => {
   it("getRecommendedModels includes openrouter models", () => {
     const models = AIProviderFactory.getRecommendedModels("openrouter");
     expect(models).toContain("openai/gpt-5.2");
-    expect(models).toContain("anthropic/claude-opus-4-6");
-    expect(models).toContain("google/gemini-2.5-flash");
+    expect(models).toContain("anthropic/claude-opus-4-7");
+    expect(models).toContain("google/gemini-3.1-pro-preview");
   });
 
   it("createProvider returns OpenRouterProvider for openrouter config", () => {
@@ -302,6 +302,34 @@ describe("AIConfig with openrouter", () => {
   it("fromEnvironmentForProvider throws ProviderError when no key for openrouter", () => {
     expect(() => AIConfig.fromEnvironmentForProvider("openrouter")).toThrow(/has no API key/);
   });
+
+  it("probeEnvironment returns unavailable for malformed OpenRouter model ID", () => {
+    process.env.OPENROUTER_API_KEY = "valid-key";
+    const probe = AIConfig.probeEnvironment({
+      provider: "openrouter",
+      model: "bad/model/shape",
+    });
+    expect(probe.status).toBe("unavailable");
+    expect(probe.status === "unavailable" ? probe.reason : "").toContain("Unsupported AI model");
+  });
+
+  it("probeEnvironment returns ready for valid OpenRouter ID with key", () => {
+    process.env.OPENROUTER_API_KEY = "valid-key";
+    const probe = AIConfig.probeEnvironment({
+      provider: "openrouter",
+      model: "openai/gpt-5.2",
+    });
+    expect(probe.status).toBe("ready");
+  });
+
+  it("probeEnvironment returns ready for OpenRouter model with :free suffix", () => {
+    process.env.OPENROUTER_API_KEY = "valid-key";
+    const probe = AIConfig.probeEnvironment({
+      provider: "openrouter",
+      model: "meta-llama/llama-3.2-3b-instruct:free",
+    });
+    expect(probe.status).toBe("ready");
+  });
 });
 
 describe("AIConfig environment probing", () => {
@@ -311,6 +339,7 @@ describe("AIConfig environment probing", () => {
     process.env = { ...originalEnv };
     delete process.env.AI_PROVIDER;
     delete process.env.AI_MODEL;
+    delete process.env.AI_MODEL_TIER;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
   });
@@ -394,5 +423,52 @@ describe("AIConfig environment probing", () => {
       throw new Error("Expected AI environment to be unavailable");
     }
     expect(probe.reason).toContain("Unsupported AI model");
+  });
+
+  // ── Model tier resolution tests ────────────────────────────────────
+
+  it("probeEnvironment resolves model from tier when no explicit AI_MODEL is set", () => {
+    process.env.AI_PROVIDER = "gemini";
+    process.env.GEMINI_API_KEY = "test-key";
+    // No AI_MODEL set — tier selects first premium model
+    const probe = AIConfig.probeEnvironment({ modelTier: "premium" });
+    expect(probe.status).toBe("ready");
+    if (probe.status !== "ready") throw new Error("Expected ready");
+    expect(probe.config.model).toBe("gemini-3.1-pro-preview");
+  });
+
+  it("AI_MODEL overrides tier selection", () => {
+    process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL = "gemini-2.5-flash";
+    process.env.GEMINI_API_KEY = "test-key";
+    // Even with premium tier requested, explicit AI_MODEL wins
+    const probe = AIConfig.probeEnvironment({ modelTier: "premium" });
+    expect(probe.status).toBe("ready");
+    if (probe.status !== "ready") throw new Error("Expected ready");
+    expect(probe.config.model).toBe("gemini-2.5-flash");
+  });
+
+  it("AI_MODEL_TIER env var overrides config-provided modelTier", () => {
+    process.env.AI_PROVIDER = "openai";
+    process.env.AI_MODEL_TIER = "premium";
+    process.env.OPENAI_API_KEY = "test-key";
+    // config-provided tier is "budget" but env var "premium" wins
+    const probe = AIConfig.probeEnvironment({ modelTier: "budget" });
+    expect(probe.status).toBe("ready");
+    if (probe.status !== "ready") throw new Error("Expected ready");
+    expect(probe.config.model).toBe("gpt-5.5");
+  });
+
+  it("fromEnvironmentForProvider resolves model from tier when no explicit AI_MODEL", () => {
+    process.env.AI_MODEL_TIER = "budget";
+    process.env.GEMINI_API_KEY = "test-key";
+    const config = AIConfig.fromEnvironmentForProvider("gemini");
+    expect(config.model).toBe("gemini-3.1-flash-lite-preview");
+  });
+
+  it("fromEnvironmentForProvider uses default model when no tier or AI_MODEL set", () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    const config = AIConfig.fromEnvironmentForProvider("gemini");
+    expect(config.model).toBe("gemini-2.5-flash");
   });
 });

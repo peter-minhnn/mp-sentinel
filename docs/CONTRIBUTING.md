@@ -3,9 +3,9 @@
 > **Welcome, Contributor!**  
 > Thank you for your interest in making MP Sentinel even better. This guide provides comprehensive best practices, clean code standards, and network efficiency guidelines for contributors.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.28.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.34.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue?style=flat-square)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat-square)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green?style=flat-square)](https://nodejs.org/)
 
 ---
 
@@ -37,7 +37,7 @@ MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supp
 | Component | Technology |
 |-----------|------------|
 | Language | TypeScript 5.7+ |
-| Runtime | Node.js 18+ |
+| Runtime | Node.js 20+ |
 | Module System | ESM (ECMAScript Modules) |
 | Build Tool | tsup (esbuild-based) |
 | Package Manager | npm |
@@ -100,7 +100,7 @@ mp-sentinel/
 
 ### Prerequisites
 
-- Node.js 18.0.0 or higher
+- Node.js 20.0.0 or higher
 - npm 9.0.0 or higher
 - Git
 
@@ -287,39 +287,53 @@ export const clearProviderCache = (): void => {
 };
 ```
 
-### 2. Batch Processing with Concurrency Control
+### 2. Global Provider-Call Concurrency Control
 
 ```typescript
-// ✅ Good: Process files in controlled batches
+// ✅ Good: Shared limiter controls ALL provider calls (whole-file and chunked)
 export const auditFilesWithConcurrency = async (
   files: Array<{ path: string; content: string }>,
   config: ProjectConfig,
   maxConcurrency: number = 5  // Configurable limit
 ): Promise<FileAuditResult[]> => {
-  const results: FileAuditResult[] = [];
-  
-  // Process in batches to avoid overwhelming the API
-  for (let i = 0; i < files.length; i += maxConcurrency) {
-    const batch = files.slice(i, i + maxConcurrency);
-    
-    const batchPromises = batch.map(async (file) => {
-      const startTime = performance.now();
-      const result = await auditFile(file.path, file.content, systemPrompt);
-      return {
-        filePath: file.path,
-        result,
-        duration: performance.now() - startTime,
-      };
-    });
+  // Normalise concurrency to a safe positive integer
+  const effective = normalizeConcurrency(maxConcurrency);
 
-    // Wait for batch to complete before starting next
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
+  // Shared limiter — every provider call (including chunk audits) goes through
+  // the same pool, so no file can exceed maxConcurrency by having many chunks.
+  const limit = createConcurrencyLimiter(effective);
+
+  // Launch all file promises — only auditFile calls actually consume slots
+  const allFilePromises = files.map(async (file) => {
+    const chunkMetas = chunkFileWithMetadata(file.content, maxCharsPerFile);
+    // ...
+    if (isChunked) {
+      for (const meta of chunkMetas) {
+        chunkPromises.push(limit(() => auditFile(...)));
+        await 0; // Yield for fair interleaving between files
+      }
+      const chunkResults = await Promise.all(chunkPromises);
+      // Merge chunk results with line offset back to original file
+    } else {
+      result = await limit(() => auditFile(...));
+    }
+  });
+
+  // Live progress tracking — fires as each file promise settles
+  for (const p of allFilePromises) {
+    p.finally(() => log.progress(...));
   }
-  
-  return results;
+  await Promise.allSettled(allFilePromises);
+
+  return results;  // Always in input order
 };
 ```
+
+Key properties:
+- **maxConcurrency** = concurrent AI provider calls (not files). Chunks from large files compete equally with whole-file audits.
+- **Fair scheduling**: `await 0` between chunk enqueues lets other files interleave their chunks.
+- **Live progress**: Per-file `.finally()` handlers emit progress as each file settles.
+- **Input order**: `Promise.allSettled` preserves input file ordering in results.
 
 ### 3. Request Optimization
 
@@ -465,7 +479,7 @@ import { resolve } from 'node:path';
 
 // 2. External dependencies
 import * as dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 // 3. Internal types
 import type { ProjectConfig, AuditResult } from './types/index.js';
@@ -695,7 +709,7 @@ export class AIProviderFactory {
   static getDefaultModel(provider: AIProvider): string {
     const defaults: Record<AIProvider, string> = {
       gemini: 'gemini-2.5-flash',
-      openai: 'gpt-5.3-codex',
+      openai: 'gpt-5.2',
       anthropic: 'claude-sonnet-4-6',
       newai: 'newai-pro',  // Add default model
     };
@@ -739,6 +753,8 @@ private static getApiKeyEnvName(provider: AIProvider): string {
 - Add to `README.md` provider comparison table
 - Add to `.env.example`
 - Update `docs/PROVIDER_COMPARISON.md`
+
+> **Model docs rule:** When adding or updating direct-provider model documentation, the same change MUST include the factory catalog entries (`getModelTiers` / `modelTiers` in `factory.ts`), config tests verifying the new models are accepted, and the docs update. This keeps the runtime catalog, test suite, and documentation in sync.
 
 ---
 

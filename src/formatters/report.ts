@@ -5,6 +5,21 @@
 import type { ReviewReport } from "../types/index.js";
 import { formatDuration, log } from "../utils/logger.js";
 
+// ── Evidence display helpers ─────────────────────────────────────────────
+
+const EVIDENCE_MAX_LENGTH = 160;
+
+const formatEvidence = (evidence: string): string => {
+  const collapsed = evidence.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  if (collapsed.length <= EVIDENCE_MAX_LENGTH) return collapsed;
+  return collapsed.slice(0, EVIDENCE_MAX_LENGTH - 3) + "...";
+};
+
+const metadataTag = (category?: string, confidence?: "low" | "medium" | "high"): string => {
+  if (category && confidence) return `[${category}/${confidence}] `;
+  return "";
+};
+
 const statusIcon = (status: ReviewReport["status"]): string => {
   if (status === "PASS") return "✅";
   if (status === "FAIL") return "❌";
@@ -38,7 +53,11 @@ export const printConsoleReport = (report: ReviewReport): void => {
   }
 
   const failedOrErrored = report.results.filter(
-    (entry) => entry.result.status === "FAIL" || entry.result.status === "ERROR",
+    (entry) =>
+      entry.result.status === "FAIL" ||
+      entry.result.status === "ERROR" ||
+      (entry.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
+        false),
   );
 
   if (failedOrErrored.length > 0) {
@@ -48,7 +67,11 @@ export const printConsoleReport = (report: ReviewReport): void => {
       console.log(`${marker} ${result.filePath}${result.cached ? " (cached)" : ""}`);
       if (result.result.issues && result.result.issues.length > 0) {
         for (const issue of result.result.issues) {
-          log.issue(issue.severity, issue.line, issue.message);
+          const meta = metadataTag(issue.category, issue.confidence);
+          log.issue(issue.severity, issue.line, `${meta}${issue.message}`);
+          if (issue.evidence) {
+            log.file(formatEvidence(issue.evidence));
+          }
           if (issue.suggestion) {
             log.file(`💡 ${issue.suggestion}`);
           }
@@ -104,7 +127,11 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
   }
 
   const failedOrErrored = report.results.filter(
-    (entry) => entry.result.status === "FAIL" || entry.result.status === "ERROR",
+    (entry) =>
+      entry.result.status === "FAIL" ||
+      entry.result.status === "ERROR" ||
+      (entry.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
+        false),
   );
   if (failedOrErrored.length > 0) {
     lines.push("");
@@ -114,8 +141,13 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
       lines.push(`### \`${result.filePath}\``);
       if (result.result.issues && result.result.issues.length > 0) {
         for (const issue of result.result.issues) {
+          const meta = metadataTag(issue.category, issue.confidence);
+          let evidenceLine = "";
+          if (issue.evidence) {
+            evidenceLine = `\n    - _Evidence: ${formatEvidence(issue.evidence)}_`;
+          }
           lines.push(
-            `- **${issue.severity}** (line ${issue.line}): ${issue.message}${issue.suggestion ? ` — _${issue.suggestion}_` : ""}`,
+            `- **${issue.severity}** (line ${issue.line}): ${meta}${issue.message}${issue.suggestion ? ` — _${issue.suggestion}_` : ""}${evidenceLine}`,
           );
         }
       } else {

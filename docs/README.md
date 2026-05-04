@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.28.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.34.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -16,7 +16,7 @@ Traditional tools like **ESLint** or **Prettier** are great for syntax and forma
 
 **MP Sentinel fills that gap.** It introduces agentic parser diagnostics, chunked parser recovery with full observability, and AI-powered code reviews — all 100% offline and secure.
 
-- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4, Claude, Grok, or OpenRouter for code review
+- 🤖 **Multi-Provider AI:** Choose between Gemini, GPT-4o, Claude, Grok, or OpenRouter for code review
 - ❌ **No Architectural Violations:** (e.g., calling Database directly from a Controller).
 - ❌ **No Anti-Patterns:** (e.g., using `useEffect` for data fetching instead of `useQuery`).
 - ✅ **Clean Code Enforcement:** Checks for readability, SOLID principles, and proper code splitting.
@@ -48,32 +48,32 @@ npm install -D mp-sentinel
 
 ```bash
 # Default target: <target-branch>...HEAD
-mp-sentinel review
+mp-sentinel
 
 # Staged changes (AI defaults OFF unless --ai or MP_SENTINEL_AI=1)
-mp-sentinel review --staged
+mp-sentinel --staged
 
 # Single commit or commit range
-mp-sentinel review --commit 9f31a4c
-mp-sentinel review --range origin/main..HEAD
+mp-sentinel --commit 9f31a4c
+mp-sentinel --range origin/main..HEAD
 
 # Explicit files (power-user mode)
-mp-sentinel review --files src/index.ts src/utils/git.ts
+mp-sentinel --files src/index.ts src/utils/git.ts
 
 # Output formats
-mp-sentinel review --format console
-mp-sentinel review --format json
-mp-sentinel review --format markdown
+mp-sentinel --format console
+mp-sentinel --format json
+mp-sentinel --format markdown
 
-# Dry-run / View token estimations (works for local-review too!)
-mp-sentinel review --dry-run
-mp-sentinel review --verbose-dry-run 
+# Dry-run / View token estimations
+mp-sentinel --dry-run
+mp-sentinel --verbose-dry-run 
 ```
 
-### Shortcut Mode
+### Shortcut
 
 ```bash
-# Equivalent to "mp-sentinel review"
+# Running without any flags is equivalent to default review mode:
 mp-sentinel
 ```
 
@@ -90,10 +90,13 @@ mp-sentinel
 | `--format`         | -         | Output format (`console`, `json`, `markdown`)          | `console`       |
 | `--ai`             | -         | Force-enable AI review (mainly for staged mode)        | target-dependent |
 | `--target-branch`  | `-b`      | Target branch for default range mode                   | `origin/main`   |
-| `--concurrency`    | `-c`      | Max concurrent file audits                             | `5`             |
+| `--concurrency`    | `-c`      | Max concurrent AI provider calls (chunk audits share the same pool) | `5`             |
 | `--verbose`        | -         | Enable verbose logging                                 | `false`         |
 | `--dry-run`        | -         | Security scan & token estimation (no AI calls)         | `false`         |
 | `--verbose-dry-run`| -         | Thorough per-file breakdown for tokens                 | `false`         |
+| `--explain-context`| -         | Show context building details without AI calls         | `false`         |
+| `--token-limit`    | -         | Override provider context-window token limit           | —               |
+| `--no-skills-fetch`| -         | Disable local skills loading (air-gapped mode)         | `false`         |
 | `--local`          | `-l`      | Legacy local-review mode (still supported)             | `false`         |
 | `--interactive`    | `-i`      | Interactive UI picker for local commits                | `false`         |
 | `--include-uncommitted`| -     | Mixed uncommitted mode (include WIP changes)           | `false`         |
@@ -133,7 +136,7 @@ Create a `.mp-sentinelrc.json` file in your project root to customize rules and 
     "maxFiles": 15,
     "maxDiffLines": 1200,
     "maxCharsPerFile": 12000,
-    "promptVersion": "2026-02-16"
+    "promptVersion": "2026-05-04"
   }
 }
 ```
@@ -144,8 +147,9 @@ Create a `.mp-sentinelrc.json` file in your project root to customize rules and 
 | ----------------- | ------- | ------------------------------------------- | ------------- |
 | `maxFiles`        | number  | Maximum files sent to AI per run            | `15`          |
 | `maxDiffLines`    | number  | Maximum changed diff lines sent to AI       | `1200`        |
-| `maxCharsPerFile` | number  | Maximum patch chars per file before truncate | `12000`      |
-| `promptVersion`   | string  | Prompt version used for caching and tracing | `2026-02-16`  |
+| `maxCharsPerFile` | number  | Max patch chars per file before auto-chunking (chunked audits preserve line mapping) | `12000`      |
+| `promptVersion`   | string  | Prompt version used for caching and tracing | `2026-05-04`  |
+| `modelTier`       | string  | Model tier: `premium` / `balanced` / `budget`. Only applies when `AI_MODEL` is not set. | provider default |
 
 ### Legacy Local Review Configuration
 
@@ -214,17 +218,27 @@ AI_PROVIDER=gemini  # or openai, anthropic, grok, openrouter
 AI_MODEL=gemini-2.5-flash
 
 # Set API key for your chosen provider
-GEMINI_API_KEY=your_key_here      # For Gemini
-# OPENAI_API_KEY=your_key_here    # For OpenAI
-# ANTHROPIC_API_KEY=your_key_here # For Anthropic (preferred)
-# ANTHROPIC_AUTH_TOKEN=your_key_here # Anthropic fallback alias
-# GROK_API_KEY=your_key_here      # For Grok
-# OPENROUTER_API_KEY=your_key_here # For OpenRouter
+GEMINI_API_KEY=your_key_here           # For Gemini
+# OPENAI_API_KEY=your_key_here         # For OpenAI
+# ANTHROPIC_API_KEY=your_key_here      # For Anthropic (preferred)
+# ANTHROPIC_AUTH_TOKEN=your_key_here   # Anthropic fallback alias
+# GROK_API_KEY=your_key_here           # For Grok (preferred)
+# XAI_API_KEY=your_key_here            # For Grok (fallback alias)
+# OPENROUTER_API_KEY=your_key_here     # For OpenRouter
 
 # Optional: Fine-tune AI behavior
 AI_TEMPERATURE=0.2
 AI_MAX_TOKENS=2048
-AI_TIMEOUT_MS=30000
+AI_TIMEOUT_MS=30000  # Applies to all providers
+
+# Model tier selection (when AI_MODEL is not explicitly set)
+# AI_MODEL_TIER=premium   # Best models — use for security/architecture/crash reviews
+# AI_MODEL_TIER=balanced  # Default — stable models for everyday CI (same as leaving unset)
+# AI_MODEL_TIER=budget    # Cheap/fast — use for bulk or low-criticality review passes
+
+# Optional: OpenRouter attribution
+OPENROUTER_SITE_URL=https://example.com
+OPENROUTER_APP_NAME=MyProject
 
 # Optional: AI behavior policy for CLI
 MP_SENTINEL_AI=1
@@ -234,25 +248,22 @@ MP_SENTINEL_CONCURRENCY=5
 # Optional: Set default target branch
 TARGET_BRANCH=origin/main
 ```
+#### Supported AI Providers
+
+| Provider             | Default Model                       | Models by Tier / Recommended Priority              | API Key Env Vars                                   |
+| -------------------- | ----------------------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| **Google Gemini**    | `gemini-2.5-flash`                  | **Premium:** `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-2.5-pro` — **Balanced:** `gemini-2.5-flash` — **Budget:** `gemini-3.1-flash-lite-preview`, `gemini-2.5-flash-lite` | `GEMINI_API_KEY`                                   |
+| **OpenAI GPT**       | `gpt-5.2`                           | **Premium:** `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano` — **Balanced:** `gpt-5.2`, `gpt-5.2-pro` — **Budget:** `gpt-5-mini` | `OPENAI_API_KEY`                                   |
+| **Anthropic Claude** | `claude-sonnet-4-6`                 | **Premium:** `claude-opus-4-7`, `claude-opus-4-6` — **Balanced:** `claude-sonnet-4-6` — **Budget:** `claude-haiku-4-5` | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`      |
+| **xAI Grok**         | `grok-4-1-fast-reasoning`           | **Premium:** `grok-4.3`, `grok-4` — **Balanced:** `grok-4-1-fast-reasoning` — **Budget:** `grok-code-fast-1` | `GROK_API_KEY` or `XAI_API_KEY`                    |
+| **OpenRouter**       | `openai/gpt-5.2`                    | **Premium:** `openai/gpt-5.5`, `anthropic/claude-opus-4-7`, `google/gemini-3.1-pro-preview`, `x-ai/grok-4.3` — **Balanced:** `openai/gpt-5.2` — **Budget:** `google/gemini-2.5-flash` | `OPENROUTER_API_KEY`                               |
+
+Model availability and performance varies by provider. Check provider documentation for current model lists.
+
+**OpenRouter** also accepts `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for dashboard attribution (optional).
+OpenRouter model IDs use `provider/model` form with optional variant suffix like `:free` (e.g., `openai/gpt-5.2`, `meta-llama/llama-3.2-3b-instruct:free`).
 
 If `AI_PROVIDER`, `AI_MODEL`, or the resolved API key is unsupported or missing, review prints a warning, disables AI for that run, and continues with deterministic security-only source review. The exit code still follows findings: `0` pass, `1` findings, `2` runtime/system errors.
-
-#### Supported AI Models
-
-| Provider             | Best Models for Code Review                                            | Get API Key                                     |
-| -------------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| **Google Gemini**    | `gemini-2.5-flash` (default), `gemini-3.1-pro-preview`, `gemini-2.5-pro` | [Get Key](https://aistudio.google.com/)         |
-| **OpenAI GPT**       | `gpt-5.3-codex` (best coding, default), `gpt-5.2`, `gpt-5-mini`          | [Get Key](https://platform.openai.com/api-keys) |
-| **Anthropic Claude** | `claude-sonnet-4-6` (default), `claude-opus-4-6`, `claude-haiku-4-5`     | [Get Key](https://console.anthropic.com/)       |
-| **xAI Grok**         | `grok-4-1-fast-reasoning` (default), `grok-4`, `grok-code-fast-1`        | [Get Key](https://console.x.ai/)                |
-| **OpenRouter**       | `openai/gpt-5.2` (default), `anthropic/claude-opus-4-6`, `google/gemini-2.5-flash` | [Get Key](https://openrouter.ai/keys)           |
-
-**Model Selection Guide:**
-
-- **Fast & Cost-Effective**: `gemini-2.5-flash`
-- **Best Coding Performance**: `gpt-5.3-codex` or `gemini-3.1-pro-preview`
-- **Autonomous Tasks**: `claude-opus-4-6` or `grok-4`
-- **Balanced**: `claude-sonnet-4-6`
 
 ---
 
@@ -327,7 +338,7 @@ jobs:
 </details>
 
 <details>
-<summary><b>Option 2: OpenAI GPT-4 (Best Accuracy)</b></summary>
+<summary><b>Option 2: OpenAI GPT-4o (Best Accuracy)</b></summary>
 
 **Setup:**
 
@@ -360,7 +371,7 @@ jobs:
       - name: Run MP Sentinel
         env:
           AI_PROVIDER: openai
-          AI_MODEL: gpt-5.3-codex # or gpt-5.2
+          AI_MODEL: gpt-5.2
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
@@ -490,7 +501,7 @@ code_audit:
 </details>
 
 <details>
-<summary><b>Option 2: OpenAI GPT-4 (Best Accuracy)</b></summary>
+<summary><b>Option 2: OpenAI GPT-4o (Best Accuracy)</b></summary>
 
 **Setup:**
 
@@ -515,7 +526,7 @@ code_audit:
     - npx mp-sentinel --target-branch $TARGET_BRANCH
   variables:
     AI_PROVIDER: openai
-    AI_MODEL: gpt-5.3-codex
+    AI_MODEL: gpt-5.2
     OPENAI_API_KEY: $OPENAI_API_KEY
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
@@ -578,7 +589,7 @@ MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) 
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 18, React 18, PostgreSQL 15"
+  "techStack": "TypeScript 5.7, Node.js 20, React 18, PostgreSQL 15"
 }
 ```
 
@@ -642,8 +653,8 @@ Use `--dry-run` (or inspect via `SecurityService`) to see exactly what will be s
 ## 🤖 CI/CD Integration
 
 1. **Smart Diff**: Detects only relevant code changes against your target branch.
-2. **Concurrent Audit**: Files are processed in parallel batches for maximum speed.
-3. **AI Reasoning**: Your code + project rules are analyzed by Gemini 1.5 Pro.
+2. **Concurrent Audit**: Files and chunks are scheduled through a shared concurrency limiter for maximum speed without overwhelming the AI provider.
+3. **AI Reasoning**: Your code + project rules are analyzed by your configured AI provider (Gemini, Claude, GPT, etc.).
 4. **Actionable Reports**: Styled console output with line-specific suggestions.
 5. **Exit Codes**: Returns `1` on CRITICAL issues to block bad PRs.
 

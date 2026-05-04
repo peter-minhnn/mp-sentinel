@@ -2,350 +2,276 @@
 
 ## Overview
 
-This guide helps you choose the best AI provider for your code review needs.
+This guide helps you choose the best AI provider for your code review needs with the latest model, pricing, and benchmark data (as of May 2026).
+
+> **⚠️ Pricing & benchmarks change frequently.** All figures below are approximate. Verify current rates on provider websites before committing to production usage.
 
 ## Quick Comparison
 
 | Feature | Google Gemini | OpenAI GPT | Anthropic Claude | xAI Grok | OpenRouter |
 |---------|--------------|------------|------------------|----------|------------|
-| **Best For** | Fast, cost-effective | Highest accuracy | Long autonomous tasks | Extreme reasoning | Multi-model routing |
-| **Free Tier** | ✅ Generous | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Speed** | ⚡⚡⚡ Fastest | ⚡⚡ Fast | ⚡⚡ Fast | ⚡⚡⚡ Very Fast | Varies by model |
-| **Coding Accuracy** | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Best | ⭐⭐⭐⭐⭐ Excellent | Varies by model |
-| **Context Window** | 1M tokens | 1M tokens | 1M tokens | 128k - 512k tokens | Varies by model |
-| **Cost (per 1M tokens)** | $0.075 | $2.50 | $3.00 | $2.00 | Varies by model |
-| **API Stability** | ⭐⭐⭐⭐ Stable | ⭐⭐⭐⭐⭐ Very Stable | ⭐⭐⭐⭐ Stable | ⭐⭐⭐ Beta/Fast-Moving | ⭐⭐⭐⭐ Stable |
+| **Best For** | Fast, cost-effective | High accuracy coding | Autonomous agents | Low-cost reasoning | Multi-model routing |
+| **Free Tier** | ✅ Limited (reduced Apr 2026) | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Context Window** | Up to 1M tokens | Up to 1M tokens | Up to 1M tokens | Up to 2M tokens | Varies by model |
+| **API Key Env** | `GEMINI_API_KEY` | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | `GROK_API_KEY` / `XAI_API_KEY` | `OPENROUTER_API_KEY` |
+
+---
+
+## Model Tiers
+
+Models are organized into three priority tiers:
+
+- **Premium**: Best / newest models for hard reviews — security audits, architecture analysis, crash-path detection.
+- **Balanced**: Default or stable models for everyday CI reviews. The runtime default sits here.
+- **Budget**: Cheap / fast models for bulk or low-criticality review passes.
+
+Start with premium for security/architecture/crash review, then fall back to balanced or budget for cost-sensitive passes.
 
 ## Detailed Comparison
 
 ### Google Gemini
 
-**Strengths:**
-- 🆓 Generous free tier (60 requests/minute)
-- ⚡ Fastest response times
-- 💰 Most cost-effective for production
-- 🔄 Frequent model updates
-- 🌐 Good multilingual support
+**Latest models / tier catalog (May 2026):**
 
-**Weaknesses:**
-- 📊 Slightly lower accuracy on complex refactoring
-- 🔧 Fewer advanced features
-- 📝 Less detailed explanations
+| Tier | Model | Input / 1M tokens | Output / 1M tokens | Context |
+|------|-------|-------------------|--------------------|---------|
+| **Premium** | `gemini-3.1-pro-preview` | $2.00 | $12.00 | 1M |
+| **Premium** | `gemini-3-flash-preview` | $0.50 | $3.00 | 1M |
+| **Premium** | `gemini-2.5-pro` | $1.25 | $10.00 | 1M |
+| **Balanced** | `gemini-2.5-flash` **(default)** | $0.30 | $2.50 | 1M |
+| **Budget** | `gemini-3.1-flash-lite-preview` | $0.25 | $1.50 | 1M |
+| **Budget** | `gemini-2.5-flash-lite` | $0.10 | $0.40 | 1M |
 
-**Best Models:**
-- `gemini-2.5-flash` - Latest, fastest (recommended)
-- `gemini-3.1-pro-preview` - Experimental features
-- `gemini-2.5-pro` - More capable, slower
+Additional models: none — all current Gemini Flash/Pro models are in the tier table above.
 
-**Pricing:**
-- Free: 60 RPM, 1M RPD
-- Paid: $0.075 per 1M input tokens
+**Key features:**
+- Generous free tier historically, though Pro models moved to paid (Apr 2026)
+- Fastest response times at the low-cost tier
+- Batch API: 50% off standard rates
+- Good multilingual support
+- 3.1 series models are preview — rate limits and pricing may change
 
-**Use When:**
-- Starting out or testing
-- High-volume code reviews
-- Budget is a concern
-- Speed is priority
+**API key:** `GEMINI_API_KEY`
+
+**Benchmarks:**
+- Terminal-Bench 2.0 (Gemini 3.1 Pro): ~68.5%
+- SWE-Bench Pro (Gemini 3.1 Pro): ~54.2%
+
+---
 
 ### OpenAI GPT
 
-**Strengths:**
-- 🏆 Best coding benchmark scores (GPT-5.2: 54.6% SWE-bench)
-- 🎯 Most accurate for complex refactoring
-- 📚 Extensive documentation
-- 🔧 Advanced features (function calling, JSON mode)
-- 🌍 Best ecosystem support
+**Latest models / tier catalog (May 2026):**
 
-**Weaknesses:**
-- 💰 Most expensive option
-- 🚫 No free tier
-- ⏱️ Slower than Gemini
-- 🔒 Stricter rate limits
+| Tier | Model | Input / 1M tokens | Output / 1M tokens | Context |
+|------|-------|-------------------|--------------------|---------|
+| **Premium** | `gpt-5.5` | $5.00 | $30.00 | 1M |
+| **Premium** | `gpt-5.4` | $2.50 | $15.00 | 1M |
+| **Premium** | `gpt-5.4-mini` | $0.25 | $2.00 | 1M |
+| **Premium** | `gpt-5.4-nano` | $0.05 | $0.40 | 400K |
+| **Balanced** | `gpt-5.2` | $1.75 | $14.00 | 400K |
+| **Balanced** | `gpt-5.2-pro` | — | — | — |
+| **Budget** | `gpt-5-mini` | $0.25 | $2.00 | 400K |
 
-**Best Models:**
-- `gpt-5.2` - Best for coding (recommended)
-- `gpt-5.3-codex` - Fast, multimodal
-- `gpt-5-mini` - Balanced performance
+Additional models: `gpt-5.5-pro` ($30/$180), `gpt-4.1` ($2/$8), `o3` ($2/$8), `o4-mini` ($1.10/$4.40).
 
-**Pricing:**
-- GPT-5.2: $2.50 per 1M input tokens
-- GPT-5.3-Codex: $2.50 per 1M input tokens
-- GPT-5 Mini: $10.00 per 1M input tokens
+**Key features:**
+- Broadest model selection — general, reasoning (o-series), long-context (4.1-series)
+- Batch/Flex pricing: 50% off standard rates
+- Strong ecosystem and documentation
+- Cached input: 50% off input price
 
-**Use When:**
-- Accuracy is critical
-- Complex architectural reviews
-- Budget allows premium service
-- Need best-in-class results
+**API key:** `OPENAI_API_KEY`
+
+**Benchmarks:**
+
+| Eval | GPT-5.5 | GPT-5.4 | Claude Opus 4.7 |
+|------|---------|---------|-----------------|
+| **SWE-bench** | **88.7%** | ~74% | — |
+| **Terminal-Bench 2.0** | **82.7%** | 75.1% | 69.4% |
+| **SWE-Bench Pro** | 58.6% | 57.7% | **64.3%** |
+| **OSWorld-Verified** | **78.7%** | 75.0% | 78.0% |
+| **FrontierMath Tier 4** | **35.4%** | — | 22.9% |
+| **Humanity's Last Exam** | 41.4% | — | **46.9%** |
+
+*Sources: OpenAI launch benchmarks, third-party evaluations.*
+
+---
 
 ### Anthropic Claude
 
-**Strengths:**
-- 🤖 Best for autonomous agents
-- ⏳ Can work on tasks for hours
-- 📖 Excellent at understanding context
-- 🎨 Great for creative problem-solving
-- 🔍 Detailed, thoughtful responses
+**Latest models / tier catalog (May 2026):**
 
-**Weaknesses:**
-- 💰 Expensive (similar to GPT-5)
-- 🚫 No free tier
-- 🐌 Can be slower for simple tasks
-- 📊 Fewer benchmarks available
+| Tier | Model | Input / 1M tokens | Output / 1M tokens | Context | Max Output |
+|------|-------|-------------------|--------------------|---------|-----------|
+| **Premium** | `claude-opus-4-7` | $5.00 | $25.00 | 1M | 128K |
+| **Premium** | `claude-opus-4-6` | $5.00 | $25.00 | 1M | 128K |
+| **Balanced** | `claude-sonnet-4-6` **(default)** | $3.00 | $15.00 | 1M | 128K |
+| **Budget** | `claude-haiku-4-5` | $1.00 | $5.00 | 200K | 64K |
 
-**Best Models:**
-- `claude-sonnet-4-6` - Best for coding & agents (recommended)
-- `claude-opus-4-6` - Most capable, autonomous
-- `claude-haiku-4-5` - Previous generation
+**Key features:**
+- Best at autonomous agent tasks and long-running workflows
+- Batch API: 50% off standard rates
+- Prompt caching: cache reads at $0.50/1M (90% off); writes at 1.25×–2×
+- Adaptive thinking with effort levels (low → max)
+- Opus 4.7 adds vision improvements (~3× resolution) and coding improvements (~13% Anthropic internal benchmark)
 
-**Pricing:**
-- Sonnet 4.6: $3.00 per 1M input tokens
-- Opus 4.6: $15.00 per 1M input tokens
-- Haiku: $0.25 per 1M input tokens
+**API key:** `ANTHROPIC_API_KEY` (preferred) or `ANTHROPIC_AUTH_TOKEN` (fallback)
 
-**Use When:**
-- Want detailed explanations
-- Building AI agents
+**Benchmarks:**
+
+| Eval | Claude Opus 4.7 | GPT-5.5 |
+|------|----------------|---------|
+| **SWE-Bench Pro** | **64.3%** | 58.6% |
+| **Terminal-Bench 2.0** | 69.4% | **82.7%** |
+| **OSWorld-Verified** | 78.0% | **78.7%** |
+| **Humanity's Last Exam** | **46.9%** | 41.4% |
+
+*Sources: Appwrite GPT-5.5 analysis, Anthropic launch materials.*
+
+---
 
 ### xAI Grok
 
-**Strengths:**
-- 🧠 **Fast Reasoning**: Exceptional at explaining "why" behind logical errors
-- ⚡ **Turbo Speed**: Competitive with Gemini Flash for simple audits
-- 🛠️ **Real-time Context**: Better understanding of latest library syntaxes
-- 🦾 **Code-First**: `grok-code` models are specifically fine-tuned for syntax
-- 🧪 **Developer Friendly**: Simple API structure (OpenAI compatible)
+**Latest models / tier catalog (May 2026):**
 
-**Weaknesses:**
-- 💰 Pricing is lower than GPT but higher than Gemini
-- 🚫 No permanent free tier (trial credits only)
-- 📉 Lower context window compared to Gemini's 1M
-- 🧪 Ecosystem is still evolving
+| Tier | Model | Input / 1M tokens | Output / 1M tokens | Context |
+|------|-------|-------------------|--------------------|---------|
+| **Premium** | `grok-4.3` | $1.25 | $2.50 | 1M |
+| **Premium** | `grok-4` | $3.00 | $15.00 | 256K |
+| **Balanced** | `grok-4-1-fast-reasoning` **(default)** | $0.20 | $0.50 | 2M |
+| **Budget** | `grok-code-fast-1` | — | — | — |
 
-**Best Models:**
-- `grok-4-1-fast-reasoning` - Best for complex logic debugging (recommended)
-- `grok-4` - Standard high-accuracy model
-- `grok-code-fast-1` - Optimized for speed and syntax highlighting
+Additional models: `grok-4-fast` ($0.20/$0.50).
 
-**Pricing:**
-- Grok-4: $2.00 per 1M input tokens
-- Grok Fast Reasoning: $2.00 per 1M input tokens
+**Key features:**
+- Aggressively low pricing — Grok 4.3 is ~58% cheaper than prior gen on input
+- Fastest output speed: ~207 tokens/sec (Grok 4.3)
+- Video input support (≤5 min, ≤1080p)
+- Native document generation (PDF/XLSX/PPTX)
+- Batch API: 50–80% off standard rates
+- SWE-bench Verified (Grok 4.3): ~73%
+- OpenAI-compatible API structure
 
-**Use When:**
-- You need deep logical reasoning for bugs
-- Want a faster alternative to GPT-5 without losing much accuracy
-- Doing real-time interactive local reviews
+**API key:** `GROK_API_KEY` (preferred) or `XAI_API_KEY` (fallback)
+
+---
 
 ### OpenRouter
 
-**Best for:** Multi-model flexibility without separate API keys.
+**Key features:**
+- Single API key for 300+ models across all major providers
+- Pay-as-you-go — no per-provider setup needed
+- Adds ~50–100ms proxy overhead
+- Per-model pricing visible before sending requests
 
-- 🔀 **Multi-Model Routing**: Access 300+ models from a single API key
-- 📊 **Provider Freedom**: Route to OpenAI, Anthropic, Google, and more
-- 💰 **Pay-as-you-go**: No per-provider setup — one key, one billing account
-- 🏷️ **Cost Transparency**: Per-model pricing visible before sending requests
+**Models accessible via OpenRouter (recommended priority):**
 
-**Limitations:**
-- 📉 Pricing is slightly marked up vs. direct provider APIs
-- 📉 Response time adds ~50-100ms proxy overhead
-- 📉 Token limits vary by the underlying model chosen
+| Tier | Models |
+|------|--------|
+| **Premium** | `openai/gpt-5.5`, `anthropic/claude-opus-4-7`, `google/gemini-3.1-pro-preview`, `x-ai/grok-4.3` |
+| **Balanced** | `openai/gpt-5.2` **(default)** |
+| **Budget** | `google/gemini-2.5-flash` |
 
-**Recommended models for code review:**
-- `openai/gpt-5.2` - Best overall code review via GPT (recommended)
-- `anthropic/claude-opus-4-6` - Best for autonomous tasks
-- `openai/gpt-5.1` - Good balance of speed and accuracy
-- `google/gemini-2.5-flash` - Fast and cost-effective via Gemini
+Any valid OpenRouter model ID in `provider/model` form, with optional variant suffix such as `:free`, is accepted at runtime — the tier list above shows recommended starting points.
 
-**Pricing:**
-- Varies by underlying model (typically ~5-10% above direct provider rates)
-- Per-token billing with model-specific rate cards
+**Pricing:** Varies by underlying model (typically ~0–10% above direct provider rates)
 
-**Use When:**
-- You want to access multiple providers through one API
-- You need flexibility to switch models without managing multiple API keys
-- You're evaluating different models for your code review needs
+**API key:** `OPENROUTER_API_KEY`
 
-## Benchmark Comparison
+**Optional env vars:** `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME` (dashboard attribution)
 
-### SWE-bench Verified (Code Editing)
-| Model | Score | Rank |
-|-------|-------|------|
-| GPT-5.2 | 54.6% | 🥇 1st |
-| Claude Opus 4.6 | ~50% | 🥈 2nd |
-| Claude Sonnet 4.6 | ~45% | 🥉 3rd |
-| Gemini 2.5 Flash | ~40% | 4th |
+---
 
-### HumanEval (Code Generation)
-| Model | Score | Rank |
-|-------|-------|------|
-| GPT-5.2 | 92.0% | 🥇 1st |
-| Claude Sonnet 4.6 | 90.0% | 🥈 2nd |
-| Gemini 2.5 Flash | 88.0% | 🥉 3rd |
+## Benchmark Reference
 
-### Response Time (Average)
-| Model | Time | Rank |
-|-------|------|------|
-| Gemini 2.5 Flash | 1.2s | 🥇 1st |
-| GPT-5.3-Codex | 2.1s | 🥈 2nd |
-| Claude Sonnet 4.6 | 2.5s | 🥉 3rd |
+### Agentic Coding & Computer Use
 
-## Cost Analysis
+| Eval | GPT-5.5 | GPT-5.4 | Claude Opus 4.7 | Gemini 3.1 Pro | Grok 4.3 |
+|------|---------|---------|-----------------|-----------------|----------|
+| **SWE-bench** | **88.7%** | ~74% | — | — | ~73% |
+| **SWE-Bench Pro** | 58.6% | 57.7% | **64.3%** | 54.2% | — |
+| **Terminal-Bench 2.0** | **82.7%** | 75.1% | 69.4% | 68.5% | — |
+| **OSWorld-Verified** | **78.7%** | 75.0% | 78.0% | — | — |
 
-### Example: 1000 Files/Month
-Assuming average 500 tokens per file:
+### Knowledge & Reasoning
 
-| Provider | Model | Monthly Cost |
-|----------|-------|--------------|
-| Gemini | 2.5 Flash | **$0.04** |
-| OpenAI | GPT-5.3-Codex | **$1.25** |
-| Anthropic | Sonnet 4.6 | **$1.50** |
-| xAI | Grok-4 | **$1.00** |
+| Eval | GPT-5.5 | Claude Opus 4.7 | Gemini 3.1 Pro |
+|------|---------|-----------------|-----------------|
+| **FrontierMath Tier 4** | **35.4%** | 22.9% | 16.7% |
+| **Humanity's Last Exam** | 41.4% | **46.9%** | 44.4% |
 
-### Example: 10,000 Files/Month
-| Provider | Model | Monthly Cost |
-|----------|-------|--------------|
-| Gemini | 2.5 Flash | **$0.38** |
-| OpenAI | GPT-5.3-Codex | **$12.50** |
-| Anthropic | Sonnet 4.6 | **$15.00** |
+> **Note:** Benchmarks are provider-reported or from third-party evaluations. Actual results vary by task, prompt, and configuration. Benchmark scores are a directional guide, not a guarantee of real-world performance.
 
-## Use Case Recommendations
+---
 
-### Startup / Small Team
-**Recommended:** Google Gemini
-- Free tier covers most needs
-- Fast feedback loop
-- Easy to get started
+## Pricing Summary (Standard API, per 1M tokens)
 
-### Enterprise / Large Team
-**Recommended:** OpenAI GPT-5.2
-- Best accuracy for critical code
-- Reliable and stable
-- Worth the investment
+| Provider | Model Range | Input Range | Output Range |
+|----------|------------|-------------|--------------|
+| Google Gemini | Flash-Lite → 3.1 Pro | $0.10 – $2.00 | $0.40 – $12.00 |
+| OpenAI GPT | Nano → 5.5 Pro | $0.05 – $30.00 | $0.40 – $180.00 |
+| Anthropic Claude | Haiku → Opus 4.7 | $1.00 – $5.00 | $5.00 – $25.00 |
+| xAI Grok | Fast → 4.3 | $0.20 – $3.00 | $0.50 – $15.00 |
 
-### AI Agent Development
-**Recommended:** Anthropic Claude Opus 4.6
-- Best for autonomous tasks
-- Can handle complex workflows
-- Excellent context understanding
+Batch/Flex pricing offers ~50% discount across most providers. Prompt caching can further reduce effective costs.
 
-### High-Volume CI/CD
-**Recommended:** Google Gemini
-- Most cost-effective at scale
-- Fast enough for CI/CD
-- Reliable performance
+---
 
-### Complex Refactoring
-**Recommended:** OpenAI GPT-5.2
-- Highest accuracy
-- Best architectural understanding
-- Detailed suggestions
+## Decision Guide
 
-### Reasoning-Heavy Security Audits
-**Recommended:** xAI Grok-4-1-fast-reasoning
-- Exceptional at spotting race conditions
-- Better at logical "Exploitability" analysis
-- High-speed output for immediate local feedback
-
-## Migration Path
-
-### Start → Scale → Optimize
-
-1. **Start with Gemini** (Free)
-   - Learn the tool
-   - Establish workflows
-   - Validate value
-
-2. **Scale with GPT-5.3-Codex** (Paid)
-   - Need higher accuracy
-   - Team adoption
-   - Critical projects
-
-3. **Optimize with Mix** (Hybrid)
-   - Gemini for routine reviews
-   - GPT-5.2 for complex changes
-   - Claude for autonomous tasks
+- **Review type → Tier**:
+  - Security / architecture / crash-path reviews → start with **Premium**
+  - Everyday CI reviews → **Balanced** (also the runtime default)
+  - Bulk / low-criticality review passes → **Budget**
+- **Budget-conscious / high volume**: Gemini 2.5 Flash / Flash-Lite, or Grok 4.1 Fast
+- **Highest coding accuracy**: GPT-5.5 or GPT-5.4 for SWE-bench leader; Claude Opus 4.7 for SWE-Bench Pro
+- **Autonomous agent tasks**: Claude Opus 4.7 or Sonnet 4.6
+- **Reasoning-heavy security audits**: Grok 4.3 (low-cost) or GPT-5.5 (high-accuracy)
+- **Multi-model flexibility**: OpenRouter (single key, 300+ models)
+- **Start small, scale up**: Gemini 2.5 Flash (budget) → GPT-5.4 (balanced→premium) → Claude Opus 4.7 (premium)
 
 ## Configuration Examples
 
-### Cost-Optimized (Gemini)
+### Gemini
 ```bash
 AI_PROVIDER=gemini
 AI_MODEL=gemini-2.5-flash
 GEMINI_API_KEY=your_key
 ```
 
-### Accuracy-Optimized (GPT-5.2)
+### OpenAI
 ```bash
 AI_PROVIDER=openai
 AI_MODEL=gpt-5.2
 OPENAI_API_KEY=your_key
 ```
 
-### Agent-Optimized (Claude)
+### Anthropic Claude
 ```bash
 AI_PROVIDER=anthropic
-AI_MODEL=claude-opus-4-6
+AI_MODEL=claude-sonnet-4-6
 ANTHROPIC_API_KEY=your_key
 # ANTHROPIC_AUTH_TOKEN=your_key  # fallback alias
 ```
 
-If a configured provider/model/key cannot be resolved, mp-sentinel warns and uses deterministic non-AI source review for that run instead of failing the review only because AI is unavailable.
-
-### Balanced (GPT-5.3-Codex)
-```bash
-AI_PROVIDER=openai
-AI_MODEL=gpt-5.3-codex
-OPENAI_API_KEY=your_key
-```
-
-### Reasoning-Optimized (Grok)
+### Grok
 ```bash
 AI_PROVIDER=grok
 AI_MODEL=grok-4-1-fast-reasoning
 GROK_API_KEY=your_key
+# XAI_API_KEY=your_key  # fallback alias
 ```
 
-### Multi-Provider (OpenRouter)
+### OpenRouter
 ```bash
 AI_PROVIDER=openrouter
 AI_MODEL=openai/gpt-5.2
 OPENROUTER_API_KEY=your_key
+
+# Optional: attribution headers
+OPENROUTER_SITE_URL=https://example.com
+OPENROUTER_APP_NAME=MyProject
 ```
 
-## Decision Tree
-
-```
-Do you have budget for paid API?
-├─ No → Use Gemini (Free tier)
-└─ Yes
-   ├─ Need highest accuracy? → Use GPT-5.2
-   ├─ Need autonomous agents? → Use Claude Opus 4.6
-   ├─ Need extreme reasoning? → Use Grok-4-1-fast-reasoning
-   ├─ Need speed + accuracy? → Use GPT-5.3-Codex or Grok-4
-   ├─ Need multi-model flexibility? → Use OpenRouter
-   └─ Need cost efficiency? → Use Gemini (Paid)
-```
-
-## Real-World Feedback
-
-### Gemini Users
-> "Fast and free. Perfect for our CI/CD pipeline. Catches 90% of issues."
-
-### GPT-5 Users
-> "Worth every penny. Catches architectural issues other tools miss."
-
-### Claude Users
-> "Best for complex refactoring. Understands context better than others."
-
-## Conclusion
-
-**No single "best" provider** - choose based on your needs:
-
-- **Budget-conscious?** → Gemini
-- **Accuracy-critical?** → GPT-5.2
-- **Autonomous tasks?** → Claude Opus 4.6
-- **Reasoning/Logic heavy?** → Grok-4-1-fast-reasoning
-- **Balanced needs?** → GPT-5.3-Codex, Grok-4, or Claude Sonnet 4.6
-- **Multi-model?** → OpenRouter
-
-**Pro Tip:** Start with Gemini's free tier, then upgrade based on your specific needs.
+If a configured provider/model/key cannot be resolved, mp-sentinel warns and uses deterministic non-AI source review for that run instead of failing the review only because AI is unavailable.

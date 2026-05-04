@@ -124,7 +124,7 @@ describe("renderExplainContext", () => {
         maxFiles: 15,
         maxDiffLines: 1200,
         maxCharsPerFile: 12000,
-        promptVersion: "2026-02-16",
+        promptVersion: "2026-05-04",
       },
       localReview: {
         enabled: false,

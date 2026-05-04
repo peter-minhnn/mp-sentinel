@@ -1,5 +1,5 @@
 {
-  "techStack": "TypeScript 5.7, Node.js 18 (ESM), tsup (esbuild)",
+  "techStack": "TypeScript 5.7, Node.js 20 (ESM), tsup (esbuild)",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,
   "rules": [
@@ -19,6 +19,10 @@
   "commitFormat": "<type>(<scope>): <subject>",
   "bypassKeyword": "skip:",
   "maxConcurrency": 5,
+  "indexing": {
+    "enabled": true,
+    "maxRelatedFiles": 3
+  },
   "localReview": {
     "enabled": true,
     "commitCount": 3,

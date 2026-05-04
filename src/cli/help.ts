@@ -15,8 +15,7 @@ export const showHelp = (): void => {
 🏗️  MP Sentinel - AI-powered Code Guardian
 
 Usage:
-  mp-sentinel review [target] [options]
-  mp-sentinel [options]                      # shortcut for review
+  mp-sentinel [options]
 
 Targets (choose one):
   --staged                    Review staged changes (git diff --cached)
@@ -45,11 +44,11 @@ Legacy options (still supported):
   --compare-branch <BR>  Target branch to compare (default: origin/main)
 
 Examples:
-  mp-sentinel review --staged
-  mp-sentinel review --commit 9f31a4c
-  mp-sentinel review --range origin/main..HEAD --format markdown
-  mp-sentinel review --files src/index.ts src/utils/git.ts --ai
-  mp-sentinel review --format json
+  mp-sentinel --staged
+  mp-sentinel --commit 9f31a4c
+  mp-sentinel --range origin/main..HEAD --format markdown
+  mp-sentinel --files src/index.ts src/utils/git.ts --ai
+  mp-sentinel --format json
 
   # AI policy:
   # - staged mode defaults to AI OFF unless --ai or MP_SENTINEL_AI=1
@@ -62,7 +61,7 @@ Configuration (.mp-sentinelrc.json):
       "maxFiles": 15,
       "maxDiffLines": 1200,
       "maxCharsPerFile": 12000,
-      "promptVersion": "2026-02-16"
+      "promptVersion": "2026-05-04"
     },
     "localReview": {
       "enabled": true,

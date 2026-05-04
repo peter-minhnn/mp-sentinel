@@ -3,7 +3,7 @@
  * Handles environment variables and provider selection
  */
 
-import type { AIModelConfig, AIProvider } from "./types.js";
+import type { AIModelConfig, AIProvider, ModelTier } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { ProviderError } from "../../utils/errors.js";
 
@@ -32,11 +32,41 @@ export class AIConfig {
   ] as const;
 
   /**
+   * Resolve model name with the following precedence:
+   *   1. explicit model name (options.model or AI_MODEL env)
+   *   2. AI_MODEL_TIER env var
+   *   3. options.modelTier
+   *   4. provider default model
+   */
+  private static resolveModel(
+    provider: AIProvider,
+    options: { model?: string | undefined; modelTier?: ModelTier | undefined },
+  ): string {
+    // 1. Explicit model wins (options.model or AI_MODEL env)
+    const explicitModel = options.model ?? process.env.AI_MODEL ?? undefined;
+    if (explicitModel) return explicitModel;
+
+    // 2. AI_MODEL_TIER env
+    const envTier = process.env.AI_MODEL_TIER;
+    if (envTier === "premium" || envTier === "balanced" || envTier === "budget") {
+      return AIProviderFactory.getModelForTier(provider, envTier);
+    }
+
+    // 3. Config-provided tier
+    if (options.modelTier) {
+      return AIProviderFactory.getModelForTier(provider, options.modelTier);
+    }
+
+    // 4. Provider default
+    return AIProviderFactory.getDefaultModel(provider);
+  }
+
+  /**
    * Get AI configuration from environment variables
    * Priority: AI_PROVIDER > GEMINI_API_KEY (backward compatibility)
    */
-  static fromEnvironment(): AIModelConfig {
-    const probe = this.probeEnvironment();
+  static fromEnvironment(options: { modelTier?: ModelTier | undefined } = {}): AIModelConfig {
+    const probe = this.probeEnvironment(options);
     if (probe.status !== "ready") {
       throw new ProviderError(probe.reason);
     }
@@ -47,8 +77,11 @@ export class AIConfig {
    * Get AI configuration for a specific provider (used for fallback chains).
    * Throws ProviderError if the API key for that provider is not set.
    */
-  static fromEnvironmentForProvider(provider: AIProvider): AIModelConfig {
-    const model = AIProviderFactory.getDefaultModel(provider);
+  static fromEnvironmentForProvider(
+    provider: AIProvider,
+    options: { modelTier?: ModelTier | undefined } = {},
+  ): AIModelConfig {
+    const model = this.resolveModel(provider, { modelTier: options.modelTier });
     const apiKey = this.getApiKey(provider);
     if (!apiKey) {
       throw new ProviderError(
@@ -86,7 +119,11 @@ export class AIConfig {
   }
 
   static probeEnvironment(
-    options: { provider?: string | undefined; model?: string | undefined } = {},
+    options: {
+      provider?: string | undefined;
+      model?: string | undefined;
+      modelTier?: ModelTier | undefined;
+    } = {},
   ): AIEnvironmentProbe {
     const providerRaw = (options.provider ?? process.env.AI_PROVIDER ?? "gemini").toLowerCase();
     if (!this.isProvider(providerRaw)) {
@@ -100,8 +137,10 @@ export class AIConfig {
     }
 
     const provider = providerRaw;
-    const model =
-      options.model ?? process.env.AI_MODEL ?? AIProviderFactory.getDefaultModel(provider);
+    const model = this.resolveModel(provider, {
+      model: options.model,
+      modelTier: options.modelTier,
+    });
     if (!model || model.trim().length === 0) {
       return {
         status: "unavailable",
@@ -150,11 +189,6 @@ export class AIConfig {
   }
 
   private static isSupportedModel(provider: AIProvider, model: string): boolean {
-    // OpenRouter is a router — any valid provider/model string is accepted.
-    // Other providers validate against a known model allowlist.
-    if (provider === "openrouter") {
-      return model.includes("/");
-    }
     return AIProviderFactory.isSupportedModel(provider, model);
   }
 

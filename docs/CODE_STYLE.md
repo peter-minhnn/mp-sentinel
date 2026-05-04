@@ -56,7 +56,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 // 2. External packages
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 // 3. Type imports (separate)
 import type { ProjectConfig, AuditResult } from './types/index.js';

@@ -26,27 +26,27 @@ AI_TIMEOUT_MS=30000
 
 ```bash
 # Default review target: origin/main...HEAD
-mp-sentinel review
+mp-sentinel
 
 # Staged changes (AI defaults OFF unless --ai or MP_SENTINEL_AI=1)
-mp-sentinel review --staged
-mp-sentinel review --staged --ai
+mp-sentinel --staged
+mp-sentinel --staged --ai
 
 # Explicit target modes
-mp-sentinel review --commit 9f31a4c
-mp-sentinel review --range origin/main..HEAD
-mp-sentinel review --files src/index.ts src/utils/git.ts
+mp-sentinel --commit 9f31a4c
+mp-sentinel --range origin/main..HEAD
+mp-sentinel --files src/index.ts src/utils/git.ts
 
 # Output formats
-mp-sentinel review --format console
-mp-sentinel review --format json
-mp-sentinel review --format markdown
+mp-sentinel --format console
+mp-sentinel --format json
+mp-sentinel --format markdown
 ```
 
 Shortcut:
 
 ```bash
-# Equivalent to "mp-sentinel review"
+# Running without any flags is equivalent to default review mode:
 mp-sentinel
 ```
 
@@ -61,7 +61,7 @@ Create `.mp-sentinelrc.json`:
     "maxFiles": 15,
     "maxDiffLines": 1200,
     "maxCharsPerFile": 12000,
-    "promptVersion": "2026-02-16"
+    "promptVersion": "2026-05-04"
   }
 }
 ```

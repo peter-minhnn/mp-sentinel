@@ -1,3 +1,16 @@
+# What's New in v1.34.0
+
+## Configurable Model Tier Selection
+
+v1.34.0 adds model tier selection so you can choose between premium, balanced, and budget models through config or environment variable without hardcoding a model name.
+
+- **Model tier config** (`ai.modelTier` in `.mp-sentinelrc.json`, `AI_MODEL_TIER` env): Choose `premium` for security/architecture reviews, `balanced` for everyday CI (default), or `budget` for bulk/low-criticality passes.
+- **Factory tier API** (`src/services/ai/factory.ts`): `AIProviderFactory.getModelForTier(provider, tier)` resolves the first model in the requested tier. Every provider has non-empty premium, balanced, and budget tiers.
+- **Model resolution precedence**: `AI_MODEL` > `AI_MODEL_TIER` > `ai.modelTier` > provider default. Fallback providers use the same tier when no explicit model is set.
+- **OpenRouter budget tier**: Added `google/gemini-2.5-flash` as the budget model for OpenRouter.
+
+---
+
 # What's New in v1.33.1
 
 ## Review Prompt Intelligence & Local Workflow Polish

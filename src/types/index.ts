@@ -134,9 +134,9 @@ export interface ProjectConfig {
   projectId?: string; // For GitLab
   /** Local review mode configuration */
   localReview?: LocalReviewConfig;
-  /** Enable skills.sh integration for enhanced prompts */
+  /** Enable local skills fetch for enhanced prompts */
   enableSkillsFetch?: boolean;
-  /** Timeout for skills.sh API calls in milliseconds (default: 3000) */
+  /** Timeout for skills fetch in milliseconds (default: 3000) */
   skillsFetchTimeout?: number;
   ai?: AIReviewConfig;
   /** Source indexing configuration */
@@ -166,6 +166,12 @@ export interface AuditIssue {
   severity: "CRITICAL" | "WARNING" | "INFO";
   message: string;
   suggestion?: string;
+  /** Categorization rubric: security, runtime-crash, architecture, dependency-version, test-gap, performance, maintainability (v1.34.0+) */
+  category?: string;
+  /** Confidence level: low | medium | high (v1.34.0+) */
+  confidence?: "low" | "medium" | "high";
+  /** Supporting evidence for the issue (v1.34.0+) */
+  evidence?: string;
 }
 
 export interface AuditResult {
@@ -207,6 +213,16 @@ export interface AIReviewConfig {
    * Defaults are: gemini=1_000_000, openai=128_000, anthropic=200_000.
    */
   tokenLimit?: number;
+  /**
+   * Model tier selector — controls which model from the provider's tier
+   * catalog is used when no explicit AI_MODEL is set.
+   * - premium: best / newest models for hard reviews (security, architecture)
+   * - balanced: default / stable models for everyday CI
+   * - budget: cheap / fast models for bulk review
+   *
+   * Precedence: AI_MODEL > AI_MODEL_TIER > ai.modelTier > provider default
+   */
+  modelTier?: "premium" | "balanced" | "budget";
 }
 
 export const DEFAULT_CONFIG: Required<
@@ -251,7 +267,7 @@ export const DEFAULT_CONFIG: Required<
     maxFiles: 15,
     maxDiffLines: 1200,
     maxCharsPerFile: 12000,
-    promptVersion: "2026-02-16",
+    promptVersion: "2026-05-04",
   },
   createSkills: {
     ai: {

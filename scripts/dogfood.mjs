@@ -12,8 +12,8 @@
  *   6. index queries        - agent-context, find-symbol, find-import (JSON)
  *   7. create-skills --dry-run - all adapters, no writes + quality gate (JSON)
  *   8. --explain-agents     - agent detection diagnostics (JSON)
- *   9. --explain-context    - context diagnostics (JSON, unavailable path)
- *  10. --explain-context    - context diagnostics (JSON, available path w/ temp fixture)
+ *   9. --explain-context    - context diagnostics (JSON, repo explain-context)
+ *  10. --explain-context    - context diagnostics (JSON, temp fixture positive path)
  *  11. create-skills --doctor - doctor diagnostics (JSON)
  *  12. stale docs check     - no v1.0.x references in docs/
  *  13. agent:skills:check   - generated skills freshness gate
@@ -862,8 +862,30 @@ function stepExplainContext() {
   const json = parseJson(out, "explain-context");
   if (!json) return false;
 
-  if (json.status === "ok") {
-    ok("explain-context", `profile=${json.profile}, relatedFiles=${json.relatedFiles?.length ?? 0}`);
+  if (json.status === "available") {
+    // Positive path: repo has indexing enabled, validate output shape
+    if (typeof json.profile !== "string") {
+      fail("explain-context", '"profile" missing or not a string');
+      return false;
+    }
+    if (json.indexUsed !== true) {
+      fail("explain-context", '"indexUsed" is not true');
+      return false;
+    }
+    if (!Array.isArray(json.includedFiles) || json.includedFiles.length === 0) {
+      fail("explain-context", '"includedFiles" empty or not an array');
+      return false;
+    }
+    if (!Array.isArray(json.suggestedCommands) || json.suggestedCommands.length === 0) {
+      fail("explain-context", '"suggestedCommands" empty or not an array');
+      return false;
+    }
+    ok(
+      "explain-context",
+      `status=available, profile=${json.profile}, ` +
+        `includedFiles=${json.includedFiles.length}, ` +
+        `suggestedCommands=${json.suggestedCommands.length}`,
+    );
     return true;
   }
 

@@ -73,7 +73,7 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ## 3. TypeScript / ESM
 
-- **Runtime**: Node ≥ 18, ESM (`"type": "module"` in package.json).
+- **Runtime**: Node ≥ 20, ESM (`"type": "module"` in package.json).
 - All internal imports **must** include the `.js` extension (NodeNext resolution).
 - Node built-ins **must** use the `node:` prefix (e.g., `node:fs`, `node:path`).
 - Prefer `import type` for type-only imports (`verbatimModuleSyntax` is enforced).
@@ -215,6 +215,7 @@ Run these before marking any feature complete.
 ```sh
 npm run format:check
 npm run typecheck
+npm run typecheck:tests
 npm test
 npm run build
 ```
@@ -223,6 +224,7 @@ npm run build
 ```sh
 npm run format:check
 npm run typecheck
+npm run typecheck:tests
 npm test
 npm run build
 npm pack --dry-run
@@ -231,7 +233,7 @@ npm pack --dry-run
 ### JSON CLI output change
 Verify by actually parsing the output — do not rely on visual inspection:
 ```sh
-mp-sentinel review --format json ... | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>JSON.parse(d))"
+mp-sentinel --format json ... | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>JSON.parse(d))"
 ```
 
 ---

@@ -8,13 +8,19 @@
 .DS_Store
 *.log
 *.lock
+pnpm-lock.yaml
 *.swp
 *.swo
+*.tgz
 .idea
 .mp-sentinel-cache/
 .claude
 .clinerules
 .roo
+.cursor
+.windsurf
+.antigravity
+.agents
 # Agent generated skill/rule files (local bootstrap, not committed)
 .agents/skills/
 .cursor/rules/*-best-practices.mdc
