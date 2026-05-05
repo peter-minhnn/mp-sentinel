@@ -20,7 +20,7 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm run agent:skills:check
+      - run: npm run agent:skills:refresh
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run typecheck:tests
