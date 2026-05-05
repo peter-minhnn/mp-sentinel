@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node & Cache
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 'latest'
           cache: 'npm'
 
       - name: Install Dependencies
