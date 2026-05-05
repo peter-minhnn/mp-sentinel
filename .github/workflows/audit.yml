@@ -51,4 +51,4 @@ jobs:
           # GitHub integration
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx mp-sentinel --target-branch $TARGET_BRANCH
+        run: node dist/index.js --target-branch $TARGET_BRANCH
