@@ -232,6 +232,44 @@ describe("buildAuditCacheKey", () => {
     expect(key).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("changes when baseUrl is added", () => {
+    const a = buildAuditCacheKey(BASE_INPUT);
+    const b = buildAuditCacheKey({
+      ...BASE_INPUT,
+      baseUrl: "https://api.deepseek.com/anthropic/v1/messages",
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it("different baseUrl values produce different keys", () => {
+    const a = buildAuditCacheKey({
+      ...BASE_INPUT,
+      baseUrl: "https://api.deepseek.com/anthropic/v1/messages",
+    });
+    const b = buildAuditCacheKey({
+      ...BASE_INPUT,
+      baseUrl: "https://custom.example.com/v1/messages",
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it("same baseUrl produces same key (stable key)", () => {
+    const a = buildAuditCacheKey({
+      ...BASE_INPUT,
+      baseUrl: "https://api.deepseek.com/anthropic/v1/messages",
+    });
+    const b = buildAuditCacheKey({
+      ...BASE_INPUT,
+      baseUrl: "https://api.deepseek.com/anthropic/v1/messages",
+    });
+    expect(a).toBe(b);
+  });
+
+  it("preserves existing no-baseUrl fixture hash", () => {
+    const key = buildAuditCacheKey(BASE_INPUT);
+    expect(key).toBe("086f3b7a417620b313e0f2c7543f9dfc12e2926ef7725e9b35caece4ddc8c2f7");
+  });
+
   // ── Cache version fixture tests ──
 
   it("produces the expected v3 fixture hash", () => {

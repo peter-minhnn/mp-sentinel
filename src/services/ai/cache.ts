@@ -21,22 +21,25 @@ const getCachePath = (key: string, cwd: string = process.cwd()): string =>
 export const buildAuditCacheKey = (input: {
   provider: string;
   model: string;
+  baseUrl?: string;
   promptVersion: string;
   systemPrompt: string;
   filePath: string;
   payload: string;
   toolVersion: string;
 }): string => {
-  const source = [
+  const parts = [
     CACHE_VERSION,
     input.provider,
     input.model,
+    ...(input.baseUrl ? [input.baseUrl] : []),
     input.promptVersion,
     input.toolVersion,
     input.filePath,
     input.systemPrompt,
     input.payload,
-  ].join("::");
+  ];
+  const source = parts.join("::");
 
   return createHash("sha256").update(source).digest("hex");
 };

@@ -5664,6 +5664,8 @@ describe("runCreateSkillsCommand --doctor", () => {
 
     const prevKey = process.env.ANTHROPIC_AUTH_TOKEN;
     process.env.ANTHROPIC_AUTH_TOKEN = "sk-ant-test-key";
+    const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_BASE_URL;
 
     try {
       const cap = captureStdout();
@@ -5693,6 +5695,11 @@ describe("runCreateSkillsCommand --doctor", () => {
         delete process.env.ANTHROPIC_AUTH_TOKEN;
       } else {
         process.env.ANTHROPIC_AUTH_TOKEN = prevKey;
+      }
+      if (prevBaseUrl === undefined) {
+        delete process.env.ANTHROPIC_BASE_URL;
+      } else {
+        process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
       }
     }
   });
@@ -5741,6 +5748,60 @@ describe("runCreateSkillsCommand --doctor", () => {
     expect(["disabled", "ready", "action-required"]).toContain(aiEnrich.status);
     expect(aiEnrich.provider).toBe("anthropic");
     expect(aiEnrich.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("--doctor custom ANTHROPIC_BASE_URL bypasses model whitelist", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        createSkills: {
+          ai: { enabled: true, provider: "anthropic", model: "deepseek-v4-pro" },
+        },
+      }),
+    );
+
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-ds-test-key";
+    const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+
+    try {
+      const cap = captureStdout();
+      await runCreateSkillsCommand(
+        createSkillsValues({
+          "all-agents": false,
+          "create-skills-format": "json",
+          "create-skills-force": false,
+          "skip-index-refresh": false,
+          "create-skills-dry-run": false,
+          "create-skills-check": false,
+          "create-skills-no-ai-enrich": false,
+          doctor: true,
+        }),
+        cwd,
+      );
+      cap.restore();
+      const parsed = JSON.parse(cap.stdout) as Record<string, unknown>;
+      const aiEnrich = parsed.aiEnrichment as Record<string, unknown>;
+      // Custom base URL allows non-Anthropic model names
+      expect(aiEnrich.status).toBe("ready");
+      expect(aiEnrich.provider).toBe("anthropic");
+      expect(aiEnrich.model).toBe("deepseek-v4-pro");
+      expect(aiEnrich.apiKeyPresent).toBe(true);
+    } finally {
+      if (prevKey === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+      } else {
+        process.env.ANTHROPIC_API_KEY = prevKey;
+      }
+      if (prevBaseUrl === undefined) {
+        delete process.env.ANTHROPIC_BASE_URL;
+      } else {
+        process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
+      }
+    }
   });
 
   it("--doctor AI enrichment readiness accepts ANTHROPIC_AUTH_TOKEN alias", async () => {

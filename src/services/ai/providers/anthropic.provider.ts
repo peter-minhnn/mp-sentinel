@@ -5,6 +5,7 @@
  */
 
 import type { IAIProvider, AIModelConfig } from "../types.js";
+import { normalizeAnthropicBaseUrl } from "../anthropic-utils.js";
 
 interface AnthropicMessage {
   role: "user" | "assistant";
@@ -24,7 +25,7 @@ export class AnthropicProvider implements IAIProvider {
   private temperature: number;
   private maxTokens: number;
   private timeoutMs: number;
-  private baseURL = "https://api.anthropic.com/v1/messages";
+  private baseURL: string;
   private apiVersion = "2023-06-01";
 
   constructor(config: AIModelConfig) {
@@ -33,6 +34,7 @@ export class AnthropicProvider implements IAIProvider {
     this.temperature = config.temperature ?? 0.2;
     this.maxTokens = config.maxTokens ?? 2048;
     this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
+    this.baseURL = normalizeAnthropicBaseUrl(config.baseUrl);
   }
 
   async generateContent(systemPrompt: string, userPrompt: string): Promise<string> {

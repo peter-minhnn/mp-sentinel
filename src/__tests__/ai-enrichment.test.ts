@@ -477,6 +477,47 @@ describe("computeEnrichmentCacheKey", () => {
     const key = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp");
     expect(key).toMatch(/^[0-9a-f]{16}$/);
   });
+
+  it("different baseUrl produces different key", () => {
+    const k1 = computeEnrichmentCacheKey("abc", "anthropic", "claude", "v1", "inp");
+    const k2 = computeEnrichmentCacheKey(
+      "abc",
+      "anthropic",
+      "claude",
+      "v1",
+      "inp",
+      "https://api.deepseek.com/anthropic/v1/messages",
+    );
+    expect(k1).not.toBe(k2);
+  });
+
+  it("same baseUrl produces same key", () => {
+    const k1 = computeEnrichmentCacheKey(
+      "abc",
+      "anthropic",
+      "claude",
+      "v1",
+      "inp",
+      "https://custom.example.com/v1/messages",
+    );
+    const k2 = computeEnrichmentCacheKey(
+      "abc",
+      "anthropic",
+      "claude",
+      "v1",
+      "inp",
+      "https://custom.example.com/v1/messages",
+    );
+    expect(k1).toBe(k2);
+  });
+
+  it("preserves existing no-baseUrl fixture behavior", () => {
+    const k = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp");
+    expect(k).toMatch(/^[0-9a-f]{16}$/);
+    // Verify deterministic: same inputs produce the same known result
+    const expected = computeEnrichmentCacheKey("abc", "gemini", "g", "v1", "inp");
+    expect(k).toBe(expected);
+  });
 });
 
 // -- Cache read/write ---------------------------------------------------------

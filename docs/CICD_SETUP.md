@@ -75,6 +75,14 @@ jobs:
 
 ---
 
+## Environment Variables
+
+All AI providers require an API key as an environment variable. Set it via your CI/CD platform's secrets manager.
+
+When using `ANTHROPIC_BASE_URL` (e.g., with DeepSeek), set `AI_PROVIDER=anthropic`, the DeepSeek API key as `ANTHROPIC_API_KEY`, and `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`. The custom base URL bypasses the Anthropic model whitelist so you can use any model the endpoint supports.
+
+---
+
 ### Option 1: Google Gemini (Free Tier)
 
 **Best for:** Getting started, high-volume reviews, cost-conscious teams

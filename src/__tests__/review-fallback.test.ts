@@ -97,6 +97,7 @@ describe("runReview AI environment fallback", () => {
     process.env.AI_PROVIDER = "anthropic";
     process.env.AI_MODEL = "not-a-real-model";
     process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
 
     const config: ProjectConfig = {
       cacheEnabled: false,

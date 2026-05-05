@@ -42,7 +42,7 @@ Configured in project config:
 ### 4) Persistent Cache
 
 - Cache directory: `.mp-sentinel-cache/`
-- Key dimensions: provider/model/promptVersion/toolVersion/filePath/prompt/payload
+- Key dimensions: provider/model/baseUrl/promptVersion/toolVersion/filePath/prompt/payload
 
 This avoids repeated token spend on unchanged diffs.
 

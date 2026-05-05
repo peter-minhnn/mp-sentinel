@@ -823,3 +823,131 @@ describe("Model tier runtime wiring", () => {
     }
   });
 });
+
+// ── ANTHROPIC_BASE_URL provider cache invalidation tests ──────────────────
+
+describe("ANTHROPIC_BASE_URL provider cache invalidation", () => {
+  const originalEnv = { ...process.env };
+  const mockProvider: IAIProvider = {
+    generateContent: jest.fn(async () => JSON.stringify({ status: "PASS", issues: [] })),
+    isAvailable: () => true,
+  };
+
+  beforeEach(() => {
+    clearProviderCache();
+    setLogQuietMode(true);
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "claude-sonnet-4-6";
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    clearProviderCache();
+    process.env = { ...originalEnv };
+    setLogQuietMode(false);
+    jest.restoreAllMocks();
+  });
+
+  it("provider cache invalidates when ANTHROPIC_BASE_URL changes between calls", async () => {
+    process.env.ANTHROPIC_BASE_URL = "https://custom1.example.com";
+
+    const spy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(
+        mockProvider as Parameters<typeof AIProviderFactory.createProvider>[0] extends never
+          ? never
+          : IAIProvider,
+      );
+
+    try {
+      await auditFilesWithConcurrency(
+        [{ path: "src/a.ts", content: "const a = 1;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+      const firstConfig = spy.mock.calls[0]![0];
+      expect(firstConfig.baseUrl).toBe("https://custom1.example.com/v1/messages");
+
+      process.env.ANTHROPIC_BASE_URL = "https://custom2.example.com";
+
+      await auditFilesWithConcurrency(
+        [{ path: "src/b.ts", content: "const b = 2;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(2);
+      const secondConfig = spy.mock.calls[1]![0];
+      expect(secondConfig.baseUrl).toBe("https://custom2.example.com/v1/messages");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("same ANTHROPIC_BASE_URL reuses cached provider", async () => {
+    process.env.ANTHROPIC_BASE_URL = "https://custom.example.com";
+
+    const spy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(
+        mockProvider as Parameters<typeof AIProviderFactory.createProvider>[0] extends never
+          ? never
+          : IAIProvider,
+      );
+
+    try {
+      await auditFilesWithConcurrency(
+        [{ path: "src/a.ts", content: "const a = 1;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      await auditFilesWithConcurrency(
+        [{ path: "src/b.ts", content: "const b = 2;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("provider cache invalidates when switching from custom to no baseUrl", async () => {
+    process.env.ANTHROPIC_BASE_URL = "https://custom.example.com";
+
+    const spy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(
+        mockProvider as Parameters<typeof AIProviderFactory.createProvider>[0] extends never
+          ? never
+          : IAIProvider,
+      );
+
+    try {
+      await auditFilesWithConcurrency(
+        [{ path: "src/a.ts", content: "const a = 1;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]![0]!.baseUrl).toBe("https://custom.example.com/v1/messages");
+
+      delete process.env.ANTHROPIC_BASE_URL;
+      clearProviderCache();
+
+      await auditFilesWithConcurrency(
+        [{ path: "src/b.ts", content: "const b = 2;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy.mock.calls[1]![0]!.baseUrl).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

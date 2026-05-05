@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.2] - 2026-05-05
+
+### Added
+- **`ANTHROPIC_BASE_URL` env var**: Point the Anthropic provider at custom compatible endpoints (e.g., `https://api.deepseek.com/anthropic` for DeepSeek).
+- **Model whitelist bypass**: When a valid custom `ANTHROPIC_BASE_URL` is set, the Anthropic model whitelist is skipped — any non-empty model name is accepted.
+- **URL normalizer** (`src/services/ai/anthropic-utils.ts`): Shared `normalizeAnthropicBaseUrl()` handles URL normalization for both config and provider.
+- **Cache key sensitivity**: Audit cache key (`buildAuditCacheKey`) and enrichment cache key (`computeEnrichmentCacheKey`) include `baseUrl` when non-empty.
+- **Provider cache invalidation**: Runtime provider cache in `getProviderConfig()` invalidates when `baseUrl` changes.
+
+### Changed
+- **AnthropicProvider** (`src/services/ai/providers/anthropic.provider.ts`): Uses `config.baseUrl` from `normalizeAnthropicBaseUrl()` instead of hardcoded `https://api.anthropic.com/v1/messages`.
+- **AIConfig** (`src/services/ai/config.ts`): `probeEnvironment()` and `fromEnvironmentForProvider()` read `ANTHROPIC_BASE_URL` for the anthropic provider and return normalized `baseUrl` in the config.
+- **AI enrichment** (`src/services/skills-generator/ai-enrichment.ts`): Enrichment cache key and provider config carry `baseUrl`.
+
+### Documentation
+- `ANTHROPIC_BASE_URL` documented in `.env.example`, `src/services/ai/README.md`, `docs/README.md`, `docs/QUICK_START.md`, `docs/QUICK_REFERENCE.md`, `docs/PROVIDER_COMPARISON.md`, `docs/CICD_SETUP.md`, `docs/CREATE_SKILLS.md`, and `docs/AI_ENRICHMENT_CACHE_SPEC.md`.
+
 ## [1.34.1] - 2026-05-05
 
 ### Added

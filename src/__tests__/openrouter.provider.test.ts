@@ -332,6 +332,95 @@ describe("AIConfig with openrouter", () => {
   });
 });
 
+describe("AIConfig with ANTHROPIC_BASE_URL", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.AI_PROVIDER;
+    delete process.env.AI_MODEL;
+    delete process.env.AI_MODEL_TIER;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_BASE_URL;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("probeEnvironment bypasses model whitelist when ANTHROPIC_BASE_URL is set", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+
+    const probe = AIConfig.probeEnvironment({
+      provider: "anthropic",
+      model: "deepseek-v4-pro",
+    });
+    expect(probe.status).toBe("ready");
+    if (probe.status !== "ready") throw new Error("Expected ready");
+    expect(probe.config.provider).toBe("anthropic");
+    expect(probe.config.model).toBe("deepseek-v4-pro");
+    expect(probe.config.baseUrl).toBe("https://api.deepseek.com/anthropic/v1/messages");
+  });
+
+  it("probeEnvironment still validates model whitelist without ANTHROPIC_BASE_URL", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    // No ANTHROPIC_BASE_URL set — model whitelist applies
+    const probe = AIConfig.probeEnvironment({
+      provider: "anthropic",
+      model: "not-a-real-model",
+    });
+    expect(probe.status).toBe("unavailable");
+  });
+
+  it("probeEnvironment rejects invalid ANTHROPIC_BASE_URL", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.ANTHROPIC_BASE_URL = "not-a-url";
+
+    const probe = AIConfig.probeEnvironment({
+      provider: "anthropic",
+      model: "deepseek-v4-pro",
+    });
+    expect(probe.status).toBe("unavailable");
+    if (probe.status !== "unavailable") throw new Error("Expected unavailable");
+    expect(probe.reason).toContain("Invalid ANTHROPIC_BASE_URL");
+  });
+
+  it("fromEnvironmentForProvider returns normalized baseUrl for anthropic with custom URL", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+
+    const config = AIConfig.fromEnvironmentForProvider("anthropic");
+    expect(config.baseUrl).toBe("https://api.deepseek.com/anthropic/v1/messages");
+  });
+
+  it("fromEnvironmentForProvider returns no baseUrl for anthropic without custom URL", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config = AIConfig.fromEnvironmentForProvider("anthropic");
+    expect(config.baseUrl).toBeUndefined();
+  });
+
+  it("fromEnvironmentForProvider throws on invalid ANTHROPIC_BASE_URL", () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.ANTHROPIC_BASE_URL = "file:///local/path";
+
+    expect(() => AIConfig.fromEnvironmentForProvider("anthropic")).toThrow(
+      /Invalid ANTHROPIC_BASE_URL/,
+    );
+  });
+
+  it("ANTHROPIC_BASE_URL does not affect non-anthropic providers", () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+
+    const config = AIConfig.fromEnvironmentForProvider("gemini");
+    expect(config.baseUrl).toBeUndefined();
+  });
+});
+
 describe("AIConfig environment probing", () => {
   const originalEnv = { ...process.env };
 
@@ -342,6 +431,7 @@ describe("AIConfig environment probing", () => {
     delete process.env.AI_MODEL_TIER;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_BASE_URL;
   });
 
   afterEach(() => {

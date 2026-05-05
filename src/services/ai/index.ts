@@ -36,7 +36,9 @@ const getProviderConfig = (modelTier?: ModelTier): ReturnType<typeof AIConfig.fr
   // Invalidate provider if resolved config changed
   if (
     providerConfigCache &&
-    (providerConfigCache.provider !== config.provider || providerConfigCache.model !== config.model)
+    (providerConfigCache.provider !== config.provider ||
+      providerConfigCache.model !== config.model ||
+      providerConfigCache.baseUrl !== config.baseUrl)
   ) {
     providerInstance = null;
     log.info(`AI provider config changed: ${providerConfigCache.model} → ${config.model}`);
@@ -282,7 +284,16 @@ export const auditFilesWithConcurrency = async (
     }
 
     try {
-      const cacheKey = buildAuditCacheKey({
+      const cacheKeyInput: {
+        provider: string;
+        model: string;
+        baseUrl?: string;
+        promptVersion: string;
+        systemPrompt: string;
+        filePath: string;
+        payload: string;
+        toolVersion: string;
+      } = {
         provider: providerConfig.provider,
         model: providerConfig.model,
         promptVersion,
@@ -290,7 +301,11 @@ export const auditFilesWithConcurrency = async (
         filePath: file.path,
         payload: file.content,
         toolVersion: TOOL_VERSION,
-      });
+      };
+      if (providerConfig.baseUrl) {
+        cacheKeyInput.baseUrl = providerConfig.baseUrl;
+      }
+      const cacheKey = buildAuditCacheKey(cacheKeyInput);
 
       if (cacheEnabled) {
         const cached = await readCachedAuditResult(cacheKey);

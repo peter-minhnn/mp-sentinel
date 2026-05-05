@@ -20,6 +20,9 @@ AI_MODEL=gemini-2.5-flash
 AI_TEMPERATURE=0.2
 AI_MAX_TOKENS=2048
 AI_TIMEOUT_MS=30000
+
+# For Anthropic-compatible endpoints (e.g., DeepSeek):
+# ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
 ## 3) Run Reviews

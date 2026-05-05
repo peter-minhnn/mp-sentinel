@@ -34,7 +34,7 @@ the concatenation of these components, each separated by `::`:
 
 ```
 <cacheKey> = sha256(
-  sourceIndexHash :: provider :: model :: promptVersion :: inputHash
+  sourceIndexHash :: provider :: model :: [baseUrl] :: promptVersion :: inputHash
 ).slice(0, 16)
 ```
 
@@ -43,6 +43,7 @@ the concatenation of these components, each separated by `::`:
 | `sourceIndexHash` | `computeIndexHash(index)` in `metadata.ts` | Captures structural index changes (files, imports, manifest). Covers schema version, manifest hash, all file hashes, dependency lists, scripts, and frameworks. |
 | `provider` | resolved provider name (`"gemini"` / `"openai"` / `"anthropic"` / `"grok"` / `"openrouter"`) | Different providers return different output for the same input. |
 | `model` | resolved model name (e.g. `"gemini-2.5-flash"`) | Same provider, different model -> different output. |
+| `baseUrl` | `ANTHROPIC_BASE_URL` (optional, anthropic only) | Custom endpoint URL invalidates cache — different endpoints may return different output for the same input. Only included when non-empty. |
 | `promptVersion` | `ENRICHMENT_PROMPT_VERSION` (`"2026-04-28"`) | Prompt template changes invalidate all prior caches. |
 | `inputHash` | `computeEnrichmentInputHash(input)` from `ai-enrichment.ts` | Captures the derived `AIEnrichmentInput` (KB data, module roles, dependency versions, profile, etc.). |
 
@@ -53,7 +54,7 @@ the concatenation of these components, each separated by `::`:
 - `provider` or `model` -- resolved at call time from config/env
 - `promptVersion` -- currently defined but not fed into the input hash
 
-All five must change the cache key. A composite hash is the simplest correct approach.
+All five required components (plus optional `baseUrl`) must change the cache key. A composite hash is the simplest correct approach.
 
 ### 2.1 Cache key computation (pseudocode)
 
@@ -64,8 +65,12 @@ function computeEnrichmentCacheKey(
   model: string,             // e.g. "gemini-2.5-flash"
   promptVersion: string,     // ENRICHMENT_PROMPT_VERSION
   inputHash: string,         // from computeEnrichmentInputHash()
+  baseUrl?: string,          // optional custom endpoint (e.g. ANTHROPIC_BASE_URL)
 ): string {
-  const composite = [sourceIndexHash, provider, model, promptVersion, inputHash].join("::");
+  const parts = [sourceIndexHash, provider, model];
+  if (baseUrl) parts.push(baseUrl);
+  parts.push(promptVersion, inputHash);
+  const composite = parts.join("::");
   return sha256(composite).slice(0, 16);
 }
 ```
@@ -122,7 +127,7 @@ This function lives in `ai-enrichment.ts` alongside the existing hash helpers.
 ### 4.1 Read (on `enrichIndex` call)
 
 ```
-1. Compute composite cache key from the five components.
+1. Compute composite cache key from the required components plus optional `baseUrl`.
 2. Check if .mp-sentinel-cache/ai-enrichment/<cacheKey>.json exists.
 3. If not -> cache miss. Proceed to provider call.
 4. If yes -> read and JSON.parse.
@@ -153,7 +158,7 @@ No change from the current flow. Provider call and Zod validation happen exactly
 
 ### 5.1 Automatic (key-based)
 
-Any change to the five key components produces a different cache key, so stale cache files are
+Any change to the required key components, or optional `baseUrl` when present, produces a different cache key, so stale cache files are
 **never read**. They accumulate on disk but are inert.
 
 ### 5.2 Stale cache cleanup

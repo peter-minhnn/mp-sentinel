@@ -1,3 +1,19 @@
+# What's New in v1.34.2
+
+## Anthropic Custom Base URL Support
+
+v1.34.2 adds env-only `ANTHROPIC_BASE_URL` support for Anthropic-compatible endpoints, with DeepSeek as the primary target.
+
+- **New env var** (`ANTHROPIC_BASE_URL`): Point the Anthropic provider at any compatible endpoint (e.g., `https://api.deepseek.com/anthropic` for DeepSeek).
+- **Model whitelist bypass**: When a valid custom base URL is set, the Anthropic model whitelist is bypassed — any non-empty model name is accepted.
+- **DeepSeek example**: `AI_PROVIDER=anthropic AI_MODEL=deepseek-v4-pro ANTHROPIC_API_KEY=<key> ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`
+- **URL normalizer**: A shared `normalizeAnthropicBaseUrl()` utility handles URL normalization (trailing slash, `/v1/messages` suffix) in both config and provider.
+- **Cache key sensitivity**: Both audit cache keys and enrichment cache keys include the base URL when non-empty, so switching endpoints invalidates cached results.
+- **Provider cache invalidation**: Runtime provider cache invalidates when `baseUrl` changes.
+- **No `.mp-sentinelrc.json` changes**: This is an env-only feature — no config key added.
+
+---
+
 # What's New in v1.34.1
 
 ## Generated Skill Quality Gate Hardening

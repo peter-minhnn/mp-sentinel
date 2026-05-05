@@ -25,7 +25,7 @@ import type {
   CreateSkillsAIConfig,
   SkillKnowledgeBase,
 } from "../../types/index.js";
-import type { AIProvider } from "../ai/types.js";
+import type { AIProvider, AIModelConfig } from "../ai/types.js";
 import { log } from "../../utils/logger.js";
 import { ProviderError } from "../../utils/errors.js";
 import { AIProviderFactory } from "../ai/factory.js";
@@ -316,8 +316,17 @@ export function computeEnrichmentCacheKey(
   model: string,
   promptVersion: string,
   inputHash: string,
+  baseUrl?: string,
 ): string {
-  const composite = [sourceIndexHash, provider, model, promptVersion, inputHash].join("::");
+  const parts = [
+    sourceIndexHash,
+    provider,
+    model,
+    ...(baseUrl ? [baseUrl] : []),
+    promptVersion,
+    inputHash,
+  ];
+  const composite = parts.join("::");
   return createHash("sha256").update(composite).digest("hex").slice(0, 16);
 }
 
@@ -514,6 +523,7 @@ export async function enrichIndex(
 
   const providerName = probe.config.provider;
   const modelName = probe.config.model;
+  const probeBaseUrl = probe.config.baseUrl;
 
   // ── Cache check ──────────────────────────────────────────────────────────
   if (config.projectRoot) {
@@ -524,6 +534,7 @@ export async function enrichIndex(
       modelName,
       ENRICHMENT_PROMPT_VERSION,
       inputHash,
+      probeBaseUrl,
     );
     const cached = await readEnrichmentCache(config.projectRoot, cacheKey);
     if (cached) {
@@ -531,14 +542,21 @@ export async function enrichIndex(
     }
 
     // Proceed to provider call, then cache the result
-    const result = await callEnrichmentProvider(input, providerName, modelName, inputHash, config);
+    const result = await callEnrichmentProvider(
+      input,
+      providerName,
+      modelName,
+      inputHash,
+      config,
+      probeBaseUrl,
+    );
     if (result) {
       await writeEnrichmentCache(config.projectRoot, cacheKey, result.metadata, result.output);
     }
     return result;
   }
 
-  return callEnrichmentProvider(input, providerName, modelName, inputHash, config);
+  return callEnrichmentProvider(input, providerName, modelName, inputHash, config, probeBaseUrl);
 }
 
 /**
@@ -550,6 +568,7 @@ async function callEnrichmentProvider(
   modelName: string,
   inputHash: string,
   config: AIEnrichmentConfig,
+  baseUrl?: string,
 ): Promise<{ metadata: EnrichmentMetadata & { mode: "ai" }; output: AIEnrichmentOutput } | null> {
   const apiKey = AIConfig.getApiKey(providerName);
   if (!apiKey) {
@@ -559,13 +578,16 @@ async function callEnrichmentProvider(
     );
   }
 
-  const modelConfig = {
+  const modelConfig: AIModelConfig = {
     provider: providerName,
     model: modelName,
     apiKey,
     temperature: config.temperature ?? 0.3,
     maxTokens: config.maxTokens ?? 4096,
   };
+  if (baseUrl) {
+    modelConfig.baseUrl = baseUrl;
+  }
 
   const provider = AIProviderFactory.createProvider(modelConfig);
 

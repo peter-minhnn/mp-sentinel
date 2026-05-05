@@ -6,7 +6,7 @@ This service provides a unified interface for multi-provider code review.
 
 - Gemini
 - OpenAI
-- Anthropic
+- Anthropic (also supports custom Anthropic-compatible endpoints like DeepSeek)
 - Grok
 - OpenRouter
 
@@ -20,6 +20,7 @@ GEMINI_API_KEY=...
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...       # preferred Anthropic key name
 ANTHROPIC_AUTH_TOKEN=...    # accepted Anthropic fallback alias
+ANTHROPIC_BASE_URL=...      # custom Anthropic-compatible endpoint (e.g., https://api.deepseek.com/anthropic)
 GROK_API_KEY=...
 OPENROUTER_API_KEY=...
 

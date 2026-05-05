@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.34.1-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v1.34.2-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -222,6 +222,7 @@ GEMINI_API_KEY=your_key_here           # For Gemini
 # OPENAI_API_KEY=your_key_here         # For OpenAI
 # ANTHROPIC_API_KEY=your_key_here      # For Anthropic (preferred)
 # ANTHROPIC_AUTH_TOKEN=your_key_here   # Anthropic fallback alias
+# ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic  # Custom Anthropic-compatible endpoint
 # GROK_API_KEY=your_key_here           # For Grok (preferred)
 # XAI_API_KEY=your_key_here            # For Grok (fallback alias)
 # OPENROUTER_API_KEY=your_key_here     # For OpenRouter

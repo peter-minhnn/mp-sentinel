@@ -253,6 +253,10 @@ AI_PROVIDER=anthropic
 AI_MODEL=claude-sonnet-4-6
 ANTHROPIC_API_KEY=your_key
 # ANTHROPIC_AUTH_TOKEN=your_key  # fallback alias
+
+# Custom Anthropic-compatible endpoint (e.g., DeepSeek)
+# ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+# AI_MODEL=deepseek-v4-pro
 ```
 
 ### Grok

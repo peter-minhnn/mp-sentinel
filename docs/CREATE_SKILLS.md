@@ -169,7 +169,7 @@ By default, generated skills are deterministic and use only the source index. If
 
 Supported providers: `gemini`, `openai`, `anthropic`, `grok`, `openrouter`. Provider, model, and API key readiness are checked before any provider call. If AI is unavailable or unsupported, `create-skills` prints a warning, skips enrichment, and still generates deterministic index-only skills. `create-skills --doctor` reports that state as `aiEnrichment.status = "action-required"` without making network calls.
 
-Anthropic uses `ANTHROPIC_API_KEY` first and also accepts `ANTHROPIC_AUTH_TOKEN` as a fallback alias.
+Anthropic uses `ANTHROPIC_API_KEY` first and also accepts `ANTHROPIC_AUTH_TOKEN` as a fallback alias. For custom Anthropic-compatible endpoints (e.g., DeepSeek), set `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` with `AI_MODEL=deepseek-v4-pro`.
 
 Use `--no-ai-enrich` to temporarily generate deterministic index-only skills even when config enables AI:
 

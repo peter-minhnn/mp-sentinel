@@ -6,6 +6,7 @@
 import type { AIModelConfig, AIProvider, ModelTier } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { ProviderError } from "../../utils/errors.js";
+import { normalizeAnthropicBaseUrl, isValidHttpUrl } from "./anthropic-utils.js";
 
 export interface AIEnvironmentReady {
   status: "ready";
@@ -89,13 +90,29 @@ export class AIConfig {
           `Set ${this.getApiKeyEnvName(provider)} environment variable.`,
       );
     }
-    return {
+
+    const config: AIModelConfig = {
       provider,
       model,
       apiKey,
       temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
     };
+
+    // Read ANTHROPIC_BASE_URL only for anthropic provider
+    if (provider === "anthropic") {
+      const envUrl = process.env.ANTHROPIC_BASE_URL;
+      if (envUrl) {
+        if (!isValidHttpUrl(envUrl)) {
+          throw new ProviderError(
+            `Invalid ANTHROPIC_BASE_URL "${envUrl}". Must be a valid http:// or https:// URL.`,
+          );
+        }
+        config.baseUrl = normalizeAnthropicBaseUrl(envUrl);
+      }
+    }
+
+    return config;
   }
 
   /**
@@ -151,7 +168,26 @@ export class AIConfig {
       };
     }
 
-    if (!this.isSupportedModel(provider, model)) {
+    // Read ANTHROPIC_BASE_URL only for anthropic provider
+    let baseUrl: string | undefined;
+    if (provider === "anthropic") {
+      const envUrl = process.env.ANTHROPIC_BASE_URL;
+      if (envUrl) {
+        if (!isValidHttpUrl(envUrl)) {
+          return {
+            status: "unavailable",
+            provider,
+            model,
+            apiKeyPresent: Boolean(this.getApiKey(provider)),
+            reason: `Invalid ANTHROPIC_BASE_URL "${envUrl}". Must be a valid http:// or https:// URL.`,
+          };
+        }
+        baseUrl = normalizeAnthropicBaseUrl(envUrl);
+      }
+    }
+
+    // When a valid custom base URL is set for anthropic, bypass model whitelist
+    if (!baseUrl && !this.isSupportedModel(provider, model)) {
       return {
         status: "unavailable",
         provider,
@@ -172,15 +208,20 @@ export class AIConfig {
       };
     }
 
+    const config: AIModelConfig = {
+      provider,
+      model,
+      apiKey,
+      temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
+      maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
+    };
+    if (baseUrl) {
+      config.baseUrl = baseUrl;
+    }
+
     return {
       status: "ready",
-      config: {
-        provider,
-        model,
-        apiKey,
-        temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
-        maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
-      },
+      config,
     };
   }
 
