@@ -710,7 +710,7 @@ function buildConventions(index: SourceIndex | null): string {
   } else if (hasNodePrefix || hasTs) {
     lines.push(
       ``,
-      `- **Node:** >=20 - use \`node:\` prefix for built-in modules (e.g., \`node:fs\`, \`node:path\`)`,
+      `- **Node:** >=24 - use \`node:\` prefix for built-in modules (e.g., \`node:fs\`, \`node:path\`)`,
     );
   }
 

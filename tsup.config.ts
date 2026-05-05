@@ -6,7 +6,7 @@ export default defineConfig({
     'lib': 'src/lib.ts',
   },
   format: ['esm'],
-  target: 'node20',
+  target: 'node24',
   platform: 'node',
   outDir: 'dist',
   clean: true,

@@ -67,7 +67,7 @@
   "author": "Nguyen Nhat Minh",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@google/genai": "1.51.0",

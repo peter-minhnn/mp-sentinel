@@ -73,7 +73,7 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ## 3. TypeScript / ESM
 
-- **Runtime**: Node ≥ 20, ESM (`"type": "module"` in package.json).
+- **Runtime**: Node ≥ 24, ESM (`"type": "module"` in package.json).
 - All internal imports **must** include the `.js` extension (NodeNext resolution).
 - Node built-ins **must** use the `node:` prefix (e.g., `node:fs`, `node:path`).
 - Prefer `import type` for type-only imports (`verbatimModuleSyntax` is enforced).
