@@ -69,6 +69,7 @@ export function detectPackageManager(cwd: string): string {
 export async function readPackageManifest(cwd: string): Promise<{
   packageName: string | undefined;
   packageVersion: string | undefined;
+  nodeEngine: string | undefined;
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
   scripts: Record<string, string>;
@@ -80,6 +81,7 @@ export async function readPackageManifest(cwd: string): Promise<{
     return {
       packageName: undefined,
       packageVersion: undefined,
+      nodeEngine: undefined,
       dependencies: {},
       devDependencies: {},
       scripts: {},
@@ -94,6 +96,7 @@ export async function readPackageManifest(cwd: string): Promise<{
       return {
         packageName: undefined,
         packageVersion: undefined,
+        nodeEngine: undefined,
         dependencies: {},
         devDependencies: {},
         scripts: {},
@@ -101,9 +104,12 @@ export async function readPackageManifest(cwd: string): Promise<{
       };
     }
 
+    const engines = pkg.engines as Record<string, string> | undefined;
+
     return {
       packageName: pkg.name as string | undefined,
       packageVersion: pkg.version as string | undefined,
+      nodeEngine: engines?.node as string | undefined,
       dependencies: (pkg.dependencies ?? {}) as Record<string, string>,
       devDependencies: (pkg.devDependencies ?? {}) as Record<string, string>,
       scripts: (pkg.scripts ?? {}) as Record<string, string>,
@@ -116,6 +122,7 @@ export async function readPackageManifest(cwd: string): Promise<{
     return {
       packageName: undefined,
       packageVersion: undefined,
+      nodeEngine: undefined,
       dependencies: {},
       devDependencies: {},
       scripts: {},
@@ -240,7 +247,7 @@ export async function readManifest(cwd: string) {
   return {
     packageName: pkgInfo.packageName,
     packageVersion: pkgInfo.packageVersion,
-    nodeEngine: undefined,
+    nodeEngine: pkgInfo.nodeEngine,
     packageManager: detectPackageManager(cwd),
     dependencies: pkgInfo.dependencies,
     devDependencies: pkgInfo.devDependencies,

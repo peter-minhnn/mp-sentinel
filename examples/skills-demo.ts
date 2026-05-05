@@ -12,7 +12,7 @@ import {
 } from '../src/services/skills-fetcher.js';
 
 const DEMO_TECH_STACKS = [
-  'TypeScript 5.7, Node.js 20 (ESM), React 18',
+  'TypeScript 5.7, Node.js 24 (ESM), React 18',
   'Python 3.11, FastAPI, SQLAlchemy, PostgreSQL',
   'Go 1.21, Gin, GORM, Redis',
   'Java 17, Spring Boot, Hibernate, MySQL',

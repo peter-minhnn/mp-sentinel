@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-05
+
+### Breaking
+
+- **Node runtime baseline raised to 24** (`package.json`, `manifest.ts`, docs): `engines.node` changed from `>=20.0.0` to `>=24.0.0`. Source index `project.nodeEngine` now reads from `package.json.engines.node` instead of always `undefined`. Generated skills display the real engine constraint. `@types/node` bumped to `^24.12.2`.
+
+### Changed
+
+- **Source index manifest** (`src/services/source-index/manifest.ts`): `readPackageManifest()` now returns `nodeEngine` parsed from `package.json.engines.node`. `readManifest()` passes it through instead of hardcoding `undefined`.
+- **Config/docs/examples** (`.mp-sentinelrc.json`, `docs/README.md`, `docs/SKILLS_INTEGRATION.md`, `examples/skills-demo.ts`): `Node.js 20` references updated to `Node.js 24`.
+
 ## [1.34.2] - 2026-05-05
 
 ### Added

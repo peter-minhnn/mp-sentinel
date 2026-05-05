@@ -18,7 +18,7 @@ Add these fields to your `.mp-sentinelrc.json`:
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 20 (ESM), React 18, PostgreSQL 15"
+  "techStack": "TypeScript 5.7, Node.js 24 (ESM), React 18, PostgreSQL 15"
 }
 ```
 
@@ -45,7 +45,7 @@ Alternatively, users can manually create Markdown files (e.g., `react-architectu
 MP Sentinel automatically parses your `techStack` string to identify keywords:
 
 ```
-Input:  "TypeScript 5.7, Node.js 20 (ESM), tsup (esbuild)"
+Input:  "TypeScript 5.7, Node.js 24 (ESM), tsup (esbuild)"
 Output: ["typescript", "nodejs", "esm", "tsup", "esbuild"]
 ```
 

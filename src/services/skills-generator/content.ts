@@ -703,15 +703,10 @@ function buildConventions(index: SourceIndex | null): string {
     tsConfig?.compilerOptions?.strict,
   );
 
-  // Node engine baseline
+  // Node engine baseline — only show when actually read from package.json
   const nodeEngine = index.project.nodeEngine;
   if (nodeEngine) {
     lines.push(``, `- **Node Engine:** ${nodeEngine} - use \`node:\` prefix for built-in modules`);
-  } else if (hasNodePrefix || hasTs) {
-    lines.push(
-      ``,
-      `- **Node:** >=20 - use \`node:\` prefix for built-in modules (e.g., \`node:fs\`, \`node:path\`)`,
-    );
   }
 
   // ESM

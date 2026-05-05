@@ -23,7 +23,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
     packageName: "test",
     packageVersion: "1.0.0",
     packageManager: "npm",
-    nodeEngine: ">=18",
+    nodeEngine: ">=24.0.0",
     dependencies: {},
     devDependencies: {},
     detectedFrameworks: [],

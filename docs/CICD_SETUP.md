@@ -118,7 +118,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -139,7 +139,7 @@ jobs:
 
 **CI file** (`.gitlab-ci.yml`):
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -196,7 +196,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -219,7 +219,7 @@ jobs:
 
 **CI file** (`.gitlab-ci.yml`):
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -278,7 +278,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -301,7 +301,7 @@ jobs:
 
 **CI file** (`.gitlab-ci.yml`):
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -360,7 +360,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -386,7 +386,7 @@ jobs:
 
 **CI file** (`.gitlab-ci.yml`):
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit

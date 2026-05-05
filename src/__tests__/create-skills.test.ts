@@ -1449,7 +1449,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
     packageName: "test",
     packageVersion: "1.0.0",
     packageManager: "npm",
-    nodeEngine: ">=18",
+    nodeEngine: ">=24.0.0",
     dependencies: { typescript: "5.0.0" },
     devDependencies: {},
     detectedFrameworks: [],
@@ -1802,6 +1802,12 @@ describe("profileRules content", () => {
     expect(content.sections.hubFiles).toContain("src/utils.ts");
   });
 
+  it("omits Node Engine when project has no engines.node", () => {
+    const idx = makeMinimalIndex({ nodeEngine: undefined });
+    const content = generateContent(idx, "test");
+    expect(content.sections.overview).not.toContain("Node Engine");
+    expect(content.sections.conventions).not.toContain("Node Engine");
+  });
   it("normalizes valid AI enrichment provider names", () => {
     expect(resolveAIEnrichmentConfig({ provider: "OpenAI" }).provider).toBe("openai");
   });

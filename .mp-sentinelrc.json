@@ -1,5 +1,5 @@
 {
-  "techStack": "TypeScript 5.7, Node.js 20 (ESM), tsup (esbuild)",
+  "techStack": "TypeScript 5.7, Node.js 24 (ESM), tsup (esbuild)",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,
   "rules": [

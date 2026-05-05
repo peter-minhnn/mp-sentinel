@@ -1,3 +1,17 @@
+# What's New in v2.0.0
+
+## Node 24 Runtime Baseline
+
+v2.0.0 raises the public package baseline from **Node.js 20** to **Node.js >=24.0.0**.
+
+- **Breaking**: `engines.node` changed from `>=20.0.0` to `>=24.0.0`.
+- **Source index**: `project.nodeEngine` now reads from `package.json.engines.node` at index build time instead of always `undefined`. Generated skills display the real engine constraint.
+- **`@types/node`**: Bumped from `^22.19.9` to `^24.12.2`.
+- **Config/docs/examples**: All `Node.js 20` references updated to `Node.js 24`.
+- **No CI workflow changes**: Actual GitHub workflows still use `node-version: 'latest'`.
+
+---
+
 # What's New in v1.34.2
 
 ## Anthropic Custom Base URL Support

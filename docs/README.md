@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v1.34.2-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v2.0.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -324,7 +324,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
       - run: npm run build
@@ -365,7 +365,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
       - run: npm run build
@@ -408,7 +408,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
       - run: npm run build
@@ -451,7 +451,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
       - run: npm run build
@@ -479,7 +479,7 @@ jobs:
 3. Create `.gitlab-ci.yml`:
 
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -511,7 +511,7 @@ code_audit:
 3. Create `.gitlab-ci.yml`:
 
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -545,7 +545,7 @@ code_audit:
 3. Create `.gitlab-ci.yml`:
 
 ```yaml
-image: node:20
+image: node:24
 
 stages:
   - audit
@@ -590,7 +590,7 @@ MP Sentinel integrates with the open agent skills ecosystem (e.g. `npx skills`) 
 
 ```json
 {
-  "techStack": "TypeScript 5.7, Node.js 20, React 18, PostgreSQL 15"
+  "techStack": "TypeScript 5.7, Node.js 24, React 18, PostgreSQL 15"
 }
 ```
 
