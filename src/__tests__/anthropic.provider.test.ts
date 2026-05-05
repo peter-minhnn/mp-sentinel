@@ -220,6 +220,98 @@ describe("AnthropicProvider", () => {
         "Anthropic API error: 429 Too Many Requests",
       );
     });
+
+    it("sends thinking: disabled for DeepSeek base URL", async () => {
+      const mockResponse = jsonResponse({
+        content: [{ type: "text", text: "result" }],
+      });
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const provider = new AnthropicProvider({
+        provider: "anthropic",
+        apiKey: "ds-key",
+        model: "deepseek-v4-pro",
+        baseUrl: normalizeAnthropicBaseUrl("https://api.deepseek.com/anthropic"),
+      });
+      await provider.generateContent("system", "user");
+
+      const callBody = getRequestBody();
+      expect(callBody.thinking).toEqual({ type: "disabled" });
+    });
+
+    it("does not send thinking field for non-DeepSeek base URL", async () => {
+      const mockResponse = jsonResponse({
+        content: [{ type: "text", text: "result" }],
+      });
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const provider = new AnthropicProvider({
+        provider: "anthropic",
+        apiKey: "test-key",
+        model: "claude-sonnet-4-6",
+      });
+      await provider.generateContent("system", "user");
+
+      const callBody = getRequestBody();
+      expect(callBody.thinking).toBeUndefined();
+    });
+
+    it("skips thinking content blocks and returns only text", async () => {
+      const mockResponse = jsonResponse({
+        content: [
+          { type: "thinking", text: "Let me analyze this code..." },
+          { type: "text", text: '{"status":"PASS","issues":[]}' },
+        ],
+      });
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const provider = new AnthropicProvider({
+        provider: "anthropic",
+        apiKey: "ds-key",
+        model: "deepseek-v4-pro",
+        baseUrl: normalizeAnthropicBaseUrl("https://api.deepseek.com/anthropic"),
+      });
+      const result = await provider.generateContent("system", "user");
+      expect(result).toBe('{"status":"PASS","issues":[]}');
+    });
+
+    it("joins multiple text blocks when present", async () => {
+      const mockResponse = jsonResponse({
+        content: [
+          { type: "text", text: '{"status":"PASS","issues":' },
+          { type: "text", text: "[]}" },
+        ],
+      });
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const provider = new AnthropicProvider({
+        provider: "anthropic",
+        apiKey: "ds-key",
+        model: "deepseek-v4-pro",
+        baseUrl: normalizeAnthropicBaseUrl("https://api.deepseek.com/anthropic"),
+      });
+      const result = await provider.generateContent("system", "user");
+      expect(result).toBe('{"status":"PASS","issues":[]}');
+    });
+
+    it("returns empty string when all content blocks are thinking type", async () => {
+      const mockResponse = jsonResponse({
+        content: [
+          { type: "thinking", text: "Let me analyze..." },
+          { type: "thinking", text: "Still thinking..." },
+        ],
+      });
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const provider = new AnthropicProvider({
+        provider: "anthropic",
+        apiKey: "ds-key",
+        model: "deepseek-v4-pro",
+        baseUrl: normalizeAnthropicBaseUrl("https://api.deepseek.com/anthropic"),
+      });
+      const result = await provider.generateContent("system", "user");
+      expect(result).toBe("");
+    });
   });
 
   describe("isAvailable", () => {

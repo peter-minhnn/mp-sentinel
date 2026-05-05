@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node & Cache
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 'latest'
           cache: 'npm'
 
       - name: Install Dependencies
@@ -26,6 +26,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Build Source Index
+        run: node dist/index.js indexing
 
       - name: Run Audit
         env:
@@ -51,4 +54,4 @@ jobs:
           # GitHub integration
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_BRANCH: origin/${{ github.base_ref }}
-        run: npx mp-sentinel --target-branch $TARGET_BRANCH
+        run: node dist/index.js --target-branch $TARGET_BRANCH
