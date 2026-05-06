@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
+import { bannerText } from "../utils/display.js";
 
 export type CLICommand = "review" | "indexing" | "create-skills" | "default";
 
@@ -63,6 +64,7 @@ export const buildProgram = (): Command => {
     .description("AI-powered code review CLI — audits Git changes with Gemini, GPT-4, or Claude.")
     .version(PACKAGE_VERSION, "-v, --version", "Print version and exit")
     .helpOption("-h, --help", "Display help for command")
+    .addHelpText("beforeAll", bannerText())
     .option("--skip-commit", "Skip commit-message audit", false)
     .option("--skip-files", "Skip file-level audit", false)
     .option("-b, --target-branch <branch>", "Target branch for diff (default: origin/main)")

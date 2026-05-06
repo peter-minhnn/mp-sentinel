@@ -238,6 +238,62 @@ describe("formatMarkdownReport — metadata display", () => {
     const md = formatMarkdownReport(report);
     expect(md).not.toContain("## Findings");
   });
+
+  it("renders summary with Icon | Metric | Value columns", () => {
+    const report = makeReport();
+    const md = formatMarkdownReport(report);
+
+    // Markdown table header with Icon column
+    expect(md).toContain("| Icon | Metric | Value |");
+    // Summary rows included
+    expect(md).toContain("| Status |");
+    expect(md).toContain("| Target |");
+    expect(md).toContain("| AI Enabled |");
+    expect(md).toContain("| Total files |");
+  });
+
+  it("sorts findings by severity then file path", () => {
+    const report = makeReport({
+      results: [
+        {
+          filePath: "src/z.ts",
+          duration: 50,
+          result: {
+            status: "FAIL",
+            issues: [
+              { line: 5, severity: "INFO", message: "info in z" },
+              { line: 3, severity: "CRITICAL", message: "critical in z" },
+            ],
+          },
+        },
+        {
+          filePath: "src/a.ts",
+          duration: 50,
+          result: {
+            status: "FAIL",
+            issues: [{ line: 1, severity: "WARNING", message: "warning in a" }],
+          },
+        },
+      ],
+    });
+
+    const md = formatMarkdownReport(report);
+
+    // CRITICAL file should come before WARNING file
+    const criticalIdx = md.indexOf("critical in z");
+    const warningIdx = md.indexOf("warning in a");
+    expect(criticalIdx).toBeLessThan(warningIdx);
+  });
+
+  it("starts with the report header, not the ASCII banner", () => {
+    const report = makeReport();
+    const md = formatMarkdownReport(report);
+
+    // Markdown output must start with the # MP Sentinel header, not banner text
+    expect(md.startsWith("# MP Sentinel Review Report")).toBe(true);
+    expect(md).not.toContain("MP SENTINEL - Code Review");
+    expect(md).not.toContain("AI-Powered Code Review");
+  });
 });
 
 // ── Console report tests ───────────────────────────────────────────────────
@@ -340,5 +396,57 @@ describe("printConsoleReport — metadata display", () => {
     const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
     expect(calls).toContain("hidden critical");
     expect(calls).toContain("CRITICAL");
+  });
+
+  it("renders summary with icons and table layout", () => {
+    const report = makeReport();
+    printConsoleReport(report);
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+
+    // Banner is printed (new ASCII banner with readable text)
+    expect(calls).toContain("MP SENTINEL");
+    // Summary header
+    expect(calls).toContain("📊 Review Summary");
+    // Key metrics with icons
+    expect(calls).toContain("✅ Passed");
+    expect(calls).toContain("❌ Failed");
+    expect(calls).toContain("🚨 Critical");
+    expect(calls).toContain("⏱️  Duration");
+    expect(calls).toContain("🔢 Diff lines");
+  });
+
+  it("sorts findings by severity then file path", () => {
+    const report = makeReport({
+      results: [
+        {
+          filePath: "src/z.ts",
+          duration: 50,
+          result: {
+            status: "FAIL",
+            issues: [
+              { line: 5, severity: "INFO", message: "info in z" },
+              { line: 3, severity: "CRITICAL", message: "critical in z" },
+            ],
+          },
+        },
+        {
+          filePath: "src/a.ts",
+          duration: 50,
+          result: {
+            status: "FAIL",
+            issues: [{ line: 1, severity: "WARNING", message: "warning in a" }],
+          },
+        },
+      ],
+    });
+
+    printConsoleReport(report);
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+
+    // CRITICAL issue should appear in output before WARNING issue
+    const criticalIdx = calls.indexOf("critical in z");
+    const warningIdx = calls.indexOf("warning in a");
+    expect(criticalIdx).toBeLessThan(warningIdx);
   });
 });

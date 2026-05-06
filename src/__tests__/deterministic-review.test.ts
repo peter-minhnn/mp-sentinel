@@ -298,4 +298,33 @@ describe("printResultsSummary", () => {
     const results = [makeResult("a.ts", "PASS"), makeResult("b.ts", "FAIL")];
     expect(printResultsSummary(results, 1000)).toBe(false);
   });
+
+  it("renders the new icon table layout in output", () => {
+    const results = [makeResult("a.ts", "PASS"), makeResult("b.ts", "PASS")];
+    printResultsSummary(results, 1000);
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).toContain("📊 Audit Summary");
+    expect(calls).toContain("✅ Passed");
+    expect(calls).toContain("❌ Failed");
+    expect(calls).toContain("💥 Errors");
+    expect(calls).toContain("🚨 Critical");
+    expect(calls).toContain("⏱️  Duration");
+  });
+
+  it("uses severity sorting in output", () => {
+    const criticalIssue = makeIssue("CRITICAL", 5, "critical problem");
+    const warningIssue = makeIssue("WARNING", 3, "warning problem");
+    const results = [
+      makeResult("z.ts", "FAIL", [warningIssue]),
+      makeResult("a.ts", "FAIL", [criticalIssue]),
+    ];
+    printResultsSummary(results, 1000);
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    // CRITICAL file should appear before WARNING file in output
+    const criticalIdx = calls.indexOf("critical problem");
+    const warningIdx = calls.indexOf("warning problem");
+    expect(criticalIdx).toBeLessThan(warningIdx);
+  });
 });

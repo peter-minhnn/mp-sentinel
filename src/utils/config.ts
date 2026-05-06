@@ -236,8 +236,11 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
       }
       const resolvedPath = resolve(cwd, filePath);
       const relPath = relative(cwd, resolvedPath);
+      // Normalize backslashes to forward slashes so that Windows-style
+      // "..\\secrets.md" is caught as traversal even on Unix.
+      const normalizedRel = relPath.replace(/\\/g, "/");
       // Reject traversal: ".." or "../foo" or "..\foo" (but not "..rules.md")
-      if (relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath)) {
+      if (normalizedRel === ".." || normalizedRel.startsWith("../") || isAbsolute(relPath)) {
         throw new UserError(`ruleFiles: "${filePath}" must be inside the project root.`);
       }
 

@@ -275,7 +275,6 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const maxCharsPerFile = Math.max(1000, config.ai?.maxCharsPerFile ?? 12000);
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
 
-  log.header("MP Sentinel Review");
   if (dryRun) {
     log.warning(
       "DRY-RUN mode: deterministic non-AI review (secret redaction + risk analyzer) — AI calls skipped.",
