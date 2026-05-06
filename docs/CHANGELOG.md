@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-07
+
+### Added
+
+- ASCII brand banner for console and markdown review output.
+- Severity-sorted findings (CRITICAL → WARNING → INFO) in console and markdown reports.
+- Console summary now renders an icon table layout.
+- Markdown summary table now includes an Icon column.
+- Rule file path traversal detection now handles Windows-style backslashes on Unix.
+
+### Changed
+
+- Review orchestration no longer writes UI text before choosing console / json / markdown format.
+- Legacy `printResultsSummary` updated to match the new icon table layout.
+
 ## [2.1.0] - 2026-05-06
 
 ### Added

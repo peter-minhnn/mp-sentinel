@@ -1,3 +1,11 @@
+# What's New in v2.2.0
+
+## Review Output UI Refresh
+
+Console and markdown review output now renders with a cleaner, table-style layout including icon columns and severity-sorted findings.
+
+---
+
 # What's New in v2.1.0
 
 ## Rule Files Config (`ruleFiles`)
