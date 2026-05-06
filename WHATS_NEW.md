@@ -1,4 +1,4 @@
-# What's New (Unreleased)
+# What's New in v2.1.0
 
 ## Rule Files Config (`ruleFiles`)
 
