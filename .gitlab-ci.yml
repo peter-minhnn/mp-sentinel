@@ -17,8 +17,6 @@ code_audit:
     - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
-    - echo "KEY_LEN=${#ANTHROPIC_API_KEY}"
-    - echo "BASE=$ANTHROPIC_BASE_URL"
     - npm run build
     - node dist/index.js indexing
     - node dist/index.js --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
