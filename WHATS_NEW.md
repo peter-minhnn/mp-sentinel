@@ -1,3 +1,17 @@
+# What's New in v2.1.0
+
+## Rule Files Config (`ruleFiles`)
+
+`ruleFiles` lets you reference existing project docs (e.g., `docs/FLOW.md`) as review rules in `.mp-sentinelrc.json`, instead of duplicating them inline.
+
+- **New config key** (`ruleFiles`): Array of relative file paths. Each file's content is loaded and appended to project rules at review time and in create-skills AI enrichment.
+- **Format**: File-derived rules appear as `From <path>:\n<content>` in prompts.
+- **Guardrails**: Max 10 files, 12,000 chars per file. Absolute paths and path traversal (`../`) are rejected. Missing/unreadable files are config errors (exit code 2).
+- **Merge order**: Inline `rules` come first, then `ruleFiles` entries. The existing 20-rule prompt cap still applies.
+- **Backward compatible**: `rules` is unchanged. `.sentinel/skills/` still works for custom skill prompts — `ruleFiles` is for explicit project-root files.
+
+---
+
 # What's New in v2.0.1
 
 ## GitLab CI/CD Audit Alignment
@@ -100,7 +114,7 @@ v1.33.0 adds OpenRouter as a first-class AI provider, giving you access to 300+ 
 ## AI Environment Fallback
 
 - **Anthropic key alias** (`src/services/ai/config.ts`): `ANTHROPIC_AUTH_TOKEN` is accepted as a fallback when `ANTHROPIC_API_KEY` is not set.
-- **Readiness preflight** (`src/services/ai/config.ts`, `src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key now disables AI for the run and falls back to deterministic source review instead of failing review with a provider setup error.
+- **Readiness preflight** (`src/services/ai/config.ts`, `src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key now disables AI for the run and falls back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute) instead of failing review with a provider setup error.
 - **Create-skills behavior** (`src/services/skills-generator/ai-enrichment.ts`, `src/commands/create-skills.ts`): `createSkills.ai` still reads provider/model from `.mp-sentinelrc.json`; unavailable AI skips enrichment and generates deterministic skills. Project `rules` are included in the enrichment prompt when AI is available.
 
 ---

@@ -125,6 +125,8 @@ export interface CommitInfo {
 export interface ProjectConfig {
   techStack?: string;
   rules?: string[];
+  /** File paths (relative to project root) to load additional rules from */
+  ruleFiles?: string[];
   bypassKeyword?: string;
   commitFormat?: string;
   maxConcurrency?: number;
@@ -237,6 +239,7 @@ export const DEFAULT_CONFIG: Required<
     | "ai"
     | "indexing"
     | "createSkills"
+    | "ruleFiles"
   >
 > & {
   localReview: LocalReviewConfig;

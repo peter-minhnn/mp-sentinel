@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
+import { bannerText } from "../utils/display.js";
 
 export type CLICommand = "review" | "indexing" | "create-skills" | "default";
 
@@ -63,6 +64,7 @@ export const buildProgram = (): Command => {
     .description("AI-powered code review CLI — audits Git changes with Gemini, GPT-4, or Claude.")
     .version(PACKAGE_VERSION, "-v, --version", "Print version and exit")
     .helpOption("-h, --help", "Display help for command")
+    .addHelpText("beforeAll", bannerText())
     .option("--skip-commit", "Skip commit-message audit", false)
     .option("--skip-files", "Skip file-level audit", false)
     .option("-b, --target-branch <branch>", "Target branch for diff (default: origin/main)")
@@ -83,7 +85,11 @@ export const buildProgram = (): Command => {
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
     .option("--no-skills-fetch", "Disable local skills fetch (air-gapped mode)", false)
-    .option("--dry-run", "Security scan only — skip AI calls and preview results", false)
+    .option(
+      "--dry-run",
+      "Deterministic non-AI review (secret redaction + risk analyzer) with token preview",
+      false,
+    )
     .option("--verbose-dry-run", "Dry-run with forced per-file token breakdown", false)
     .option(
       "--token-limit <n>",

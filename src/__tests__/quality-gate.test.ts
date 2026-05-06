@@ -1109,7 +1109,7 @@ describe("validateSkillQuality", () => {
         "",
         "1. Read this skill file (SKILL.md) - understand the project profile.",
         "2. Use source index diagnostics before broad scans.",
-        "3. Load relevant references for the paths you touch.",
+        "3. Load relevant references.",
       ].join("\n");
       const files = [makeFile(".claude/skills/test/SKILL.md", content)];
       const report = validateSkillQuality(files, "claude", null);
@@ -1415,7 +1415,7 @@ describe("validateSkillQuality", () => {
       "   - `mp-sentinel indexing --find-import <pkg> --index-format json` - search for imports",
       "   - `mp-sentinel indexing --stats --index-format json` - index summary",
       "   - `mp-sentinel --explain-context --format json --files <file>` - review context enrichment",
-      "6. **Load only the relevant references** for the paths you touch.",
+      "6. **Load only the relevant references**",
       "7. **Respect the profile rules** - each profile has specific review pitfalls listed below.",
     ].join("\n");
 

@@ -12,7 +12,7 @@ import { auditCommit, auditFilesWithConcurrency } from "../services/ai.js";
 import { AIConfig } from "../services/ai/config.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
-import { createSecurityOnlyResults } from "./review.js";
+import { runDeterministicReview } from "./deterministic-review.js";
 import type { CLIValues } from "./args.js";
 
 export interface CICDReviewOptions {
@@ -39,7 +39,7 @@ export const runCICDReview = async (options: CICDReviewOptions): Promise<number>
 
   if (!aiEnabled) {
     log.warning(
-      `AI unavailable: ${aiAvailability.reason}. Falling back to deterministic security-only review.`,
+      `AI unavailable: ${aiAvailability.reason}. Falling back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).`,
     );
   }
 
@@ -154,10 +154,12 @@ const auditFileList = async (
     fileReadResult.success.map((f) => ({ path: f.path, content: f.content })),
   );
 
-  // Audit with concurrency or deterministic security-only fallback
-  const auditResults = aiEnabled
+  // Audit with concurrency + deterministic findings merged in
+  const aiResults = aiEnabled
     ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
-    : createSecurityOnlyResults(sanitizedFiles, redactionReport);
+    : undefined;
+
+  const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
 
   // Git Provider Integration (GitHub/GitLab) — lazy-loaded
   await postGitProviderComments(auditResults);

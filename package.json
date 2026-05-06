@@ -1,6 +1,6 @@
 {
   "name": "mp-sentinel",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "AI-powered Code Guardian with Multi-Provider Support - High-performance CLI for code auditing with Gemini, GPT-4, and Claude",
   "type": "module",
   "main": "dist/lib.js",
@@ -43,8 +43,8 @@
     "release:check": "node scripts/release-check.mjs",
     "test": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js",
     "test:coverage": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js --coverage",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format": "prettier --write --end-of-line auto \"src/**/*.ts\"",
+    "format:check": "prettier --check --end-of-line auto \"src/**/*.ts\""
   },
   "keywords": [
     "code-review",

@@ -135,21 +135,21 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
     ``,
-    `1. **Read this skill file** (SKILL.md) - understand the project profile, conventions, and pitfalls.`,
+    `1. **Read this skill file** (SKILL.md) - understand project profile, conventions, and pitfalls.`,
     instructionFilesLine,
     `3. **Check parser health first**:`,
-    `   - \`mp-sentinel indexing --health --index-format json\` - index health overview, parser mode breakdown, suggested drilldowns`,
+    `   - \`mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
     `4. **Drilldown when health suggests issues**:`,
     `   - \`mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries`,
     `   - \`mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors`,
     `5. **Before touching any file**, use source index diagnostics:`,
-    `   - \`mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, suggested next commands`,
-    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols for the file`,
-    `   - \`mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols (functions, classes, interfaces)`,
-    `   - \`mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for files importing a package or path`,
-    `   - \`mp-sentinel indexing --stats --index-format json\` - index summary with insight counts`,
-    `   - \`mp-sentinel --explain-context --format json --files <file>\` - review context enrichment`,
-    `6. **Load only the relevant references** for the paths you touch:`,
+    `   - \`mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands`,
+    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
+    `   - \`mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
+    `   - \`mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage`,
+    `   - \`mp-sentinel indexing --stats --index-format json\` - index statistics`,
+    `   - \`mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
+    `6. **Load only the relevant references**:`,
     ...refFiles,
     `7. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
   ];
@@ -161,9 +161,9 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
   // Generated artifact note — development guardrails
   lines.push(
     ``,
-    `> **Note:** This skill file and its references are **auto-generated bootstrap artifacts**.`,
-    `> - **Do not edit manually.** Regenerate via \`npm run agent:skills:refresh\` or \`mp-sentinel create-skills --all-agents --force\`.`,
-    `> - \`.sentinel/skills/\` contains **end-user review prompts**, not agent rules -- do not confuse the two.`,
+    `> **Note:** These files are **auto-generated**.`,
+    `> - **Do not edit.** Regenerate via \`npm run agent:skills:refresh\` or \`mp-sentinel create-skills --all-agents --force\`.`,
+    `> - \`.sentinel/skills/\` contains **review prompts**, not agent rules -- do not confuse the two.`,
   );
 
   return lines.join("\n");

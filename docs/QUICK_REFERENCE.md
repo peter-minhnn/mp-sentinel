@@ -66,12 +66,18 @@ MP_SENTINEL_FORMAT=console|json|markdown
 MP_SENTINEL_CONCURRENCY=5
 ```
 
-Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key disables AI for that review run and falls back to deterministic source review.
+Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key disables AI for that review run and falls back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).
 
 ## Config Guardrails
 
 ```json
 {
+  "rules": [
+    "CRITICAL: Never bypass auth checks."
+  ],
+  "ruleFiles": [
+    "docs/FLOW.md"
+  ],
   "ai": {
     "maxFiles": 15,
     "maxDiffLines": 1200,
@@ -80,6 +86,8 @@ Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key disables AI for th
   }
 }
 ```
+
+`ruleFiles` loads additional rules from project-root files. Max 10 files, 12,000 chars each. Paths must be relative and inside the project root.
 
 ## Exit Codes
 

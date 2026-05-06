@@ -5,6 +5,9 @@
 
 import type { FileAuditResult } from "../types/index.js";
 import { log, formatDuration } from "../utils/logger.js";
+import { printBanner, sortIssues, sortFileResults } from "../utils/display.js";
+
+const dividerLine = "─".repeat(50);
 
 /**
  * Print audit results summary and return whether all checks passed
@@ -15,45 +18,62 @@ export const printResultsSummary = (results: FileAuditResult[], totalDuration: n
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
   const errored = results.filter((r) => r.result.status === "ERROR");
-  const criticalFiles = results.filter((r) =>
-    r.result.issues?.some((i) => i.severity === "CRITICAL"),
+  const criticalIssues = results.reduce(
+    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "CRITICAL").length ?? 0),
+    0,
+  );
+  const warningIssues = results.reduce(
+    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "WARNING").length ?? 0),
+    0,
+  );
+  const infoIssues = results.reduce(
+    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "INFO").length ?? 0),
+    0,
   );
 
-  log.divider();
-  console.log();
+  printBanner();
   console.log(`📊 Audit Summary`);
-  console.log(`   Total files:    ${results.length}`);
-  console.log(`   ✅ Passed:       ${passed.length}`);
-  console.log(`   ❌ Failed:       ${failed.length}`);
-  console.log(`   💥 Errors:       ${errored.length}`);
-  console.log(`   🚨 Critical:     ${criticalFiles.length}`);
-  console.log(`   ⏱️  Duration:     ${formatDuration(totalDuration)}`);
-  console.log();
+  console.log(`  ${dividerLine}`);
+  console.log(`  Total files        ${results.length}`);
+  console.log(`  ✅ Passed           ${passed.length}`);
+  console.log(`  ❌ Failed           ${failed.length}`);
+  console.log(`  💥 Errors           ${errored.length}`);
+  console.log(`  🚨 Critical         ${criticalIssues}`);
+  console.log(`  ⚠️  Warning         ${warningIssues}`);
+  console.log(`  ℹ️  Info            ${infoIssues}`);
+  console.log(`  ⏱️  Duration        ${formatDuration(totalDuration)}`);
 
-  // Check for system errors (failed status but no issues logged)
-  const systemErrors = results.filter(
+  // Print detailed issues — sorted by severity
+  const findingResults = results.filter(
     (r) =>
-      (r.result.status === "FAIL" || r.result.status === "ERROR") &&
-      (!r.result.issues || r.result.issues.length === 0),
+      r.result.status === "FAIL" ||
+      r.result.status === "ERROR" ||
+      (r.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
+        false),
   );
 
-  // Print detailed issues
-  for (const result of [...failed, ...errored]) {
-    console.log(`❌ ${result.filePath}:`);
-
-    if (result.result.issues && result.result.issues.length > 0) {
-      for (const issue of result.result.issues) {
-        log.issue(issue.severity, issue.line, issue.message);
-        if (issue.suggestion) {
-          log.file(`💡 ${issue.suggestion}`);
-        }
-      }
-    } else {
-      log.error(result.result.message || "Unknown error occurred during audit");
-    }
+  if (findingResults.length > 0) {
     console.log();
+    const sorted = sortFileResults(findingResults);
+    for (const result of sorted) {
+      const marker = result.result.status === "ERROR" ? "💥" : "❌";
+      console.log(`${marker} ${result.filePath}:`);
+
+      if (result.result.issues && result.result.issues.length > 0) {
+        const sortedIssues = sortIssues(result.result.issues);
+        for (const issue of sortedIssues) {
+          log.issue(issue.severity, issue.line, issue.message);
+          if (issue.suggestion) {
+            log.file(`💡 ${issue.suggestion}`);
+          }
+        }
+      } else {
+        log.error(result.result.message || "Unknown error occurred during audit");
+      }
+      console.log();
+    }
   }
 
-  // Fail if there are critical issues OR system errors
-  return criticalFiles.length === 0 && systemErrors.length === 0;
+  // Fail if there are any FAIL/ERROR results
+  return failed.length === 0 && errored.length === 0;
 };

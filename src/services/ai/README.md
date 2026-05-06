@@ -34,7 +34,7 @@ AI_TIMEOUT_MS=30000
 - Uses a singleton provider instance for connection reuse.
 - Accepts diff-hunk payloads from the review runner (not full file by default).
 - Preflights provider/model/key readiness before review commands call a provider.
-- Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing API key disables AI for the run and falls back to deterministic security-only source review.
+- Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing API key disables AI for the run and falls back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).
 - Supports persistent on-disk caching via `.mp-sentinel-cache/`.
 - Cache key includes provider, model, prompt version, tool version, file path, prompt, and payload hash.
 

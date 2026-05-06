@@ -121,6 +121,11 @@ describe("runReview AI environment fallback", () => {
         startTime: performance.now(),
       });
 
+      // JSON stdout must not contain banner text before the JSON payload
+      expect(cap.stdout).not.toContain("MP SENTINEL");
+      expect(cap.stdout).not.toContain("__  __");
+      expect(cap.stdout).not.toContain("AI-Powered Code Review");
+
       const report = JSON.parse(cap.stdout);
       expect(exitCode).toBe(0);
       expect(report.status).toBe("PASS");
@@ -173,6 +178,239 @@ describe("runReview AI environment fallback", () => {
       expect(report.results[0].result.message).toBe("AI disabled");
       expect(cap.stderr).toContain("AI review unavailable");
       expect(cap.stderr).toContain("API key not found");
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("catches deterministic CRITICAL findings in AI fallback and exits 1", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "c.ts"), 'eval("dangerous code");\n');
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/c.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(1);
+      expect(report.status).toBe("FAIL");
+      expect(report.aiEnabled).toBe(false);
+      expect(report.summary.criticalIssues).toBeGreaterThanOrEqual(1);
+      const evalFile = report.results.find((r: { filePath: string }) => r.filePath === "src/c.ts");
+      expect(evalFile).toBeDefined();
+      expect(evalFile.result.status).toBe("FAIL");
+      expect(
+        evalFile.result.issues.some(
+          (i: { severity: string; message: string }) =>
+            i.severity === "CRITICAL" && i.message.includes("eval"),
+        ),
+      ).toBe(true);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("catches deterministic WARNING findings in AI fallback and exits 1", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "src", "d.ts"),
+      'import { execSync } from "node:child_process";\nexecSync("ls -la");\n',
+    );
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL = "gemini-2.5-flash";
+    delete process.env.GEMINI_API_KEY;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/d.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(1);
+      expect(report.status).toBe("FAIL");
+      expect(report.aiEnabled).toBe(false);
+      expect(report.summary.warningIssues).toBeGreaterThanOrEqual(1);
+      const execFile = report.results.find((r: { filePath: string }) => r.filePath === "src/d.ts");
+      expect(execFile).toBeDefined();
+      expect(execFile.result.status).toBe("FAIL");
+      expect(
+        execFile.result.issues.some(
+          (i: { severity: string; message: string }) =>
+            i.severity === "WARNING" && i.message.includes("child_process"),
+        ),
+      ).toBe(true);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("returns PASS in AI fallback when only INFO-level findings exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "e.ts"), 'const url = "http://localhost:3000/api";\n');
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/e.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(0);
+      expect(report.status).toBe("PASS");
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("renders markdown output without banner contamination", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "f.ts"), "export const v = 1;\n");
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/f.ts"], format: "markdown" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      // Markdown output must start with the report header, not the banner
+      expect(cap.stdout.trimStart().startsWith("# MP Sentinel Review Report")).toBe(true);
+      expect(cap.stdout).not.toContain("MP SENTINEL - Code Review");
+      expect(exitCode).toBe(0);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("renders banner once in console dry-run output", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "g.ts"), "export const v = 1;\n");
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    // NOT quiet mode — we want console output
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/g.ts"] }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+        dryRun: true,
+      });
+
+      // Banner should appear exactly once in console output
+      const bannerMatches = cap.stdout.match(/MP SENTINEL - Code Review/g);
+      expect(bannerMatches).not.toBeNull();
+      expect(bannerMatches).toHaveLength(1);
+      expect(exitCode).toBe(0);
     } finally {
       cap.restore();
     }

@@ -130,6 +130,19 @@ npm run --silent indexing -- --index-format json --force
 
 **Important:** The `indexing.enabled` flag only controls whether the `review` command uses the cached index for enhanced AI context. The `indexing` command itself always builds the cache when invoked directly, regardless of this setting. This means you can safely set `"enabled": false` to disable indexing during reviews without affecting your ability to generate or update the cache.
 
+### Project Rules in `.mp-sentinelrc.json`
+```json
+{
+  "rules": [
+    "CRITICAL: Never bypass auth checks."
+  ],
+  "ruleFiles": [
+    "docs/FLOW.md"
+  ]
+}
+```
+`rules` contains inline rule strings. `ruleFiles` loads additional rules from project-root files (max 10, 12,000 chars each). Paths must be relative and inside the project root. Both are included in AI review prompts and create-skills AI enrichment.
+
 ---
 
 ## 🤖 3. Create Skills Workflow

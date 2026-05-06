@@ -36,7 +36,7 @@ code_audit:
     AI_PROVIDER: anthropic
     AI_MODEL: deepseek-v4-pro  # or claude-opus-4
     ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
-    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+    # ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
 
     # Optional: Fine-tune AI behavior
     # AI_TEMPERATURE: "0.2"
