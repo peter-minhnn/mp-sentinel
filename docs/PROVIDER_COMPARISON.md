@@ -278,4 +278,4 @@ OPENROUTER_SITE_URL=https://example.com
 OPENROUTER_APP_NAME=MyProject
 ```
 
-If a configured provider/model/key cannot be resolved, mp-sentinel warns and uses deterministic non-AI source review for that run instead of failing the review only because AI is unavailable.
+If a configured provider/model/key cannot be resolved, mp-sentinel warns and falls back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).

@@ -264,7 +264,7 @@ Model availability and performance varies by provider. Check provider documentat
 **OpenRouter** also accepts `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME` for dashboard attribution (optional).
 OpenRouter model IDs use `provider/model` form with optional variant suffix like `:free` (e.g., `openai/gpt-5.2`, `meta-llama/llama-3.2-3b-instruct:free`).
 
-If `AI_PROVIDER`, `AI_MODEL`, or the resolved API key is unsupported or missing, review prints a warning, disables AI for that run, and continues with deterministic security-only source review. The exit code still follows findings: `0` pass, `1` findings, `2` runtime/system errors.
+If `AI_PROVIDER`, `AI_MODEL`, or the resolved API key is unsupported or missing, review prints a warning, disables AI for that run, and continues with deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute). The exit code still follows findings: `0` pass, `1` findings, `2` runtime/system errors.
 
 ---
 

@@ -109,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Header canonicalization** (`src/services/ai/providers/openrouter.provider.ts`): `X-Title` changed to canonical `X-OpenRouter-Title`. Default `OPENROUTER_SITE_URL` removed — `HTTP-Referer` only sent when explicitly configured.
 - **Model-gated structured output** (`src/services/ai/providers/openrouter.provider.ts`): `response_format: { type: "json_object" }` is now sent only for model families known to support it (`openai/gpt-*`). Non-OpenAI models (e.g., `moonshotai/kimi-*`) omit the parameter and rely on the parser's markdown-JSON extraction.
-- **Non-AI fallback on bad AI env** (`src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing API key now warns and disables AI for the run. Review continues with deterministic security-only source review; create-skills skips AI enrichment and still emits deterministic skills.
+- **Non-AI fallback on bad AI env** (`src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing API key now warns and disables AI for the run. Review continues with deterministic non-AI review (secret redaction + risk analyzer); create-skills skips AI enrichment and still emits deterministic skills.
 - **Docs** (`docs/README.md`, `docs/CICD_SETUP.md`, `docs/PROVIDER_COMPARISON.md`, `docs/QUICK_REFERENCE.md`, `docs/CREATE_SKILLS.md`, `docs/AI_ENRICHMENT_CACHE_SPEC.md`, `docs/CONTRIBUTING.md`): OpenRouter added throughout provider documentation.
 
 ---

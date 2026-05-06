@@ -54,6 +54,6 @@ export const printResultsSummary = (results: FileAuditResult[], totalDuration: n
     console.log();
   }
 
-  // Fail if there are critical issues OR system errors
-  return criticalFiles.length === 0 && systemErrors.length === 0;
+  // Fail if there are any FAIL/ERROR results
+  return failed.length === 0 && errored.length === 0;
 };

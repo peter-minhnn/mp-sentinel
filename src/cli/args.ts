@@ -83,7 +83,11 @@ export const buildProgram = (): Command => {
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
     .option("--no-skills-fetch", "Disable local skills fetch (air-gapped mode)", false)
-    .option("--dry-run", "Security scan only — skip AI calls and preview results", false)
+    .option(
+      "--dry-run",
+      "Deterministic non-AI review (secret redaction + risk analyzer) with token preview",
+      false,
+    )
     .option("--verbose-dry-run", "Dry-run with forced per-file token breakdown", false)
     .option(
       "--token-limit <n>",

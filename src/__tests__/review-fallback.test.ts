@@ -177,4 +177,151 @@ describe("runReview AI environment fallback", () => {
       cap.restore();
     }
   });
+
+  it("catches deterministic CRITICAL findings in AI fallback and exits 1", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "c.ts"), 'eval("dangerous code");\n');
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/c.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(1);
+      expect(report.status).toBe("FAIL");
+      expect(report.aiEnabled).toBe(false);
+      expect(report.summary.criticalIssues).toBeGreaterThanOrEqual(1);
+      const evalFile = report.results.find((r: { filePath: string }) => r.filePath === "src/c.ts");
+      expect(evalFile).toBeDefined();
+      expect(evalFile.result.status).toBe("FAIL");
+      expect(
+        evalFile.result.issues.some(
+          (i: { severity: string; message: string }) =>
+            i.severity === "CRITICAL" && i.message.includes("eval"),
+        ),
+      ).toBe(true);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("catches deterministic WARNING findings in AI fallback and exits 1", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "src", "d.ts"),
+      'import { execSync } from "node:child_process";\nexecSync("ls -la");\n',
+    );
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL = "gemini-2.5-flash";
+    delete process.env.GEMINI_API_KEY;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/d.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(1);
+      expect(report.status).toBe("FAIL");
+      expect(report.aiEnabled).toBe(false);
+      expect(report.summary.warningIssues).toBeGreaterThanOrEqual(1);
+      const execFile = report.results.find((r: { filePath: string }) => r.filePath === "src/d.ts");
+      expect(execFile).toBeDefined();
+      expect(execFile.result.status).toBe("FAIL");
+      expect(
+        execFile.result.issues.some(
+          (i: { severity: string; message: string }) =>
+            i.severity === "WARNING" && i.message.includes("child_process"),
+        ),
+      ).toBe(true);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it("returns PASS in AI fallback when only INFO-level findings exist", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "e.ts"), 'const url = "http://localhost:3000/api";\n');
+    process.chdir(cwd);
+
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.AI_MODEL = "not-a-real-model";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    setLogQuietMode(true);
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/e.ts"], format: "json" }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+      });
+
+      const report = JSON.parse(cap.stdout);
+      expect(exitCode).toBe(0);
+      expect(report.status).toBe("PASS");
+    } finally {
+      cap.restore();
+    }
+  });
 });

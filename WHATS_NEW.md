@@ -100,7 +100,7 @@ v1.33.0 adds OpenRouter as a first-class AI provider, giving you access to 300+ 
 ## AI Environment Fallback
 
 - **Anthropic key alias** (`src/services/ai/config.ts`): `ANTHROPIC_AUTH_TOKEN` is accepted as a fallback when `ANTHROPIC_API_KEY` is not set.
-- **Readiness preflight** (`src/services/ai/config.ts`, `src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key now disables AI for the run and falls back to deterministic source review instead of failing review with a provider setup error.
+- **Readiness preflight** (`src/services/ai/config.ts`, `src/cli/review.ts`, `src/cli/local-review.ts`, `src/commands/create-skills.ts`): Unsupported `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key now disables AI for the run and falls back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute) instead of failing review with a provider setup error.
 - **Create-skills behavior** (`src/services/skills-generator/ai-enrichment.ts`, `src/commands/create-skills.ts`): `createSkills.ai` still reads provider/model from `.mp-sentinelrc.json`; unavailable AI skips enrichment and generates deterministic skills. Project `rules` are included in the enrichment prompt when AI is available.
 
 ---

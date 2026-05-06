@@ -21,7 +21,7 @@ import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
-import { createSecurityOnlyResults } from "./review.js";
+import { runDeterministicReview } from "./deterministic-review.js";
 import type { CLIValues } from "./args.js";
 
 export interface LocalReviewOptions {
@@ -133,7 +133,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   if (!dryRun && !aiEnabled) {
     log.warning(
-      `AI unavailable: ${aiAvailability.reason}. Skipping commit-message review and using deterministic security-only file review.`,
+      `AI unavailable: ${aiAvailability.reason}. Skipping commit-message review and using deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).`,
     );
   }
 
@@ -256,9 +256,11 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 0; // End early for dry-run
   }
 
-  const auditResults = aiEnabled
+  const aiResults = aiEnabled
     ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
-    : createSecurityOnlyResults(sanitizedFiles, redactionReport);
+    : undefined;
+
+  const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
 
   // Print summary
   const auditDuration = performance.now() - startTime;

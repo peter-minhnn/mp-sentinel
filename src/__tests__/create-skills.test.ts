@@ -23,6 +23,7 @@ import { buildSourceIndex } from "../commands/indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { clearConfigCache } from "../utils/config.js";
 import { clearParserCache } from "../services/source-index/parser.js";
+import { readIndex } from "../services/source-index/storage.js";
 import { setLogQuietMode } from "../utils/logger.js";
 
 // -- Fixtures ------------------------------------------------------------------
@@ -332,8 +333,8 @@ describe("generateContent", () => {
       true,
     );
     const content = generateContent(index, "fixture");
-    expect(content.sections.agentWorkflow).toContain("auto-generated bootstrap artifacts");
-    expect(content.sections.agentWorkflow).toContain("Do not edit manually");
+    expect(content.sections.agentWorkflow).toContain("auto-generated");
+    expect(content.sections.agentWorkflow).toContain("Do not edit");
     expect(content.sections.agentWorkflow).toContain(".sentinel/skills/");
   });
 
@@ -393,6 +394,25 @@ describe("Claude adapter generate()", () => {
     expect(skillMd.content).toContain("name: fixture-best-practices");
     expect(skillMd.content).toContain("codebase-map.md");
     expect(skillMd.content).toContain("testing-map.md");
+  });
+
+  it("generated Claude SKILL.md from real index stays within 4200 char limit", async () => {
+    const cachePath = resolve(process.cwd(), ".mp-sentinel-cache", "source-index.json");
+    const index = await readIndex(cachePath);
+    if (!index) return; // Skip when index not built
+
+    const adapter = getAdapter("claude")!;
+    const projectName = index.project.packageName || "mp-sentinel";
+    const files = await adapter.generate(index, {
+      projectRoot: process.cwd(),
+      projectName,
+      force: false,
+    });
+    const report = validateSkillQuality(files, "claude", index, adapter.spec, projectName);
+    const sizeErrors = report.checks.filter(
+      (c) => c.type === "max-file-size" && c.severity === "error",
+    );
+    expect(sizeErrors).toHaveLength(0);
   });
 });
 

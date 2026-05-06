@@ -31,7 +31,7 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
-import { analyzeDiffs, mergeFindings } from "../services/risk-analyzer/index.js";
+import { runDeterministicReview } from "./deterministic-review.js";
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -40,7 +40,7 @@ export interface ReviewRunOptions {
   targetBranch: string;
   maxConcurrency: number;
   startTime: number;
-  /** When true, run security scan only — skip AI calls and print a preview */
+  /** When true, run deterministic non-AI review (secret redaction + risk analyzer) with token preview */
   dryRun?: boolean;
   /** When true, force per-file output during dry run */
   verboseDryRun?: boolean;
@@ -108,49 +108,7 @@ const resolveAIEnabled = (
   return fromFlag ?? fromEnv ?? fromConfig ?? defaultValue;
 };
 
-export const createSecurityOnlyResults = (
-  files: Array<{ path: string; content: string }>,
-  redactionReport: Array<{
-    path: string;
-    redactedCount: number;
-    matchedPatterns: string[];
-  }>,
-): FileAuditResult[] => {
-  const redactedMap = new Map(redactionReport.map((entry) => [entry.path, entry]));
-
-  return files.map((file) => {
-    const redaction = redactedMap.get(file.path);
-    if (!redaction) {
-      return {
-        filePath: file.path,
-        duration: 0,
-        result: {
-          status: "PASS",
-          issues: [],
-          message: "AI disabled",
-        },
-      };
-    }
-
-    return {
-      filePath: file.path,
-      duration: 0,
-      result: {
-        status: "FAIL",
-        issues: [
-          {
-            line: 1,
-            severity: "CRITICAL",
-            message: `Potential secret detected (${redaction.redactedCount} redaction(s))`,
-            suggestion:
-              "Remove secrets from the diff and use environment variables or secret managers.",
-          },
-        ],
-        message: `Matched patterns: ${redaction.matchedPatterns.join(", ")}`,
-      },
-    };
-  });
-};
+export { createSecurityOnlyResults } from "./deterministic-review.js";
 
 const emitFallbackNotice = (message: string, format: ReviewFormat): void => {
   if (format === "console") {
@@ -319,12 +277,14 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
 
   log.header("MP Sentinel Review");
   if (dryRun) {
-    log.warning("DRY-RUN mode: security scan only — AI calls skipped.");
+    log.warning(
+      "DRY-RUN mode: deterministic non-AI review (secret redaction + risk analyzer) — AI calls skipped.",
+    );
   }
   log.info(`Target: ${target.mode}${target.value ? ` (${target.value})` : ""}`);
   if (aiRequested && aiAvailability && aiAvailability.status !== "ready") {
     emitFallbackNotice(
-      `AI review unavailable: ${aiAvailability.reason} Falling back to deterministic security-only review.`,
+      `AI review unavailable: ${aiAvailability.reason} Falling back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).`,
       format,
     );
   }
@@ -377,26 +337,6 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const { sanitizedFiles, redactionReport } = securityService.sanitizeFiles(
     diffResult.files.map((file) => ({ path: file.path, content: file.patch })),
   );
-
-  // ── Deterministic risk analysis (runs before AI, merged after AI) ──────
-  const riskResult = analyzeDiffs(sanitizedFiles);
-  const redactedPaths = new Set(redactionReport.map((r) => r.path));
-
-  if (riskResult.totalCritical > 0) {
-    log.warning(
-      `Risk Analyzer: ${riskResult.totalCritical} CRITICAL, ${riskResult.totalWarning} WARNING, ${riskResult.totalInfo} INFO`,
-    );
-    for (const f of riskResult.files) {
-      if (f.issues.length > 0) {
-        const Sev = {
-          critical: f.localSeverityCounts.critical,
-          warning: f.localSeverityCounts.warning,
-          info: f.localSeverityCounts.info,
-        };
-        log.file(`  ${f.path}: ${Sev.critical}C ${Sev.warning}W ${Sev.info}I`);
-      }
-    }
-  }
 
   // Load source index context for AI if available
   const indexContext = await buildIndexContext(
@@ -451,7 +391,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     );
 
     if (dryRun) {
-      // In dry-run mode: show full per-file token breakdown + security results
+      // In dry-run mode: show full per-file token breakdown + deterministic findings
       log.info(
         `DRY-RUN preview: ${sanitizedFiles.length} file(s), ~${total.toLocaleString()} estimated tokens (limit: ${tokenLimit.toLocaleString()})`,
       );
@@ -462,7 +402,6 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
           log.file(`   ${f.path}: ~${f.tokens.toLocaleString()} tokens`);
         }
       }
-      auditResults = createSecurityOnlyResults(sanitizedFiles, redactionReport);
     } else if (exceeded) {
       log.warning(
         "Aborting AI review to prevent truncated results. " +
@@ -482,20 +421,19 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
         runtimeErrors.push(error instanceof Error ? error.message : "Unknown AI runtime error");
       }
     }
-  } else {
-    auditResults = createSecurityOnlyResults(sanitizedFiles, redactionReport);
   }
+
+  const finalResults = runDeterministicReview(
+    sanitizedFiles,
+    redactionReport,
+    aiEnabled && auditResults.length > 0 ? auditResults : undefined,
+  );
 
   const report = buildReport(
     target,
     aiEnabled,
     promptVersion,
-    riskResult.totalCritical > 0 ||
-      riskResult.totalWarning > 0 ||
-      riskResult.totalInfo > 0 ||
-      redactedPaths.size > 0
-      ? mergeFindings(riskResult, auditResults, redactedPaths)
-      : auditResults,
+    finalResults,
     skipped,
     runtimeErrors,
     diffResult.totalChangedLines,
