@@ -4,7 +4,7 @@
 
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { ProjectConfig, IndexingConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/index.js";
@@ -13,6 +13,8 @@ import { UserError } from "./errors.js";
 
 let cachedConfig: ProjectConfig | null = null;
 const CONFIG_FILENAME = ".mp-sentinelrc.json" as const;
+const MAX_RULE_FILES = 10;
+const MAX_CHARS_PER_RULE_FILE = 12000;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Zod schemas
@@ -122,6 +124,7 @@ const CreateSkillsConfigSchema = z.object({
 export const ProjectConfigSchema = z.object({
   techStack: z.string().optional(),
   rules: z.array(z.string()).optional(),
+  ruleFiles: z.array(z.string()).optional(),
   bypassKeyword: z.string().optional(),
   commitFormat: z.string().optional(),
   maxConcurrency: z.number().int().positive("maxConcurrency must be a positive integer").optional(),
@@ -213,7 +216,45 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
     );
   }
 
-  cachedConfig = mergeConfig(result.data as Partial<ProjectConfig>);
+  const partialConfig = result.data as Partial<ProjectConfig>;
+
+  // Process ruleFiles: read each file, validate paths, append content to rules
+  if (partialConfig.ruleFiles && partialConfig.ruleFiles.length > 0) {
+    if (partialConfig.ruleFiles.length > MAX_RULE_FILES) {
+      throw new UserError(
+        `ruleFiles: maximum ${MAX_RULE_FILES} files allowed, got ${partialConfig.ruleFiles.length}.`,
+      );
+    }
+
+    if (!partialConfig.rules) {
+      partialConfig.rules = [];
+    }
+
+    for (const filePath of partialConfig.ruleFiles) {
+      if (isAbsolute(filePath)) {
+        throw new UserError(`ruleFiles: "${filePath}" must be a relative path.`);
+      }
+      const resolvedPath = resolve(cwd, filePath);
+      const relPath = relative(cwd, resolvedPath);
+      // Reject traversal: ".." or "../foo" or "..\foo" (but not "..rules.md")
+      if (relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath)) {
+        throw new UserError(`ruleFiles: "${filePath}" must be inside the project root.`);
+      }
+
+      let content: string;
+      try {
+        content = await readFile(resolvedPath, "utf-8");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new UserError(`ruleFiles: cannot read "${filePath}": ${msg}`);
+      }
+
+      const trimmed = content.slice(0, MAX_CHARS_PER_RULE_FILE);
+      partialConfig.rules.push(`From ${filePath}:\n${trimmed}`);
+    }
+  }
+
+  cachedConfig = mergeConfig(partialConfig);
   // Use process.stderr directly to guarantee stdout isolation for JSON commands.
   // log.info routes to console.log (stdout), which would break JSON parse contracts
   // even if setLogQuietMode(true) is called — dynamic imports can create timing gaps.

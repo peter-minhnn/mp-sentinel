@@ -130,6 +130,9 @@ Create a `.mp-sentinelrc.json` file in your project root to customize rules and 
     "PERFORMANCE: Split components exceeding 200 lines.",
     "ARCHITECTURE: Business logic must stay in Services, not Controllers."
   ],
+  "ruleFiles": [
+    "docs/FLOW.md"
+  ],
   "bypassKeyword": "skip:",
   "maxConcurrency": 5,
   "ai": {
@@ -140,6 +143,8 @@ Create a `.mp-sentinelrc.json` file in your project root to customize rules and 
   }
 }
 ```
+
+`ruleFiles` lets you include existing project docs (e.g., `docs/FLOW.md`) as review rules. Each file path must be relative to the project root. Content is appended after inline `rules`, formatted as `From <path>:\n<content>`. Up to 10 files, each capped at 12,000 characters. Absolute paths and path traversal (`../`) are rejected. The existing `.sentinel/skills/` directory still works for custom skill prompts; `ruleFiles` is for explicit project-root files.
 
 ### AI Guardrails
 

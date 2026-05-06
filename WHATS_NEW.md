@@ -1,3 +1,17 @@
+# What's New (Unreleased)
+
+## Rule Files Config (`ruleFiles`)
+
+`ruleFiles` lets you reference existing project docs (e.g., `docs/FLOW.md`) as review rules in `.mp-sentinelrc.json`, instead of duplicating them inline.
+
+- **New config key** (`ruleFiles`): Array of relative file paths. Each file's content is loaded and appended to project rules at review time and in create-skills AI enrichment.
+- **Format**: File-derived rules appear as `From <path>:\n<content>` in prompts.
+- **Guardrails**: Max 10 files, 12,000 chars per file. Absolute paths and path traversal (`../`) are rejected. Missing/unreadable files are config errors (exit code 2).
+- **Merge order**: Inline `rules` come first, then `ruleFiles` entries. The existing 20-rule prompt cap still applies.
+- **Backward compatible**: `rules` is unchanged. `.sentinel/skills/` still works for custom skill prompts — `ruleFiles` is for explicit project-root files.
+
+---
+
 # What's New in v2.0.1
 
 ## GitLab CI/CD Audit Alignment

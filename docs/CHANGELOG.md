@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`ruleFiles` config key** (`.mp-sentinelrc.json`, `src/types/index.ts`, `src/utils/config.ts`): Specify relative file paths to load additional project rules from. Each file's content is formatted as `From <path>:\n<content>` and appended after inline `rules`. Max 10 files, 12,000 chars each. Absolute paths and path traversal are rejected as config errors. Content is included in AI review prompts and create-skills AI enrichment.
+
 ## [2.0.1] - 2026-05-06
 
 ### Changed
