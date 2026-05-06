@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-05-06
+
+### Changed
+
+- **GitLab CI/CD audit alignment** (`.gitlab-ci.yml`, `examples/workflows/gitlab/`, `docs/CICD_SETUP.md`): GitLab CI pipeline now matches the GitHub workflow — MR-only trigger (`merge_request_event`, `main` push rule removed), Node 24 image, source index build (`mp-sentinel indexing`) before audit, MR-safe git fetch (`--unshallow` + target branch), and blocking audit (removed `allow_failure: true`). All four GitLab inline examples in CICD_SETUP.md updated with indexing step and MR-safe fetch. GitLab cost optimization guidance updated for blocking default.
+
 ## [2.0.0] - 2026-05-05
 
 ### Breaking

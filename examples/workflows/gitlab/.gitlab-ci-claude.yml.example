@@ -1,11 +1,10 @@
-image: node:20
+image: node:24
 
 cache:
   key:
     files:
       - package-lock.json
   paths:
-    - .npm/
     - node_modules/
 
 stages:
@@ -14,17 +13,15 @@ stages:
 code_audit:
   stage: audit
   before_script:
-    - npm ci --cache .npm --prefer-offline
+    - npm ci
+    - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
-    - echo "🔍 Starting MP Sentinel audit with Anthropic Claude..."
     - npm run build
-    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx mp-sentinel --target-branch $TARGET_BRANCH
+    - npx mp-sentinel indexing
+    - npx mp-sentinel --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_COMMIT_BRANCH == 'main'
-  allow_failure: true
   variables:
     # Anthropic Configuration
     AI_PROVIDER: anthropic
@@ -32,12 +29,12 @@ code_audit:
     # AI_MODEL: claude-opus-4-6  # Most capable, for complex tasks
     # AI_MODEL: claude-haiku-4-5  # Previous generation
     ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
-    
+
     # Optional: Fine-tune behavior
     AI_TEMPERATURE: "0.2"
     AI_MAX_TOKENS: "8192"
-    
-    # GitLab integration
+
+    # GitLab integration (CI_JOB_TOKEN is auto-available for MR comments)
     # GITLAB_TOKEN: $GITLAB_TOKEN  # Optional PAT
 
 # Setup Instructions:

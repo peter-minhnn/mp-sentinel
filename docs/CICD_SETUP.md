@@ -148,11 +148,12 @@ code_audit:
   stage: audit
   before_script:
     - npm ci
+    - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
     - npm run build
-    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx mp-sentinel --target-branch $TARGET_BRANCH
+    - npx mp-sentinel indexing
+    - npx mp-sentinel --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   variables:
     GEMINI_API_KEY: $GEMINI_API_KEY
   rules:
@@ -228,11 +229,12 @@ code_audit:
   stage: audit
   before_script:
     - npm ci
+    - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
     - npm run build
-    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx mp-sentinel --target-branch $TARGET_BRANCH
+    - npx mp-sentinel indexing
+    - npx mp-sentinel --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   variables:
     AI_PROVIDER: openai
     AI_MODEL: gpt-5.2
@@ -310,11 +312,12 @@ code_audit:
   stage: audit
   before_script:
     - npm ci
+    - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
     - npm run build
-    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx mp-sentinel --target-branch $TARGET_BRANCH
+    - npx mp-sentinel indexing
+    - npx mp-sentinel --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   variables:
     AI_PROVIDER: anthropic
     AI_MODEL: claude-sonnet-4-6
@@ -395,11 +398,12 @@ code_audit:
   stage: audit
   before_script:
     - npm ci
+    - git fetch --unshallow 2>/dev/null || true
     - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   script:
     - npm run build
-    - export TARGET_BRANCH="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
-    - npx mp-sentinel --target-branch $TARGET_BRANCH
+    - npx mp-sentinel indexing
+    - npx mp-sentinel --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   variables:
     AI_PROVIDER: openrouter
     AI_MODEL: openai/gpt-5.2
@@ -499,7 +503,7 @@ jobs:
 **Optimization tips:**
 1. Use caching (already included in examples)
 2. Use `rules` to limit when audits run
-3. Consider `allow_failure: true`
+3. The audit runs as a blocking check (like GitHub). If you need non-blocking behavior during a trial period, add `allow_failure: true`.
 
 ### AI Provider Costs
 

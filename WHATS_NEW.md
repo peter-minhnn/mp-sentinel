@@ -1,3 +1,19 @@
+# What's New in v2.0.1
+
+## GitLab CI/CD Audit Alignment
+
+v2.0.1 aligns the GitLab CI/CD audit pipeline with the GitHub workflow: MR-only trigger, Node 24 runtime, source index build before audit, MR-safe git fetch, and blocking audit behavior.
+
+- **MR-only trigger** (`.gitlab-ci.yml`, examples): `code_audit` now runs only on `merge_request_event`, matching GitHub's `pull_request` trigger. The `main` branch push rule was removed.
+- **Node 24 runtime** (`.gitlab-ci.yml`, examples): GitLab CI image and examples updated from `node:20` to `node:24` to match the v2.0.0 Node engine requirement.
+- **Source indexing before audit**: GitLab CI pipeline now runs `mp-sentinel indexing` before the audit step, matching the GitHub workflow's `Build Source Index` step.
+- **Blocking audit**: `allow_failure: true` removed from `.gitlab-ci.yml` and GitLab examples so the audit gates MRs the same way GitHub's audit does.
+- **MR-safe git fetch**: `git fetch --unshallow` added before target-branch fetch to ensure complete history for three-dot diff computation and accurate MR discussion positions.
+- **GitLab examples** (`examples/workflows/gitlab/`): Claude and OpenAI examples updated with Node 24, indexing step, blocking behavior, and MR-safe fetch.
+- **CI/CD docs** (`docs/CICD_SETUP.md`): All four GitLab inline examples (Gemini, OpenAI, Claude, OpenRouter) updated with indexing step, inline `--target-branch`, and MR-safe fetch. Cost optimization guidance updated for blocking audit default.
+
+---
+
 # What's New in v2.0.0
 
 ## Node 24 Runtime Baseline
