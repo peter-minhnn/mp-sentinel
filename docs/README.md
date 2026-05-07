@@ -213,6 +213,46 @@ Template variables in `input` string values are resolved at call time using CI/C
 | `${changedFiles.csv}` | Comma-separated changed files | `src/a.ts,src/b.ts` |
 | `${cwd}` | Working directory path | `/home/runner/work/repo` |
 
+#### MCP Presets (shorthand shortcuts)
+
+Presets expand into full `MCPServer` definitions before cache/gather. Use them to avoid repeating common server configurations.
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "presets": [
+      {
+        "preset": "github",
+        "calls": [
+          { "tool": "get_file_contents", "input": { "path": "README.md" } }
+        ]
+      },
+      {
+        "preset": "fetch",
+        "urls": [
+          "https://docs.example.com/api/guide",
+          "https://api.example.com/ref/${base.ref}"
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Supported presets:**
+
+| Preset | Command | Description |
+|--------|---------|-------------|
+| `github` | `npx -y @modelcontextprotocol/server-github` | GitHub API context. Requires explicit `calls`. |
+| `fetch` | `uvx mcp-server-fetch` | URL fetching. Accepts `calls` and/or `urls[]` — each URL expands to a `fetch` tool call. |
+
+Preset IDs (`github`, `fetch`) must not collide with explicit `servers` IDs — duplicates are config errors.
+
+#### MCP Diagnostics (`--explain-context`)
+
+When MCP is configured, `--explain-context` includes read-only MCP diagnostics (no server spawns). The JSON output includes an `mcp` field with per-server status: `ready`, `missing_env`, or `missing_command`. Console output displays a summary table.
+
 #### MCP Configuration Options
 
 | Option | Type | Description | Default |
@@ -223,6 +263,7 @@ Template variables in `input` string values are resolved at call time using CI/C
 | `cacheEnabled` | boolean | Cache MCP results to avoid re-fetching | `true` |
 | `cacheTtlMs` | number | TTL for MCP cache entries (ms) | `3600000` |
 | `servers` | array | MCP server definitions (stdio only) | `[]` |
+| `presets` | array | Preset shortcuts expanded into server definitions | `[]` |
 
 #### Server Options
 

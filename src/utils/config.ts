@@ -7,10 +7,12 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { ProjectConfig, IndexingConfig } from "../types/index.js";
+import type { MCPPreset } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/index.js";
 import { log } from "./logger.js";
 import { UserError } from "./errors.js";
 import { stableJson } from "../services/mcp/cache.js";
+import { expandPresets, findDuplicateServerIds } from "../services/mcp/presets.js";
 
 let cachedConfig: ProjectConfig | null = null;
 const CONFIG_FILENAME = ".mp-sentinelrc.json" as const;
@@ -159,6 +161,30 @@ const MCPCallSchema = z.object({
   maxChars: z.number().int().positive().optional(),
 });
 
+const PresetEnvSchema = z.record(z.string(), z.string()).optional();
+
+const MCPGitHubPresetSchema = z.object({
+  preset: z.literal("github"),
+  calls: z.array(MCPCallSchema).min(1, "GitHub preset must have at least one tool call"),
+  env: PresetEnvSchema,
+});
+
+const MCPFetchPresetSchema = z
+  .object({
+    preset: z.literal("fetch"),
+    calls: z.array(MCPCallSchema).optional(),
+    urls: z.array(z.string().min(1)).optional(),
+    env: PresetEnvSchema,
+  })
+  .refine((val) => (val.calls && val.calls.length > 0) || (val.urls && val.urls.length > 0), {
+    message: 'Fetch preset requires at least one of "calls" or "urls" to be non-empty.',
+  });
+
+const MCPPresetSchema = z.discriminatedUnion("preset", [
+  MCPGitHubPresetSchema,
+  MCPFetchPresetSchema,
+]);
+
 const MCPServerSchema = z.object({
   id: z.string().min(1, "MCP server id must be a non-empty string"),
   transport: z.literal("stdio"),
@@ -193,6 +219,7 @@ const MCPConfigSchema = z.object({
   cacheEnabled: z.boolean().optional(),
   cacheTtlMs: z.number().int().positive("mcp.cacheTtlMs must be a positive integer").optional(),
   servers: z.array(MCPServerSchema).optional(),
+  presets: z.array(MCPPresetSchema).optional(),
 });
 
 export const ProjectConfigSchema = z.object({
@@ -297,6 +324,44 @@ export const loadProjectConfig = async (cwd: string = process.cwd()): Promise<Pr
 
   const partialConfig = result.data as Partial<ProjectConfig>;
 
+  // Validate MCP configuration post-parse (cross-field checks incompatible with
+  // exactOptionalPropertyTypes in Zod refine)
+  if (partialConfig.mcp) {
+    const servers = partialConfig.mcp.servers ?? [];
+    const presets = partialConfig.mcp.presets ?? [];
+
+    // 1. Check for duplicate explicit server IDs (even without presets)
+    if (servers.length > 1) {
+      const serverDuplicates = findDuplicateServerIds([], servers);
+      if (serverDuplicates.length > 0) {
+        throw new UserError(
+          `Invalid configuration in "${configPath}":\n` +
+            `  • mcp.servers — Duplicate server IDs detected: ${serverDuplicates.join(", ")}. ` +
+            `Each server id must be unique.`,
+        );
+      }
+    }
+
+    // 2. Expand presets and check for errors (duplicate names, etc.)
+    if (presets.length > 0) {
+      const expansion = expandPresets(presets);
+      if (expansion.errors.length > 0) {
+        const errorLines = expansion.errors.map((e) => `  • mcp.presets — ${e}`).join("\n");
+        throw new UserError(`Invalid configuration in "${configPath}":\n${errorLines}`);
+      }
+
+      // 3. Check for duplicate IDs between expanded presets and explicit servers
+      const duplicates = findDuplicateServerIds(expansion.servers, servers);
+      if (duplicates.length > 0) {
+        throw new UserError(
+          `Invalid configuration in "${configPath}":\n` +
+            `  • mcp — Duplicate server IDs detected: ${duplicates.join(", ")}. ` +
+            `Each server id must be unique across presets and servers.`,
+        );
+      }
+    }
+  }
+
   // Process ruleFiles: read each file, validate paths, append content to rules
   if (partialConfig.ruleFiles && partialConfig.ruleFiles.length > 0) {
     if (partialConfig.ruleFiles.length > MAX_RULE_FILES) {
@@ -356,5 +421,30 @@ export const clearConfigCache = (): void => {
  * Returns true/false; does NOT throw.
  */
 export const validateConfig = (config: unknown): config is ProjectConfig => {
-  return ProjectConfigSchema.safeParse(config).success;
+  const result = ProjectConfigSchema.safeParse(config);
+  if (!result.success) return false;
+
+  const data = result.data as Partial<ProjectConfig>;
+  if (data.mcp) {
+    const servers = data.mcp.servers ?? [];
+    const presets = data.mcp.presets ?? [];
+
+    // Check duplicate explicit server IDs
+    if (servers.length > 1) {
+      if (findDuplicateServerIds([], servers).length > 0) {
+        return false;
+      }
+    }
+
+    // Check preset expansion errors and duplicate IDs
+    if (presets.length > 0) {
+      const expansion = expandPresets(presets);
+      if (expansion.errors.length > 0) return false;
+      if (findDuplicateServerIds(expansion.servers, servers).length > 0) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 };

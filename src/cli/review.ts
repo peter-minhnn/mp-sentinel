@@ -6,6 +6,7 @@ import type {
   EvidenceSummary,
   ExplainContextOutput,
   FileAuditResult,
+  MCPDiagnostics,
   ProjectConfig,
   ReviewFormat,
   ReviewIntelligenceSignal,
@@ -32,6 +33,7 @@ import { buildReviewContext } from "../services/source-index/context-builder.js"
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
 import { gatherMCPContext } from "../services/mcp/index.js";
+import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview } from "./deterministic-review.js";
 
 export interface ReviewRunOptions {
@@ -575,6 +577,17 @@ export async function renderExplainContext(opts: {
     // Non-critical — keep default
   }
 
+  // Generate MCP diagnostics (read-only, no spawn)
+  let mcpDiagnostics: MCPDiagnostics | undefined;
+  try {
+    const mcpCfg = config.mcp;
+    if (mcpCfg) {
+      mcpDiagnostics = generateMCPDiagnostics(mcpCfg);
+    }
+  } catch {
+    // Non-critical — MCP diagnostics failure shouldn't block explain-context
+  }
+
   // Build typed output object
   const output: ExplainContextOutput = {
     status: indexStatus,
@@ -603,6 +616,11 @@ export async function renderExplainContext(opts: {
     if (suggestedCommands && suggestedCommands.length > 0) {
       output.suggestedCommands = suggestedCommands;
     }
+  }
+
+  // MCP diagnostics can appear regardless of index status
+  if (mcpDiagnostics) {
+    output.mcp = mcpDiagnostics;
   }
 
   // Output
@@ -646,6 +664,23 @@ export async function renderExplainContext(opts: {
         console.log("\nSuggested commands:");
         for (const cmd of output.suggestedCommands) {
           console.log(`  ${cmd}`);
+        }
+      }
+      if (output.mcp) {
+        console.log("\nMCP diagnostics:");
+        console.log(`  Enabled: ${output.mcp.enabled ? "yes" : "no"}`);
+        console.log(`  Servers: ${output.mcp.serverCount}`);
+        for (const srv of output.mcp.servers) {
+          const flag = srv.status === "ready" ? "[OK]" : `[${srv.status}]`;
+          console.log(`    ${flag} ${srv.id}: ${srv.command} (${srv.toolCount} calls)`);
+          if (srv.missingVars && srv.missingVars.length > 0) {
+            console.log(`      missing env: ${srv.missingVars.join(", ")}`);
+          }
+          if (srv.recommendedActions && srv.recommendedActions.length > 0) {
+            for (const action of srv.recommendedActions) {
+              console.log(`      => ${action}`);
+            }
+          }
         }
       }
       console.log("\nContext preview:");

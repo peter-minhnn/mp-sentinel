@@ -67,3 +67,6 @@ export type { FileHandlerOptions, FileFilterResult } from "./services/file-handl
 
 // Review command export (programmatic)
 export { runReview } from "./cli/review.js";
+
+// MCP exports
+export { generateMCPDiagnostics } from "./services/mcp/diagnostics.js";

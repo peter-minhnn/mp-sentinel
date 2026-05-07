@@ -165,6 +165,23 @@ Pull external review context from MCP servers before AI review. Disabled by defa
 }
 ```
 
+#### MCP Presets (shorthand)
+Presets expand into full server definitions. Use `preset: "github"` or `preset: "fetch"` with urls auto-expanded to fetch calls.
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "presets": [
+      { "preset": "github", "calls": [{ "tool": "get_file_contents", "input": { "path": "README.md" } }] },
+      { "preset": "fetch", "urls": ["https://docs.example.com"] }
+    ]
+  }
+}
+```
+
+#### MCP Diagnostics
+`--explain-context` includes read-only MCP diagnostics (no spawns). JSON output includes `mcp` field with per-server status. Console output shows a summary table.
+
 ---
 
 ## 🤖 3. Create Skills Workflow

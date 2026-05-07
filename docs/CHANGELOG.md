@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Env sanitization** (`src/services/mcp/sanitizer.ts`): Only explicitly named env vars are forwarded to MCP child processes.
 - **Deterministic-only skip**: MCP servers are not spawned when AI is disabled or in dry-run mode.
 - **MCP smoke tests** (`src/__tests__/mcp-integration.test.ts`): Real mocked stdio MCP server tests proving connect + tool call lifecycle.
+- **MCP preset expansion** (`src/services/mcp/presets.ts`): Shorthand `github` and `fetch` presets. Fetch `urls[]` auto-expand to fetch calls. Duplicate IDs across presets and servers are config errors.
+- **MCP diagnostics** (`src/services/mcp/diagnostics.ts`): Read-only health checks (no spawns) surfaced in `--explain-context` JSON (`mcp` field) and console output. Reports `ready`, `missing_env`, `missing_command` per server.
 
 ## [2.2.0] - 2026-05-07
 

@@ -293,3 +293,150 @@ describe("backward compatibility", () => {
     expect(true).toBe(true);
   });
 });
+
+// --- MCP diagnostics in explain-context ---------------------------------
+
+describe("explain-context MCP diagnostics", () => {
+  it("includes mcp field when MCP diagnostics are present", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 1,
+        servers: [
+          {
+            id: "github",
+            command: "npx -y @modelcontextprotocol/server-github",
+            status: "ready",
+            toolCount: 2,
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp).toBeDefined();
+    expect(parsed.mcp!.enabled).toBe(true);
+    expect(parsed.mcp!.serverCount).toBe(1);
+    expect(parsed.mcp!.servers[0]!.id).toBe("github");
+    expect(parsed.mcp!.servers[0]!.status).toBe("ready");
+  });
+
+  it("omits mcp when undefined", () => {
+    const output: ExplainContextOutput = {
+      status: "unavailable",
+      reason: "No source index found.",
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp).toBeUndefined();
+  });
+
+  it("includes all MCP diagnostic statuses in JSON round-trip", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 4,
+        servers: [
+          { id: "s1", command: "npx test", status: "ready", toolCount: 1 },
+          {
+            id: "s2",
+            command: "npx test",
+            status: "missing_env",
+            toolCount: 2,
+            missingVars: ["GH_TOKEN"],
+          },
+          { id: "s3", command: "nonexistent", status: "missing_command", toolCount: 1 },
+          { id: "s4", command: "npx test", status: "ready", toolCount: 3 },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.servers).toHaveLength(4);
+    expect(parsed.mcp!.servers[0]!.status).toBe("ready");
+    expect(parsed.mcp!.servers[1]!.status).toBe("missing_env");
+    expect(parsed.mcp!.servers[2]!.status).toBe("missing_command");
+  });
+
+  it("includes recommendedActions for missing_env servers in JSON round-trip", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 2,
+        servers: [
+          {
+            id: "needs-env",
+            command: "npx test",
+            status: "missing_env",
+            toolCount: 1,
+            missingVars: ["GITHUB_TOKEN"],
+            recommendedActions: ["Set the GITHUB_TOKEN environment variable"],
+          },
+          {
+            id: "no-cmd",
+            command: "nonexistent-xyz",
+            status: "missing_command",
+            toolCount: 1,
+            recommendedActions: ["Install nonexistent-xyz or adjust PATH"],
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.servers[0]!.recommendedActions).toBeDefined();
+    expect(parsed.mcp!.servers[0]!.recommendedActions![0]).toContain("GITHUB_TOKEN");
+    expect(parsed.mcp!.servers[1]!.recommendedActions).toBeDefined();
+    expect(parsed.mcp!.servers[1]!.recommendedActions![0]).toContain("Install");
+  });
+
+  it("omits recommendedActions when server is ready", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 1,
+        servers: [
+          {
+            id: "ready-svr",
+            command: "node",
+            status: "ready",
+            toolCount: 1,
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.servers[0]!.recommendedActions).toBeUndefined();
+  });
+
+  it("handles disabled MCP diagnostics", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: false,
+        serverCount: 0,
+        servers: [],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.enabled).toBe(false);
+    expect(parsed.mcp!.serverCount).toBe(0);
+  });
+});

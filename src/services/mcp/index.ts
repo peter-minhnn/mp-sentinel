@@ -13,8 +13,8 @@ import { resolveTemplateVariables } from "./template-resolver.js";
 import { buildMCPCacheKey, readMCPCacheEntry, writeMCPCacheEntry } from "./cache.js";
 import { executeMCPServer } from "./client.js";
 import { buildMCPContextString } from "./context-builder.js";
+import { expandPresets } from "./presets.js";
 import { getToolVersion } from "../../utils/version.js";
-import { log } from "../../utils/logger.js";
 import type { MCPCallResult } from "./client.js";
 
 export const gatherMCPContext = async (
@@ -23,7 +23,16 @@ export const gatherMCPContext = async (
   workingDir: string,
 ): Promise<string | null> => {
   const mcp = config.mcp;
-  if (!mcp?.enabled || !mcp?.servers || mcp.servers.length === 0) {
+  if (!mcp?.enabled) {
+    return null;
+  }
+
+  // Expand presets and combine with explicit servers
+  const presetExpansion =
+    mcp.presets && mcp.presets.length > 0 ? expandPresets(mcp.presets) : { servers: [] };
+  const allServers = [...presetExpansion.servers, ...(mcp.servers ?? [])];
+
+  if (allServers.length === 0) {
     return null;
   }
 
@@ -35,7 +44,7 @@ export const gatherMCPContext = async (
 
   const allResults: MCPCallResult[] = [];
 
-  for (const server of mcp.servers) {
+  for (const server of allServers) {
     const resolvedCalls = server.calls.map((call) => ({
       ...call,
       input: resolveTemplateVariables(call.input, metadata, workingDir),

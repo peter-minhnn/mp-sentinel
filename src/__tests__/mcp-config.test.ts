@@ -290,3 +290,273 @@ describe("MCP duplicate call rejection", () => {
     ).toBe(false);
   });
 });
+
+// ─── MCP preset validation ──────────────────────────────────────────────
+
+describe("MCP preset validation", () => {
+  it("accepts github preset with calls", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "github",
+              calls: [{ tool: "get_file_contents", input: { path: "README.md" } }],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects github preset with no calls", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [{ preset: "github", calls: [] }],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts fetch preset with urls", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [{ preset: "fetch", urls: ["https://example.com"] }],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts fetch preset with calls", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "fetch",
+              calls: [{ tool: "fetch", input: { url: "https://example.com" } }],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects fetch preset with no calls and no urls", () => {
+    expect(
+      validateConfig({
+        mcp: { presets: [{ preset: "fetch" }] },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects fetch preset with empty calls and empty urls", () => {
+    expect(
+      validateConfig({
+        mcp: { presets: [{ preset: "fetch", calls: [], urls: [] }] },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects unknown preset type", () => {
+    expect(
+      validateConfig({
+        mcp: { presets: [{ preset: "unknown", calls: [] }] },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts mixed presets and servers", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            { preset: "fetch", urls: ["https://example.com"] },
+            { preset: "github", calls: [{ tool: "get_file_contents", input: { path: "x.md" } }] },
+          ],
+          servers: [
+            {
+              id: "custom",
+              transport: "stdio",
+              command: "npx",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects duplicate IDs between preset and server", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            { preset: "github", calls: [{ tool: "get_file_contents", input: { path: "x.md" } }] },
+          ],
+          servers: [
+            {
+              id: "github",
+              transport: "stdio",
+              command: "npx",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects duplicate IDs between fetch preset and server", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [{ preset: "fetch", urls: ["https://example.com"] }],
+          servers: [
+            {
+              id: "fetch",
+              transport: "stdio",
+              command: "uvx",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects mutating tools inside presets", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "github",
+              calls: [{ tool: "create_issue", input: { title: "test" } }],
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts github preset with custom env", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "github",
+              calls: [{ tool: "get_file_contents", input: { path: "a.md" } }],
+              env: { GITHUB_TOKEN: "MY_TOKEN" },
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts fetch preset with env", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "fetch",
+              urls: ["https://example.com"],
+              env: { NPM_TOKEN: "NPM_REGISTRY_TOKEN" },
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects env with wrong type in preset", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            {
+              preset: "github",
+              calls: [{ tool: "get_file_contents", input: { path: "a.md" } }],
+              env: "not-an-object",
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects duplicate preset names as config error", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          presets: [
+            { preset: "github", calls: [{ tool: "get_file_contents", input: { path: "a.md" } }] },
+            { preset: "github", calls: [{ tool: "get_file_contents", input: { path: "b.md" } }] },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+// ─── Duplicate explicit server ID validation ─────────────────────────────
+
+describe("duplicate explicit server ID validation", () => {
+  it("rejects duplicate IDs within explicit servers (no presets)", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          servers: [
+            {
+              id: "dup-id",
+              transport: "stdio",
+              command: "npx",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+            {
+              id: "dup-id",
+              transport: "stdio",
+              command: "node",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts unique explicit server IDs (no presets)", () => {
+    expect(
+      validateConfig({
+        mcp: {
+          servers: [
+            {
+              id: "server-a",
+              transport: "stdio",
+              command: "npx",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+            {
+              id: "server-b",
+              transport: "stdio",
+              command: "node",
+              args: [],
+              calls: [{ tool: "get", input: {} }],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+});

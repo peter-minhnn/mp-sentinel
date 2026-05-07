@@ -200,6 +200,26 @@ export interface MCPServer {
   calls: MCPCall[];
 }
 
+/** Pre-configured MCP server preset — "github" or "fetch" */
+export type MCPPreset = MCPGitHubPreset | MCPFetchPreset;
+
+/** GitHub MCP server preset */
+export interface MCPGitHubPreset {
+  preset: "github";
+  calls: MCPCall[];
+  /** Env var mapping: { "CHILD_NAME": "PROCESS_ENV_NAME" }. Defaults to { "GITHUB_TOKEN": "GITHUB_TOKEN" }. */
+  env?: Record<string, string>;
+}
+
+/** Fetch MCP server preset (urls[] expand to individual fetch tool calls) */
+export interface MCPFetchPreset {
+  preset: "fetch";
+  calls?: MCPCall[];
+  urls?: string[];
+  /** Env var mapping: { "CHILD_NAME": "PROCESS_ENV_NAME" }. */
+  env?: Record<string, string>;
+}
+
 /** Top-level MCP configuration */
 export interface MCPConfig {
   /** Enable MCP external context gathering (default: false) */
@@ -214,6 +234,33 @@ export interface MCPConfig {
   cacheTtlMs?: number;
   /** MCP server definitions */
   servers?: MCPServer[];
+  /** Preset shortcuts that expand into full server definitions */
+  presets?: MCPPreset[];
+}
+
+// ====================================================================================
+// MCP Diagnostics Types
+// ====================================================================================
+
+/** Diagnostic status for a single MCP server */
+export type MCPDiagnosticStatus = "disabled" | "ready" | "missing_env" | "missing_command";
+
+/** Per-server diagnostic information */
+export interface MCPDiagnosticServer {
+  id: string;
+  command: string;
+  status: MCPDiagnosticStatus;
+  toolCount: number;
+  missingVars?: string[];
+  /** Human-readable suggested actions (e.g., "Set GITHUB_TOKEN env var") */
+  recommendedActions?: string[];
+}
+
+/** MCP diagnostics summary — read-only, no spawn */
+export interface MCPDiagnostics {
+  enabled: boolean;
+  serverCount: number;
+  servers: MCPDiagnosticServer[];
 }
 
 export interface AuditIssue {
@@ -339,6 +386,7 @@ export const DEFAULT_CONFIG: Required<
     cacheEnabled: true,
     cacheTtlMs: 3_600_000,
     servers: [],
+    presets: [],
   },
   localReview: {
     enabled: false,
@@ -757,6 +805,8 @@ export interface ExplainContextOutput {
   evidenceSummary?: EvidenceSummary[];
   /** Suggested follow-up index-query commands (v1.16.0+) */
   suggestedCommands?: string[];
+  /** MCP diagnostics (when MCP is enabled or has presets/servers configured) */
+  mcp?: MCPDiagnostics;
 }
 
 // ====================================================================================

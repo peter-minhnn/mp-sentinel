@@ -14,6 +14,8 @@ Optional external review context from MCP (Model Context Protocol) servers can n
 - **MCP cache**: Separate from AI audit cache, keyed on server config + input (recursive stable JSON) + head SHA + changed files + env mapping pairs. Atomic writes, TTL-based expiration.
 - **Context budget**: Strict `mcp.maxContextChars` (default 6000). Total output never exceeds budget.
 - **Deterministic-only skip**: MCP servers are not spawned when AI is disabled or in dry-run mode.
+- **MCP preset expansion** (`src/services/mcp/presets.ts`): Shorthand `presets` array with `github` (npx @modelcontextprotocol/server-github) and `fetch` (uvx mcp-server-fetch) presets. Fetch `urls[]` auto-expand to individual fetch tool calls. Presets expand into full server definitions before cache/gather. Duplicate IDs across presets and servers are config errors.
+- **MCP diagnostics** (`src/services/mcp/diagnostics.ts`, `--explain-context`): Read-only diagnostic checks (no spawns). Reports per-server status (`ready`, `missing_env`, `missing_command`). Surfaced in `--explain-context` JSON output (`mcp` field) and console display.
 
 ### Configuration
 
@@ -25,28 +27,19 @@ Optional external review context from MCP (Model Context Protocol) servers can n
     "maxContextChars": 6000,
     "cacheEnabled": true,
     "cacheTtlMs": 3600000,
-    "servers": [
+    "presets": [
       {
-        "id": "github",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-github"],
-        "env": { "GITHUB_TOKEN": "GH_TOKEN" },
+        "preset": "github",
         "calls": [
-          { "tool": "get_file_contents", "input": { "path": "README.md" } },
-          { "tool": "search_code", "input": { "query": "TODO ${pr.number}" } }
+          { "tool": "get_file_contents", "input": { "path": "README.md" } }
         ]
       },
       {
-        "id": "docs",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-fetch"],
-        "calls": [
-          { "tool": "fetch", "input": { "url": "https://docs.example.com/api/${base.ref}" } }
-        ]
+        "preset": "fetch",
+        "urls": ["https://docs.example.com/api/${base.ref}"]
       }
-    ]
+    ],
+    "servers": []
   }
 }
 ```
@@ -62,6 +55,8 @@ Optional external review context from MCP (Model Context Protocol) servers can n
 | `src/services/mcp/client.ts` | Stdio MCP client with typed lazy SDK loading |
 | `src/services/mcp/context-builder.ts` | Format results, strict budget enforcement |
 | `src/services/mcp/index.ts` | gatherMCPContext orchestrator |
+| `src/services/mcp/presets.ts` | Preset expansion (github, fetch) |
+| `src/services/mcp/diagnostics.ts` | Read-only MCP health checks |
 
 ---
 
