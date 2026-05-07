@@ -145,6 +145,8 @@ export interface ProjectConfig {
   indexing?: Partial<IndexingConfig>;
   /** Create-skills AI enrichment configuration */
   createSkills?: CreateSkillsConfig;
+  /** MCP (Model Context Protocol) external context configuration */
+  mcp?: MCPConfig;
 }
 
 // ====================================================================================
@@ -161,6 +163,57 @@ export interface CreateSkillsAIConfig {
 
 export interface CreateSkillsConfig {
   ai?: CreateSkillsAIConfig;
+}
+
+// ====================================================================================
+// MCP (Model Context Protocol) Configuration
+// ====================================================================================
+
+/** A single tool invocation against an MCP server */
+export interface MCPCall {
+  /** Tool name to invoke */
+  tool: string;
+  /** JSON input passed to the tool. String values support template vars: ${repo.owner}, etc. */
+  input: Record<string, unknown>;
+  /** Per-call character limit override (defaults to mcp.maxContextChars) */
+  maxChars?: number;
+}
+
+/** Definition of a single MCP server (stdio transport only for MVP) */
+export interface MCPServer {
+  /** Unique identifier for this server within the config */
+  id: string;
+  /** Transport type — only "stdio" is supported */
+  transport: "stdio";
+  /** Command to spawn (e.g., "npx", "node", "python") */
+  command: string;
+  /** Arguments passed to the command */
+  args: string[];
+  /**
+   * Environment variables to forward to the child process.
+   * Keys are the env var names in the child process.
+   * Values are the names of process.env variables to copy from.
+   * Only explicitly named variables are forwarded.
+   */
+  env?: Record<string, string>;
+  /** Ordered list of tool calls to make against this server */
+  calls: MCPCall[];
+}
+
+/** Top-level MCP configuration */
+export interface MCPConfig {
+  /** Enable MCP external context gathering (default: false) */
+  enabled?: boolean;
+  /** Timeout in milliseconds for MCP server connection + tool calls (default: 3000) */
+  timeoutMs?: number;
+  /** Maximum total characters of MCP context to inject into the system prompt (default: 6000) */
+  maxContextChars?: number;
+  /** Cache MCP results to avoid re-fetching on every review (default: true) */
+  cacheEnabled?: boolean;
+  /** TTL for MCP cache entries in milliseconds (default: 3600000 = 1 hour) */
+  cacheTtlMs?: number;
+  /** MCP server definitions */
+  servers?: MCPServer[];
 }
 
 export interface AuditIssue {
@@ -239,6 +292,7 @@ export const DEFAULT_CONFIG: Required<
     | "ai"
     | "indexing"
     | "createSkills"
+    | "mcp"
     | "ruleFiles"
   >
 > & {
@@ -250,6 +304,7 @@ export const DEFAULT_CONFIG: Required<
     Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize" | "maxRelatedFiles">
   >;
   createSkills: Required<CreateSkillsConfig>;
+  mcp: Required<MCPConfig>;
 } = {
   techStack: "",
   rules: [],
@@ -276,6 +331,14 @@ export const DEFAULT_CONFIG: Required<
     ai: {
       enabled: false,
     },
+  },
+  mcp: {
+    enabled: false,
+    timeoutMs: 3000,
+    maxContextChars: 6000,
+    cacheEnabled: true,
+    cacheTtlMs: 3_600_000,
+    servers: [],
   },
   localReview: {
     enabled: false,

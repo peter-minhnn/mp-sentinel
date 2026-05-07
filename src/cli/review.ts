@@ -31,6 +31,7 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
+import { gatherMCPContext } from "../services/mcp/index.js";
 import { runDeterministicReview } from "./deterministic-review.js";
 
 export interface ReviewRunOptions {
@@ -366,6 +367,15 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   // Detect tech profile for stack-aware review cues (works without source index)
   const techProfile = await detectTechProfile(config);
 
+  // Gather MCP external context if enabled (only when AI will use it)
+  const mcpContext = aiEnabled
+    ? await gatherMCPContext(
+        config,
+        diffResult.files.map((f) => f.path),
+        process.cwd(),
+      )
+    : null;
+
   const runtimeErrors: string[] = [];
   let auditResults: FileAuditResult[] = [];
 
@@ -392,6 +402,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
         config,
         indexContext ?? undefined,
         techProfile,
+        mcpContext ?? undefined,
       );
     } catch {
       // Non-critical — skip system prompt in estimate
@@ -434,6 +445,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
           config,
           maxConcurrency,
           indexContext ?? undefined,
+          mcpContext ?? undefined,
         );
       } catch (error) {
         runtimeErrors.push(error instanceof Error ? error.message : "Unknown AI runtime error");

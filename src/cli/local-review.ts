@@ -21,6 +21,7 @@ import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
+import { gatherMCPContext } from "../services/mcp/index.js";
 import { runDeterministicReview } from "./deterministic-review.js";
 import type { CLIValues } from "./args.js";
 
@@ -203,7 +204,17 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     acceptedFiles.map((file) => ({ path: file.path, content: file.content })),
   );
 
-  // 3. DRY RUN / TOKEN ESTIMATION
+  // 3. GATHER MCP CONTEXT (only when AI is enabled and not a dry run)
+  const mcpContext =
+    aiEnabled && !dryRun
+      ? await gatherMCPContext(
+          config,
+          sanitizedFiles.map((f) => f.path),
+          process.cwd(),
+        )
+      : null;
+
+  // 4. DRY RUN / TOKEN ESTIMATION
   if (dryRun) {
     // Attempt token estimation
     let providerName: string | undefined;
@@ -222,7 +233,12 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
     let systemPromptForEstimate: string | undefined;
     try {
-      systemPromptForEstimate = await buildSystemPrompt(config);
+      systemPromptForEstimate = await buildSystemPrompt(
+        config,
+        undefined,
+        undefined,
+        mcpContext ?? undefined,
+      );
     } catch {
       // Ignored
     }
@@ -257,7 +273,13 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   }
 
   const aiResults = aiEnabled
-    ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
+    ? await auditFilesWithConcurrency(
+        sanitizedFiles,
+        config,
+        maxConcurrency,
+        undefined,
+        mcpContext ?? undefined,
+      )
     : undefined;
 
   const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);

@@ -13,6 +13,7 @@ import { AIConfig } from "../services/ai/config.js";
 import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
 import { runDeterministicReview } from "./deterministic-review.js";
+import { gatherMCPContext } from "../services/mcp/index.js";
 import { postGitProviderComments } from "../services/git-provider.js";
 import type { CLIValues } from "./args.js";
 
@@ -155,9 +156,24 @@ const auditFileList = async (
     fileReadResult.success.map((f) => ({ path: f.path, content: f.content })),
   );
 
+  // Gather MCP external context if enabled (only when AI will use it)
+  const mcpContext = aiEnabled
+    ? await gatherMCPContext(
+        config,
+        sanitizedFiles.map((f) => f.path),
+        process.cwd(),
+      )
+    : null;
+
   // Audit with concurrency + deterministic findings merged in
   const aiResults = aiEnabled
-    ? await auditFilesWithConcurrency(sanitizedFiles, config, maxConcurrency)
+    ? await auditFilesWithConcurrency(
+        sanitizedFiles,
+        config,
+        maxConcurrency,
+        undefined,
+        mcpContext ?? undefined,
+      )
     : undefined;
 
   const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);

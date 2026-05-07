@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-05-07
+
+### Added
+
+- **MCP review context integration** (`.mp-sentinelrc.json`, `src/services/mcp/`, `src/utils/pr-metadata.ts`): Optional external review context from MCP servers via stdio transport. Disabled by default (`mcp.enabled: false`). Context is capped, cached, provenance-labeled, and injected into the AI system prompt.
+- **MCP config** (`src/types/index.ts`, `src/utils/config.ts`): `mcp.enabled`, `mcp.timeoutMs`, `mcp.maxContextChars`, `mcp.cacheEnabled`, `mcp.cacheTtlMs`, `mcp.servers[]`. Mutating tool names are rejected at config validation. Duplicate tool+input pairs detected with recursive stable JSON.
+- **Template variable resolution** (`src/services/mcp/template-resolver.ts`): `${repo.owner}`, `${repo.name}`, `${repo.fullName}`, `${pr.number}`, `${head.sha}`, `${base.ref}`, `${changedFiles.csv}`, `${cwd}`.
+- **PR metadata from event payloads** (`src/utils/pr-metadata.ts`): Parses `GITHUB_EVENT_PATH` for `pull_request` and `issue_comment` payloads with fallback to env vars.
+- **MCP cache** (`src/services/mcp/cache.ts`): Separate from AI audit cache, keyed on server config + recursive stable JSON input + head SHA + changed files + env mapping pairs. Atomic writes, TTL-based expiration.
+- **Env sanitization** (`src/services/mcp/sanitizer.ts`): Only explicitly named env vars are forwarded to MCP child processes.
+- **Deterministic-only skip**: MCP servers are not spawned when AI is disabled or in dry-run mode.
+- **MCP smoke tests** (`src/__tests__/mcp-integration.test.ts`): Real mocked stdio MCP server tests proving connect + tool call lifecycle.
+
 ## [2.2.0] - 2026-05-07
 
 ### Added

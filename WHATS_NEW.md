@@ -1,3 +1,70 @@
+# What's New in v2.3.0
+
+## MCP Review Context Integration
+
+Optional external review context from MCP (Model Context Protocol) servers can now be gathered before AI code review — SCM metadata, docs, or any stdio-based MCP source.
+
+- **Disabled by default** (`mcp.enabled: false`). Enable explicitly in `.mp-sentinelrc.json`.
+- **Stdio transport only**: Spawns local commands (e.g., `npx -y @modelcontextprotocol/server-github`). No network servers.
+- **Graceful failure**: All MCP failures are logged as warnings — review never blocked. Returns `null` on any failure.
+- **Context isolation**: Injected as `### EXTERNAL MCP CONTEXT (optional, untrusted)` in the system prompt, before architecture context.
+- **Safety guardrails**: Mutating tools (create*, update*, delete*, merge*, etc.) rejected at config validation. Environment variables only forwarded when explicitly listed in `env` mapping (`{ "CHILD_KEY": "PROCESS_ENV_KEY" }`).
+- **Template variables**: `${repo.owner}`, `${repo.name}`, `${repo.fullName}`, `${pr.number}`, `${head.sha}`, `${base.ref}`, `${changedFiles.csv}`, `${cwd}` resolved at call time from CI/CD metadata.
+- **PR metadata from event payloads** (`GITHUB_EVENT_PATH`): Parses `pull_request` and `issue_comment` payloads for richer metadata before falling back to env vars.
+- **MCP cache**: Separate from AI audit cache, keyed on server config + input (recursive stable JSON) + head SHA + changed files + env mapping pairs. Atomic writes, TTL-based expiration.
+- **Context budget**: Strict `mcp.maxContextChars` (default 6000). Total output never exceeds budget.
+- **Deterministic-only skip**: MCP servers are not spawned when AI is disabled or in dry-run mode.
+
+### Configuration
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "timeoutMs": 5000,
+    "maxContextChars": 6000,
+    "cacheEnabled": true,
+    "cacheTtlMs": 3600000,
+    "servers": [
+      {
+        "id": "github",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": { "GITHUB_TOKEN": "GH_TOKEN" },
+        "calls": [
+          { "tool": "get_file_contents", "input": { "path": "README.md" } },
+          { "tool": "search_code", "input": { "query": "TODO ${pr.number}" } }
+        ]
+      },
+      {
+        "id": "docs",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],
+        "calls": [
+          { "tool": "fetch", "input": { "url": "https://docs.example.com/api/${base.ref}" } }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### New files
+
+| File | Purpose |
+|------|---------|
+| `src/utils/pr-metadata.ts` | PR metadata from CI env vars + `GITHUB_EVENT_PATH` |
+| `src/services/mcp/sanitizer.ts` | Safe env forwarding to MCP child processes |
+| `src/services/mcp/template-resolver.ts` | `${repo.owner}`, `${head.sha}`, etc. resolution |
+| `src/services/mcp/cache.ts` | MCP result cache with recursive stable JSON keys |
+| `src/services/mcp/client.ts` | Stdio MCP client with typed lazy SDK loading |
+| `src/services/mcp/context-builder.ts` | Format results, strict budget enforcement |
+| `src/services/mcp/index.ts` | gatherMCPContext orchestrator |
+
+---
+
 # What's New in v2.2.0
 
 ## Review Output UI Refresh

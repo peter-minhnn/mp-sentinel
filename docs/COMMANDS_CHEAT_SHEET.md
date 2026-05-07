@@ -143,6 +143,28 @@ npm run --silent indexing -- --index-format json --force
 ```
 `rules` contains inline rule strings. `ruleFiles` loads additional rules from project-root files (max 10, 12,000 chars each). Paths must be relative and inside the project root. Both are included in AI review prompts and create-skills AI enrichment.
 
+### MCP External Context (optional, disabled by default)
+Pull external review context from MCP servers before AI review. Disabled by default, stdio-only, fails gracefully. See [docs/README.md](README.md#mcp-external-context-optional-disabled-by-default) for full config reference.
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "id": "github",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": { "GITHUB_TOKEN": "GH_TOKEN" },
+        "calls": [
+          { "tool": "get_file_contents", "input": { "path": "README.md" } }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ---
 
 ## 🤖 3. Create Skills Workflow

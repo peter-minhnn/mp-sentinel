@@ -10,6 +10,7 @@ import type { ProjectConfig, IndexingConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/index.js";
 import { log } from "./logger.js";
 import { UserError } from "./errors.js";
+import { stableJson } from "../services/mcp/cache.js";
 
 let cachedConfig: ProjectConfig | null = null;
 const CONFIG_FILENAME = ".mp-sentinelrc.json" as const;
@@ -121,6 +122,79 @@ const CreateSkillsConfigSchema = z.object({
   ai: CreateSkillsAIConfigSchema.optional(),
 });
 
+// ──────────────────────────────────────────────────────────────────────────────
+// MCP schemas
+// ──────────────────────────────────────────────────────────────────────────────
+
+const MUTATING_TOOL_PREFIXES = [
+  "create",
+  "update",
+  "delete",
+  "merge",
+  "close",
+  "add",
+  "commit",
+  "checkout",
+  "reset",
+  "rerun",
+  "trigger",
+] as const;
+
+const isMutatingTool = (tool: string): boolean => {
+  const lower = tool.toLowerCase();
+  return MUTATING_TOOL_PREFIXES.some((prefix) => lower.startsWith(prefix));
+};
+
+const MCPCallSchema = z.object({
+  tool: z
+    .string()
+    .min(1, "MCP call tool name must be a non-empty string")
+    .refine((val) => !isMutatingTool(val), {
+      message:
+        `MCP tool "${"${val}"}" matches a mutating prefix. ` +
+        "Mutating tools (create*, update*, delete*, merge*, close*, add*, " +
+        "commit*, checkout*, reset*, rerun*, trigger*) are rejected.",
+    }),
+  input: z.record(z.string(), z.unknown()).describe("JSON input for the MCP tool call"),
+  maxChars: z.number().int().positive().optional(),
+});
+
+const MCPServerSchema = z.object({
+  id: z.string().min(1, "MCP server id must be a non-empty string"),
+  transport: z.literal("stdio"),
+  command: z.string().min(1, "MCP server command must be a non-empty string"),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).optional(),
+  calls: z
+    .array(MCPCallSchema)
+    .min(1, "MCP server must have at least one tool call")
+    .refine(
+      (calls) => {
+        const seen = new Set<string>();
+        for (const call of calls) {
+          const key = call.tool + "::" + stableJson(call.input);
+          if (seen.has(key)) return false;
+          seen.add(key);
+        }
+        return true;
+      },
+      { message: "Duplicate tool+input pairs are not allowed in MCP server calls" },
+    ),
+});
+
+const MCPConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  timeoutMs: z.number().int().positive("mcp.timeoutMs must be a positive integer").optional(),
+  maxContextChars: z
+    .number()
+    .int()
+    .positive("mcp.maxContextChars must be a positive integer")
+    .optional(),
+  cacheEnabled: z.boolean().optional(),
+  cacheTtlMs: z.number().int().positive("mcp.cacheTtlMs must be a positive integer").optional(),
+  servers: z.array(MCPServerSchema).optional(),
+});
+
 export const ProjectConfigSchema = z.object({
   techStack: z.string().optional(),
   rules: z.array(z.string()).optional(),
@@ -142,6 +216,7 @@ export const ProjectConfigSchema = z.object({
   ai: AIReviewConfigSchema.optional(),
   indexing: IndexingConfigSchema.optional(),
   createSkills: CreateSkillsConfigSchema.optional(),
+  mcp: MCPConfigSchema.optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -173,6 +248,10 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
       ...DEFAULT_CONFIG.createSkills.ai,
       ...(userConfig.createSkills?.ai ?? {}),
     },
+  },
+  mcp: {
+    ...DEFAULT_CONFIG.mcp,
+    ...(userConfig.mcp ?? {}),
   },
 });
 

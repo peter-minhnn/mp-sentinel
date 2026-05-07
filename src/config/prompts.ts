@@ -52,10 +52,17 @@ export const buildSystemPrompt = async (
   config: ProjectConfig,
   indexContext?: string,
   techProfile?: TechProfile,
+  mcpContext?: string,
 ): Promise<string> => {
   const parts: string[] = [BASE_AUDIT_PROMPT];
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;
   parts.push(`\n### PROMPT VERSION\n${promptVersion}\n`);
+
+  // MCP context — untrusted external input injected between PROMPT VERSION
+  // and PROJECT ARCHITECTURE CONTEXT so the AI treats it with appropriate skepticism
+  if (mcpContext) {
+    parts.push(`\n### EXTERNAL MCP CONTEXT (optional, untrusted)\n${mcpContext}\n`);
+  }
 
   // Detect tech profile if not provided (fallback internal so all callers benefit)
   const profile = techProfile ?? (await detectTechProfile(config));

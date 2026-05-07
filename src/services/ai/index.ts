@@ -239,6 +239,7 @@ export const auditFilesWithConcurrency = async (
   config: ProjectConfig,
   maxConcurrency: number = 5,
   indexContext?: string,
+  mcpContext?: string,
 ): Promise<FileAuditResult[]> => {
   // Normalise maxConcurrency to a safe positive integer — guards against NaN,
   // Infinity, negative values, and floats from programmatic API misuse.
@@ -252,7 +253,7 @@ export const auditFilesWithConcurrency = async (
   const modelTier = config.ai?.modelTier;
 
   // Build system prompt once (with local skills enrichment and optional source index)
-  const systemPrompt = await buildSystemPrompt(config, indexContext);
+  const systemPrompt = await buildSystemPrompt(config, indexContext, undefined, mcpContext);
   const providerConfig = getProviderConfig(modelTier);
   const cacheEnabled = config.cacheEnabled !== false;
   const promptVersion = config.ai?.promptVersion || DEFAULT_PROMPT_VERSION;

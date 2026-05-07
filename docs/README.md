@@ -156,6 +156,93 @@ Create a `.mp-sentinelrc.json` file in your project root to customize rules and 
 | `promptVersion`   | string  | Prompt version used for caching and tracing | `2026-05-04`  |
 | `modelTier`       | string  | Model tier: `premium` / `balanced` / `budget`. Only applies when `AI_MODEL` is not set. | provider default |
 
+### MCP External Context (optional, disabled by default)
+
+MP Sentinel can pull external review context from MCP (Model Context Protocol) servers before AI code review. The context is capped, cached, labeled "EXTERNAL MCP CONTEXT (optional, untrusted)" in the AI prompt, and never blocks the review on failure.
+
+> **Safety note:** MCP is **disabled by default** (`mcp.enabled: false`). Only `stdio` transport is supported. Mutating tools (create*, update*, delete*, merge*, etc.) are rejected at config validation. Environment variables are never implicitly forwarded — only names explicitly listed in `env` are copied. All MCP failures degrade gracefully (warn + continue).
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "timeoutMs": 5000,
+    "maxContextChars": 6000,
+    "cacheEnabled": true,
+    "cacheTtlMs": 3600000,
+    "servers": [
+      {
+        "id": "github",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_TOKEN": "GH_TOKEN"
+        },
+        "calls": [
+          { "tool": "get_file_contents", "input": { "path": "README.md" } },
+          { "tool": "search_code", "input": { "query": "TODO ${pr.number}" } }
+        ]
+      },
+      {
+        "id": "docs",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],
+        "calls": [
+          { "tool": "fetch", "input": { "url": "https://docs.example.com/api/${base.ref}" } }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Template Variables
+
+Template variables in `input` string values are resolved at call time using CI/CD metadata. Unknown variables are left as-is.
+
+| Variable | Source | Example |
+|----------|--------|---------|
+| `${repo.owner}` | Repository owner | `acme` |
+| `${repo.name}` | Repository name | `widgets` |
+| `${repo.fullName}` | owner/name | `acme/widgets` |
+| `${pr.number}` | PR/MR number | `42` |
+| `${head.sha}` | Head commit SHA | `abc123def` |
+| `${base.ref}` | Base branch ref | `main` |
+| `${changedFiles.csv}` | Comma-separated changed files | `src/a.ts,src/b.ts` |
+| `${cwd}` | Working directory path | `/home/runner/work/repo` |
+
+#### MCP Configuration Options
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `enabled` | boolean | Enable MCP context gathering | `false` |
+| `timeoutMs` | number | Timeout for server connect + tool calls (ms) | `3000` |
+| `maxContextChars` | number | Max total chars injected into the AI prompt | `6000` |
+| `cacheEnabled` | boolean | Cache MCP results to avoid re-fetching | `true` |
+| `cacheTtlMs` | number | TTL for MCP cache entries (ms) | `3600000` |
+| `servers` | array | MCP server definitions (stdio only) | `[]` |
+
+#### Server Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `id` | string | Unique server identifier |
+| `transport` | `"stdio"` | Transport type (only stdio supported) |
+| `command` | string | Command to spawn |
+| `args` | string[] | Arguments passed to command |
+| `env` | object | Env var mapping: `{ "CHILD_NAME": "PROCESS_ENV_NAME" }` |
+| `calls` | array | Ordered tool calls to make (≥1 required) |
+
+#### Call Options
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `tool` | string | Tool name to invoke | (required) |
+| `input` | object | JSON input (string values support template vars) | (required) |
+| `maxChars` | number | Per-call char limit override | `mcp.maxContextChars` |
+
 ### Legacy Local Review Configuration
 
 ```json
