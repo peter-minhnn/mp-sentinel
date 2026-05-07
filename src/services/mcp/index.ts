@@ -15,9 +15,9 @@ import type {
 } from "../../types/index.js";
 import { extractPRMetadata } from "../../utils/pr-metadata.js";
 import { resolveTemplateVariables } from "./template-resolver.js";
-import { buildMCPCacheKey, readMCPCacheEntry, writeMCPCacheEntry } from "./cache.js";
+import { buildMCPCacheKey, readMCPCacheEntryDetails, writeMCPCacheEntryDetails } from "./cache.js";
 import { executeMCPServer } from "./client.js";
-import { buildMCPContextString } from "./context-builder.js";
+import { buildMCPContextResult } from "./context-builder.js";
 import { expandPresets } from "./presets.js";
 import { getToolVersion } from "../../utils/version.js";
 import type { MCPCallResult } from "./client.js";
@@ -95,13 +95,13 @@ export const gatherMCPContextDetails = async (
           toolVersion,
           envMapping: server.env ?? {},
         });
-        const cached = await readMCPCacheEntry(cacheKey, cacheTtlMs);
+        const cached = await readMCPCacheEntryDetails(cacheKey, cacheTtlMs);
         if (cached !== null) {
           allResults.push({
             serverId: server.id,
             tool: call.tool,
-            result: cached,
-            truncated: false,
+            result: cached.result,
+            truncated: cached.truncated,
           });
           callDetails.push({
             serverId: server.id,
@@ -124,10 +124,21 @@ export const gatherMCPContextDetails = async (
     if (uncachedCalls.length > 0) {
       const freshResults = await executeMCPServer(server, uncachedCalls, mcp, workingDir);
 
-      // Track successful results and detect failed calls
-      const successTools = new Set(freshResults.map((r) => r.tool));
-      for (const call of uncachedCalls) {
-        if (successTools.has(call.tool)) {
+      // Build map from callIndex → result for accurate correlation even with
+      // duplicate tool names or partial failures
+      const resultByCallIndex = new Map<number, (typeof freshResults)[number]>();
+      for (const result of freshResults) {
+        if (result.callIndex !== undefined) {
+          resultByCallIndex.set(result.callIndex, result);
+        }
+      }
+
+      for (let callIdx = 0; callIdx < uncachedCalls.length; callIdx++) {
+        const call = uncachedCalls[callIdx]!;
+        const result = resultByCallIndex.get(callIdx);
+
+        if (result !== undefined) {
+          allResults.push(result);
           callDetails.push({
             serverId: server.id,
             tool: call.tool,
@@ -135,6 +146,16 @@ export const gatherMCPContextDetails = async (
             status: "ok",
           });
           freshCount++;
+
+          // Cache write aligns to the exact call that produced this result
+          const key = uncachedCacheKeys[callIdx];
+          if (cacheEnabled && key) {
+            await writeMCPCacheEntryDetails(
+              key,
+              { result: result.result, truncated: result.truncated },
+              cacheTtlMs,
+            );
+          }
         } else {
           callDetails.push({
             serverId: server.id,
@@ -145,19 +166,18 @@ export const gatherMCPContextDetails = async (
           failedCount++;
         }
       }
-
-      for (let i = 0; i < freshResults.length; i++) {
-        const result = freshResults[i]!;
-        allResults.push(result);
-
-        if (cacheEnabled) {
-          const key = uncachedCacheKeys[i];
-          if (key) {
-            await writeMCPCacheEntry(key, result.result, cacheTtlMs);
-          }
-        }
-      }
     }
+  }
+
+  // Build warnings from runtime observations
+  if (failedCount > 0) {
+    const failedServerIds = [
+      ...new Set(callDetails.filter((c) => c.status === "failed").map((c) => c.serverId)),
+    ];
+    warnings.push(`${failedCount} MCP call(s) failed on server(s): ${failedServerIds.join(", ")}`);
+  }
+  if (allResults.length === 0 && callDetails.length > 0) {
+    warnings.push("No MCP results returned — all calls failed or were empty");
   }
 
   if (allResults.length === 0) {
@@ -178,15 +198,15 @@ export const gatherMCPContextDetails = async (
     };
   }
 
-  const context = buildMCPContextString(allResults, maxContextChars);
+  const { context, truncated: formatterTruncated } = buildMCPContextResult(
+    allResults,
+    maxContextChars,
+  );
 
-  // Detect truncation: compute rough expected length without budget
-  let expectedRawChars = 0;
-  for (const r of allResults) {
-    // Header: "[serverId/tool]\n" + separator "\n\n"
-    expectedRawChars += r.serverId.length + r.tool.length + 3 + r.result.length + 2;
-  }
-  const truncated = expectedRawChars > maxContextChars;
+  // Truncation is true if any individual call hit its per-call limit
+  // OR the formatter had to clip/omit/clamp due to the total budget
+  const anyCallTruncated = allResults.some((r) => r.truncated);
+  const truncated = anyCallTruncated || formatterTruncated;
 
   return {
     context: context || null,

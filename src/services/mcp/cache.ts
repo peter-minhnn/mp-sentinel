@@ -10,12 +10,18 @@ import { resolve } from "node:path";
 import { log } from "../../utils/logger.js";
 
 const CACHE_DIR = ".mp-sentinel-cache/mcp-cache";
-const MCP_CACHE_VERSION = "1";
+const MCP_CACHE_VERSION = "2";
 
 interface CacheEntry {
   result: string;
   timestamp: number;
   ttlMs: number;
+  truncated?: boolean;
+}
+
+export interface MCPCachedResult {
+  result: string;
+  truncated: boolean;
 }
 
 const getCachePath = (key: string, cwd: string = process.cwd()): string =>
@@ -68,11 +74,11 @@ export const buildMCPCacheKey = (params: {
   return createHash("sha256").update(source).digest("hex");
 };
 
-export const readMCPCacheEntry = async (
+export const readMCPCacheEntryDetails = async (
   key: string,
   ttlMs: number,
   cwd: string = process.cwd(),
-): Promise<string | null> => {
+): Promise<MCPCachedResult | null> => {
   try {
     const fullPath = getCachePath(key, cwd);
     const content = await readFile(fullPath, "utf-8");
@@ -80,12 +86,48 @@ export const readMCPCacheEntry = async (
     if (typeof entry.result !== "string" || typeof entry.timestamp !== "number") {
       return null;
     }
+    if (entry.truncated !== undefined && typeof entry.truncated !== "boolean") {
+      return null;
+    }
     if (Date.now() - entry.timestamp > (entry.ttlMs || ttlMs)) {
       return null;
     }
-    return entry.result;
+    return { result: entry.result, truncated: entry.truncated === true };
   } catch {
     return null;
+  }
+};
+
+export const readMCPCacheEntry = async (
+  key: string,
+  ttlMs: number,
+  cwd: string = process.cwd(),
+): Promise<string | null> => {
+  const entry = await readMCPCacheEntryDetails(key, ttlMs, cwd);
+  return entry?.result ?? null;
+};
+
+export const writeMCPCacheEntryDetails = async (
+  key: string,
+  cached: MCPCachedResult,
+  ttlMs: number,
+  cwd: string = process.cwd(),
+): Promise<void> => {
+  try {
+    const fullPath = getCachePath(key, cwd);
+    const dir = resolve(cwd, CACHE_DIR);
+    await mkdir(dir, { recursive: true });
+    const entry: CacheEntry = {
+      result: cached.result,
+      timestamp: Date.now(),
+      ttlMs,
+      truncated: cached.truncated,
+    };
+    const tmpPath = fullPath + ".tmp." + Date.now();
+    await writeFile(tmpPath, JSON.stringify(entry), "utf-8");
+    await rename(tmpPath, fullPath);
+  } catch (err) {
+    log.warning(`Failed to write MCP cache: ${(err as Error).message}`);
   }
 };
 
@@ -95,15 +137,5 @@ export const writeMCPCacheEntry = async (
   ttlMs: number,
   cwd: string = process.cwd(),
 ): Promise<void> => {
-  try {
-    const fullPath = getCachePath(key, cwd);
-    const dir = resolve(cwd, CACHE_DIR);
-    await mkdir(dir, { recursive: true });
-    const entry: CacheEntry = { result, timestamp: Date.now(), ttlMs };
-    const tmpPath = fullPath + ".tmp." + Date.now();
-    await writeFile(tmpPath, JSON.stringify(entry), "utf-8");
-    await rename(tmpPath, fullPath);
-  } catch (err) {
-    log.warning(`Failed to write MCP cache: ${(err as Error).message}`);
-  }
+  await writeMCPCacheEntryDetails(key, { result, truncated: false }, ttlMs, cwd);
 };

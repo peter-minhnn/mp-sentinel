@@ -15,6 +15,8 @@ export interface MCPCallResult {
   tool: string;
   result: string;
   truncated: boolean;
+  /** Index in the input calls array — used for call-result correlation */
+  callIndex?: number;
 }
 
 // ── Typed interfaces for the MCP SDK (lazy-loaded) ─────────────────────────
@@ -113,7 +115,8 @@ export const executeMCPServer = async (
       await client!.connect(transport!);
 
       const results: MCPCallResult[] = [];
-      for (const call of resolvedCalls) {
+      for (let idx = 0; idx < resolvedCalls.length; idx++) {
+        const call = resolvedCalls[idx]!;
         try {
           const result = await client!.callTool({
             name: call.tool,
@@ -132,6 +135,7 @@ export const executeMCPServer = async (
             tool: call.tool,
             result: truncated ? text.slice(0, perCallMax) + "\n... (truncated)" : text,
             truncated,
+            callIndex: idx,
           });
         } catch (err) {
           log.warning(
