@@ -440,6 +440,135 @@ The fields `gitProvider`, `repoUrl`, and `projectId` in `.mp-sentinelrc.json` ar
 
 ---
 
+## Manual Rerun via Slash Command (GitHub)
+
+You can re-trigger a review by commenting `/mp-sentinel review` on a pull request. The bot updates its existing inline comments instead of posting duplicates, so repeated reruns on the same commit are safe and non-spammy.
+
+### How it works
+
+- A separate `issue_comment` workflow listens for comments containing `/mp-sentinel review`.
+- Only comments from trusted users (repository `OWNER`, `MEMBER`, or `COLLABORATOR`) trigger execution. Trusted commenter association is necessary but not sufficient — the PR must also originate from the same repository (fork PRs are skipped for safety, since they run untrusted code with repository secrets).
+- The workflow fetches PR metadata via REST (no checkout needed — `gh` is on every runner), verifies the PR head is from the same repo, then checks out the PR head, runs `mp-sentinel indexing`, and runs the review against `--target-branch "origin/$BASE_REF"`.
+- Existing MP Sentinel inline comments are updated by fingerprint rather than duplicated.
+
+### Caching (`.mp-sentinel-cache`)
+
+The workflow restores `.mp-sentinel-cache` so repeated slash-command reruns on the same PR commit usually skip AI calls when the prompt hash is unchanged. Cache keys use PR number + PR head SHA (not comment ID), so reruns on the same commit hit the cache regardless of which comment triggered them. The save step only runs on a cache miss, avoiding redundant uploads.
+
+Note: `actions/checkout` defaults to `clean: true` (wipes untracked files), so the checkout happens _before_ cache restore. Split `restore`/`save` is used so the cache can still be saved when the review finds issues (which causes a non-zero exit).
+
+### Workflow example
+
+Add this alongside your existing `pull_request` workflow (e.g., `.github/workflows/audit-slash.yml`):
+
+```yaml
+name: MP Sentinel Slash Command
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  rerun:
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/mp-sentinel review') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Get PR metadata
+        id: pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r .head.sha)
+          HEAD_REPO=$(echo "$PR_DATA" | jq -r .head.repo.full_name)
+          BASE_REF=$(echo "$PR_DATA" | jq -r .base.ref)
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "head_repo=$HEAD_REPO" >> $GITHUB_OUTPUT
+          echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
+
+      - name: Skip fork PRs
+        if: steps.pr.outputs.head_repo != github.repository
+        run: |
+          echo "Skipping slash-command rerun: PR is from a fork (${{ steps.pr.outputs.head_repo }})."
+          echo "Only same-repository PRs are supported for security reasons."
+
+      - uses: actions/checkout@v4
+        if: steps.pr.outputs.head_repo == github.repository
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        if: steps.pr.outputs.head_repo == github.repository
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - if: steps.pr.outputs.head_repo == github.repository
+        run: npm ci
+
+      - if: steps.pr.outputs.head_repo == github.repository
+        run: npm run build
+
+      - name: Fetch base branch
+        if: steps.pr.outputs.head_repo == github.repository
+        env:
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: git fetch origin "$BASE_REF"
+
+      - name: Restore mp-sentinel cache
+        id: cache
+        if: steps.pr.outputs.head_repo == github.repository
+        uses: actions/cache/restore@v4
+        with:
+          path: .mp-sentinel-cache
+          key: mp-sentinel-${{ github.event.issue.number }}-${{ steps.pr.outputs.head_sha }}
+          restore-keys: |
+            mp-sentinel-${{ github.event.issue.number }}-
+
+      - name: Build source index
+        if: steps.pr.outputs.head_repo == github.repository
+        run: npx mp-sentinel indexing
+
+      - name: Run mp-sentinel review
+        id: review
+        if: steps.pr.outputs.head_repo == github.repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: |
+          exit_code=0
+          npx mp-sentinel --target-branch "origin/$BASE_REF" || exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+
+      - name: Save mp-sentinel cache
+        if: steps.pr.outputs.head_repo == github.repository && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .mp-sentinel-cache
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Surface review failure
+        if: steps.pr.outputs.head_repo == github.repository && steps.review.outputs.exit_code != '0'
+        run: exit ${{ steps.review.outputs.exit_code }}
+```
+
+### Limitations
+
+- **GitHub only.** GitLab MR comment rerun is not supported in this release.
+- **One command only.** The only recognized command string is `/mp-sentinel review`.
+
+---
+
 ## Advanced Configuration
 
 ### Fine-Tuning AI Behavior

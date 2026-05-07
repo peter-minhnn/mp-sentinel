@@ -198,6 +198,25 @@ const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
   printConsoleReport(report);
 };
 
+const postGitProviderComments = async (
+  results: FileAuditResult[],
+  dryRun: boolean,
+): Promise<void> => {
+  if (dryRun) return;
+
+  const hasActionableFindings = results.some(
+    (entry) =>
+      entry.result.status === "FAIL" &&
+      entry.result.issues?.some(
+        (issue) => issue.severity === "CRITICAL" || issue.severity === "WARNING",
+      ) === true,
+  );
+  if (!hasActionableFindings) return;
+
+  const { postGitProviderComments: postComments } = await import("../services/git-provider.js");
+  await postComments(results);
+};
+
 /**
  * Build contextual information from source index to enrich the AI prompt
  * Deprecated: Use buildReviewContext from context-builder.ts instead.
@@ -438,6 +457,8 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     diffResult.totalChangedLines,
     startTime,
   );
+
+  await postGitProviderComments(report.results, dryRun);
 
   renderReport(report, format);
 
