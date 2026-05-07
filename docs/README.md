@@ -284,6 +284,10 @@ When MCP is configured, `--explain-context` includes read-only MCP diagnostics (
 | `input` | object | JSON input (string values support template vars) | (required) |
 | `maxChars` | number | Per-call char limit override | `mcp.maxContextChars` |
 
+### Inbound MCP Server
+
+mp-sentinel can also run as a **read-only stdio MCP server** (`mp-sentinel mcp-server`) for project introspection by MCP-aware clients. See the [Commands Cheat Sheet](./COMMANDS_CHEAT_SHEET.md#-4-mcp-server-inbound) for available tools and usage.
+
 ### Legacy Local Review Configuration
 
 ```json

@@ -115,16 +115,16 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
   // Reference file list from KB entrypoints or static
   const refFiles = kb
     ? [
-        `   - \`references/codebase-map.md\` - ${kb.modules.length} module(s), ${kb.entrypoints.length} entrypoint(s)`,
-        `   - \`references/testing-map.md\` - ${Object.keys(kb.testing.testAssociations).length} test association(s)`,
-        `   - \`references/dependencies.md\` - ${kb.dependencies.length} dependency(s) tracked`,
-        `   - \`references/public-api.md\` - ${kb.risks.length} risk item(s)`,
+        `   - \`references/codebase-map.md\` - ${kb.modules.length} mods, ${kb.entrypoints.length} entrypoints`,
+        `   - \`references/testing-map.md\` - ${Object.keys(kb.testing.testAssociations).length} test associations`,
+        `   - \`references/dependencies.md\` - ${kb.dependencies.length} dependencies`,
+        `   - \`references/public-api.md\` - ${kb.risks.length} risk items`,
       ]
     : [
-        `   - \`references/codebase-map.md\` - module ownership, key files, symbols`,
+        `   - \`references/codebase-map.md\` - modules, entrypoints, key symbols`,
         `   - \`references/testing-map.md\` - test associations and gaps`,
         `   - \`references/dependencies.md\` - dependency versions and usage`,
-        `   - \`references/public-api.md\` - public API surface and risks`,
+        `   - \`references/public-api.md\` - API surface and risks`,
       ];
 
   // Build quick-start examples from real index data
@@ -135,14 +135,14 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
     ``,
-    `1. **Read this skill file** (SKILL.md) - understand project profile, conventions, and pitfalls.`,
+    `1. **Read SKILL.md** - project profile, conventions, pitfalls.`,
     instructionFilesLine,
     `3. **Check parser health first**:`,
     `   - \`mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
     `4. **Drilldown when health suggests issues**:`,
     `   - \`mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries`,
     `   - \`mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors`,
-    `5. **Before touching any file**, use source index diagnostics:`,
+    `5. **Before editing**, use source index diagnostics:`,
     `   - \`mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands`,
     `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
     `   - \`mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
@@ -161,9 +161,7 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
   // Generated artifact note — development guardrails
   lines.push(
     ``,
-    `> **Note:** These files are **auto-generated**.`,
-    `> - **Do not edit.** Regenerate via \`npm run agent:skills:refresh\` or \`mp-sentinel create-skills --all-agents --force\`.`,
-    `> - \`.sentinel/skills/\` contains **review prompts**, not agent rules -- do not confuse the two.`,
+    `> **Auto-generated.** Regenerate via \`npm run agent:skills:refresh\`. Do not edit.`,
   );
 
   return lines.join("\n");
@@ -871,28 +869,28 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
     case "cli-tooling":
       lines.push(
         `- **Exit codes are a contract** - never change 0/1/2 semantics without a breaking-change note.`,
-        `- **Diff-first review** - do not send full file content to the AI when \`diff\` + context is sufficient.`,
-        `- **Keep CLI parsing separate** - argument parsing belongs in a dedicated \`src/cli/\` layer, not inside command implementations.`,
-        `- **No business logic in \`src/index.ts\`** - entry files should only route, never contain core logic.`,
-        `- **Watch for breaking changes in scripts** - renaming a script or changing its side-effects is a breaking change for consumers.`,
+        `- **Diff-first review** - send diff + context, not full file content.`,
+        `- **Keep CLI parsing separate** - argument parsing belongs in \`src/cli/\`, not in command implementations.`,
+        `- **No business logic in \`src/index.ts\`** - entry files route, never contain core logic.`,
+        `- **Watch for breaking script changes** - renaming a script or changing side-effects is a breaking change.`,
       );
       break;
     case "node-service":
       lines.push(
-        `- **Handler purity** - route handlers should be thin; delegate to services / repositories.`,
-        `- **Error middleware** - unhandled errors must be caught by centralized error middleware, never leak stack traces in production.`,
-        `- **Env config validation** - validate all \`process.env\` reads at startup; fail fast on missing required variables.`,
-        `- **Async boundaries** - always await or explicitly catch promises in request handlers to prevent unhandled rejections.`,
-        `- **Health checks** - any new dependency (DB, cache, queue) needs a corresponding health-check probe.`,
+        `- **Handler purity** - route handlers should delegate to services / repositories.`,
+        `- **Error middleware** - catch unhandled errors centrally; never leak stack traces in production.`,
+        `- **Env config validation** - validate \`process.env\` reads at startup; fail fast on missing required vars.`,
+        `- **Async boundaries** - always catch promises in handlers to prevent unhandled rejections.`,
+        `- **Health checks** - new dependencies (DB, cache, queue) need health-check probes.`,
       );
       break;
     case "react-next":
       lines.push(
-        `- **Server/Client boundary** - avoid importing server-only modules into client components; use the \`'use server'\` / \`'use client'\` split explicitly.`,
-        `- **Data fetching colocation** - keep data fetching close to the component that consumes it; do not prop-drill fetched data across >2 layers.`,
-        `- **No direct DOM mutations in React** - use refs and effects, never direct \`document.querySelector\` manipulation outside of isolated helpers.`,
-        `- **Image optimization** - prefer \`next/image\` over raw \`<img>\` tags.`,
-        `- **Bundle size vigilance** - adding a new dependency to a page-level component can bloat the route chunk; audit with \`next bundle-analyzer\` if available.`,
+        `- **Server/Client boundary** - avoid server-only imports in client components; use \`'use server'\` / \`'use client'\` split.`,
+        `- **Data fetching colocation** - keep data fetching close to consuming component; avoid prop-drill across >2 layers.`,
+        `- **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.`,
+        `- **Image optimization** - prefer \`next/image\` over \`<img>\`.`,
+        `- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.`,
       );
       break;
     case "library":

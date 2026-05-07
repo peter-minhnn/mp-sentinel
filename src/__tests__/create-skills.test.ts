@@ -333,9 +333,9 @@ describe("generateContent", () => {
       true,
     );
     const content = generateContent(index, "fixture");
-    expect(content.sections.agentWorkflow).toContain("auto-generated");
+    expect(content.sections.agentWorkflow).toContain("Auto-generated");
     expect(content.sections.agentWorkflow).toContain("Do not edit");
-    expect(content.sections.agentWorkflow).toContain(".sentinel/skills/");
+    expect(content.sections.agentWorkflow).toContain("agent:skills:refresh");
   });
 
   it("profile rules Import Conventions includes Node/ESM rules when TypeScript index", async () => {
@@ -2044,7 +2044,7 @@ describe("buildSkillKnowledgeBase", () => {
 describe("agentWorkflow v2 content", () => {
   it("enforces mandatory index-first diagnostics", () => {
     const content = generateContent(null, "test", null);
-    expect(content.sections.agentWorkflow).toContain("Before touching any file");
+    expect(content.sections.agentWorkflow).toContain("Before editing");
     expect(content.sections.agentWorkflow).toContain("--agent-context <file> --index-format json");
     expect(content.sections.agentWorkflow).toContain("--explain-index <file> --index-format json");
     expect(content.sections.agentWorkflow).toContain("--find-symbol <name> --index-format json");
