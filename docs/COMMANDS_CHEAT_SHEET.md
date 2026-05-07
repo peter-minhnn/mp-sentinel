@@ -290,7 +290,29 @@ See [docs/CREATE_SKILLS.md](CREATE_SKILLS.md) for full documentation.
 
 ---
 
-## 🛡 4. CI/CD & Security Scan Workflow
+## 🖥️ 4. MCP Server (Inbound)
+
+Run mp-sentinel as a read-only stdio MCP server so MCP-aware clients (editors, Claude Desktop, etc.) can inspect project context.
+
+### Start the Server
+```bash
+npx mp-sentinel mcp-server
+```
+Stdout is reserved for MCP JSON-RPC; all logs go to `stderr`. No flags or options needed.
+
+### Available Tools
+
+| Tool | Input | Output |
+|------|-------|--------|
+| `mp_sentinel_index_health` | `{}` | Index cache health: status, schema version, file count |
+| `mp_sentinel_agent_context` | `{ "file": string }` | Symbols, imports, dependents, hub files, suggested commands |
+| `mp_sentinel_explain_context` | `{ "files": string[] }` | Context preview with index metadata and MCP diagnostics |
+
+All tools are read-only: no AI calls, no mutations, no outbound MCP spawning, no git operations, no index builds. Missing index or unknown file return tool-level MCP errors (`isError: true`).
+
+---
+
+## 🛡 5. CI/CD & Security Scan Workflow
 
 ### Target Branch Comparison (PR Default)
 Automatically detects relevant code changes between your branch and the target branch. This is the default mode used in GitHub Actions and GitLab CI.
@@ -333,7 +355,7 @@ Displays index availability, profile detection, related files, relation types (`
 
 ---
 
-## 🎯 5. Advanced Power-User Workflow
+## 🎯 6. Advanced Power-User Workflow
 
 ### Target Specific Groups of Files
 ```bash

@@ -133,6 +133,23 @@ const run = async (): Promise<void> => {
     return;
   }
 
+  // Handle mcp-server command — routes before git/config review startup
+  if (command === "mcp-server") {
+    setLogQuietMode(true);
+    try {
+      const { runMCPServerCommand } = await import("./commands/mcp-server.js");
+      process.exitCode = await runMCPServerCommand();
+    } catch (error) {
+      if (error instanceof Error) {
+        process.stderr.write(`mcp-server failed: ${error.message}\n`);
+      } else {
+        process.stderr.write("mcp-server failed with unknown error\n");
+      }
+      process.exitCode = 2;
+    }
+    return;
+  }
+
   // Check if in git repository (for review commands)
   if (!(await isGitRepository())) {
     throw new SystemError("Not a git repository. Please run from a git project root.");

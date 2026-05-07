@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **MCP server command** (`mp-sentinel mcp-server`, `src/commands/mcp-server.ts`, `src/services/mcp-server/service.ts`): Read-only stdio MCP server exposing three tools — `mp_sentinel_index_health`, `mp_sentinel_agent_context`, and `mp_sentinel_explain_context`. No AI calls, no mutations, no outbound MCP spawning. Routes before git repo checks and review config startup. Stdout reserved for JSON-RPC; all logs suppressed or routed to stderr.
+
 ## [2.3.0] - 2026-05-07
 
 ### Added

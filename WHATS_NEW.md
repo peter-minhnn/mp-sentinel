@@ -1,5 +1,15 @@
 # What's New in v2.3.0
 
+## MCP Server Command
+
+A read-only stdio MCP server (`mp-sentinel mcp-server`) that exposes project context over MCP JSON-RPC. No AI calls, no mutations, no network — safe for editors and MCP clients.
+
+- **`mp_sentinel_index_health`**: Read-only index health check (never builds or refreshes the index).
+- **`mp_sentinel_agent_context`**: Structured agent context for a file — symbols, imports, dependents, hub files, suggested commands.
+- **`mp_sentinel_explain_context`**: Context preview for a set of files with index metadata and MCP diagnostics.
+- Routes before git repo checks and review config startup. Stdout reserved for JSON-RPC; all logs suppressed or routed to `stderr`.
+- Exit code `0` on clean close, `2` on crash. Protocol-level tool errors return `isError: true` without crashing the server.
+
 ## MCP Review Context Integration
 
 Optional external review context from MCP (Model Context Protocol) servers can now be gathered before AI code review — SCM metadata, docs, or any stdio-based MCP source.

@@ -42,4 +42,4 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v2.2.0**.
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features.

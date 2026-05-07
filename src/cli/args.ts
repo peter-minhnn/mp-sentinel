@@ -3,7 +3,7 @@ import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
 import { bannerText } from "../utils/display.js";
 
-export type CLICommand = "review" | "indexing" | "create-skills" | "default";
+export type CLICommand = "review" | "indexing" | "create-skills" | "mcp-server" | "default";
 
 export interface CLIValues {
   help: boolean;
@@ -172,6 +172,10 @@ export const buildProgram = (): Command => {
       false,
     );
 
+  program
+    .command("mcp-server")
+    .description("Run mp-sentinel as a stdio MCP server (read-only, no AI)");
+
   program.addHelpText(
     "after",
     `
@@ -260,7 +264,9 @@ export const parseCliArgs = (): {
         ? "indexing"
         : rawPositionals[0] === "create-skills"
           ? "create-skills"
-          : "review";
+          : rawPositionals[0] === "mcp-server"
+            ? "mcp-server"
+            : "review";
     const commandPositionals =
       command === "indexing" || command === "create-skills"
         ? rawPositionals.slice(1)
