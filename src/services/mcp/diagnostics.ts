@@ -73,12 +73,18 @@ export const generateMCPDiagnostics = (config: MCPConfig): MCPDiagnostics => {
     };
   }
 
-  // Expand presets and combine with explicit servers
+  // Expand presets and combine with explicit servers, tracking source
   const presets = config.presets ?? [];
   const presetExpansion = presets.length > 0 ? expandPresets(presets) : { servers: [] };
-  const allServers = [...presetExpansion.servers, ...(config.servers ?? [])];
+  type AnnotatedServer = (typeof presetExpansion.servers)[number] & {
+    source: "preset" | "explicit";
+  };
+  const annotated: AnnotatedServer[] = [
+    ...presetExpansion.servers.map((s) => ({ ...s, source: "preset" as const })),
+    ...(config.servers ?? []).map((s) => ({ ...s, source: "explicit" as const })),
+  ];
 
-  const servers: MCPDiagnosticServer[] = allServers.map((server) => {
+  const servers: MCPDiagnosticServer[] = annotated.map((server) => {
     const exists = commandExistsOnPath(server.command);
     const missingVars = checkEnvVars(server.env);
 
@@ -96,6 +102,7 @@ export const generateMCPDiagnostics = (config: MCPConfig): MCPDiagnostics => {
       command: `${server.command} ${server.args.join(" ")}`.trim(),
       status,
       toolCount: server.calls.length,
+      source: server.source,
     };
 
     if (missingVars) {
@@ -123,5 +130,9 @@ export const generateMCPDiagnostics = (config: MCPConfig): MCPDiagnostics => {
     enabled: true,
     serverCount: servers.length,
     servers,
+    cacheSettings: {
+      enabled: config.cacheEnabled !== false,
+      ttlMs: config.cacheTtlMs ?? 3_600_000,
+    },
   };
 };

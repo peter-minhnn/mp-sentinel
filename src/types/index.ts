@@ -48,6 +48,8 @@ export interface ReviewReport {
   skipped: ReviewSkippedItem[];
   errors: string[];
   generatedAt: string;
+  /** MCP runtime observability (only when MCP is enabled) */
+  mcp?: MCPContextSummary;
 }
 
 /**
@@ -251,9 +253,17 @@ export interface MCPDiagnosticServer {
   command: string;
   status: MCPDiagnosticStatus;
   toolCount: number;
+  /** Origin of this server: "preset" (expanded) or "explicit" (user-defined) */
+  source: "preset" | "explicit";
   missingVars?: string[];
   /** Human-readable suggested actions (e.g., "Set GITHUB_TOKEN env var") */
   recommendedActions?: string[];
+}
+
+/** MCP cache settings surfaced in diagnostics */
+export interface MCPCacheSettings {
+  enabled: boolean;
+  ttlMs: number;
 }
 
 /** MCP diagnostics summary — read-only, no spawn */
@@ -261,6 +271,45 @@ export interface MCPDiagnostics {
   enabled: boolean;
   serverCount: number;
   servers: MCPDiagnosticServer[];
+  cacheSettings?: MCPCacheSettings;
+}
+
+// ====================================================================================
+// MCP Runtime Observability Types
+// ====================================================================================
+
+/** Per-call cache status */
+export type MCPCacheStatus = "hit" | "miss" | "disabled";
+
+/** Per-call execution status */
+export type MCPCallStatus = "ok" | "failed" | "skipped";
+
+/** Per-call metadata recorded during MCP context gathering (no secret values) */
+export interface MCPCallDetail {
+  serverId: string;
+  tool: string;
+  cacheStatus: MCPCacheStatus;
+  status: MCPCallStatus;
+}
+
+/** MCP runtime summary surfaced in review output and diagnostics */
+export interface MCPContextSummary {
+  enabled: boolean;
+  serverCount: number;
+  attemptedCallCount: number;
+  cachedCallCount: number;
+  freshCallCount: number;
+  failedCallCount: number;
+  contextChars: number;
+  truncated: boolean;
+  warnings: string[];
+  calls: MCPCallDetail[];
+}
+
+/** Full result from gatherMCPContextDetails */
+export interface MCPGatherResult {
+  context: string | null;
+  summary: MCPContextSummary;
 }
 
 export interface AuditIssue {

@@ -310,6 +310,7 @@ describe("explain-context MCP diagnostics", () => {
             command: "npx -y @modelcontextprotocol/server-github",
             status: "ready",
             toolCount: 2,
+            source: "preset" as const,
           },
         ],
       },
@@ -343,16 +344,35 @@ describe("explain-context MCP diagnostics", () => {
         enabled: true,
         serverCount: 4,
         servers: [
-          { id: "s1", command: "npx test", status: "ready", toolCount: 1 },
+          {
+            id: "s1",
+            command: "npx test",
+            status: "ready",
+            toolCount: 1,
+            source: "explicit" as const,
+          },
           {
             id: "s2",
             command: "npx test",
             status: "missing_env",
             toolCount: 2,
+            source: "explicit" as const,
             missingVars: ["GH_TOKEN"],
           },
-          { id: "s3", command: "nonexistent", status: "missing_command", toolCount: 1 },
-          { id: "s4", command: "npx test", status: "ready", toolCount: 3 },
+          {
+            id: "s3",
+            command: "nonexistent",
+            status: "missing_command",
+            toolCount: 1,
+            source: "explicit" as const,
+          },
+          {
+            id: "s4",
+            command: "npx test",
+            status: "ready",
+            toolCount: 3,
+            source: "explicit" as const,
+          },
         ],
       },
     };
@@ -378,6 +398,7 @@ describe("explain-context MCP diagnostics", () => {
             command: "npx test",
             status: "missing_env",
             toolCount: 1,
+            source: "explicit" as const,
             missingVars: ["GITHUB_TOKEN"],
             recommendedActions: ["Set the GITHUB_TOKEN environment variable"],
           },
@@ -386,6 +407,7 @@ describe("explain-context MCP diagnostics", () => {
             command: "nonexistent-xyz",
             status: "missing_command",
             toolCount: 1,
+            source: "explicit" as const,
             recommendedActions: ["Install nonexistent-xyz or adjust PATH"],
           },
         ],
@@ -413,6 +435,7 @@ describe("explain-context MCP diagnostics", () => {
             command: "node",
             status: "ready",
             toolCount: 1,
+            source: "explicit" as const,
           },
         ],
       },
@@ -438,5 +461,88 @@ describe("explain-context MCP diagnostics", () => {
     const parsed = JSON.parse(json) as ExplainContextOutput;
     expect(parsed.mcp!.enabled).toBe(false);
     expect(parsed.mcp!.serverCount).toBe(0);
+  });
+
+  it("includes source field for preset and explicit servers", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 2,
+        servers: [
+          {
+            id: "github",
+            command: "npx -y @modelcontextprotocol/server-github",
+            status: "ready",
+            toolCount: 1,
+            source: "preset" as const,
+          },
+          {
+            id: "custom",
+            command: "npx test",
+            status: "ready",
+            toolCount: 1,
+            source: "explicit" as const,
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.servers[0]!.source).toBe("preset");
+    expect(parsed.mcp!.servers[1]!.source).toBe("explicit");
+  });
+
+  it("includes cacheSettings in diagnostics output", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 1,
+        cacheSettings: { enabled: true, ttlMs: 3600000 },
+        servers: [
+          {
+            id: "srv",
+            command: "npx test",
+            status: "ready",
+            toolCount: 1,
+            source: "explicit" as const,
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.cacheSettings).toBeDefined();
+    expect(parsed.mcp!.cacheSettings!.enabled).toBe(true);
+    expect(parsed.mcp!.cacheSettings!.ttlMs).toBe(3600000);
+  });
+
+  it("cacheSettings omitted when not provided", () => {
+    const output: ExplainContextOutput = {
+      status: "available",
+      profile: "library",
+      mcp: {
+        enabled: true,
+        serverCount: 1,
+        servers: [
+          {
+            id: "srv",
+            command: "npx test",
+            status: "ready",
+            toolCount: 1,
+            source: "explicit" as const,
+          },
+        ],
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const parsed = JSON.parse(json) as ExplainContextOutput;
+    expect(parsed.mcp!.cacheSettings).toBeUndefined();
   });
 });

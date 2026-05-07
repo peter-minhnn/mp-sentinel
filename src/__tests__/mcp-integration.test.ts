@@ -171,6 +171,140 @@ describe("gatherMCPContext", () => {
   }, 15000);
 });
 
+// ── gatherMCPContextDetails integration ────────────────────────────────────
+
+describe("gatherMCPContextDetails", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "mp-sentinel-mcp-details-"));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns disabled summary when mcp is disabled", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = { mcp: { enabled: false } };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.context).toBeNull();
+    expect(result.summary.enabled).toBe(false);
+    expect(result.summary.attemptedCallCount).toBe(0);
+    expect(result.summary.calls).toEqual([]);
+  });
+
+  it("returns enabled summary when mcp is undefined", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = {};
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.context).toBeNull();
+    expect(result.summary.enabled).toBe(false);
+  });
+
+  it("returns empty summary when servers array is empty", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = { mcp: { enabled: true, servers: [] } };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.context).toBeNull();
+    expect(result.summary.enabled).toBe(true);
+    expect(result.summary.serverCount).toBe(0);
+  });
+
+  it("tracks failed calls for nonexistent server command", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = {
+      mcp: {
+        enabled: true,
+        timeoutMs: 100,
+        cacheEnabled: false,
+        servers: [
+          {
+            id: "broken",
+            transport: "stdio",
+            command: "nonexistent-command-xyz",
+            args: [],
+            calls: [{ tool: "test", input: {} }],
+          },
+        ],
+      },
+    };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.context).toBeNull();
+    expect(result.summary.serverCount).toBe(1);
+    expect(result.summary.attemptedCallCount).toBe(1);
+    expect(result.summary.failedCallCount).toBe(1);
+    expect(result.summary.freshCallCount).toBe(0);
+    expect(result.summary.calls[0]!.status).toBe("failed");
+    expect(result.summary.calls[0]!.cacheStatus).toBe("disabled");
+  }, 15000);
+
+  it("call details never contain env values", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = {
+      mcp: {
+        enabled: true,
+        timeoutMs: 100,
+        servers: [
+          {
+            id: "no-leak",
+            transport: "stdio",
+            command: "nonexistent-command-xyz",
+            args: [],
+            env: { SECRET_TOKEN: "MY_SECRET_TOKEN_VAR" },
+            calls: [{ tool: "test", input: {} }],
+          },
+        ],
+      },
+    };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    // Verify no env parent variable names appear as values in any field
+    const summaryStr = JSON.stringify(result.summary);
+    expect(summaryStr).not.toContain("MY_SECRET_TOKEN_VAR");
+    // cacheStatus values must only be "hit", "miss", or "disabled"
+    for (const call of result.summary.calls) {
+      expect(["hit", "miss", "disabled"]).toContain(call.cacheStatus);
+    }
+  }, 15000);
+
+  it("summary contextChars and truncated reflect empty context", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = {
+      mcp: {
+        enabled: true,
+        timeoutMs: 100,
+        servers: [
+          {
+            id: "broken",
+            transport: "stdio",
+            command: "nonexistent-command-xyz",
+            args: [],
+            calls: [{ tool: "test", input: {} }],
+          },
+        ],
+      },
+    };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.summary.contextChars).toBe(0);
+    expect(result.summary.truncated).toBe(false);
+  }, 15000);
+
+  it("warnings array is empty for disabled config", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = { mcp: { enabled: false } };
+    const result = await details(config, ["src/a.ts"], tempDir);
+    expect(result.summary.warnings).toEqual([]);
+  });
+
+  it("backward-compatible gatherMCPContext returns same context string", async () => {
+    const { gatherMCPContextDetails: details } = await import("../services/mcp/index.js");
+    const config: ProjectConfig = { mcp: { enabled: false } };
+    const detailed = await details(config, ["src/a.ts"], tempDir);
+    const wrapped = await gatherMCPContext(config, ["src/a.ts"], tempDir);
+    expect(wrapped).toBe(detailed.context);
+  });
+});
+
 // ── MCP cache integration ─────────────────────────────────────────────────
 
 describe("MCP cache integration", () => {

@@ -6,6 +6,7 @@ import type {
   EvidenceSummary,
   ExplainContextOutput,
   FileAuditResult,
+  MCPContextSummary,
   MCPDiagnostics,
   ProjectConfig,
   ReviewFormat,
@@ -32,7 +33,7 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
-import { gatherMCPContext } from "../services/mcp/index.js";
+import { gatherMCPContextDetails } from "../services/mcp/index.js";
 import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview } from "./deterministic-review.js";
 
@@ -130,6 +131,7 @@ const buildReport = (
   errors: string[],
   totalChangedLines: number,
   startTime: number,
+  mcpSummary?: MCPContextSummary,
 ): ReviewReport => {
   const criticalIssues = results.reduce(
     (acc, result) =>
@@ -163,7 +165,7 @@ const buildReport = (
   const passedFiles = results.filter((r) => r.result.status === "PASS" && !hasActionable(r)).length;
   const failedFiles = results.filter((r) => r.result.status !== "PASS" || hasActionable(r)).length;
 
-  return {
+  const report: ReviewReport = {
     schemaVersion: "1.0",
     status,
     target,
@@ -185,6 +187,12 @@ const buildReport = (
     errors,
     generatedAt: new Date().toISOString(),
   };
+
+  if (mcpSummary && mcpSummary.enabled) {
+    report.mcp = mcpSummary;
+  }
+
+  return report;
 };
 
 const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
@@ -370,13 +378,17 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   const techProfile = await detectTechProfile(config);
 
   // Gather MCP external context if enabled (only when AI will use it)
-  const mcpContext = aiEnabled
-    ? await gatherMCPContext(
-        config,
-        diffResult.files.map((f) => f.path),
-        process.cwd(),
-      )
-    : null;
+  let mcpContext: string | null = null;
+  let mcpSummary: MCPContextSummary | undefined;
+  if (aiEnabled) {
+    const mcpResult = await gatherMCPContextDetails(
+      config,
+      diffResult.files.map((f) => f.path),
+      process.cwd(),
+    );
+    mcpContext = mcpResult.context;
+    mcpSummary = mcpResult.summary;
+  }
 
   const runtimeErrors: string[] = [];
   let auditResults: FileAuditResult[] = [];
@@ -470,11 +482,26 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     runtimeErrors,
     diffResult.totalChangedLines,
     startTime,
+    mcpSummary,
   );
 
   await postGitProviderComments(report.results, dryRun);
 
   renderReport(report, format);
+
+  // Verbose MCP summary (console only — JSON already includes it in the report)
+  if ((values.verbose || verboseDryRun) && format !== "json" && report.mcp) {
+    const s = report.mcp;
+    console.log(`\n--- MCP context summary ---`);
+    console.log(`  Servers: ${s.serverCount}`);
+    console.log(
+      `  Calls: ${s.attemptedCallCount} (${s.cachedCallCount} cached, ${s.freshCallCount} fresh, ${s.failedCallCount} failed)`,
+    );
+    console.log(`  Context chars: ${s.contextChars}${s.truncated ? " (truncated)" : ""}`);
+    if (s.warnings.length > 0) {
+      console.log(`  Warnings: ${s.warnings.join(", ")}`);
+    }
+  }
 
   if (report.status === "PASS") return 0;
   if (report.status === "FAIL") return 1;
@@ -670,9 +697,15 @@ export async function renderExplainContext(opts: {
         console.log("\nMCP diagnostics:");
         console.log(`  Enabled: ${output.mcp.enabled ? "yes" : "no"}`);
         console.log(`  Servers: ${output.mcp.serverCount}`);
+        if (output.mcp.cacheSettings) {
+          console.log(
+            `  Cache: ${output.mcp.cacheSettings.enabled ? "enabled" : "disabled"} (TTL: ${output.mcp.cacheSettings.ttlMs}ms)`,
+          );
+        }
         for (const srv of output.mcp.servers) {
           const flag = srv.status === "ready" ? "[OK]" : `[${srv.status}]`;
-          console.log(`    ${flag} ${srv.id}: ${srv.command} (${srv.toolCount} calls)`);
+          const srcTag = srv.source === "preset" ? "[preset]" : "[explicit]";
+          console.log(`    ${flag} ${srv.id} ${srcTag}: ${srv.command} (${srv.toolCount} calls)`);
           if (srv.missingVars && srv.missingVars.length > 0) {
             console.log(`      missing env: ${srv.missingVars.join(", ")}`);
           }
