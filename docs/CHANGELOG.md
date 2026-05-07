@@ -7,14 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **MCP server command** (`mp-sentinel mcp-server`, `src/commands/mcp-server.ts`, `src/services/mcp-server/service.ts`): Read-only stdio MCP server exposing three tools — `mp_sentinel_index_health`, `mp_sentinel_agent_context`, and `mp_sentinel_explain_context`. No AI calls, no mutations, no outbound MCP spawning. Routes before git repo checks and review config startup. Stdout reserved for JSON-RPC; all logs suppressed or routed to stderr.
-
 ## [2.3.0] - 2026-05-07
 
 ### Added
 
+- **MCP server command** (`mp-sentinel mcp-server`, `src/commands/mcp-server.ts`, `src/services/mcp-server/service.ts`): Read-only stdio MCP server exposing three tools — `mp_sentinel_index_health`, `mp_sentinel_agent_context`, and `mp_sentinel_explain_context`. No AI calls, no mutations, no outbound MCP spawning. Routes before git repo checks and review config startup. Stdout reserved for JSON-RPC; all logs suppressed or routed to stderr.
 - **MCP review context integration** (`.mp-sentinelrc.json`, `src/services/mcp/`, `src/utils/pr-metadata.ts`): Optional external review context from MCP servers via stdio transport. Disabled by default (`mcp.enabled: false`). Context is capped, cached, provenance-labeled, and injected into the AI system prompt.
 - **MCP config** (`src/types/index.ts`, `src/utils/config.ts`): `mcp.enabled`, `mcp.timeoutMs`, `mcp.maxContextChars`, `mcp.cacheEnabled`, `mcp.cacheTtlMs`, `mcp.servers[]`. Mutating tool names are rejected at config validation. Duplicate tool+input pairs detected with recursive stable JSON.
 - **Template variable resolution** (`src/services/mcp/template-resolver.ts`): `${repo.owner}`, `${repo.name}`, `${repo.fullName}`, `${pr.number}`, `${head.sha}`, `${base.ref}`, `${changedFiles.csv}`, `${cwd}`.
