@@ -24,6 +24,9 @@ import type {
   FileRole,
   CreateSkillsAIConfig,
   SkillKnowledgeBase,
+  LanguageProfile,
+  CodeStyleProfile,
+  CreateSkillsPolicies,
 } from "../../types/index.js";
 import type { AIProvider, AIModelConfig } from "../ai/types.js";
 import { log } from "../../utils/logger.js";
@@ -49,6 +52,20 @@ const AIEnrichmentOutputSchema = z.object({
   versionNotes: z.array(z.string()).max(10, "Too many version notes"),
   riskWarnings: z.array(z.string()).max(15, "Too many risk warnings"),
   recommendedChecks: z.array(z.string()).max(15, "Too many recommended checks"),
+  // v2 additive fields (all optional for backward compat)
+  rulesByLanguage: z.record(z.string(), z.array(z.string()).max(15)).optional(),
+  cleanCodeRules: z.array(z.string()).max(15).optional(),
+  antiPatterns: z
+    .array(
+      z.object({
+        pattern: z.string(),
+        files: z.array(z.string()).max(5),
+        fix: z.string(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  styleEnforcement: z.array(z.string()).max(10).optional(),
 });
 
 /**
@@ -72,10 +89,20 @@ export function validateAIEnrichmentOutput(raw: string): AIEnrichmentOutput {
     );
   }
 
-  return result.data;
+  return result.data as AIEnrichmentOutput;
 }
 
 // ── Input builder ──────────────────────────────────────────────────────────
+
+export interface EnrichmentInputOptions {
+  knowledgeBase?: SkillKnowledgeBase | null;
+  projectRules?: string[] | undefined;
+  languageMix?: LanguageProfile | undefined;
+  codeStyleProfile?: CodeStyleProfile | undefined;
+  policies?: CreateSkillsPolicies | undefined;
+  codeSamples?: Array<{ path: string; content: string; __scrubbed?: boolean }> | undefined;
+  observedAntiPatterns?: string[] | undefined;
+}
 
 /**
  * Build an AIEnrichmentInput from a SourceIndex.
@@ -85,6 +112,7 @@ export function buildEnrichmentInput(
   index: SourceIndex,
   knowledgeBase?: SkillKnowledgeBase | null,
   projectRules: string[] = [],
+  options?: EnrichmentInputOptions,
 ): AIEnrichmentInput {
   const { project } = index;
   const kb = knowledgeBase ?? buildSkillKnowledgeBase(index);
@@ -153,6 +181,26 @@ export function buildEnrichmentInput(
     dynamicImportCount: kb.risks.filter((r) => r.type === "dynamic-import").length,
     hubFileCount: kb.risks.filter((r) => r.type === "hub-file").length,
     projectRules: projectRules.slice(0, 20),
+    // v2 optional fields from EnrichmentInputOptions
+    ...(options?.languageMix ? { languageMix: options.languageMix } : {}),
+    ...(options?.codeStyleProfile ? { codeStyleProfile: options.codeStyleProfile } : {}),
+    ...(options?.policies ? { policies: options.policies } : {}),
+    ...(options?.codeSamples
+      ? (() => {
+          // Runtime assertion: every sample must carry the __scrubbed brand
+          const unscrubbed = options.codeSamples!.filter((s) => !s.__scrubbed);
+          if (unscrubbed.length > 0) {
+            throw new Error(
+              `Code samples must be scrubbed before reaching the AI prompt. Unscrubbed files: ${unscrubbed.map((s) => s.path).join(", ")}. ` +
+                "Use loadAndScrubCodeSamples() from code-samples.ts.",
+            );
+          }
+          return { codeSamples: options.codeSamples };
+        })()
+      : {}),
+    ...(options?.observedAntiPatterns
+      ? { observedAntiPatterns: options.observedAntiPatterns }
+      : {}),
   };
 }
 
@@ -180,7 +228,7 @@ function roleToCategory(role: FileRole): string {
 
 // ── Prompt template ────────────────────────────────────────────────────────
 
-const ENRICHMENT_PROMPT_VERSION = "2026-05-02";
+const ENRICHMENT_PROMPT_VERSION = "2026-05-08";
 
 export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
   const { projectName, packageVersion, packageManager, dependencies, devDependencies } = input;
@@ -210,9 +258,50 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
     .map((rule, index) => `    ${index + 1}. ${rule.replace(/"/g, "'")}`)
     .join("\n");
 
+  // v2: Language mix info
+  const langMixLines = input.languageMix
+    ? `    dominant: ${input.languageMix.dominant}
+    secondary: [${input.languageMix.secondary.join(", ")}]
+    languages: ${JSON.stringify(input.languageMix.distribution)}`
+    : "    (not detected)";
+
+  // v2: Code style info
+  const styleLines = input.codeStyleProfile
+    ? `    indent: ${input.codeStyleProfile.indent}
+    quotes: ${input.codeStyleProfile.singleQuoteRatio > 0.6 ? "single" : input.codeStyleProfile.singleQuoteRatio < 0.4 ? "double" : "mixed"}
+    semicolons: ${input.codeStyleProfile.semicolonRatio > 0.6 ? "yes" : input.codeStyleProfile.semicolonRatio < 0.4 ? "no" : "mixed"}
+    formatters: [${input.codeStyleProfile.formatterConfigs.join(", ")}]
+    maxFileLines: ${input.codeStyleProfile.maxFileLines}
+    p95FileLines: ${input.codeStyleProfile.p95FileLines}
+    oversizedFiles: ${input.codeStyleProfile.oversizedFiles.length}`
+    : "    (not detected)";
+
+  // v2: Code samples (secret-scrubbed via SecurityService)
+  const sampleLines = input.codeSamples
+    ? input.codeSamples
+        .slice(0, 5)
+        .map((s) => `  -- ${s.path} --\n${s.content.split("\n").slice(0, 40).join("\n")}`)
+        .join("\n")
+    : "    (none)";
+
+  // v2: Anti-patterns
+  const antiPatternLines = input.observedAntiPatterns
+    ? input.observedAntiPatterns
+        .slice(0, 10)
+        .map((a) => `    - ${a}`)
+        .join("\n")
+    : "    (none detected)";
+
+  // v2: Policies
+  const policyLines = input.policies
+    ? `    maxFileLines: ${input.policies.maxFileLines}
+    maxFunctionLines: ${input.policies.maxFunctionLines}
+    forbidDefaultExports: ${input.policies.forbidDefaultExports}`
+    : "    (defaults)";
+
   return JSON.stringify({
     modelInfo: {
-      role: "You are an expert codebase quality advisor. Analyze the project manifest and file structure below and return a JSON object with best-practice recommendations.",
+      role: "You are an expert codebase quality advisor. Analyze the project manifest, code samples, language mix, and code style below and return a JSON object with best-practice recommendations.",
       projectName,
       packageVersion,
       packageManager,
@@ -227,6 +316,9 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
       defaultExportCount: input.defaultExportCount,
       dynamicImportCount: input.dynamicImportCount,
       hubFileCount: input.hubFileCount,
+      languageMix: `{\n${langMixLines}\n  }`,
+      codeStyle: `{\n${styleLines}\n  }`,
+      cleanCodePolicy: `{\n${policyLines}\n  }`,
     },
     manifest: {
       scripts: `{\n${scriptLines}\n  }`,
@@ -237,8 +329,14 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
     },
     projectRules: `{\n${projectRuleLines}\n  }`,
     moduleBreakdown: `{\n${roleLines}\n  }`,
+    codeSamples:
+      input.codeSamples && input.codeSamples.length > 0 ? `\n${sampleLines}\n` : undefined,
+    observedAntiPatterns:
+      input.observedAntiPatterns && input.observedAntiPatterns.length > 0
+        ? `\n${antiPatternLines}\n`
+        : undefined,
     outputFormat: {
-      instructions: `Return ONLY valid JSON in the following shape, with no markdown or commentary around it:
+      instructions: `Return ONLY valid JSON in the following shape, with no markdown or commentary around it. Ground every rule in the actual dependency versions or code samples provided above:
 
 {
   "languageRules": [
@@ -255,10 +353,28 @@ export function buildEnrichmentPrompt(input: AIEnrichmentInput): string {
   ],
   "recommendedChecks": [
     "Array of 1-3 recommended review checks specific to this project's architecture and dependency versions."
+  ],
+  "rulesByLanguage": {
+    "languageName": [
+      "Array of 2-5 rules per detected language, grounded in code samples if provided. Only include languages present in the languageMix above."
+    ]
+  },
+  "cleanCodeRules": [
+    "Array of 2-5 clean-code rules derived from the actual code style and policies observed."
+  ],
+  "antiPatterns": [
+    {
+      "pattern": "Description of an anti-pattern observed in code samples or project metrics",
+      "files": ["file path(s) where this pattern appears — use real paths from codeSamples when available"],
+      "fix": "Actionable fix suggestion"
+    }
+  ],
+  "styleEnforcement": [
+    "Array of 2-3 style enforcement rules based on the detected codeStyle above (indent, quotes, semicolons). Match these to the project's actual style, not a preference."
   ]
 }
 
-Base all recommendations on actual dependency versions, not generic advice. Treat projectRules as highest-priority project-specific constraints. Do NOT invent rules for packages not listed in the dependencies. Be concise. Do NOT include any text outside the JSON block. Do NOT wrap in markdown code fences.`,
+Base all recommendations on actual dependency versions and code samples, not generic advice. Treat projectRules as highest-priority project-specific constraints. Do NOT invent rules for packages not listed in the dependencies. Be concise. Do NOT include any text outside the JSON block. Do NOT wrap in markdown code fences. When codeSamples are provided, use them to ground antiPatterns with real file paths. If codeSamples are not provided, skip antiPatterns and styleEnforcement.`,
     },
   });
 }
@@ -342,13 +458,16 @@ const EnrichmentCacheEnvelopeSchema = z.object({
     inputHash: z.string(),
     outputHash: z.string(),
   }),
-  output: z.object({
-    languageRules: z.array(z.string()),
-    libraryRules: z.array(z.string()),
-    versionNotes: z.array(z.string()),
-    riskWarnings: z.array(z.string()),
-    recommendedChecks: z.array(z.string()),
-  }),
+  output: z
+    .object({
+      languageRules: z.array(z.string()),
+      libraryRules: z.array(z.string()),
+      versionNotes: z.array(z.string()),
+      riskWarnings: z.array(z.string()),
+      recommendedChecks: z.array(z.string()),
+      // v2 additive — allow extra keys in cache
+    })
+    .passthrough(),
 });
 
 interface EnrichmentCacheEnvelope {
@@ -471,6 +590,12 @@ export interface AIEnrichmentConfig {
   maxTokens?: number;
   projectRoot?: string;
   projectRules?: string[];
+  // v2 options
+  languageMix?: LanguageProfile;
+  codeStyleProfile?: CodeStyleProfile;
+  policies?: CreateSkillsPolicies;
+  codeSamples?: Array<{ path: string; content: string }>;
+  observedAntiPatterns?: string[];
 }
 
 /**
@@ -510,7 +635,20 @@ export async function enrichIndex(
   metadata: EnrichmentMetadata;
   output: AIEnrichmentOutput;
 } | null> {
-  const input = buildEnrichmentInput(index, undefined, config.projectRules ?? []);
+  const enrichmentOptions: EnrichmentInputOptions = {
+    projectRules: config.projectRules,
+    languageMix: config.languageMix,
+    codeStyleProfile: config.codeStyleProfile,
+    policies: config.policies,
+    codeSamples: config.codeSamples,
+    observedAntiPatterns: config.observedAntiPatterns,
+  };
+  const input = buildEnrichmentInput(
+    index,
+    undefined,
+    config.projectRules ?? [],
+    enrichmentOptions,
+  );
   const inputHash = computeEnrichmentInputHash(input);
 
   const probe = AIConfig.probeEnvironment({

@@ -10,8 +10,14 @@ import type {
   SourceIndexFile,
   AIEnrichmentOutput,
   SkillKnowledgeBase,
+  LanguageProfile,
+  CodeStyleProfile,
+  CreateSkillsPolicies,
 } from "../../types/index.js";
+import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
+import { detectLanguageProfile } from "./language-profile.js";
 import { detectProfile, type SkillProfile } from "./profile.js";
+import { selectActiveRulePacks } from "./rule-packs/index.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
 
 const MAX_HUB_FILES = 10;
@@ -41,6 +47,13 @@ function cleanDisplayVersion(version: string): string {
   return `${bare} (range ${version})`;
 }
 
+export interface ReferenceFileContent {
+  codeStyle: string;
+  languagePatterns: string;
+  cleanCodeChecklist: string;
+  customRules: string;
+}
+
 export interface SkillSections {
   agentWorkflow: string;
   referenceRouting: string;
@@ -51,6 +64,12 @@ export interface SkillSections {
   commands: string;
   conventions: string;
   profileRules: string;
+  /** Deterministic language & framework rules from rule packs */
+  languageRules: string;
+  /** Clean code policy section */
+  cleanCodePolicy: string;
+  /** File size policy section */
+  fileSizePolicy: string;
   /** AI-enriched best-practice notes (null when AI enrichment is disabled) */
   aiEnrichment: string | null;
   codebaseMap: string;
@@ -64,7 +83,9 @@ export interface GeneratedContent {
   projectVersion: string;
   frameworks: string[];
   profile: SkillProfile;
+  languageProfile: LanguageProfile;
   sections: SkillSections;
+  references: ReferenceFileContent;
 }
 
 export function generateContent(
@@ -72,25 +93,47 @@ export function generateContent(
   projectName: string,
   enrichment?: AIEnrichmentOutput | null,
   knowledgeBase?: SkillKnowledgeBase | null,
+  codeStyleProfile?: CodeStyleProfile | null,
+  policies?: CreateSkillsPolicies | null,
 ): GeneratedContent {
   const name = index?.project.packageName ?? projectName;
   const version = index?.project.packageVersion ?? "unknown";
   const frameworks = index?.project.detectedFrameworks ?? [];
   const profile = detectProfile(index);
+  const languageProfile = index
+    ? detectLanguageProfile(index)
+    : {
+        dominant: "unknown",
+        secondary: [],
+        distribution: {},
+        indexableShare: 0,
+        nonIndexableHotspots: [],
+      };
 
   // Build knowledge base internally if not provided
   const kb = knowledgeBase ?? (index ? buildSkillKnowledgeBase(index) : null);
 
+  // Compute rule packs
+  const allDeps = index ? { ...index.project.dependencies, ...index.project.devDependencies } : {};
+  const rulePackSelection = selectActiveRulePacks({
+    langProfile: languageProfile,
+    frameworks,
+    deps: allDeps,
+  });
+
   const sections: SkillSections = {
     agentWorkflow: buildAgentWorkflow(name, kb),
     referenceRouting: buildReferenceRouting(index, kb),
-    overview: buildOverview(name, version, frameworks, index, profile),
+    overview: buildOverview(name, version, frameworks, index, profile, languageProfile),
     architecture: buildArchitecture(index),
     hubFiles: buildHubFiles(index),
     modules: buildModules(index),
     commands: buildCommands(index),
     conventions: buildConventions(index),
     profileRules: buildProfileRules(index, profile),
+    languageRules: buildLanguageRules(rulePackSelection),
+    cleanCodePolicy: buildCleanCodePolicy(codeStyleProfile, policies),
+    fileSizePolicy: buildFileSizePolicy(codeStyleProfile, policies),
     aiEnrichment: enrichment ? buildAIEnrichment(enrichment) : null,
     codebaseMap: buildCodebaseMap(kb),
     testingMap: buildTestingMapSection(kb),
@@ -98,7 +141,23 @@ export function generateContent(
     publicApi: buildPublicApiSection(kb),
   };
 
-  return { projectName: name, projectVersion: version, frameworks, profile, sections };
+  // Build reference file content
+  const references: ReferenceFileContent = {
+    codeStyle: buildCodeStyleReference(codeStyleProfile, policies),
+    languagePatterns: buildLanguagePatternsReference(rulePackSelection, languageProfile),
+    cleanCodeChecklist: buildCleanCodeChecklist(codeStyleProfile, policies),
+    customRules: "", // Populated externally by loadUserRulePacks
+  };
+
+  return {
+    projectName: name,
+    projectVersion: version,
+    frameworks,
+    profile,
+    languageProfile,
+    sections,
+    references,
+  };
 }
 
 function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null): string {
@@ -119,12 +178,18 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
         `   - \`references/testing-map.md\` - ${Object.keys(kb.testing.testAssociations).length} test associations`,
         `   - \`references/dependencies.md\` - ${kb.dependencies.length} dependencies`,
         `   - \`references/public-api.md\` - ${kb.risks.length} risk items`,
+        `   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs`,
+        `   - \`references/language-patterns.md\` - per-language rules and language distribution`,
+        `   - \`references/clean-code-checklist.md\` - code quality checklist with limits`,
       ]
     : [
         `   - \`references/codebase-map.md\` - modules, entrypoints, key symbols`,
         `   - \`references/testing-map.md\` - test associations and gaps`,
         `   - \`references/dependencies.md\` - dependency versions and usage`,
         `   - \`references/public-api.md\` - API surface and risks`,
+        `   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs`,
+        `   - \`references/language-patterns.md\` - per-language rules and language distribution`,
+        `   - \`references/clean-code-checklist.md\` - code quality checklist with limits`,
       ];
 
   // Build quick-start examples from real index data
@@ -418,6 +483,7 @@ function buildOverview(
   frameworks: string[],
   index: SourceIndex | null,
   profile: SkillProfile,
+  languageProfile: LanguageProfile,
 ): string {
   const lines = [
     `## Overview`,
@@ -434,6 +500,22 @@ function buildOverview(
     lines.push(`**Indexed Files:** ${index.stats.indexedFiles}`);
     if (index.stats.importEdges !== undefined)
       lines.push(`**Import Edges (graph):** ${index.stats.importEdges}`);
+
+    // Language breakdown
+    if (Object.keys(languageProfile.distribution).length > 0) {
+      const langEntries = Object.entries(languageProfile.distribution)
+        .sort((a, b) => b[1] - a[1])
+        .map(([lang, count]) => `${lang} (${count})`);
+      lines.push(`**Languages:** ${langEntries.join(", ")}`);
+    }
+
+    if (languageProfile.nonIndexableHotspots.length > 0) {
+      lines.push(
+        `**Non-indexable Hotspots:** ${languageProfile.nonIndexableHotspots
+          .slice(0, 5)
+          .join(", ")}`,
+      );
+    }
 
     // Mention real entrypoints and key scripts when available (v1.0.16+)
     if (index.insights) {
@@ -1136,6 +1218,137 @@ function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
   return lines.join("\n");
 }
 
+// ── Language & Framework Rules (deterministic rule packs) ─────────────────
+
+/**
+ * Build a deterministic `## Language & Framework Rules` section from
+ * active rule packs. No AI calls — all rules are pre-written.
+ */
+function buildLanguageRules(selection: {
+  packs: Array<{ id: string; label: string; rules: Array<{ kind: string; text: string }> }>;
+  allRules: Array<{ kind: string; text: string }>;
+}): string {
+  if (selection.packs.length === 0) {
+    return "";
+  }
+
+  const lines: string[] = [];
+
+  // Per-pack sections
+  for (const pack of selection.packs) {
+    lines.push(``, `### ${pack.label} Rules`, ``);
+    for (const rule of pack.rules) {
+      const prefix =
+        rule.kind === "must" ? "**MUST**" : rule.kind === "should" ? "**SHOULD**" : "**AVOID**";
+      lines.push(`- ${prefix}: ${rule.text}`);
+    }
+  }
+
+  // Summary table at the top
+  type RuleKind = "must" | "should" | "avoid";
+  const ruleKinds: RuleKind[] = ["must", "should", "avoid"];
+  const counts: Record<RuleKind, number> = { must: 0, should: 0, avoid: 0 };
+  for (const rule of selection.allRules) {
+    const kind = rule.kind as RuleKind;
+    counts[kind]++;
+  }
+  const summaryParts = ruleKinds.filter((k) => counts[k] > 0).map((k) => `${counts[k]} ${k}`);
+  const header = [
+    ``,
+    `## Language & Framework Rules`,
+    ``,
+    `Active packs: ${selection.packs.map((p) => `\`${p.label}\``).join(", ")}`,
+    ``,
+    `Summary: ${summaryParts.join(", ")} rules across ${selection.packs.length} pack(s).`,
+    ``,
+  ];
+
+  lines.unshift(...header);
+  lines.push(``);
+
+  return lines.join("\n");
+}
+
+// ── Clean Code Policy sections ───────────────────────────────────────────
+
+/**
+ * Build the `## Clean Code Policy` section with configurable rules and
+ * observed offenders from the code-style profile.
+ */
+function buildCleanCodePolicy(
+  csp: CodeStyleProfile | null | undefined,
+  policies: CreateSkillsPolicies | null | undefined,
+): string {
+  const pol = policies ?? DEFAULT_CREATE_SKILLS_POLICIES;
+
+  const lines: string[] = [
+    ``,
+    `## Clean Code Policy`,
+    ``,
+    `These rules are enforced by the agent when writing or reviewing code:`,
+    ``,
+    `- **Maximum file length:** ${pol.maxFileLines} lines (hard limit). Refactor before adding more.`,
+    `- **Warning at:** ${pol.warnFileLines} lines - consider splitting into smaller modules.`,
+    `- **Maximum function body:** ${pol.maxFunctionLines} lines. Extract helpers for readability.`,
+    `- **Maximum parameters:** ${pol.maxParams} per function. Use an options object for more.`,
+    `- **Cyclomatic complexity hint:** ${pol.maxCyclomaticHint}. High-complexity functions should be refactored.`,
+  ];
+
+  if (pol.forbidDefaultExports) {
+    lines.push(`- **Default exports are forbidden.** Use named exports only.`);
+  }
+
+  lines.push(``);
+
+  return lines.join("\n");
+}
+
+/**
+ * Build the `## File Size Policy` section showing the limit and any current
+ * offenders from the code-style profile.
+ */
+function buildFileSizePolicy(
+  csp: CodeStyleProfile | null | undefined,
+  policies: CreateSkillsPolicies | null | undefined,
+): string {
+  const pol = policies ?? DEFAULT_CREATE_SKILLS_POLICIES;
+
+  const lines: string[] = [
+    ``,
+    `## File Size Policy`,
+    ``,
+    `Hard limit: **${pol.maxFileLines} lines** per file.`,
+    ``,
+  ];
+
+  if (csp) {
+    lines.push(
+      `- **Current codebase P50:** ${csp.p50FileLines} lines`,
+      `- **Current codebase P95:** ${csp.p95FileLines} lines`,
+      `- **Current max file:** ${csp.maxFileLines} lines`,
+      ``,
+    );
+
+    if (csp.oversizedFiles.length > 0) {
+      lines.push(`### Observed Offenders (files exceeding ${pol.maxFileLines} lines)`, ``);
+      for (const file of csp.oversizedFiles.slice(0, 5)) {
+        lines.push(`- \`${file.path}\` - ${file.lines} lines`);
+      }
+      lines.push(
+        ``,
+        `> **Note:** Existing oversized files are technical debt. Do NOT add more lines to them`,
+        `> without refactoring first. Prefer creating new files when extending functionality.`,
+      );
+    } else {
+      lines.push(`No files exceed the ${pol.maxFileLines}-line limit. Keep it this way.`);
+    }
+  }
+
+  lines.push(``);
+
+  return lines.join("\n");
+}
+
 // ── AI Enrichment sections ──────────────────────────────────────────────────
 
 /**
@@ -1185,5 +1398,233 @@ function buildAIEnrichment(enrichment: AIEnrichmentOutput): string {
     parts.push(``);
   }
 
+  // v2: Per-language rules
+  if (enrichment.rulesByLanguage && Object.keys(enrichment.rulesByLanguage).length > 0) {
+    parts.push(`## AI-Enriched Per-Language Rules`, ``);
+    for (const [language, rules] of Object.entries(enrichment.rulesByLanguage)) {
+      if (rules.length > 0) {
+        parts.push(`### ${language.charAt(0).toUpperCase() + language.slice(1)}`, ``);
+        for (const rule of rules) {
+          parts.push(`- ${rule}`);
+        }
+        parts.push(``);
+      }
+    }
+  }
+
+  // v2: Clean code rules
+  if (enrichment.cleanCodeRules && enrichment.cleanCodeRules.length > 0) {
+    parts.push(`## AI-Enriched Clean Code Rules`, ``);
+    for (const rule of enrichment.cleanCodeRules) {
+      parts.push(`- ${rule}`);
+    }
+    parts.push(``);
+  }
+
+  // v2: Anti-patterns
+  if (enrichment.antiPatterns && enrichment.antiPatterns.length > 0) {
+    parts.push(`## AI-Enriched Anti-Patterns`, ``);
+    for (const ap of enrichment.antiPatterns) {
+      parts.push(`- **${ap.pattern}**`);
+      if (ap.files.length > 0) {
+        parts.push(`  - Files: ${ap.files.map((f) => `\`${f}\``).join(", ")}`);
+      }
+      parts.push(`  - Fix: ${ap.fix}`);
+    }
+    parts.push(``);
+  }
+
+  // v2: Style enforcement
+  if (enrichment.styleEnforcement && enrichment.styleEnforcement.length > 0) {
+    parts.push(`## AI-Enriched Style Enforcement`, ``);
+    for (const rule of enrichment.styleEnforcement) {
+      parts.push(`- ${rule}`);
+    }
+    parts.push(``);
+  }
+
   return parts.join("\n").trim();
+}
+
+// ── Reference file builders ─────────────────────────────────────────────────
+
+/**
+ * Build a `references/code-style.md` file from the CodeStyleProfile.
+ */
+export function buildCodeStyleReference(
+  csp: CodeStyleProfile | null | undefined,
+  policies?: CreateSkillsPolicies | null,
+): string {
+  if (!csp) {
+    return "## Code Style\n\nNo code style profile available. Run `mp-sentinel create-skills` with indexing first.";
+  }
+
+  const lines: string[] = [
+    "## Code Style",
+    ``,
+    "Auto-detected code style from the codebase. These rules should be followed by the agent when writing new code.",
+    ``,
+    "## Indentation",
+    ``,
+    `**Style:** ${csp.indent === "tab" ? "Tabs" : csp.indent === "2-spaces" ? "2 spaces" : csp.indent === "4-spaces" ? "4 spaces" : csp.indent}`,
+    ``,
+    "## Quotes",
+    ``,
+    `**Preference:** ${csp.singleQuoteRatio > 0.6 ? "Single quotes" : csp.singleQuoteRatio < 0.4 ? "Double quotes" : "Mixed"}`,
+    `(single quote ratio: ${(csp.singleQuoteRatio * 100).toFixed(0)}%)`,
+    ``,
+    "## Semicolons",
+    ``,
+    `**Usage:** ${csp.semicolonRatio > 0.6 ? "Semicolons required" : csp.semicolonRatio < 0.4 ? "No semicolons" : "Mixed usage"}`,
+    `(semicolon ratio: ${(csp.semicolonRatio * 100).toFixed(0)}%)`,
+    ``,
+    "## Trailing Newlines",
+    ``,
+    `**Compliance:** ${csp.trailingNewlineRatio > 0.5 ? "Files end with newline" : "Inconsistent trailing newlines"}`,
+    ``,
+    "## File Size Distribution",
+    ``,
+    `- **P50 (median):** ${csp.p50FileLines} lines`,
+    `- **P95:** ${csp.p95FileLines} lines`,
+    `- **Max:** ${csp.maxFileLines} lines`,
+    ``,
+  ];
+
+  if (csp.formatterConfigs.length > 0) {
+    lines.push("## Detected Formatter / Linter Configs", ``);
+    for (const cfg of csp.formatterConfigs) {
+      lines.push(`- \`${cfg}\``);
+    }
+    lines.push(``);
+  }
+
+  if (csp.oversizedFiles.length > 0) {
+    lines.push("## Oversized Files (technical debt)", ``);
+    for (const file of csp.oversizedFiles.slice(0, 10)) {
+      lines.push(`- \`${file.path}\` - ${file.lines} lines`);
+    }
+    lines.push(``);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Build a `references/language-patterns.md` file from the active rule pack selection
+ * and language profile.
+ */
+export function buildLanguagePatternsReference(
+  rulePackSelection: {
+    packs: Array<{
+      id: string;
+      label: string;
+      rules: Array<{ kind: string; text: string }>;
+      fileGlobs: string[];
+    }>;
+    allRules: Array<{ kind: string; text: string }>;
+  },
+  langProfile: LanguageProfile,
+): string {
+  const lines: string[] = [
+    "## Language Patterns",
+    ``,
+    "Auto-detected language patterns and framework rules for this codebase. Agents should respect these when writing or reviewing code.",
+    ``,
+    "## Language Distribution",
+    ``,
+  ];
+
+  // Language distribution table
+  const sortedLangs = Object.entries(langProfile.distribution).sort((a, b) => b[1] - a[1]);
+
+  lines.push("| Language | File Count | Share |");
+  lines.push("|---|---|---|");
+  const totalFiles = Object.values(langProfile.distribution).reduce((s, c) => s + c, 0);
+  for (const [lang, count] of sortedLangs) {
+    const share = totalFiles > 0 ? ((count / totalFiles) * 100).toFixed(1) : "0";
+    lines.push(`| ${lang} | ${count} | ${share}% |`);
+  }
+  lines.push(``);
+
+  if (langProfile.nonIndexableHotspots.length > 0) {
+    lines.push("## Non-Indexable Hotspots", ``);
+    lines.push(
+      "These areas contain files the indexer cannot fully parse (Svelte, Vue, Python, etc.):",
+    );
+    lines.push(``);
+    for (const hotspot of langProfile.nonIndexableHotspots) {
+      lines.push(`- \`${hotspot}/`);
+    }
+    lines.push(``);
+  }
+
+  // Per-pack rules
+  if (rulePackSelection.packs.length > 0) {
+    lines.push("## Framework & Language Rules", ``);
+    for (const pack of rulePackSelection.packs) {
+      lines.push(`### ${pack.label}`, ``);
+      if (pack.fileGlobs.length > 0) {
+        lines.push(`Applies to: ${pack.fileGlobs.map((g) => `\`${g}\``).join(", ")}`);
+        lines.push(``);
+      }
+      for (const rule of pack.rules) {
+        const prefix =
+          rule.kind === "must" ? "**MUST**" : rule.kind === "should" ? "**SHOULD**" : "**AVOID**";
+        lines.push(`- ${prefix}: ${rule.text}`);
+      }
+      lines.push(``);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Build a `references/clean-code-checklist.md` file from the policies and profile.
+ */
+export function buildCleanCodeChecklist(
+  csp: CodeStyleProfile | null | undefined,
+  policies?: CreateSkillsPolicies | null,
+): string {
+  const pol = policies ?? DEFAULT_CREATE_SKILLS_POLICIES;
+
+  const lines: string[] = [
+    "## Clean Code Checklist",
+    ``,
+    "Before submitting code for review, verify:",
+    ``,
+    "## File Size",
+    ``,
+    `- [ ] No file exceeds ${pol.maxFileLines} lines (hard limit)`,
+    `- [ ] Files over ${pol.warnFileLines} lines are split into smaller modules`,
+    ``,
+    "## Functions",
+    ``,
+    `- [ ] No function body exceeds ${pol.maxFunctionLines} lines`,
+    `- [ ] No function has more than ${pol.maxParams} parameters (use an options object for more)`,
+    ``,
+    "## Complexity",
+    ``,
+    `- [ ] Cyclomatic complexity is below ${pol.maxCyclomaticHint} per function`,
+    ``,
+  ];
+
+  if (pol.forbidDefaultExports) {
+    lines.push("## Exports", "", "- [ ] No default exports - use named exports only", "");
+  }
+
+  if (csp && csp.oversizedFiles.length > 0) {
+    lines.push(
+      "## Existing Technical Debt",
+      "",
+      "The following files already exceed the size limit. Do not add to them without refactoring:",
+      "",
+    );
+    for (const file of csp.oversizedFiles.slice(0, 5)) {
+      lines.push(`- [ ] \`${file.path}\` (${file.lines} lines)`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }

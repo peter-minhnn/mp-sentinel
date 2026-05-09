@@ -438,8 +438,8 @@ describe("Determinism property test", () => {
 
 describe("computeEnrichmentCacheKey", () => {
   it("same inputs produce same key", () => {
-    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-02", "xyz789");
-    const k2 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-02", "xyz789");
+    const k1 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-08", "xyz789");
+    const k2 = computeEnrichmentCacheKey("abc123", "gemini", "gem-2.5", "2026-05-08", "xyz789");
     expect(k1).toBe(k2);
   });
 
@@ -538,7 +538,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
       mode: "ai" as const,
       provider: "gemini",
       model: "gemini-2.5-flash",
-      promptVersion: "2026-05-02",
+      promptVersion: "2026-05-08",
       inputHash: "abcd1234efgh5678",
       outputHash: "deadbeefcafe1234",
     };
@@ -570,7 +570,7 @@ describe("readEnrichmentCache / writeEnrichmentCache", () => {
       mode: "ai" as const,
       provider: "openai",
       model: "gpt-4",
-      promptVersion: "2026-05-02",
+      promptVersion: "2026-05-08",
       inputHash: "input9999999999",
       outputHash: "output88888888",
     };
@@ -829,7 +829,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-05-02",
+      "2026-05-08",
       inputHash,
     );
 
@@ -844,7 +844,7 @@ describe("enrichIndex cache integration", () => {
       mode: "ai" as const,
       provider: "gemini",
       model: "gemini-2.5-flash",
-      promptVersion: "2026-05-02",
+      promptVersion: "2026-05-08",
       inputHash,
       outputHash: "cachedoutputhash",
     };
@@ -902,7 +902,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-05-02",
+      "2026-05-08",
       inputHash,
     );
     const cached = await readEnrichmentCache(tmpDir, cacheKey);
@@ -923,7 +923,7 @@ describe("enrichIndex cache integration", () => {
       sourceIndexHash,
       "gemini",
       "gemini-2.5-flash",
-      "2026-05-02",
+      "2026-05-08",
       inputHash,
     );
 

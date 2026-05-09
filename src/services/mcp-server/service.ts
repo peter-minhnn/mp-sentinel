@@ -5,11 +5,23 @@
  */
 
 import { resolve } from "node:path";
+import type { SourceIndex } from "../../types/index.js";
 import { readIndex } from "../source-index/storage.js";
-import { queryAgentContext } from "../source-index/query.js";
+import {
+  queryAgentContext,
+  querySymbols,
+  queryImports,
+  getParserTelemetry,
+} from "../source-index/query.js";
 import { buildReviewContext } from "../source-index/context-builder.js";
 import { loadProjectConfig } from "../../utils/config.js";
 import { generateMCPDiagnostics } from "../mcp/diagnostics.js";
+import {
+  getExplainAgents,
+  getSkillsDoctor,
+  getSkillsCheck,
+} from "../skills-generator/mcp-diagnostics.js";
+import { getReviewScope, getReviewDeterministic, getReviewFilterFiles } from "./review-preview.js";
 
 export interface IndexHealthResult {
   status: "ok" | "missing";
@@ -125,4 +137,404 @@ export async function getExplainContext(
     ...(metadata.suggestedCommands ? { suggestedCommands: metadata.suggestedCommands } : {}),
     mcp,
   };
+}
+
+// ── Private parser-summary helpers (pure, same logic as commands/indexing.ts) ──
+
+const getRecoveredFileCount = (index: SourceIndex): number =>
+  index.files.filter(
+    (f) =>
+      (f.parserMode === "chunked-tree-sitter" ||
+        f.parserMode === "ascii-fallback" ||
+        f.parserMode === "lexical-fallback") &&
+      (!f.parseErrors || f.parseErrors.length === 0),
+  ).length;
+
+const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
+  const breakdown: Record<string, number> = {
+    "tree-sitter": 0,
+    "chunked-tree-sitter": 0,
+    "ascii-fallback": 0,
+    "lexical-fallback": 0,
+  };
+  for (const file of index.files) {
+    const mode = file.parserMode ?? "tree-sitter";
+    breakdown[mode] = (breakdown[mode] ?? 0) + 1;
+  }
+  return breakdown;
+};
+
+const getChunkTelemetry = (index: SourceIndex): Record<string, number> | undefined => {
+  const chunked = index.files.filter(
+    (f) =>
+      f.parserMode === "chunked-tree-sitter" &&
+      f.chunkCount !== undefined &&
+      f.chunkSize !== undefined,
+  );
+  if (chunked.length === 0) return undefined;
+  let totalChunks = 0;
+  let totalChunkWarnings = 0;
+  let totalBoundaryWarnings = 0;
+  let totalActionableWarnings = 0;
+  let chunkSize = 0;
+  for (const f of chunked) {
+    totalChunks += f.chunkCount ?? 0;
+    totalChunkWarnings += f.chunkWarningCount ?? 0;
+    totalBoundaryWarnings += f.chunkBoundaryWarningCount ?? 0;
+    totalActionableWarnings += f.chunkActionableWarningCount ?? 0;
+    chunkSize = f.chunkSize ?? 0;
+  }
+  return {
+    chunkedFiles: chunked.length,
+    totalChunks,
+    totalChunkWarnings,
+    totalChunkBoundaryWarnings: totalBoundaryWarnings,
+    totalChunkActionableWarnings: totalActionableWarnings,
+    chunkSize,
+  };
+};
+
+// ── Index Query Handlers ──────────────────────────────────────────────
+
+export async function getFindSymbol(
+  projectRoot: string,
+  query: string,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const results = querySymbols(index, query);
+  return {
+    status: "ok",
+    query,
+    resultCount: results.length,
+    results,
+  };
+}
+
+export async function getFindImport(
+  projectRoot: string,
+  query: string,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const results = queryImports(index, query);
+  return {
+    status: "ok",
+    query,
+    resultCount: results.length,
+    results,
+  };
+}
+
+export async function getExplainFile(
+  projectRoot: string,
+  file: string,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { error: "No source index found" };
+
+  const sourceFile = index.files.find((f) => f.path === file);
+  if (!sourceFile) return { error: "File not found in index" };
+
+  // Classify imports matching CLI --explain-index behavior:
+  // normalize local specifiers relative to file directory, strip extensions,
+  // and compare against extension-stripped importsFrom values.
+  const resolvedImports: string[] = [];
+  const unresolvedImports: string[] = [];
+  const externalImports: string[] = [];
+  const stripExt = (p: string): string => p.replace(/\.(ts|tsx|js|jsx|mjs|mts|cjs|cts)$/, "");
+  const resolvedPaths = sourceFile.importsFrom ?? [];
+  const resolvedNormSet = new Set(resolvedPaths.map((p) => stripExt(p)));
+  const fileDir = sourceFile.path.includes("/")
+    ? sourceFile.path.slice(0, sourceFile.path.lastIndexOf("/"))
+    : "";
+
+  for (const imp of sourceFile.imports) {
+    const src = imp.source;
+    const isNodeBuiltin = src.startsWith("node:");
+    const isUrl = src.startsWith("http://") || src.startsWith("https://");
+    const isLocalLike = src.startsWith(".") || src.startsWith("/");
+
+    // Bare specifiers, node: builtins, and URLs are external packages
+    if (!isLocalLike || isNodeBuiltin || isUrl) {
+      externalImports.push(src);
+      continue;
+    }
+
+    // Normalize local import relative to file directory
+    const joined = fileDir ? `${fileDir}/${src}` : src;
+    const parts = joined.split("/");
+    const resolved: string[] = [];
+    for (const seg of parts) {
+      if (seg === "..") {
+        resolved.pop();
+      } else if (seg !== "." && seg !== "") {
+        resolved.push(seg);
+      }
+    }
+    const normalized = stripExt(resolved.join("/"));
+
+    if (resolvedNormSet.has(normalized)) {
+      resolvedImports.push(src);
+    } else {
+      unresolvedImports.push(src);
+    }
+  }
+
+  return {
+    path: sourceFile.path,
+    language: sourceFile.language,
+    symbols: sourceFile.symbols,
+    imports: sourceFile.imports,
+    exports: sourceFile.exports,
+    resolvedImports,
+    unresolvedImports,
+    externalImports,
+    importedBy: sourceFile.importedBy,
+    importedByCount: sourceFile.importedBy?.length ?? 0,
+    role: sourceFile.role,
+    ...getParserTelemetry(sourceFile),
+  };
+}
+
+export async function getIndexStats(projectRoot: string): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const chunkTelemetry = getChunkTelemetry(index);
+  const insights = index.insights
+    ? {
+        fileRoleCount: Object.keys(index.insights.fileRoles ?? {}).length,
+        publicApiFileCount: index.insights.publicApiFiles?.length ?? 0,
+        testMapEntries: Object.keys(index.insights.testMap ?? {}).length,
+        commandMapEntries: Object.keys(index.insights.commandMap ?? {}).length,
+        defaultExportFiles: index.insights.defaultExportFiles?.length ?? 0,
+        reExportFiles: index.insights.reExportFiles?.length ?? 0,
+        typeOnlyImportFiles: index.insights.typeOnlyImportFiles?.length ?? 0,
+        dynamicImportFiles: index.insights.dynamicImportFiles?.length ?? 0,
+      }
+    : undefined;
+
+  return {
+    schemaVersion: index.schemaVersion,
+    totalFiles: index.stats.totalFiles,
+    indexedFiles: index.stats.indexedFiles,
+    skippedFiles: index.stats.skippedFiles,
+    parseErrors: index.stats.parseErrors,
+    recoveredFiles: getRecoveredFileCount(index),
+    parserModeBreakdown: getParserModeBreakdown(index),
+    ...(chunkTelemetry ? { ...chunkTelemetry } : {}),
+    ...(index.stats.importEdges !== undefined ? { importEdges: index.stats.importEdges } : {}),
+    ...(index.stats.durationMs !== undefined ? { durationMs: index.stats.durationMs } : {}),
+    insights,
+  };
+}
+
+export async function getRecoveredFiles(
+  projectRoot: string,
+  limit?: number,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const recovered = index.files.filter(
+    (f) =>
+      (f.parserMode === "chunked-tree-sitter" ||
+        f.parserMode === "ascii-fallback" ||
+        f.parserMode === "lexical-fallback") &&
+      (!f.parseErrors || f.parseErrors.length === 0),
+  );
+  const cap = Math.min(limit ?? 50, 100);
+  const truncated = recovered.length > cap;
+  const files = recovered
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .slice(0, cap)
+    .map((f) => ({
+      path: f.path,
+      parserMode: f.parserMode ?? "tree-sitter",
+      symbolCount: f.symbols.length,
+      importCount: f.imports.length,
+      exportCount: f.exports.length,
+      role: f.role,
+      ...getParserTelemetry(f),
+    }));
+
+  return {
+    status: "ok",
+    totalFiles: index.files.length,
+    recoveredFiles: recovered.length,
+    parserModeBreakdown: getParserModeBreakdown(index),
+    files,
+    truncated,
+  };
+}
+
+export async function getParseErrors(
+  projectRoot: string,
+  limit?: number,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const withErrors = index.files.filter((f) => (f.parseErrors?.length ?? 0) > 0);
+  const cap = Math.min(limit ?? 50, 100);
+  const truncated = withErrors.length > cap;
+  const files = withErrors
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .slice(0, cap)
+    .map((f) => ({
+      path: f.path,
+      parserMode: f.parserMode ?? "tree-sitter",
+      parseErrors: f.parseErrors,
+      symbolCount: f.symbols.length,
+      importCount: f.imports.length,
+      exportCount: f.exports.length,
+      role: f.role,
+      ...getParserTelemetry(f),
+    }));
+
+  return {
+    status: "ok",
+    totalFiles: index.files.length,
+    parseErrorCount: withErrors.length,
+    files,
+    truncated,
+  };
+}
+
+// ── Agent/Skill Diagnostics Handlers ─────────────────────────────────
+
+export async function getAgentsExplain(projectRoot: string): Promise<Record<string, unknown>> {
+  try {
+    return (await getExplainAgents(projectRoot)) as unknown as Record<string, unknown>;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function getSkillsDoctorHandler(
+  projectRoot: string,
+  options?: { agents?: string[]; allAgents?: boolean },
+): Promise<Record<string, unknown>> {
+  try {
+    return await getSkillsDoctor(projectRoot, {
+      ...(options?.agents
+        ? { agents: options.agents as import("../../types/index.js").AgentAdapterId[] }
+        : {}),
+      ...(options?.allAgents !== undefined ? { allAgents: options.allAgents } : {}),
+    });
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function getSkillsCheckHandler(
+  projectRoot: string,
+  options?: { agents?: string[]; allAgents?: boolean },
+): Promise<Record<string, unknown>> {
+  try {
+    const result = await getSkillsCheck(projectRoot, {
+      ...(options?.agents
+        ? { agents: options.agents as import("../../types/index.js").AgentAdapterId[] }
+        : {}),
+      ...(options?.allAgents !== undefined ? { allAgents: options.allAgents } : {}),
+    });
+    if (result.error) return result;
+    return result;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ── Review Preview Handlers ─────────────────────────────────────────
+
+export async function getReviewScopeHandler(
+  projectRoot: string,
+  target?: Record<string, unknown>,
+  guardrails?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const targetInput = target
+      ? ({
+          mode: target.mode as "staged" | "range" | "commit" | "files",
+          ...(target.value !== undefined ? { value: target.value as string } : {}),
+          ...(target.files !== undefined ? { files: target.files as string[] } : {}),
+        } as import("./review-preview.js").ReviewTargetInput)
+      : undefined;
+    const guardrailInput = guardrails
+      ? {
+          ...(guardrails.maxFiles !== undefined ? { maxFiles: guardrails.maxFiles as number } : {}),
+          ...(guardrails.maxDiffLines !== undefined
+            ? { maxDiffLines: guardrails.maxDiffLines as number }
+            : {}),
+          ...(guardrails.maxCharsPerFile !== undefined
+            ? { maxCharsPerFile: guardrails.maxCharsPerFile as number }
+            : {}),
+          ...(guardrails.contextLines !== undefined
+            ? { contextLines: guardrails.contextLines as number }
+            : {}),
+          ...(guardrails.tokenLimit !== undefined
+            ? { tokenLimit: guardrails.tokenLimit as number }
+            : {}),
+        }
+      : undefined;
+    return await getReviewScope(projectRoot, targetInput, guardrailInput);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function getReviewDeterministicHandler(
+  projectRoot: string,
+  target?: Record<string, unknown>,
+  guardrails?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const targetInput = target
+      ? ({
+          mode: target.mode as "staged" | "range" | "commit" | "files",
+          ...(target.value !== undefined ? { value: target.value as string } : {}),
+          ...(target.files !== undefined ? { files: target.files as string[] } : {}),
+        } as import("./review-preview.js").ReviewTargetInput)
+      : undefined;
+    const guardrailInput = guardrails
+      ? {
+          ...(guardrails.maxFiles !== undefined ? { maxFiles: guardrails.maxFiles as number } : {}),
+          ...(guardrails.maxDiffLines !== undefined
+            ? { maxDiffLines: guardrails.maxDiffLines as number }
+            : {}),
+          ...(guardrails.maxCharsPerFile !== undefined
+            ? { maxCharsPerFile: guardrails.maxCharsPerFile as number }
+            : {}),
+          ...(guardrails.contextLines !== undefined
+            ? { contextLines: guardrails.contextLines as number }
+            : {}),
+          ...(guardrails.tokenLimit !== undefined
+            ? { tokenLimit: guardrails.tokenLimit as number }
+            : {}),
+        }
+      : undefined;
+    return await getReviewDeterministic(projectRoot, targetInput, guardrailInput);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function getReviewFilterFilesHandler(
+  projectRoot: string,
+  files: string[],
+): Promise<Record<string, unknown>> {
+  try {
+    return await getReviewFilterFiles(projectRoot, files);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }

@@ -1137,3 +1137,55 @@ export function isLanguageSupported(path: string): IndexableLanguage | null {
 
 export { sanitizeContent, lexicalParse };
 export type { ImportInfo, ExportInfo, SymbolInfo, SourceIndexFile };
+
+// ── Non-indexable file parsing (Svelte/Vue) ─────────────────────────────────
+
+import { extractFromSvelte } from "./extractors/svelte.js";
+import { extractFromVue } from "./extractors/vue.js";
+
+/**
+ * Parse a non-tree-sitter-indexable file (e.g., .svelte, .vue) using
+ * lexical (regex-based) extractors. Returns a SourceIndexFile-compatible shape.
+ *
+ * Parser mode is set to `lexical-fallback` so `--health` reports show
+ * these files as recovered via fallback.
+ */
+export function parseNonIndexableFile(
+  filePath: string,
+  content: string,
+): {
+  path: string;
+  language: "typescript";
+  sha256: string;
+  sizeBytes: number;
+  mtimeMs: number;
+  imports: ImportInfo[];
+  exports: ExportInfo[];
+  symbols: SymbolInfo[];
+  parserMode: ParserMode;
+  parseWarnings: string[];
+} {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  let result: { imports: ImportInfo[]; exports: ExportInfo[]; symbols: SymbolInfo[] };
+
+  if (ext === "svelte") {
+    result = extractFromSvelte(content);
+  } else if (ext === "vue") {
+    result = extractFromVue(content);
+  } else {
+    result = { imports: [], exports: [], symbols: [] };
+  }
+
+  return {
+    path: filePath,
+    language: "typescript",
+    sha256: "",
+    sizeBytes: content.length,
+    mtimeMs: Date.now(),
+    imports: result.imports,
+    exports: result.exports,
+    symbols: result.symbols,
+    parserMode: "lexical-fallback" as ParserMode,
+    parseWarnings: ["Non-indexable file parsed via Svelte/Vue lexical extractor"],
+  };
+}

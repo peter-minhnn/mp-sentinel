@@ -31,6 +31,8 @@ export interface CollectReviewInputOptions {
   maxCharsPerFile: number;
   contextLines?: number;
   filePaths?: string[];
+  /** Working directory for git operations (default: process.cwd()) */
+  cwd?: string;
 }
 
 export interface CollectReviewInputResult {
@@ -414,10 +416,11 @@ export const getChangedFiles = async (options: GitDiffOptions = {}): Promise<str
 /**
  * Check if current directory is a git repository
  */
-export const isGitRepository = async (): Promise<boolean> => {
+export const isGitRepository = async (cwd?: string): Promise<boolean> => {
   try {
-    await execAsync("git rev-parse --is-inside-work-tree");
-    return true;
+    const opts: { cwd: string } | undefined = cwd ? { cwd } : undefined;
+    const { stdout } = await execAsync("git rev-parse --is-inside-work-tree", opts);
+    return String(stdout).trim() === "true";
   } catch {
     return false;
   }
@@ -472,8 +475,9 @@ const countPatchChanges = (
   };
 };
 
-const buildSyntheticDiff = async (filePath: string): Promise<string> => {
-  const content = await readFile(resolve(filePath), "utf-8");
+const buildSyntheticDiff = async (filePath: string, cwd?: string): Promise<string> => {
+  const resolvedPath = cwd ? resolve(cwd, filePath) : resolve(filePath);
+  const content = await readFile(resolvedPath, "utf-8");
   const lines = content.split("\n").slice(0, 400);
   const contentPatch = lines.map((line) => `+${line}`).join("\n");
   return [
@@ -485,7 +489,7 @@ const buildSyntheticDiff = async (filePath: string): Promise<string> => {
   ].join("\n");
 };
 
-export const listFilesForTarget = async (target: ReviewTarget): Promise<string[]> => {
+export const listFilesForTarget = async (target: ReviewTarget, cwd?: string): Promise<string[]> => {
   if (target.mode === "files") {
     return target.files ?? [];
   }
@@ -506,8 +510,9 @@ export const listFilesForTarget = async (target: ReviewTarget): Promise<string[]
         return [];
     }
 
-    const { stdout } = await execAsync(command);
-    return stdout
+    const opts: { cwd: string } | undefined = cwd ? { cwd } : undefined;
+    const { stdout } = await execAsync(command, opts);
+    return String(stdout)
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
@@ -520,37 +525,44 @@ const getPatchForFile = async (
   target: ReviewTarget,
   filePath: string,
   contextLines: number,
+  cwd?: string,
 ): Promise<string> => {
   const escapedPath = shellEscape(filePath);
+  const execOpts: { cwd: string } | undefined = cwd ? { cwd } : undefined;
 
   try {
     switch (target.mode) {
       case "staged": {
-        const { stdout } = await execAsync(
+        const { stdout: raw } = await execAsync(
           `git diff --cached --no-color --unified=${contextLines} -- ${escapedPath}`,
+          execOpts,
         );
-        return stdout;
+        return String(raw);
       }
       case "commit": {
-        const { stdout } = await execAsync(
+        const { stdout: raw } = await execAsync(
           `git show --no-color --unified=${contextLines} --pretty=format: ${shellEscape(target.value ?? "")} -- ${escapedPath}`,
+          execOpts,
         );
-        return stdout;
+        return String(raw);
       }
       case "range": {
-        const { stdout } = await execAsync(
+        const { stdout: raw } = await execAsync(
           `git diff --no-color --unified=${contextLines} ${shellEscape(target.value ?? "")} -- ${escapedPath}`,
+          execOpts,
         );
-        return stdout;
+        return String(raw);
       }
       case "files": {
-        const { stdout } = await execAsync(
+        const { stdout: raw } = await execAsync(
           `git diff --no-color --unified=${contextLines} HEAD -- ${escapedPath}`,
+          execOpts,
         );
+        const stdout = String(raw);
         if (stdout.trim().length > 0) {
           return stdout;
         }
-        return buildSyntheticDiff(filePath);
+        return buildSyntheticDiff(filePath, cwd);
       }
       default:
         return "";
@@ -558,7 +570,7 @@ const getPatchForFile = async (
   } catch {
     if (target.mode === "files") {
       try {
-        return await buildSyntheticDiff(filePath);
+        return await buildSyntheticDiff(filePath, cwd);
       } catch {
         return "";
       }
@@ -570,11 +582,19 @@ const getPatchForFile = async (
 export const collectReviewInput = async (
   options: CollectReviewInputOptions,
 ): Promise<CollectReviewInputResult> => {
-  const { target, maxFiles, maxDiffLines, maxCharsPerFile, contextLines = 2, filePaths } = options;
+  const {
+    target,
+    maxFiles,
+    maxDiffLines,
+    maxCharsPerFile,
+    contextLines = 2,
+    filePaths,
+    cwd,
+  } = options;
 
   const skipped: ReviewSkippedItem[] = [];
   const accepted: ReviewInputFile[] = [];
-  const fileCandidates = filePaths ?? (await listFilesForTarget(target));
+  const fileCandidates = filePaths ?? (await listFilesForTarget(target, cwd));
   const uniqueFiles = Array.from(new Set(fileCandidates)).sort((a, b) => a.localeCompare(b));
 
   let totalChangedLines = 0;
@@ -589,7 +609,7 @@ export const collectReviewInput = async (
   }
 
   for (const filePath of uniqueFiles.slice(0, maxFiles)) {
-    const patch = await getPatchForFile(target, filePath, contextLines);
+    const patch = await getPatchForFile(target, filePath, contextLines, cwd);
     if (!patch.trim()) {
       skipped.push({ path: filePath, reason: "No textual diff content" });
       continue;

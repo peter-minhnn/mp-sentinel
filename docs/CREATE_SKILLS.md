@@ -179,6 +179,27 @@ npx mp-sentinel create-skills --agent claude --no-ai-enrich
 
 `--check` compares enrichment metadata too, so skills become stale if AI enrichment is enabled/disabled or if provider, model, prompt version, input hash, or output hash changes.
 
+### AI Enrichment v2 (generator v2.0.0+)
+
+When AI enrichment is enabled, the prompt is enriched with:
+
+- **`codeSamples`:** Up to 5 source files are selected deterministically (largest non-test file, hub file, test file, component file if present), read from disk, run through the SecurityService secret scrubber, and included in the AI prompt. The `__scrubbed: true` brand on each sample ensures a runtime assertion blocks un-scrubbed content.
+- **Language mix:** The LanguageProfile (dominant language, secondary languages, distribution) is passed to the AI provider.
+- **Code style profile:** Indent style, quote preference, semicolons, formatter configs, file-size distribution.
+- **Clean-code policies:** The configured policy limits (maxFileLines, maxFunctionLines, etc.).
+
+The AI is instructed to return per-language rules (`rulesByLanguage`) and file-cited anti-patterns (`antiPatterns`), not generic advice.
+
+#### --no-code-samples flag
+
+To skip code sample loading (v1-style prompt, less context, useful for data-residency-sensitive environments):
+
+```sh
+npx mp-sentinel create-skills --agent claude --no-code-samples
+```
+
+When `--no-code-samples` is set, the AI enrichment prompt still receives dependency versions, language mix, and code style profile, but no actual file content.
+
 ---
 
 ## Output Content
@@ -187,7 +208,7 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 
 | Section | Description |
 |---------|-------------|
-| **Overview** | Project name, version, frameworks, package manager, file count |
+| **Overview** | Project name, version, frameworks, package manager, file count, **language distribution** |
 | **Architecture** | Top-level directories with file counts; graph stats (schema 1.2) |
 | **Hub Files** | Files imported by the most other files (schema 1.2) |
 | **Module Map** | Per-directory breakdown with key exported symbols |
@@ -196,13 +217,16 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 | **Dependencies** | Top 20 external dependencies with versions from `package.json` + optional AI-enriched rules |
 | **Public API** | Entry points + risk surface (default exports, re-exports, dynamic imports, type-only imports, hub files) |
 | **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
+| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, TypeScript, Python, Go, Rust) |
+| **Clean Code Policy** | Configurable limits (maxFileLines, maxFunctionLines, maxParams, maxCyclomaticHint, forbidDefaultExports) |
+| **File Size Policy** | Hard limit with current codebase percentiles and observed offender reporting |
 | **AI Enrichment** | Optional version-aware dependency rules from the configured AI provider |
 
 ### Claude output structure
 
 ```
 .claude/skills/<project>-best-practices/
-  SKILL.md                    ← frontmatter + overview + 7 references
+  SKILL.md                    ← frontmatter + overview + new sections + 10 references
   references/
     architecture.md           ← Architecture + Hub Files sections
     modules.md                ← Module Map section
@@ -211,12 +235,9 @@ Every adapter generates content derived from the source index and `SkillKnowledg
     testing-map.md            ← Test Associations + Test Gaps + Most Tested Modules
     dependencies.md           ← Top Dependencies (always present; AI enrichment appended when active)
     public-api.md             ← Entry Points + Risk Surface tables
-```
-
-### Cline output structure
-
-```
-.clinerules/<project>-best-practices.md   ← single markdown file
+    code-style.md             ← Detected code style (indent, quotes, semicolons, formatter configs) — NEW
+    language-patterns.md      ← Language distribution + per-language framework rules — NEW
+    clean-code-checklist.md   ← Code quality checklist with limits + observed offenders — NEW
 ```
 
 ### Codex / Antigravity output structure
@@ -224,16 +245,69 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 ```
 .agents/skills/<project>-codex-best-practices/
   SKILL.md                    ← YAML frontmatter (name, description) + all sections inline
+  references/
+    code-style.md             ← Detected code style
+    language-patterns.md      ← Language distribution + framework rules
+    clean-code-checklist.md   ← Code quality checklist
 
 .agents/skills/<project>-antigravity-best-practices/
   SKILL.md                    ← YAML frontmatter (name, description) + all sections inline
+  references/
+    code-style.md             ← Detected code style
+    language-patterns.md      ← Language distribution + framework rules
+    clean-code-checklist.md   ← Code quality checklist
 ```
 
-### Other adapters (Cursor, Windsurf, Cline, Generic)
+### Single-file rule adapters (Cursor, Windsurf, Cline, Generic)
 
-Single markdown (`.md` / `.mdc`) file containing all sections.
+Single markdown (`.md` / `.mdc`) file containing all sections inline, including the new `## Language & Framework Rules`, `## Clean Code Policy`, and `## File Size Policy` sections.
 
 ---
+
+## Configuration — createSkills.policies
+
+Configure clean-code limits in `.mp-sentinelrc.json`:
+
+```json
+{
+  "createSkills": {
+    "policies": {
+      "maxFileLines": 500,
+      "warnFileLines": 350,
+      "maxFunctionLines": 80,
+      "maxParams": 5,
+      "maxCyclomaticHint": 12,
+      "forbidDefaultExports": false
+    }
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `maxFileLines` | `500` | Hard limit: no file should exceed this line count |
+| `warnFileLines` | `350` | Soft warning threshold for file length |
+| `maxFunctionLines` | `80` | Maximum lines per function/method body |
+| `maxParams` | `5` | Maximum function parameters (use an options object for more) |
+| `maxCyclomaticHint` | `12` | Cyclomatic complexity hint threshold |
+| `forbidDefaultExports` | `false` | When true, the generated skill instructs agents to use named exports only |
+
+These policies are rendered into `## Clean Code Policy` and `## File Size Policy` sections in the SKILL.md, including any current offenders (files exceeding `maxFileLines`) observed from the CodeStyleProfile.
+
+## Rule Packs (Deterministic, No AI Required)
+
+Eight built-in rule packs activate based on the detected language profile and dependencies. Each pack produces `must`/`should`/`avoid` rules in the `## Language & Framework Rules` SKILL.md section.
+
+| Pack | Activation trigger | Key rules |
+|------|-------------------|-----------|
+| **Svelte** | `.svelte` files or `svelte` dependency | Imports inside `<script>`, Svelte 5 runes, `lang="ts"`, SvelteKit server/client boundaries |
+| **Vue** | `.vue` files or `vue` dependency | `<script setup>`, `defineProps`/`defineEmits`, scoped styles |
+| **React** | `react` dependency | Rules of Hooks, no fetch in render, `key` prop, function components |
+| **Next.js** | `next` dependency | `'use client'`/`'use server'`, Server Components, `next/image`, route segments |
+| **TypeScript (Strict)** | `.ts` or `.tsx` files | `import type`, `.js` extension, `node:` prefix, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` |
+| **Python** | `.py` files | Type hints, PEP 8, no top-level side effects, `pathlib`, `async`/`await` |
+| **Go** | `.go` files | `gofmt`, error handling, no panics in libraries, `context.Context` |
+| **Rust** | `.rs` files | `clippy`, `?` operator over `unwrap()`, `cargo fmt`, derive traits |
 
 ## Overwrite Protection
 
@@ -280,6 +354,25 @@ JSON shape:
 ```
 
 ---
+
+## Generator Version & --check Staleness
+
+Each generated SKILL.md carries a `generatorVersion` field in its metadata header (distinct from the mp-sentinel package version). The current generator version is **`2.0.0`** — bumped when the generated output schema changes meaningfully.
+
+When `--check` runs, it compares the stored `generatorVersion` against the code's `GENERATOR_VERSION` constant. If they differ, the file is reported as stale with the reason:
+
+```json
+{
+  "outputPath": ".claude/skills/my-project-best-practices/SKILL.md",
+  "status": "stale",
+  "reason": "generatorVersionUpgrade",
+  "from": "1.0.17",
+  "to": "2.0.0",
+  "note": "Run mp-sentinel create-skills to regenerate with the v2 layout."
+}
+```
+
+**To regenerate after a generator version bump:** run `mp-sentinel create-skills --all-agents --force` (or target specific agents with `--agent`).
 
 ## Check Mode (CI Staleness Gate)
 

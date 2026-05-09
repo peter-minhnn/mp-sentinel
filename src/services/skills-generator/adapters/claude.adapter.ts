@@ -50,6 +50,9 @@ export const claudeAdapter: AgentAdapter = {
       `- [Testing Map](./references/testing-map.md)`,
       `- [Dependencies](./references/dependencies.md)`,
       `- [Public API](./references/public-api.md)`,
+      `- [Code Style](./references/code-style.md)`,
+      `- [Language Patterns](./references/language-patterns.md)`,
+      `- [Clean Code Checklist](./references/clean-code-checklist.md)`,
     ];
 
     const skillMd = [
@@ -67,6 +70,12 @@ export const claudeAdapter: AgentAdapter = {
       content.sections.referenceRouting,
       ``,
       content.sections.overview,
+      ``,
+      content.sections.languageRules,
+      ``,
+      content.sections.cleanCodePolicy,
+      ``,
+      content.sections.fileSizePolicy,
       ``,
       `## References`,
       ``,
@@ -108,6 +117,22 @@ export const claudeAdapter: AgentAdapter = {
       {
         outputPath: join(skillDir, "references", "public-api.md"),
         content: content.sections.publicApi || "# Public API\n\nNo index available.",
+      },
+      {
+        outputPath: join(skillDir, "references", "code-style.md"),
+        content: content.references.codeStyle || "# Code Style\n\nNo style data available.",
+      },
+      {
+        outputPath: join(skillDir, "references", "language-patterns.md"),
+        content:
+          content.references.languagePatterns ||
+          "# Language Patterns\n\nNo language data available.",
+      },
+      {
+        outputPath: join(skillDir, "references", "clean-code-checklist.md"),
+        content:
+          content.references.cleanCodeChecklist ||
+          "# Clean Code Checklist\n\nNo policy data available.",
       },
     ];
 

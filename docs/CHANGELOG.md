@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+> **Generator v2.0.0 upgrade:** See the [migration guide](./plans/MIGRATION_2.0_GENERATOR.md) for upgrade instructions and `--check` behaviour changes.
+
+- `create-skills`: LanguageProfile detection (dominant/secondary languages, distribution, hotspots)
+- `create-skills`: CodeStyleProfile detection (indent, quotes, semicolons, formatter configs, file sizes)
+- `create-skills`: 8 rule packs for Svelte, Vue, React, Next.js, TypeScript, Python, Go, Rust
+- `create-skills`: `## Language & Framework Rules`, `## Clean Code Policy`, `## File Size Policy` SKILL.md sections
+- `create-skills`: Three new reference files: `code-style.md`, `language-patterns.md`, `clean-code-checklist.md`
+- `create-skills`: AI Enrichment v2 with secret-scrubbed code samples, per-language rules, and file-cited anti-patterns
+- `create-skills`: `--no-code-samples` CLI flag to disable code sample loading
+- `create-skills`: `createSkills.policies` config block (maxFileLines, maxFunctionLines, maxParams, forbidDefaultExports)
+- Svelte/Vue lexical extractors for import/symbol extraction without tree-sitter
+- Generator version bump to `2.0.0` (independent of package version)
+
+### Changed
+- All 7 adapters (claude, codex, antigravity, cline, cursor, windsurf, generic) include new SKILL.md sections
+- Codex and Antigravity adapters now write 3 new reference files
+- SKILL.md size limit increased from 4200 to 8000 chars
+- Quality gate: reference count check relaxed from "exactly 7" to "at least 7"
+- Quality gate: glob patterns (*) no longer trigger unknown-path warnings
+- `ENRICHMENT_PROMPT_VERSION` bumped to `2026-05-08`
+
+- **MCP server review preview tools** (`src/services/mcp-server/review-preview.ts`, `src/utils/git.ts`): Three new read-only MCP tools — `mp_sentinel_review_scope` (target resolution, file filtering, diff metadata without raw patches), `mp_sentinel_review_deterministic` (non-AI risk analysis, secret redaction, token estimation), `mp_sentinel_review_filter_files` (file path filtering with accept/reject reasons). Git helpers extended with `cwd` support for project-root-safe operations.
+- **MCP server agent/skill diagnostics** (`src/services/skills-generator/mcp-diagnostics.ts`, `src/services/mcp-server/service.ts`, `src/commands/mcp-server.ts`): Three new read-only MCP tools — `mp_sentinel_agents_explain` (agent detection), `mp_sentinel_skills_doctor` (health check), `mp_sentinel_skills_check` (freshness verification). Index read-only; no file generation or AI calls.
+- **MCP server index query tools** (`src/services/mcp-server/service.ts`, `src/commands/mcp-server.ts`): Six new read-only MCP tools extending the existing stdio MCP server — `mp_sentinel_index_find_symbol`, `mp_sentinel_index_find_import`, `mp_sentinel_index_explain_file`, `mp_sentinel_index_stats`, `mp_sentinel_index_recovered_files`, `mp_sentinel_index_parse_errors`. No new CLI flags or commands.
+
 ## [2.3.0] - 2026-05-07
 
 ### Added

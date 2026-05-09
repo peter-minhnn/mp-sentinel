@@ -49,6 +49,7 @@ export interface CLIValues {
   "create-skills-dry-run": boolean;
   "create-skills-check": boolean;
   "create-skills-no-ai-enrich": boolean;
+  "create-skills-no-code-samples"?: boolean;
   "explain-agents"?: boolean;
   doctor?: boolean;
   health?: boolean;
@@ -161,6 +162,11 @@ export const buildProgram = (): Command => {
       false,
     )
     .option("--no-ai-enrich", "Disable AI enrichment even if enabled in config", true)
+    .option(
+      "--no-code-samples",
+      "Skip code sample loading for AI enrichment (v1-style prompt, less context)",
+      false,
+    )
     .option(
       "--explain-agents",
       "Diagnostic mode: show which agents/IDEs are detected and why (no file writes)",
@@ -355,6 +361,7 @@ export const parseCliArgs = (): {
           : false,
       "create-skills-check": Boolean(createSkillsOptions["check"] ?? false),
       "create-skills-no-ai-enrich": createSkillsOptions["aiEnrich"] === false,
+      "create-skills-no-code-samples": createSkillsOptions["codeSamples"] === false,
       ...(command === "create-skills" &&
         createSkillsOptions["explainAgents"] === true && {
           "explain-agents": true,

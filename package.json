@@ -24,7 +24,9 @@
     "scripts/release-check.mjs",
     "scripts/dogfood.mjs",
     "scripts/agent-skills-check.mjs",
-    "scripts/agent-skills-refresh.mjs"
+    "scripts/agent-skills-refresh.mjs",
+    "scripts/compliance-harness.mjs",
+    "scripts/perf-budget.mjs"
   ],
   "scripts": {
     "build": "tsup",
@@ -40,6 +42,9 @@
     "prepublishOnly": "npm run build",
     "agent:skills:check": "node scripts/agent-skills-check.mjs",
     "agent:skills:refresh": "node scripts/agent-skills-refresh.mjs",
+    "compliance": "node scripts/compliance-harness.mjs",
+    "compliance:dry": "node scripts/compliance-harness.mjs",
+    "perf-budget": "node scripts/perf-budget.mjs",
     "release:check": "node scripts/release-check.mjs",
     "test": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js",
     "test:coverage": "node --experimental-vm-modules --require ./jest.setup.cjs node_modules/jest/bin/jest.js --coverage",

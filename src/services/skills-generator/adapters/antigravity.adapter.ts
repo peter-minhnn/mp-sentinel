@@ -57,6 +57,12 @@ export const antigravityAdapter: AgentAdapter = {
       ``,
       content.sections.overview,
       ``,
+      content.sections.languageRules,
+      ``,
+      content.sections.cleanCodePolicy,
+      ``,
+      content.sections.fileSizePolicy,
+      ``,
       content.sections.architecture,
       ``,
       content.sections.hubFiles,
@@ -73,10 +79,36 @@ export const antigravityAdapter: AgentAdapter = {
       ``,
       content.sections.profileRules,
       content.sections.aiEnrichment,
+      ``,
+      `## References`,
+      ``,
+      `- [Code Style](./references/code-style.md)`,
+      `- [Language Patterns](./references/language-patterns.md)`,
+      `- [Clean Code Checklist](./references/clean-code-checklist.md)`,
     ]
       .filter((s) => s !== undefined && s !== null && s !== "")
       .join("\n");
 
-    return [{ outputPath: join(skillDir, "SKILL.md"), content: skillMd }];
+    const files: GeneratedSkillFile[] = [
+      { outputPath: join(skillDir, "SKILL.md"), content: skillMd },
+      {
+        outputPath: join(skillDir, "references", "code-style.md"),
+        content: content.references.codeStyle || "# Code Style\n\nNo style data available.",
+      },
+      {
+        outputPath: join(skillDir, "references", "language-patterns.md"),
+        content:
+          content.references.languagePatterns ||
+          "# Language Patterns\n\nNo language data available.",
+      },
+      {
+        outputPath: join(skillDir, "references", "clean-code-checklist.md"),
+        content:
+          content.references.cleanCodeChecklist ||
+          "# Clean Code Checklist\n\nNo policy data available.",
+      },
+    ];
+
+    return files;
   },
 };

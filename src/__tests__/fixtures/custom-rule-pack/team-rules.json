@@ -1,0 +1,23 @@
+{
+  "rulePacks": [
+    {
+      "id": "team-rules",
+      "label": "Team Conventions",
+      "rules": [
+        {
+          "kind": "must",
+          "text": "Service files must end with `.service.ts` extension."
+        },
+        {
+          "kind": "avoid",
+          "text": "Do not import from `internal/` directory from outside `src/internal/`."
+        },
+        {
+          "kind": "should",
+          "text": "All React components must be default exports for consistency."
+        }
+      ],
+      "fileGlobs": ["**/*.ts", "**/*.tsx"]
+    }
+  ]
+}

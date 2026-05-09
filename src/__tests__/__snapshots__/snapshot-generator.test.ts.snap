@@ -1,0 +1,23 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`Snapshot — Claude adapter output content hash is stable (snapshot): section-content-hash 1`] = `"6cb7b7207f5c34eb"`;
+
+exports[`Snapshot — Claude adapter output section list is stable (snapshot): section-names 1`] = `
+[
+  "agentWorkflow",
+  "architecture",
+  "cleanCodePolicy",
+  "codebaseMap",
+  "commands",
+  "conventions",
+  "dependencies",
+  "fileSizePolicy",
+  "languageRules",
+  "modules",
+  "overview",
+  "profileRules",
+  "publicApi",
+  "referenceRouting",
+  "testingMap",
+]
+`;

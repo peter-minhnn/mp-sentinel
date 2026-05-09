@@ -8,7 +8,6 @@ import { dirname, join, resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
-import { getToolVersion } from "../utils/version.js";
 import type {
   AgentAdapter,
   AIEnrichmentOutput,
@@ -42,6 +41,7 @@ import {
   computeIndexHash,
   detectAdapters,
   detectAllLegacyAndUnexpected,
+  detectLanguageProfile,
   enrichIndex,
   explainAgentDetection,
   parseAgentFlag,
@@ -53,8 +53,7 @@ import {
 import { buildSourceIndex, getIndexingConfig, getParserModeBreakdown } from "./indexing.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { AIConfig } from "../services/ai/config.js";
-
-const GENERATOR_VERSION = getToolVersion();
+import { GENERATOR_VERSION, parseGeneratorMajor } from "../services/skills-generator/metadata.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,6 +66,7 @@ export interface CreateSkillsValues {
   "create-skills-dry-run"?: boolean;
   "create-skills-check"?: boolean;
   "create-skills-no-ai-enrich": boolean;
+  "create-skills-no-code-samples"?: boolean;
   "explain-agents"?: boolean;
   doctor?: boolean;
 }
@@ -364,9 +364,34 @@ async function checkAdapter(
       }
       const content = await readFile(file.outputPath, "utf-8");
       const meta = parseMetadataFromContent(content);
-      if (!meta || meta.sourceIndexHash !== currentHash) {
+
+      // Reference files (code-style.md, etc.) don't carry metadata headers.
+      // They are checked by existence only, not metadata hash.
+      if (!meta) {
+        const isRequired = adapter.spec.requiredFiles.some((rf) => file.outputPath.endsWith(rf));
+        if (!isRequired) {
+          return { outputPath: file.outputPath, status: "up-to-date" as CheckFileStatus };
+        }
+        // Required file missing metadata — treat as stale
         return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
       }
+
+      if (meta.sourceIndexHash !== currentHash) {
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+
+      // Check generator version upgrade
+      if (
+        meta.generatorVersion &&
+        parseGeneratorMajor(meta.generatorVersion) < parseGeneratorMajor(GENERATOR_VERSION)
+      ) {
+        log.info(
+          `Generator version upgrade detected: ${meta.generatorVersion} → ${GENERATOR_VERSION}. ` +
+            `Run "mp-sentinel create-skills" to regenerate.`,
+        );
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+
       if (meta.agent !== adapter.id) {
         return { outputPath: file.outputPath, status: "wrong-agent" as CheckFileStatus };
       }
@@ -1246,6 +1271,38 @@ export async function runCreateSkillsCommand(
         const aiEnrichConfig = resolveAIEnrichmentConfig(aiConfig ?? {});
         aiEnrichConfig.projectRoot = projectRoot;
         aiEnrichConfig.projectRules = config.rules ?? [];
+
+        // v2: Build LanguageProfile for AI enrichment context
+        const langProfile = detectLanguageProfile(index);
+        aiEnrichConfig.languageMix = langProfile;
+        const policiesConfig = config.createSkills?.policies;
+        if (policiesConfig) aiEnrichConfig.policies = policiesConfig;
+
+        // Load and scrub code samples (unless --no-code-samples)
+        if (!values["create-skills-no-code-samples"]) {
+          try {
+            const { detectCodeStyleProfile } =
+              await import("../services/skills-generator/code-style-profile.js");
+            const styleProfile = await detectCodeStyleProfile(projectRoot, index);
+            aiEnrichConfig.codeStyleProfile = styleProfile;
+
+            const { loadAndScrubCodeSamples } =
+              await import("../services/skills-generator/code-samples.js");
+
+            const samples = await loadAndScrubCodeSamples(projectRoot, index, langProfile, {
+              projectRoot,
+              maxSamples: 5,
+            });
+            if (samples.length > 0) {
+              aiEnrichConfig.codeSamples = samples;
+            }
+          } catch (err) {
+            log.warning(
+              `Could not load code samples for AI enrichment: ${err instanceof Error ? err.message : String(err)}. Proceeding without code context.`,
+            );
+          }
+        }
+
         try {
           const result = await enrichIndex(index, aiEnrichConfig);
           if (result) {

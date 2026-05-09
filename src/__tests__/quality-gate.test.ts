@@ -105,8 +105,8 @@ describe("validateSkillQuality", () => {
   // -- Max file size ----------------------------------------------------------
 
   describe("max file size", () => {
-    it("flags SKILL.md over 4200 chars as error for claude", () => {
-      const longContent = "# Header\n\n" + "x".repeat(4201);
+    it("flags SKILL.md over 27000 chars as error for claude", () => {
+      const longContent = "# Header\n\n" + "x".repeat(27001);
       const files = [makeFile(".claude/skills/test/SKILL.md", longContent)];
       const report = validateSkillQuality(files, "claude", null);
       const sizeErrors = report.checks.filter(
@@ -126,8 +126,8 @@ describe("validateSkillQuality", () => {
       expect(sizeErrors.length).toBe(1);
     });
 
-    it("flags single-file adapter output over 22500 chars", () => {
-      const longContent = "# Big\n\n" + "x".repeat(22501);
+    it("flags single-file adapter output over 27000 chars", () => {
+      const longContent = "# Big\n\n" + "x".repeat(27001);
       const files = [makeFile(".cursor/rules/test.mdc", longContent)];
       const report = validateSkillQuality(files, "cursor", null);
       const sizeErrors = report.checks.filter(

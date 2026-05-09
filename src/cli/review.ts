@@ -3,6 +3,7 @@
  */
 
 import type {
+  AuditIssue,
   EvidenceSummary,
   ExplainContextOutput,
   FileAuditResult,
@@ -35,7 +36,8 @@ import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
 import { gatherMCPContextDetails } from "../services/mcp/index.js";
 import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
-import { runDeterministicReview } from "./deterministic-review.js";
+import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
+import { mergeFindings } from "../services/risk-analyzer/index.js";
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -467,10 +469,59 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     }
   }
 
-  const finalResults = runDeterministicReview(
+  const deterministicResults = runDeterministicReview(
     sanitizedFiles,
     redactionReport,
     aiEnabled && auditResults.length > 0 ? auditResults : undefined,
+  );
+
+  // Run rule-pack evaluators (deterministic, language-specific checks)
+  const rulePackResults = runRulePackEvaluators(sanitizedFiles, config.ai?.rulePackSeverity);
+
+  // Extract AuditIssue[] from rule-pack FileAuditResult[] for mergeFindings
+  const rulePackFileAnalyses: Array<{
+    path: string;
+    issues: AuditIssue[];
+    localSeverityCounts: { critical: number; warning: number; info: number };
+  }> = [];
+  for (const r of rulePackResults) {
+    const issues = r.result.issues ?? [];
+    if (issues.length > 0) {
+      let critical = 0;
+      let warning = 0;
+      let info = 0;
+      for (const i of issues) {
+        if (i.severity === "CRITICAL") critical++;
+        else if (i.severity === "WARNING") warning++;
+        else info++;
+      }
+      rulePackFileAnalyses.push({
+        path: r.filePath,
+        issues,
+        localSeverityCounts: { critical, warning, info },
+      });
+    }
+  }
+  const rulePackCritical = rulePackFileAnalyses.reduce(
+    (s, f) => s + f.localSeverityCounts.critical,
+    0,
+  );
+  const rulePackWarning = rulePackFileAnalyses.reduce(
+    (s, f) => s + f.localSeverityCounts.warning,
+    0,
+  );
+
+  // Merge rule-pack findings into final results
+  const finalResults = mergeFindings(
+    {
+      totalCritical: rulePackCritical,
+      totalWarning: rulePackWarning,
+      totalInfo: 0,
+      hasCriticalFindings: rulePackCritical > 0,
+      files: rulePackFileAnalyses,
+    },
+    deterministicResults,
+    new Set(),
   );
 
   const report = buildReport(

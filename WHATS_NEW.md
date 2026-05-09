@@ -1,5 +1,51 @@
 # What's New in v2.3.0
 
+## Upcoming (v2.4.0)
+
+### Stronger Skills — Language-Aware `create-skills` (v2.0.0 generator)
+
+> **Upgrading from a previous version?** The generator output schema changed. Run `npx mp-sentinel create-skills` once after upgrade to regenerate; `--check` now flags `generatorVersionUpgrade` so CI fails with an actionable message instead of a generic `stale`. See the [Generator 2.0 migration guide](./docs/plans/MIGRATION_2.0_GENERATOR.md).
+
+The `create-skills` command now produces opinionated, language-aware best-practices skills:
+
+- **`LanguageProfile`** — detects dominant/secondary languages, codebase language distribution, and non-indexable hotspots (Svelte, Vue, Python, Go, Rust, etc.)
+- **`CodeStyleProfile`** — samples real files to detect indent style, quote preference, semicolon usage, file-size percentiles, and formatter/linter configs
+- **8 deterministic rule packs** — Svelte, Vue, React, Next.js, TypeScript (strict), Python, Go, Rust — each activates based on actual codebase content
+- **`## Language & Framework Rules`** SKILL.md section — auto-generated, no AI required
+- **`## Clean Code Policy`** and **`## File Size Policy`** — configurable limits (maxFileLines, maxFunctionLines, maxParams, forbidDefaultExports) with observed-offender reporting
+- **Three new reference files**: `references/code-style.md`, `references/language-patterns.md`, `references/clean-code-checklist.md`
+- **AI Enrichment v2** — when enabled, sends secret-scrubbed code samples to the AI provider, requesting per-language rules and file-cited anti-patterns
+- **`--no-code-samples` CLI flag** — disables code sample loading for AI enrichment
+- **`createSkills.policies` config** — configure clean-code limits in `.mp-sentinelrc.json`
+- **Svelte/Vue lexical extractors** — extract imports and symbols from `.svelte`/`.vue` files using regex, no tree-sitter required
+- **Generator version** bumped to `2.0.0` — existing generated skills flagged stale on first `--check`
+
+### MCP Review Preview Tools
+
+Three new read-only MCP tools for previewing what mp-sentinel would review:
+- **`mp_sentinel_review_scope`**: Resolve review target, filter files, return diff metadata (no raw patches). Supports `staged`, `range`, `commit`, and `files` modes.
+- **`mp_sentinel_review_deterministic`**: Non-AI review with risk analysis, secret redaction, and token estimation. Returns `aiEnabled: false`.
+- **`mp_sentinel_review_filter_files`**: Run explicit paths through file filtering; returns accept/reject with reasons.
+
+### MCP Agent/Skill Diagnostics
+
+Three new read-only MCP tools for agent and generated-skill health:
+- **`mp_sentinel_agents_explain`**: Agent/IDE adapter detection with signals and default selection.
+- **`mp_sentinel_skills_doctor`**: Comprehensive skill health check — index status, adapter files, package scripts. Missing index is diagnostic data.
+- **`mp_sentinel_skills_check`**: Skill freshness verification — checks file existence and metadata hash. Missing index returns an error.
+
+### MCP Index Query Tools
+
+Six new read-only MCP tools extending the `mp-sentinel mcp-server`:
+- **`mp_sentinel_index_find_symbol`**: Symbol search with match scores.
+- **`mp_sentinel_index_find_import`**: Import search with match scores.
+- **`mp_sentinel_index_explain_file`**: File dependency info with import classification and parser telemetry.
+- **`mp_sentinel_index_stats`**: Index statistics, parser breakdown, chunk telemetry, insights.
+- **`mp_sentinel_index_recovered_files`**: Files parsed via fallback parser (limit: 50 default, 100 max).
+- **`mp_sentinel_index_parse_errors`**: Files with hard parse errors (limit: 50 default, 100 max).
+
+# What's New in v2.3.0
+
 ## MCP Server Command
 
 A read-only stdio MCP server (`mp-sentinel mcp-server`) that exposes project context over MCP JSON-RPC. No AI calls, no mutations, no network — safe for editors and MCP clients.

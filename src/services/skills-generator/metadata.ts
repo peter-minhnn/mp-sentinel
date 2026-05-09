@@ -5,6 +5,32 @@ import type { AgentAdapterId, EnrichmentMetadata, SourceIndex } from "../../type
 
 export const METADATA_MARKER = "@mp-sentinel-generated";
 
+/**
+ * Generator version — bumped manually when the generated skill output schema
+ * changes meaningfully. This is separate from the package version so that
+ * skill-content changes can be tracked independently.
+ *
+ * Increment when: new SKILL.md sections are added, reference file set changes,
+ * or the metadata header schema changes.
+ *
+ * v2.0.0 — Stronger Skills upgrade: added LanguageProfile, CodeStyleProfile,
+ *         RulePack catalog, Clean Code Policy, File Size Policy, three new
+ *         reference files (code-style.md, language-patterns.md,
+ *         clean-code-checklist.md).
+ */
+export const GENERATOR_VERSION = "2.0.0";
+
+/**
+ * Parse the major version from a generator version string.
+ * Returns 0 for unparseable strings (treat as pre-2.0.0).
+ * Examples: "1.0.17" → 1, "2.0.0" → 2, "invalid" → 0
+ */
+export function parseGeneratorMajor(versionStr: string): number {
+  const match = versionStr.match(/^(\d+)/);
+  if (!match || !match[1]) return 0;
+  return parseInt(match[1], 10);
+}
+
 // ── Fidelity signal detection ────────────────────────────────────────────────
 
 const FIDELITY_INSTRUCTION_FILES = [

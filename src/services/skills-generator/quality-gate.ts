@@ -17,9 +17,9 @@ import type {
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
-const SKILL_MD_MAX = 4200;
+const SKILL_MD_MAX = 27000;
 const REF_MD_MAX = 6000;
-const SINGLE_FILE_MAX = 22500;
+const SINGLE_FILE_MAX = 27000;
 
 // ── Line-count limit ───────────────────────────────────────────────────────
 // Every generated file must be <= 500 lines to stay concise and readable.
@@ -73,7 +73,7 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
 
 // ── Multi-file adapters ─────────────────────────────────────────────────────
 
-const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude"]);
+const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude", "codex", "antigravity"]);
 
 // ── Required H2 sections per Claude reference file ──────────────────────────
 
@@ -86,6 +86,10 @@ const CLAUDE_REQUIRED_SECTIONS: Record<string, string[]> = {
   "testing-map.md": ["Testing Map"],
   "dependencies.md": ["Dependencies"],
   "public-api.md": ["Public API Surface"],
+  // New reference files (v2.0.0 generator)
+  "code-style.md": ["Code Style"],
+  "language-patterns.md": ["Language Patterns"],
+  "clean-code-checklist.md": ["Clean Code Checklist"],
 };
 
 // H2 that starts with this prefix satisfies the requirement
@@ -326,12 +330,12 @@ function checkRequiredReferences(
   const refMatches = file.content.match(/\(\.\/references\/[^)]+\.md\)/g);
   const refCount = refMatches ? new Set(refMatches).size : 0;
 
-  if (refCount !== 7) {
+  if (refCount < 7) {
     checks.push({
       type: "required-references",
       severity: "error",
       file: file.outputPath,
-      message: `SKILL.md should link exactly 7 references, found ${refCount}`,
+      message: `SKILL.md should link at least 7 references, found ${refCount}`,
     });
   }
 
@@ -443,6 +447,8 @@ function checkUnknownPaths(
   for (const token of tokens) {
     // Skip reference links (they use ./references/ format)
     if (token.startsWith("./references/")) continue;
+    // Skip glob patterns (fileGlobs from rule packs, e.g. **/*.tsx)
+    if (token.includes("*") || token.includes("?")) continue;
     // Skip directory-only references (e.g. `src/`, `(root)/`)
     const normalized = normalizePathToken(token);
     if (token.endsWith("/") && !token.includes(".")) continue;

@@ -24,6 +24,10 @@ export {
   applyMetadataHeader,
 } from "./metadata.js";
 export type { SkillsMetadata } from "./metadata.js";
+export { detectLanguageProfile } from "./language-profile.js";
+export type { LanguageProfile } from "./language-profile.js";
+export { detectCodeStyleProfile } from "./code-style-profile.js";
+export type { CodeStyleProfile } from "./code-style-profile.js";
 export { detectProfile } from "./profile.js";
 export type { SkillProfile } from "./profile.js";
 export { buildIndexInsights } from "./insights.js";

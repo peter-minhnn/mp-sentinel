@@ -163,9 +163,41 @@ export interface CreateSkillsAIConfig {
   maxTokens?: number;
 }
 
+export interface CreateSkillsPolicies {
+  maxFileLines: number;
+  warnFileLines: number;
+  maxFunctionLines: number;
+  maxParams: number;
+  maxCyclomaticHint: number;
+  forbidDefaultExports: boolean;
+}
+
+export interface RulePackOverrideDef {
+  from: string;
+  override?: Array<{ id: string; severity?: "must" | "should" | "avoid" }>;
+  disable?: string[];
+}
+
+export interface CreateSkillsRulePacksConfig {
+  include?: string[];
+  exclude?: string[];
+  extends?: RulePackOverrideDef[];
+}
+
 export interface CreateSkillsConfig {
   ai?: CreateSkillsAIConfig;
+  policies?: CreateSkillsPolicies;
+  rulePacks?: CreateSkillsRulePacksConfig;
 }
+
+export const DEFAULT_CREATE_SKILLS_POLICIES: CreateSkillsPolicies = {
+  maxFileLines: 500,
+  warnFileLines: 350,
+  maxFunctionLines: 80,
+  maxParams: 5,
+  maxCyclomaticHint: 12,
+  forbidDefaultExports: false,
+};
 
 // ====================================================================================
 // MCP (Model Context Protocol) Configuration
@@ -355,6 +387,12 @@ export interface AIReviewConfig {
   maxCharsPerFile?: number;
   promptVersion?: string;
   /**
+   * Severity overrides for rule-pack evaluator findings.
+   * Key is `<packId>/<ruleId>` (e.g. "svelte/imports-inside-script").
+   * Value is the severity to assign when the evaluator finds a violation.
+   */
+  rulePackSeverity?: Record<string, "CRITICAL" | "WARNING" | "INFO">;
+  /**
    * Comma-separated list of provider names to try in order when the primary fails.
    * Example: "gemini,openai" — tries Gemini first, falls back to OpenAI.
    */
@@ -426,6 +464,19 @@ export const DEFAULT_CONFIG: Required<
   createSkills: {
     ai: {
       enabled: false,
+    },
+    policies: {
+      maxFileLines: 500,
+      warnFileLines: 350,
+      maxFunctionLines: 80,
+      maxParams: 5,
+      maxCyclomaticHint: 12,
+      forbidDefaultExports: false,
+    },
+    rulePacks: {
+      include: [],
+      exclude: [],
+      extends: [],
     },
   },
   mcp: {
@@ -972,6 +1023,33 @@ export type EnrichmentMode = "none" | "ai";
 /**
  * AI enrichment input - compact JSON from index
  */
+/**
+ * Language profile detected from the codebase file list.
+ */
+export interface LanguageProfile {
+  dominant: string;
+  secondary: string[];
+  distribution: Record<string, number>;
+  indexableShare: number;
+  nonIndexableHotspots: string[];
+}
+
+/**
+ * Code style profile detected from the codebase.
+ */
+export interface CodeStyleProfile {
+  indent: "tab" | "2-spaces" | "4-spaces" | "mixed" | "unknown";
+  singleQuoteRatio: number;
+  semicolonRatio: number;
+  p50FileLines: number;
+  p95FileLines: number;
+  maxFileLines: number;
+  trailingNewlineRatio: number;
+  formatterConfigs: string[];
+  svelteImportOutsideScriptRatio: number;
+  oversizedFiles: Array<{ path: string; lines: number }>;
+}
+
 export interface AIEnrichmentInput {
   projectName: string;
   packageVersion: string;
@@ -1000,6 +1078,16 @@ export interface AIEnrichmentInput {
   hubFileCount: number;
   /** Project-specific rules loaded from .mp-sentinelrc.json */
   projectRules: string[];
+  /** Language mix detected from codebase */
+  languageMix?: LanguageProfile;
+  /** Code style profile detected from actual files */
+  codeStyleProfile?: CodeStyleProfile;
+  /** Clean-code policy config */
+  policies?: CreateSkillsPolicies;
+  /** Secret-scrubbed code samples (max 5, max 40 lines each) */
+  codeSamples?: Array<{ path: string; content: string; __scrubbed?: boolean }>;
+  /** Observed anti-patterns detected during style analysis */
+  observedAntiPatterns?: string[];
 }
 
 /**
@@ -1011,6 +1099,18 @@ export interface AIEnrichmentOutput {
   versionNotes: string[];
   riskWarnings: string[];
   recommendedChecks: string[];
+  /** Per-language rules (AI-enriched, grounded in code samples) */
+  rulesByLanguage?: Record<string, string[]>;
+  /** Clean-code rules suggested by AI */
+  cleanCodeRules?: string[];
+  /** Detected anti-patterns with file paths and fix suggestions */
+  antiPatterns?: Array<{
+    pattern: string;
+    files: string[];
+    fix: string;
+  }>;
+  /** Style enforcement rules derived from code samples */
+  styleEnforcement?: string[];
 }
 
 // ====================================================================================
