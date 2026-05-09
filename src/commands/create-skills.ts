@@ -1237,8 +1237,8 @@ export async function runCreateSkillsCommand(
     const rawName = index.project.packageName;
     if (!rawName) {
       throw new UserError(
-        `Cannot determine project name: package.json has no "name" field. ` +
-          `Add a name to package.json and re-run.`,
+        `Cannot determine project name: no detected manifest has a "name" field. ` +
+          `Ensure the project has a valid manifest (package.json, pyproject.toml, go.mod, etc.) and re-run.`,
       );
     }
     const projectName = sanitizeProjectName(rawName);

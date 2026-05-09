@@ -1470,6 +1470,7 @@ const buildIndexConfig = (): BuildIndexConfig => ({
 function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
   const project: ProjectManifest = {
     packageName: "test",
+    ecosystem: "node",
     packageVersion: "1.0.0",
     packageManager: "npm",
     nodeEngine: ">=24.0.0",

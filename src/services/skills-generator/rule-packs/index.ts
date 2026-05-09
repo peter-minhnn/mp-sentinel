@@ -81,6 +81,13 @@ import { rustRules } from "./rust.js";
 import { astroRules } from "./astro.js";
 import { solidRules } from "./solid.js";
 import { angularRules } from "./angular.js";
+import { nuxtRules } from "./nuxt.js";
+import { dartRules } from "./dart.js";
+import { flutterRules } from "./flutter.js";
+import { phpRules } from "./php.js";
+import { laravelRules } from "./laravel.js";
+import { rubyRules } from "./ruby.js";
+import { railsRules } from "./rails.js";
 import { builtinRules } from "./builtin.js";
 
 export const ALL_PACKS: RulePack[] = [
@@ -96,6 +103,13 @@ export const ALL_PACKS: RulePack[] = [
   astroRules,
   solidRules,
   angularRules,
+  nuxtRules,
+  dartRules,
+  flutterRules,
+  phpRules,
+  laravelRules,
+  rubyRules,
+  railsRules,
 ];
 
 // ── Selection ───────────────────────────────────────────────────────────────

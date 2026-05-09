@@ -1,12 +1,19 @@
 /**
- * Manifest Reader - Extract project metadata from package.json and tsconfig.json
+ * Manifest Reader - Extract project metadata using ecosystem-aware manifest readers.
+ *
+ * Delegates to the manifests/ registry for ecosystem-specific reading.
+ * Keeps backward-compatible exports for callers that import from manifest.ts.
  */
 
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { log } from "../../utils/logger.js";
+import { readManifest as registryReadManifest, detectEcosystem } from "./manifests/registry.js";
+// Trigger extractor self-registration before isLexicallyExtractableLanguage is used
+import "./extractors/index.js";
+import { isLexicallyExtractable, getLanguageForExtension } from "./extractors/lexical-framework.js";
 
 /**
  * Parse JSON with support for JSONC (comments, trailing commas)
@@ -224,39 +231,13 @@ export function detectFrameworks(
 /**
  * Main manifest reader - aggregates all manifest information
  */
+/**
+ * Read the project manifest using the ecosystem-aware manifest registry.
+ * For Node projects, this reads package.json + tsconfig.json.
+ * For other ecosystems (future), the appropriate reader handles it.
+ */
 export async function readManifest(cwd: string) {
-  const pkgInfo = await readPackageManifest(cwd);
-  const tsConfig = await readTsConfig(cwd);
-
-  const frameworkList = detectFrameworks("", pkgInfo.dependencies, pkgInfo.devDependencies);
-
-  // Get tool version from package.json if available
-  let toolVersion: string | undefined;
-  try {
-    if (existsSync(resolve(cwd, "package.json"))) {
-      const pkgContent = await readFile(resolve(cwd, "package.json"), "utf-8");
-      const pkg = parseStrictJson(pkgContent, "package.json");
-      if (pkg?.version) {
-        toolVersion = pkg.version as string;
-      }
-    }
-  } catch {
-    // Ignore - toolVersion will remain undefined
-  }
-
-  return {
-    packageName: pkgInfo.packageName,
-    packageVersion: pkgInfo.packageVersion,
-    nodeEngine: pkgInfo.nodeEngine,
-    packageManager: detectPackageManager(cwd),
-    dependencies: pkgInfo.dependencies,
-    devDependencies: pkgInfo.devDependencies,
-    scripts: pkgInfo.scripts,
-    bin: pkgInfo.bin,
-    detectedFrameworks: frameworkList,
-    tsConfig,
-    toolVersion,
-  };
+  return registryReadManifest(cwd);
 }
 
 /**
@@ -340,14 +321,49 @@ export function isIndexableLanguage(
 
 /**
  * Check if a file path matches lexically-extractable (non-tree-sitter) languages
- * like Svelte or Vue. Returns the language identifier or null.
+ * like Svelte, Vue, Python, Go, or Rust. Returns the language identifier or null.
+ *
+ * Consults the universal lexical extractor framework for registered languages,
+ * then falls back to the original hard-coded Svelte/Vue check (which predates
+ * the framework).
  */
-export function isLexicallyExtractableLanguage(path: string): "svelte" | "vue" | null {
+export function isLexicallyExtractableLanguage(path: string): string | null {
   const ext = basename(path).split(".").pop();
   if (!ext) return null;
+  // Try the universal framework first
+  const { isLexicallyExtractable, getLanguageForExtension } = tryLoadLexicalFramework();
+  if (isLexicallyExtractable(ext)) {
+    return getLanguageForExtension(ext);
+  }
+  // Fallback: original hard-coded Svelte/Vue
   if (ext === "svelte") return "svelte";
   if (ext === "vue") return "vue";
   return null;
+}
+
+/**
+ * Lazy-load the lexical framework to avoid circular imports.
+ * The framework registers extractors via module-level side effects.
+ */
+function tryLoadLexicalFramework(): {
+  isLexicallyExtractable: (ext: string) => boolean;
+  getLanguageForExtension: (ext: string) => string | null;
+} {
+  try {
+    // Dynamic import ensures extractors register themselves
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("./extractors/lexical-framework.js") as {
+      isLexicallyExtractable: (ext: string) => boolean;
+      getLanguageForExtension: (ext: string) => string | null;
+    };
+    return mod;
+  } catch {
+    // Fallback if framework not available (tests, edge cases)
+    return {
+      isLexicallyExtractable: () => false,
+      getLanguageForExtension: () => null,
+    };
+  }
 }
 
 /**

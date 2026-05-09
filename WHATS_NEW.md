@@ -1,6 +1,17 @@
-# What's New in v2.4.0
+# What's New in v3.0.0
 
-## Upcoming (v2.5.0)
+## Upcoming (v3.0.0)
+
+### Multi-Ecosystem Support
+
+`create-skills` now supports projects outside the Node.js ecosystem. Pure Python, Go, Rust, Dart, PHP, and Ruby projects (no `package.json`) work without the previous exit-2 crash.
+
+- **Manifest abstraction** (`manifests/registry.ts`) — ecosystem-aware project manifest readers. Detects `pyproject.toml`, `go.mod`, `Cargo.toml`, `pubspec.yaml`, `composer.json`, `Gemfile` automatically.
+- **Universal lexical extractors** (`extractors/lexical-framework.ts`) — register a new language in ~50 lines; imports, exports, and symbols extracted via regex.
+- **7 new rule packs** — Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails — each activates based on the detected ecosystem.
+- **`npm run smoke:<ecosystem>` pattern** — regression guards for Python, Go, Rust, Dart, PHP, Ruby, Nuxt.
+
+### Upcoming (v2.5.0)
 
 ### Stronger Skills — Language-Aware `create-skills` (v2.0.0 generator)
 

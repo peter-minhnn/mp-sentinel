@@ -515,7 +515,16 @@ export type IndexableLanguage = "typescript" | "tsx" | "javascript" | "jsx";
  * Languages that can appear in the source index `language` field,
  * including lexical-fallback languages. Superset of IndexableLanguage.
  */
-export type IndexedLanguage = IndexableLanguage | "svelte" | "vue";
+export type IndexedLanguage =
+  | IndexableLanguage
+  | "svelte"
+  | "vue"
+  | "python"
+  | "go"
+  | "rust"
+  | "dart"
+  | "php"
+  | "ruby";
 
 /**
  * Symbol types extracted from AST
@@ -678,12 +687,28 @@ export interface SourceIndexFile {
 }
 
 /**
+ * Supported ecosystems for project manifest detection
+ */
+export type Ecosystem =
+  | "node"
+  | "python"
+  | "go"
+  | "rust"
+  | "dart"
+  | "php"
+  | "ruby"
+  | "java"
+  | "dotnet"
+  | "unknown";
+
+/**
  * Project manifest information
  */
 export interface ProjectManifest {
   packageName?: string | undefined;
   packageVersion?: string | undefined;
   nodeEngine?: string | undefined;
+  ecosystem: Ecosystem;
   packageManager?: string | undefined;
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;

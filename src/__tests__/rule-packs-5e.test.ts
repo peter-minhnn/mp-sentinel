@@ -139,6 +139,13 @@ describe("ALL_PACKS includes new packs", () => {
     expect(packIds).toContain("astro");
     expect(packIds).toContain("solid");
     expect(packIds).toContain("angular");
-    expect(ALL_PACKS.length).toBe(12);
+    expect(packIds).toContain("nuxt");
+    expect(packIds).toContain("dart");
+    expect(packIds).toContain("flutter");
+    expect(packIds).toContain("php");
+    expect(packIds).toContain("laravel");
+    expect(packIds).toContain("ruby");
+    expect(packIds).toContain("rails");
+    expect(ALL_PACKS.length).toBe(19);
   });
 });

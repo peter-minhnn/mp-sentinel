@@ -19,6 +19,7 @@ function makeBaseIndex(overrides?: Partial<SourceIndex>): SourceIndex {
     toolVersion: "1.14.1",
     project: {
       packageName: "test-project",
+      ecosystem: "node",
       packageVersion: "1.0.0",
       dependencies: { typescript: "^5.0.0" },
       devDependencies: { jest: "^30.0.0" },

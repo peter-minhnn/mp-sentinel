@@ -19,6 +19,7 @@ function makeIndexWithSignals(): SourceIndex {
     toolVersion: "1.14.1",
     project: {
       packageName: "test-project",
+      ecosystem: "node",
       packageVersion: "2.0.0",
       dependencies: { express: "^4.18.0" },
       devDependencies: { jest: "^30.0.0" },

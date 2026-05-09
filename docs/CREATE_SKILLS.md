@@ -217,7 +217,7 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 | **Dependencies** | Top 20 external dependencies with versions from `package.json` + optional AI-enriched rules |
 | **Public API** | Entry points + risk surface (default exports, re-exports, dynamic imports, type-only imports, hub files) |
 | **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
-| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, Astro, Solid, Angular, TypeScript, Python, Go, Rust) |
+| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, Astro, Solid, Angular, TypeScript, Python, Go, Rust, Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails) |
 | **Clean Code Policy** | Configurable limits (maxFileLines, maxFunctionLines, maxParams, maxCyclomaticHint, forbidDefaultExports) |
 | **File Size Policy** | Hard limit with current codebase percentiles and observed offender reporting |
 | **AI Enrichment** | Optional version-aware dependency rules from the configured AI provider |
@@ -311,6 +311,13 @@ Built-in rule packs activate based on the detected language profile and dependen
 | **Python** | `.py` files | Type hints, PEP 8, no top-level side effects, `pathlib`, `async`/`await` |
 | **Go** | `.go` files | `gofmt`, error handling, no panics in libraries, `context.Context` |
 | **Rust** | `.rs` files | `clippy`, `?` operator over `unwrap()`, `cargo fmt`, derive traits |
+| **Nuxt** | `nuxt` dependency + Vue ecosystem | `definePageMeta()`, `useFetch` over bare `fetch`, `server/` boundaries, auto-imports |
+| **Dart** | `.dart` files or `dart` SDK | `const` constructors, `final` over `var`, null safety, `Effective Dart` style |
+| **Flutter** | `flutter` dependency | `BuildContext` lifecycle, `StatelessWidget` by default, `const` widgets, Riverpod/Bloc extraction |
+| **PHP** | `.php` files or `composer.json` manifest | `strict_types=1`, type declarations, PSR-12, `final` classes, constructor promotion |
+| **Laravel** | `laravel/framework` dependency | Eloquent vs raw SQL, Form Requests, route model binding, thin controllers |
+| **Ruby** | `.rb` files or `Gemfile` manifest | Frozen string literals, `snake_case` naming, keyword arguments, safe navigation `&.` |
+| **Rails** | `rails` gem dependency | Strong Parameters, scopes, `before_action` discipline, concerns vs modules |
 
 ### Rule Pack Evaluators
 

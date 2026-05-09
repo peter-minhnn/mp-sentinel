@@ -766,6 +766,7 @@ describe("buildIndexContext priority and cap", () => {
       toolVersion: "1.0.0",
       project: {
         packageName: "test",
+        ecosystem: "node",
         packageVersion: "1.0.0",
         dependencies: {},
         devDependencies: {},
@@ -908,6 +909,7 @@ describe("manifest hash cache invalidation", () => {
       toolVersion: "1.0.0",
       project: {
         packageName: "fixture",
+        ecosystem: "node",
         packageVersion: "1.0.0",
         dependencies: {},
         devDependencies: {},
@@ -1028,6 +1030,7 @@ describe("manifest hash cache invalidation", () => {
       toolVersion: "1.0.0", // Different from current (2.0.0)
       project: {
         packageName: "fixture",
+        ecosystem: "node",
         packageVersion: "2.0.0",
         dependencies: {},
         devDependencies: {},
@@ -2331,6 +2334,7 @@ describe("querySymbols (service)", () => {
       toolVersion: "1.0.0",
       project: {
         packageName: "test",
+        ecosystem: "node",
         dependencies: {},
         devDependencies: {},
         detectedFrameworks: [],
@@ -2487,6 +2491,7 @@ describe("queryImports (service)", () => {
       toolVersion: "1.0.0",
       project: {
         packageName: "test",
+        ecosystem: "node",
         dependencies: {},
         devDependencies: {},
         detectedFrameworks: [],
@@ -2838,6 +2843,7 @@ describe("queryAgentContext (service)", () => {
       toolVersion: "1.0.0",
       project: {
         packageName: "cap-test",
+        ecosystem: "node",
         dependencies: {},
         devDependencies: {},
         detectedFrameworks: [],

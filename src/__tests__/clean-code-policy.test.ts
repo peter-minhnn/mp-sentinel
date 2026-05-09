@@ -14,6 +14,7 @@ const emptyIndex: SourceIndex = {
   toolVersion: "",
   project: {
     packageName: "test",
+    ecosystem: "node",
     dependencies: {},
     devDependencies: {},
     detectedFrameworks: [],

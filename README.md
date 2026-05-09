@@ -1,6 +1,7 @@
 # 🛡️ MP Sentinel: The AI-Powered Code Guardian
 
 **Your 24/7 Virtual Technical Lead.**  
+AI-assisted code review and best-practices generator for any modern stack — TS/JS, Svelte, Vue, Nuxt, Python, Go, Rust, Dart, PHP, Ruby.  
 High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
 ---
@@ -23,7 +24,7 @@ All documentation has been moved to the `docs/` directory:
 - [Version Guide & Installation](./docs/VERSION_GUIDE.md)
 - [Contributing Guidelines](./docs/CONTRIBUTING.md)
 - [Commands Cheat Sheet](./docs/COMMANDS_CHEAT_SHEET.md)
-- [![NPM Version](https://img.shields.io/badge/npm-v2.4.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+- [![NPM Version](https://img.shields.io/badge/npm-v3.0.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 - [Changelog](./docs/CHANGELOG.md)
 
 ---
@@ -42,4 +43,4 @@ For detailed usage and configuration, please refer to the [Full Documentation](.
 
 ## 🆕 What's New
 
-See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v2.4.0**.
+See [WHATS_NEW.md](./WHATS_NEW.md) for the latest features in **v3.0.0**.

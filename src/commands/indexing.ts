@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import type {
   FileRole,
+  IndexedLanguage,
   IndexingConfig,
   ParserMode,
   SourceIndex,
@@ -358,7 +359,7 @@ export async function buildSourceIndex(
           const parsed = parseNonIndexableFile(relPath, content);
           parsedFiles.push({
             path: parsed.path,
-            language: lexLang,
+            language: lexLang as IndexedLanguage,
             sha256,
             sizeBytes: content.length,
             mtimeMs,

@@ -20,6 +20,7 @@ function makeMinimalIndex(): SourceIndex {
     toolVersion: "",
     project: {
       packageName: "test-project",
+      ecosystem: "node",
       packageVersion: "1.0.0",
       packageManager: "npm",
       dependencies: { typescript: "5.0.0" },

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-ecosystem support** — Python, Go, Rust, Dart, PHP, Ruby, Nuxt now first-class
+- `manifests/` abstraction: ecosystem-aware project manifest readers for `pyproject.toml`, `go.mod`, `Cargo.toml`, `pubspec.yaml`, `composer.json`, `Gemfile`
+- `extractors/lexical-framework.ts`: universal lexical extractor registry — register a new language in ~50 lines
+- 6 new manifest readers (Python/Go/Rust/Dart/PHP/Ruby)
+- 6 new lexical extractors (Python/Go/Rust/Dart/PHP/Ruby)
+- 7 new rule packs: Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails
+- Pure-language projects (no `package.json`) no longer crash with exit 2
 - `create-skills`: Svelte/Vue files are now indexed via `parseNonIndexableFile()` in `buildSourceIndex()` — imports, exports, and symbols properly extracted (Phase 7 fix)
 - `create-skills`: `CodeStyleProfile` now computed for all skill generations (not just AI-enriched runs)
 - New `isLexicallyExtractableLanguage()` function in `manifest.ts` for detecting `.svelte`/`.vue` files
@@ -22,6 +29,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `.svelte` and `.vue` files were silently dropped from the source index — `parseNonIndexableFile()` was defined but never called. **This is the central Phase 7 bug fix.**
 - AI-only gate on `CodeStyleProfile` — profile now built for all `create-skills` runs, not just AI-enriched ones
+
+## [3.0.0] - 2026-05-09
+
+### Added
+> **Nine-phase upgrade complete.** See [WHATS_NEW.md](../WHATS_NEW.md) for the full story.
+
+- Multi-ecosystem support: Python, Go, Rust, Dart, PHP, Ruby, Nuxt
+- Manifest abstraction with registry pattern (`manifests/`)
+- Universal lexical extractor framework (`extractors/lexical-framework.ts`)
+- 6 new manifest readers (Python/Go/Rust/Dart/PHP/Ruby)
+- 6 new lexical extractors (Python/Go/Rust/Dart/PHP/Ruby)
+- 7 new rule packs: Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails
+- Pure-language projects (no `package.json`) no longer crash with exit 2
+- Language label fix: `.svelte`/`.vue` files now show `language: "svelte"`/`"vue"` in the index
+- `npm run smoke:svelte` regression guard
+- Full 11-command verification chain
+
+### Changed
+- Generator version bumped to `2.0.0`
+- Quality gate size limits increased from 27K to 30K
+- ProjectManifest now includes `ecosystem` field
+- `CodeStyleProfile` computed for all skill generations
 
 ## [2.4.0] - 2026-05-09
 
