@@ -1,6 +1,6 @@
-# What's New in v2.3.0
+# What's New in v2.4.0
 
-## Upcoming (v2.4.0)
+## Upcoming (v2.5.0)
 
 ### Stronger Skills — Language-Aware `create-skills` (v2.0.0 generator)
 

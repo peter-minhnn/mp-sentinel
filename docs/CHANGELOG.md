@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+## [2.4.0] - 2026-05-09
+
+### Added
 > **Generator v2.0.0 upgrade:** See the [migration guide](./plans/MIGRATION_2.0_GENERATOR.md) for upgrade instructions and `--check` behaviour changes.
 
 - `create-skills`: LanguageProfile detection (dominant/secondary languages, distribution, hotspots)
