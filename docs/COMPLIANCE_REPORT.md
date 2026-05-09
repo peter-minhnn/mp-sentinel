@@ -1,6 +1,6 @@
 # Compliance Report
 
-Generated: 2026-05-09T06:53:07.727Z
+Generated: 2026-05-09T14:31:36.845Z
 Provider: dry-run
 Model: none
 Trials per fixture: 1

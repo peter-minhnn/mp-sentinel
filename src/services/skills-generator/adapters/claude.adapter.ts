@@ -38,7 +38,13 @@ export const claudeAdapter: AgentAdapter = {
     context: SkillsGenerationContext,
   ): Promise<GeneratedSkillFile[]> {
     const { projectName, enrichment, knowledgeBase } = context;
-    const content = generateContent(index, projectName, enrichment, knowledgeBase);
+    const content = generateContent(
+      index,
+      projectName,
+      enrichment,
+      knowledgeBase,
+      context.codeStyleProfile,
+    );
 
     const skillDir = this.getDefaultOutput(context.projectRoot, projectName);
 

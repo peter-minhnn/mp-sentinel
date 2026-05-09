@@ -12,6 +12,7 @@ import type {
   AgentAdapter,
   AIEnrichmentOutput,
   CheckFileStatus,
+  CodeStyleProfile,
   DoctorActionEntry,
   DoctorAIEnrichmentCacheInfo,
   DoctorAIEnrichmentReadinessInfo,
@@ -217,6 +218,7 @@ async function runAdapter(
   isJson: boolean,
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
+  codeStyleProfile?: CodeStyleProfile | undefined,
 ): Promise<SkillsGenerationResult> {
   const context: SkillsGenerationContext = {
     projectRoot,
@@ -224,6 +226,7 @@ async function runAdapter(
     force,
     enrichment,
     knowledgeBase,
+    codeStyleProfile,
   };
   const raw = await adapter.generate(index, context);
 
@@ -290,6 +293,7 @@ async function dryRunAdapter(
   isJson: boolean,
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
+  codeStyleProfile?: CodeStyleProfile | undefined,
 ): Promise<SkillsDryRunResult> {
   const context: SkillsGenerationContext = {
     projectRoot,
@@ -297,6 +301,7 @@ async function dryRunAdapter(
     force,
     enrichment,
     knowledgeBase,
+    codeStyleProfile,
   };
   const raw = await adapter.generate(index, context);
 
@@ -339,6 +344,7 @@ async function checkAdapter(
   enrichment?: AIEnrichmentOutput | undefined,
   enrichmentMeta?: EnrichmentMetadata,
   knowledgeBase?: SkillKnowledgeBase | undefined,
+  codeStyleProfile?: CodeStyleProfile | undefined,
 ): Promise<SkillsCheckResult> {
   const context: SkillsGenerationContext = {
     projectRoot,
@@ -346,6 +352,7 @@ async function checkAdapter(
     force: false,
     enrichment,
     knowledgeBase,
+    codeStyleProfile,
   };
   const raw = await adapter.generate(index, context);
 
@@ -1245,6 +1252,19 @@ export async function runCreateSkillsCommand(
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
     const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
 
+    // ── Code style profile (deterministic, no AI needed) ────────────────────
+    // Read source files from disk to detect indent style, quotes, semicolons, etc.
+    let codeStyleProfile: CodeStyleProfile | undefined;
+    if (index && index.files.length > 0) {
+      try {
+        const { detectCodeStyleProfile } =
+          await import("../services/skills-generator/code-style-profile.js");
+        codeStyleProfile = await detectCodeStyleProfile(projectRoot, index);
+      } catch {
+        // Non-fatal — profile just won't be available
+      }
+    }
+
     // ── AI Enrichment ───────────────────────────────────────────────────────
     // Check if AI enrichment is enabled in config AND not overridden by CLI flag
     let enrichment: AIEnrichmentOutput | undefined = undefined;
@@ -1333,6 +1353,7 @@ export async function runCreateSkillsCommand(
           enrichment,
           enrichmentMetadata,
           knowledgeBase,
+          codeStyleProfile,
         );
         checkResults.push(result);
 
@@ -1393,6 +1414,7 @@ export async function runCreateSkillsCommand(
           isJson,
           enrichment,
           knowledgeBase,
+          codeStyleProfile,
         );
         dryRunResults.push(result);
 
@@ -1457,6 +1479,7 @@ export async function runCreateSkillsCommand(
         isJson,
         enrichment,
         knowledgeBase,
+        codeStyleProfile,
       );
       results.push(result);
 

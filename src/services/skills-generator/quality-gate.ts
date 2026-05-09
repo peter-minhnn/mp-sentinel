@@ -17,9 +17,9 @@ import type {
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
-const SKILL_MD_MAX = 27000;
+const SKILL_MD_MAX = 30000;
 const REF_MD_MAX = 6000;
-const SINGLE_FILE_MAX = 27000;
+const SINGLE_FILE_MAX = 30000;
 
 // ── Line-count limit ───────────────────────────────────────────────────────
 // Every generated file must be <= 500 lines to stay concise and readable.

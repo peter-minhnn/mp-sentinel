@@ -512,6 +512,12 @@ export const DEFAULT_CONFIG: Required<
 export type IndexableLanguage = "typescript" | "tsx" | "javascript" | "jsx";
 
 /**
+ * Languages that can appear in the source index `language` field,
+ * including lexical-fallback languages. Superset of IndexableLanguage.
+ */
+export type IndexedLanguage = IndexableLanguage | "svelte" | "vue";
+
+/**
  * Symbol types extracted from AST
  */
 export interface SymbolInfo {
@@ -631,8 +637,8 @@ export type ParserMode =
 export interface SourceIndexFile {
   /** Relative path from project root */
   path: string;
-  /** Detected language */
-  language: IndexableLanguage;
+  /** Detected language (includes lexical-fallback languages like svelte/vue) */
+  language: IndexedLanguage;
   /** File SHA256 hash for cache validation */
   sha256: string;
   /** File size in bytes */
@@ -936,6 +942,8 @@ export interface SkillsGenerationContext {
   enrichment?: AIEnrichmentOutput | undefined;
   /** Codebase-aware knowledge base (v2). Built once, shared across adapters. */
   knowledgeBase?: SkillKnowledgeBase | undefined;
+  /** Deterministic code style profile (no AI needed). Populated when index is available. */
+  codeStyleProfile?: CodeStyleProfile | undefined;
 }
 
 /**

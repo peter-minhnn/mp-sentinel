@@ -25,10 +25,11 @@ import { FileHandler } from "../services/file-handler/index.js";
 import {
   readManifest,
   isIndexableLanguage,
+  isLexicallyExtractableLanguage,
   getLanguageForFile,
   computeManifestHash,
 } from "../services/source-index/manifest.js";
-import { parseFile } from "../services/source-index/parser.js";
+import { parseFile, parseNonIndexableFile } from "../services/source-index/parser.js";
 import {
   readIndex,
   writeIndex,
@@ -248,7 +249,19 @@ export async function buildSourceIndex(
     return lang !== null && indexingConfig.languages.includes(lang);
   });
 
+  // Filter to lexically-extractable (Svelte/Vue) files
+  // These use regex-based extractors instead of tree-sitter
+  const lexExtractableFiles = accepted.filter((path) => {
+    return isLexicallyExtractableLanguage(path) !== null;
+  });
+
   log.info(`Files to index (JS/TS): ${indexableFiles.length}`);
+  if (lexExtractableFiles.length > 0) {
+    log.info(`Files to index (Svelte/Vue): ${lexExtractableFiles.length}`);
+  }
+
+  // Combine both sets for the cache/parse pipeline
+  const allCandidateFiles = [...indexableFiles, ...lexExtractableFiles];
 
   // Check cache validity unless forcing rebuild
   let filesToIndex: string[];
@@ -260,13 +273,13 @@ export async function buildSourceIndex(
     existingIndex = await readIndex(cachePath);
     if (existingIndex && getIndexParseErrorRate(existingIndex) > MAX_PARSE_ERROR_RATE) {
       log.warning("Existing source index has too many parse errors. Rebuilding full cache.");
-      filesToIndex = indexableFiles;
+      filesToIndex = allCandidateFiles;
       cachedFiles = [];
     } else {
       const { toIndex, fromCache, validity } = await getFilesToIndex(
         cachePath,
         projectRoot,
-        indexableFiles,
+        allCandidateFiles,
         readFileContent,
         getFileMtime,
       );
@@ -290,7 +303,7 @@ export async function buildSourceIndex(
           `Tool version changed (${cacheToolVersion} → ${currentToolVersion}) — rebuilding source index`,
         );
         // Force full rebuild by treating all files as needing re-indexing.
-        filesToIndex = indexableFiles;
+        filesToIndex = allCandidateFiles;
         cachedFiles = [];
         manifestChanged = true;
       } else if (validity.valid && !manifestChanged) {
@@ -318,7 +331,7 @@ export async function buildSourceIndex(
       log.info(`Cache invalid: ${filesToIndex.length} files need re-indexing`);
     }
   } else {
-    filesToIndex = indexableFiles;
+    filesToIndex = allCandidateFiles;
     cachedFiles = [];
   }
 
@@ -334,7 +347,37 @@ export async function buildSourceIndex(
     const language = getLanguageForFile(relPath);
 
     if (!language) {
-      log.debug(`Skipping unsupported language: ${relPath}`);
+      // Check if this is a lexically-extractable file (Svelte/Vue)
+      const lexLang = isLexicallyExtractableLanguage(relPath);
+      if (lexLang) {
+        try {
+          const content = await readFile(absPath, "utf-8");
+          const sha256 = await calculateSHA256(content);
+          const mtimeMs = await getFileMtime(absPath);
+
+          const parsed = parseNonIndexableFile(relPath, content);
+          parsedFiles.push({
+            path: parsed.path,
+            language: lexLang,
+            sha256,
+            sizeBytes: content.length,
+            mtimeMs,
+            imports: parsed.imports,
+            exports: parsed.exports,
+            symbols: parsed.symbols,
+            parserMode: "lexical-fallback",
+            parseWarnings: parsed.parseWarnings,
+            parseErrors: [],
+          });
+        } catch (error) {
+          log.warning(
+            `Failed to parse ${relPath}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          parseErrors++;
+        }
+      } else {
+        log.debug(`Skipping unsupported language: ${relPath}`);
+      }
       continue;
     }
 
@@ -472,9 +515,9 @@ export async function buildSourceIndex(
     files: allFiles,
     manifestHash,
     stats: {
-      totalFiles: indexableFiles.length,
+      totalFiles: allCandidateFiles.length,
       indexedFiles: allFiles.length,
-      skippedFiles: indexableFiles.length - allFiles.length,
+      skippedFiles: allCandidateFiles.length - allFiles.length,
       parseErrors: totalParseErrors,
       durationMs: performance.now() - startTime,
       parsedFiles: parsedFiles.length,
@@ -504,7 +547,7 @@ export async function buildSourceIndex(
     files: allFiles,
     manifestHash,
     stats: {
-      totalFiles: indexableFiles.length,
+      totalFiles: allCandidateFiles.length,
       indexedFiles: allFiles.length,
       skippedFiles: indexableFiles.length - allFiles.length,
       parseErrors: totalParseErrors,

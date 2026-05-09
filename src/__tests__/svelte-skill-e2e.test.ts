@@ -8,6 +8,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateContent } from "../services/skills-generator/content.js";
+import { detectLanguageProfile } from "../services/skills-generator/language-profile.js";
 import { selectActiveRulePacks } from "../services/skills-generator/rule-packs/index.js";
 import { getAdapter } from "../services/skills-generator/registry.js";
 import { buildSourceIndex } from "../commands/indexing.js";
@@ -68,6 +69,7 @@ describe("Svelte project — deterministic rule packs", () => {
 
 describe("Svelte fixture — generated SKILL.md", () => {
   let tmpDir: string;
+  let index: Awaited<ReturnType<typeof buildSourceIndex>>;
   let content: ReturnType<typeof generateContent>;
 
   beforeAll(async () => {
@@ -75,7 +77,7 @@ describe("Svelte fixture — generated SKILL.md", () => {
     await createSvelteFixture(tmpDir);
 
     clearParserCache();
-    const index = await buildSourceIndex(
+    index = await buildSourceIndex(
       tmpDir,
       {
         enabled: true,
@@ -91,6 +93,20 @@ describe("Svelte fixture — generated SKILL.md", () => {
 
   afterAll(async () => {
     if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("index contains the .svelte file", () => {
+    expect(index).not.toBeNull();
+    const svelteFiles = index!.files.filter((f) => f.path.endsWith(".svelte"));
+    expect(svelteFiles.length).toBe(1);
+    expect(svelteFiles[0]!.imports.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("language profile includes Svelte", () => {
+    expect(index).not.toBeNull();
+    const profile = detectLanguageProfile(index!);
+    expect(profile.distribution.svelte).toBeGreaterThan(0);
+    expect(profile.dominant).toBe("svelte");
   });
 
   it("SKILL.md ## Language & Framework Rules contains Svelte rules", () => {

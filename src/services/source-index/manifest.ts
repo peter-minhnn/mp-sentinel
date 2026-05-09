@@ -339,6 +339,18 @@ export function isIndexableLanguage(
 }
 
 /**
+ * Check if a file path matches lexically-extractable (non-tree-sitter) languages
+ * like Svelte or Vue. Returns the language identifier or null.
+ */
+export function isLexicallyExtractableLanguage(path: string): "svelte" | "vue" | null {
+  const ext = basename(path).split(".").pop();
+  if (!ext) return null;
+  if (ext === "svelte") return "svelte";
+  if (ext === "vue") return "vue";
+  return null;
+}
+
+/**
  * Calculate which language to use for a file based on extension
  */
 export function getLanguageForFile(

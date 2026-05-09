@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `create-skills`: Svelte/Vue files are now indexed via `parseNonIndexableFile()` in `buildSourceIndex()` — imports, exports, and symbols properly extracted (Phase 7 fix)
+- `create-skills`: `CodeStyleProfile` now computed for all skill generations (not just AI-enriched runs)
+- New `isLexicallyExtractableLanguage()` function in `manifest.ts` for detecting `.svelte`/`.vue` files
+- `npm run smoke:svelte` regression guard
+- `svelte-skill-e2e.test.ts`: now asserts `.svelte` files appear in the built index
+
+### Changed
+- Quality gate: `SINGLE_FILE_MAX` and `SKILL_MD_MAX` increased from 27K to 30K
+- `SkillsGenerationContext` now carries `codeStyleProfile` for adapter use
+- TypeScript 6.0 compatibility: added `ignoreDeprecations: "6.0"` in tsconfig
+
+### Fixed
+- `.svelte` and `.vue` files were silently dropped from the source index — `parseNonIndexableFile()` was defined but never called. **This is the central Phase 7 bug fix.**
+- AI-only gate on `CodeStyleProfile` — profile now built for all `create-skills` runs, not just AI-enriched ones
 
 ## [2.4.0] - 2026-05-09
 

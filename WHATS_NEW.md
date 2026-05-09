@@ -19,6 +19,7 @@ The `create-skills` command now produces opinionated, language-aware best-practi
 - **`createSkills.policies` config** — configure clean-code limits in `.mp-sentinelrc.json`
 - **Svelte/Vue lexical extractors** — extract imports and symbols from `.svelte`/`.vue` files using regex, no tree-sitter required
 - **Generator version** bumped to `2.0.0` — existing generated skills flagged stale on first `--check`
+- **Svelte/Vue indexing fix** (Phase 7) — `parseNonIndexableFile()` is now wired into `buildSourceIndex()`. `.svelte`/`.vue` files are indexed via `lexical-fallback` with imports, exports, and symbols properly extracted. `CodeStyleProfile` now runs for all skill generations (not just AI-enriched). New `npm run smoke:svelte` regression guard.
 
 ### MCP Review Preview Tools
 

@@ -8,6 +8,7 @@ export {
   detectPackageManager,
   extensionToLanguage,
   isIndexableLanguage,
+  isLexicallyExtractableLanguage,
   computeManifestHash,
 } from "./manifest.js";
 export { parseFile, isLanguageSupported } from "./parser.js";

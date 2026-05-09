@@ -20,7 +20,7 @@ import { runReview } from "./cli/review.js";
 import { isTypedError, SystemError, UserError } from "./utils/errors.js";
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ quiet: true });
 
 // ── SIGINT handler — clean up progress bar on Ctrl+C ─────────────────────────
 process.on("SIGINT", () => {
