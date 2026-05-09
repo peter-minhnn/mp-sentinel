@@ -217,7 +217,7 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 | **Dependencies** | Top 20 external dependencies with versions from `package.json` + optional AI-enriched rules |
 | **Public API** | Entry points + risk surface (default exports, re-exports, dynamic imports, type-only imports, hub files) |
 | **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
-| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, TypeScript, Python, Go, Rust) |
+| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, Astro, Solid, Angular, TypeScript, Python, Go, Rust) |
 | **Clean Code Policy** | Configurable limits (maxFileLines, maxFunctionLines, maxParams, maxCyclomaticHint, forbidDefaultExports) |
 | **File Size Policy** | Hard limit with current codebase percentiles and observed offender reporting |
 | **AI Enrichment** | Optional version-aware dependency rules from the configured AI provider |
@@ -296,7 +296,7 @@ These policies are rendered into `## Clean Code Policy` and `## File Size Policy
 
 ## Rule Packs (Deterministic, No AI Required)
 
-Eight built-in rule packs activate based on the detected language profile and dependencies. Each pack produces `must`/`should`/`avoid` rules in the `## Language & Framework Rules` SKILL.md section.
+Built-in rule packs activate based on the detected language profile and dependencies. Each pack produces `must`/`should`/`avoid` rules in the `## Language & Framework Rules` SKILL.md section.
 
 | Pack | Activation trigger | Key rules |
 |------|-------------------|-----------|
@@ -304,10 +304,25 @@ Eight built-in rule packs activate based on the detected language profile and de
 | **Vue** | `.vue` files or `vue` dependency | `<script setup>`, `defineProps`/`defineEmits`, scoped styles |
 | **React** | `react` dependency | Rules of Hooks, no fetch in render, `key` prop, function components |
 | **Next.js** | `next` dependency | `'use client'`/`'use server'`, Server Components, `next/image`, route segments |
+| **Astro** | `.astro` files or `astro` dependency | Frontmatter logic, `client:*` island directives, content collections, image optimization |
+| **Solid** | `solid-js` dependency + `.tsx`/`.jsx` files | `createSignal`/`createEffect`, no destructured props, `For`/`Show` control flow |
+| **Angular** | `@angular/core` or `@angular/common` dependency | `inject()` over constructor DI, standalone components, signals, `OnPush` change detection |
 | **TypeScript (Strict)** | `.ts` or `.tsx` files | `import type`, `.js` extension, `node:` prefix, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` |
 | **Python** | `.py` files | Type hints, PEP 8, no top-level side effects, `pathlib`, `async`/`await` |
 | **Go** | `.go` files | `gofmt`, error handling, no panics in libraries, `context.Context` |
 | **Rust** | `.rs` files | `clippy`, `?` operator over `unwrap()`, `cargo fmt`, derive traits |
+
+### Rule Pack Evaluators
+
+In addition to static rules, some rule packs supply **file evaluators** — deterministic checks that run against changed files during review (no AI calls). They produce findings in the same `AuditIssue` shape as the AI review pipeline and are surfaced alongside AI review results.
+
+| Evaluator | Pack | Trigger | Severity |
+|-----------|------|---------|----------|
+| `island-directive-missing` | Astro | Interactive JS (`onclick`, `addEventListener`, etc.) without `client:*` island directive in `.astro` files | WARNING |
+| `no-destructured-props` | Solid | Destructured props in component parameters that break Solid's reactive tracking | WARNING |
+| `prefer-inject` | Angular | Constructor-based DI in `.ts` files (Angular v17+ prefers `inject()`) | INFO |
+
+Each evaluator is purely deterministic — no AI calls, no network. They run during `mp-sentinel review` as part of the deterministic (non-AI) pipeline and enrich the findings output.
 
 ## Overwrite Protection
 
