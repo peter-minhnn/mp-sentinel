@@ -1,4 +1,13 @@
-# What's New in v3.0.0
+# What's New in v3.0.1
+
+## v3.0.1
+
+### Source Indexing and `create-skills` Quality Fixes
+
+- **JSONC tsconfig parsing** — path aliases and globs such as `@/*`, `./src/*`, and `**/*.ts` are no longer mistaken for comments.
+- **Cleaner generated skill checks** — framework/API/import tokens such as `Next.js`, `.map()`, `React.memo`, `next/image`, and `@/lib` no longer produce false unknown-path warnings.
+- **Index cache versioning** — source indexes now record the `mp-sentinel` tool version rather than the scanned project's package version.
+- **TypeScript parser recovery** — valid `import("...").Type` type queries are treated as parser warnings instead of hard parse errors.
 
 ## Upcoming (v3.0.0)
 

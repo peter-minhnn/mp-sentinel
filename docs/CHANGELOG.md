@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.svelte` and `.vue` files were silently dropped from the source index — `parseNonIndexableFile()` was defined but never called. **This is the central Phase 7 bug fix.**
 - AI-only gate on `CodeStyleProfile` — profile now built for all `create-skills` runs, not just AI-enriched ones
 
+## [3.0.1] - 2026-05-15
+
+### Fixed
+- `tsconfig.json` JSONC parsing now preserves path aliases and glob strings containing slash-star patterns.
+- `create-skills` quality checks no longer report framework/API/package/import-alias tokens as missing paths.
+- Source index cache metadata now records the `mp-sentinel` tool version instead of the scanned project version.
+- Valid TypeScript `import("...").Type` type queries now produce parser warnings rather than hard parse errors.
+
 ## [3.0.0] - 2026-05-09
 
 ### Added
