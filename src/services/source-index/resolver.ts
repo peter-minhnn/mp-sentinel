@@ -7,23 +7,13 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, dirname, join, relative } from "node:path";
 import { log } from "../../utils/logger.js";
+import { parseJsoncObject } from "./jsonc.js";
 
 export interface ResolveResult {
   /** Resolved file path relative to project root, or null if external */
   path: string | null;
   /** Whether the import is external (node_modules) */
   external: boolean;
-}
-
-/**
- * Strip JS-style comments and trailing commas so a JSONC file (tsconfig.json)
- * can be parsed with JSON.parse.
- */
-function stripJsonComments(content: string): string {
-  return content
-    .replace(/\/\/[^\n\r]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/,(\s*[}\]])/g, "$1");
 }
 
 /**
@@ -44,7 +34,7 @@ async function loadTsConfigWithExtends(
 
   try {
     const content = await readFile(absPath, "utf-8");
-    const config = JSON.parse(stripJsonComments(content)) as {
+    const config = parseJsoncObject(content) as {
       extends?: string;
       compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> };
     };

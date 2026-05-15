@@ -133,6 +133,36 @@ function getNodeName(node: any): string | null {
   return null;
 }
 
+function collectErrorNodeTexts(node: any, errors: string[] = []): string[] {
+  if (node.type === "ERROR") {
+    errors.push(node.text);
+  }
+  for (const child of node.children ?? []) {
+    collectErrorNodeTexts(child, errors);
+  }
+  return errors;
+}
+
+function collectMissingNodeTypes(node: any, missing: string[] = []): string[] {
+  const isMissing =
+    typeof node.isMissing === "function" ? Boolean(node.isMissing()) : Boolean(node.isMissing);
+  if (isMissing) {
+    missing.push(node.type);
+  }
+  for (const child of node.children ?? []) {
+    collectMissingNodeTypes(child, missing);
+  }
+  return missing;
+}
+
+function isRecoverableImportTypeQueryError(text: string): boolean {
+  return /^import\s*\(\s*["'][^"']+["']\s*\)(?:\.[A-Za-z_$][\w$]*)+$/.test(text.trim());
+}
+
+function hasRecoverableImportTypeQuery(content: string): boolean {
+  return /import\s*\(\s*["'][^"']+["']\s*\)\.[A-Za-z_$][\w$]*/.test(content);
+}
+
 /**
  * Extract symbol information from a function/class declaration node
  */
@@ -755,7 +785,9 @@ function isSafeLineEnd(line: string): boolean {
 export async function chunkedParse(
   content: string,
   language: IndexableLanguage,
-  doParse: (parseContent: string) => Promise<{ tree: any; parseErrors: string[] }>,
+  doParse: (
+    parseContent: string,
+  ) => Promise<{ tree: any; parseErrors: string[]; parseWarnings?: string[] }>,
 ): Promise<{
   symbols: SymbolInfo[];
   imports: ImportInfo[];
@@ -845,7 +877,11 @@ export async function chunkedParse(
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]!;
     try {
-      const { tree, parseErrors: chunkErrors } = await doParse(chunk.text);
+      const {
+        tree,
+        parseErrors: chunkErrors,
+        parseWarnings: chunkWarnings = [],
+      } = await doParse(chunk.text);
 
       if (!tree) {
         allParseErrors.push(`Chunk at line ${chunk.startLine}: no tree generated`);
@@ -880,6 +916,10 @@ export async function chunkedParse(
         // constructs.  Parse errors in any chunk are overwhelmingly truncation
         // artifacts rather than real syntax errors - real errors are caught by
         // linters, IDE tooling, and the primary (non-chunked) parse path.
+        boundaryWarningCount++;
+      }
+      for (const warning of chunkWarnings) {
+        allParseWarnings.push(`Chunk at line ${chunk.startLine}: ${warning}`);
         boundaryWarningCount++;
       }
     } catch {
@@ -931,13 +971,20 @@ export async function parseFile(
   content: string,
   language: IndexableLanguage,
 ): Promise<SourceIndexFile | null> {
-  const doParse = async (parseContent: string): Promise<{ tree: any; parseErrors: string[] }> => {
+  const doParse = async (
+    parseContent: string,
+  ): Promise<{ tree: any; parseErrors: string[]; parseWarnings: string[] }> => {
     const parser = await getParser(language);
     const tree = parser.parse(parseContent);
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     if (!tree || !tree.rootNode) {
-      return { tree: null, parseErrors: ["Failed to parse: no tree generated"] };
+      return {
+        tree: null,
+        parseErrors: ["Failed to parse: no tree generated"],
+        parseWarnings: [],
+      };
     }
 
     const hasError =
@@ -945,14 +992,27 @@ export async function parseFile(
         ? tree.rootNode.hasError()
         : Boolean(tree.rootNode.hasError);
     if (hasError) {
-      errors.push("Tree has syntax errors");
+      const errorTexts = collectErrorNodeTexts(tree.rootNode);
+      const missingNodeTypes = collectMissingNodeTypes(tree.rootNode);
+      if (
+        (errorTexts.length > 0 &&
+          errorTexts.every((text) => isRecoverableImportTypeQueryError(text))) ||
+        (errorTexts.length === 0 &&
+          missingNodeTypes.length > 0 &&
+          missingNodeTypes.every((type) => type === ";") &&
+          hasRecoverableImportTypeQuery(parseContent))
+      ) {
+        warnings.push("Tree-sitter recovered TypeScript import() type query syntax");
+      } else {
+        errors.push("Tree has syntax errors");
+      }
     }
 
-    return { tree, parseErrors: errors };
+    return { tree, parseErrors: errors, parseWarnings: warnings };
   };
 
   try {
-    const { tree, parseErrors } = await doParse(content);
+    const { tree, parseErrors, parseWarnings } = await doParse(content);
 
     if (!tree) {
       return {
@@ -988,6 +1048,9 @@ export async function parseFile(
     };
     if (parseErrors.length > 0) {
       result.parseErrors = parseErrors;
+    }
+    if (parseWarnings.length > 0) {
+      result.parseWarnings = parseWarnings;
     }
     return result;
   } catch (error) {
@@ -1032,7 +1095,11 @@ export async function parseFile(
       const normalized = asciiNormalize(content);
       if (normalized !== content) {
         try {
-          const { tree, parseErrors: normErrors } = await doParse(normalized);
+          const {
+            tree,
+            parseErrors: normErrors,
+            parseWarnings: normWarnings,
+          } = await doParse(normalized);
           if (tree) {
             const symbols: SymbolInfo[] = [];
             const imports: ImportInfo[] = [];
@@ -1050,7 +1117,7 @@ export async function parseFile(
               exports,
               symbols,
               parserMode: "ascii-fallback" as ParserMode,
-              parseWarnings: ["Invalid argument; parsed with ASCII fallback"],
+              parseWarnings: ["Invalid argument; parsed with ASCII fallback", ...normWarnings],
             };
             if (normErrors.length > 0) {
               result.parseErrors = normErrors;
@@ -1064,7 +1131,11 @@ export async function parseFile(
         // Content is already ASCII but Tree-sitter still threw. Retry once with
         // tree-sitter on the same content in case it was a transient issue.
         try {
-          const { tree, parseErrors: retryErrors } = await doParse(content);
+          const {
+            tree,
+            parseErrors: retryErrors,
+            parseWarnings: retryWarnings,
+          } = await doParse(content);
           if (tree) {
             const symbols: SymbolInfo[] = [];
             const imports: ImportInfo[] = [];
@@ -1082,7 +1153,7 @@ export async function parseFile(
               exports,
               symbols,
               parserMode: "tree-sitter" as ParserMode,
-              parseWarnings: ["Invalid argument; parsed with retry"],
+              parseWarnings: ["Invalid argument; parsed with retry", ...retryWarnings],
             };
             if (retryErrors.length > 0) {
               result.parseErrors = retryErrors;

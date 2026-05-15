@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "../../../utils/logger.js";
+import { parseJsoncObject } from "../jsonc.js";
 
 // ── JSON helpers ──────────────────────────────────────────────────────────
 import type { ManifestReader } from "./types.js";
@@ -19,9 +20,7 @@ import type { ProjectManifest } from "../../../types/index.js";
 
 function parseJsonSafe(content: string): Record<string, unknown> | null {
   try {
-    let cleaned = content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-    return JSON.parse(cleaned) as Record<string, unknown>;
+    return parseJsoncObject(content);
   } catch (error) {
     log.warning(`Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`);
     return null;

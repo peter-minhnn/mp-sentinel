@@ -14,19 +14,14 @@ import { readManifest as registryReadManifest, detectEcosystem } from "./manifes
 // Trigger extractor self-registration before isLexicallyExtractableLanguage is used
 import "./extractors/index.js";
 import { isLexicallyExtractable, getLanguageForExtension } from "./extractors/lexical-framework.js";
+import { parseJsoncObject } from "./jsonc.js";
 
 /**
  * Parse JSON with support for JSONC (comments, trailing commas)
  */
 function parseJsonSafe(content: string): Record<string, unknown> | null {
   try {
-    // Remove single-line and multi-line comments
-    let cleaned = content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-
-    // Remove trailing commas in objects and arrays
-    cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-
-    return JSON.parse(cleaned) as Record<string, unknown>;
+    return parseJsoncObject(content);
   } catch (error) {
     log.warning(`Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`);
     return null;

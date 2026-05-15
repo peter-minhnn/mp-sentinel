@@ -33,6 +33,7 @@ import {
 } from "../services/source-index/parser.js";
 import { getLanguageForFile } from "../services/source-index/manifest.js";
 import { calculateSHA256 } from "../services/source-index/storage.js";
+import { getToolVersion } from "../utils/version.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
 
 const tempDirs: string[] = [];
@@ -1027,7 +1028,7 @@ describe("manifest hash cache invalidation", () => {
     const oldIndex: SourceIndex = {
       schemaVersion: "1.2",
       generatedAt: new Date().toISOString(),
-      toolVersion: "1.0.0", // Different from current (2.0.0)
+      toolVersion: "1.0.0", // Different from current tool version
       project: {
         packageName: "fixture",
         ecosystem: "node",
@@ -1059,7 +1060,7 @@ describe("manifest hash cache invalidation", () => {
     expect(idx).not.toBeNull();
     // Rebuilding means parsedFiles > 0 (not just cache hits)
     expect(idx!.stats.parsedFiles).toBeGreaterThan(0);
-    expect(idx!.toolVersion).toBe("2.0.0");
+    expect(idx!.toolVersion).toBe(getToolVersion());
   });
 });
 
@@ -3388,7 +3389,7 @@ describe("indexing --health", () => {
       expect(parsed.status).toBe("stale");
       expect(parsed.staleReasons).toContain("tool version changed");
       expect(parsed.toolVersion).toBe("0.9.0");
-      expect(parsed.currentToolVersion).toBe("1.0.0");
+      expect(parsed.currentToolVersion).toBe(getToolVersion());
     } finally {
       console.log = originalLog;
     }
@@ -3420,8 +3421,8 @@ describe("indexing --health", () => {
       expect(exitCode).toBe(0);
       const parsed = JSON.parse(jsonBlob!.trim());
       expect(parsed.status).toBe("ok");
-      expect(parsed.toolVersion).toBe("1.0.0");
-      expect(parsed.currentToolVersion).toBe("1.0.0");
+      expect(parsed.toolVersion).toBe(getToolVersion());
+      expect(parsed.currentToolVersion).toBe(getToolVersion());
     } finally {
       console.log = originalLog;
     }

@@ -42,6 +42,7 @@ import { buildIndexInsights } from "../services/skills-generator/insights.js";
 import type { CLIValues } from "../cli/args.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
+import { getToolVersion } from "../utils/version.js";
 
 const DEFAULT_INDEXING_CONFIG: Required<
   Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
@@ -231,6 +232,7 @@ export async function buildSourceIndex(
   // Read manifest
   log.info("Reading project manifest...");
   const manifest = await readManifest(projectRoot);
+  const currentToolVersion = getToolVersion();
   log.info(`Project: ${manifest.packageName || "unknown"} v${manifest.packageVersion || "n/a"}`);
   log.info(`Frameworks: ${manifest.detectedFrameworks.join(", ") || "none detected"}`);
 
@@ -297,7 +299,6 @@ export async function buildSourceIndex(
       }
 
       // Tool version check: if the cache was built by a different tool version, rebuild.
-      const currentToolVersion = manifest.toolVersion ?? manifest.packageVersion ?? "unknown";
       const cacheToolVersion = existingIndex?.toolVersion;
       if (cacheToolVersion && cacheToolVersion !== currentToolVersion) {
         log.info(
@@ -511,7 +512,7 @@ export async function buildSourceIndex(
   const preIndex: SourceIndex = {
     schemaVersion: "1.2",
     generatedAt: new Date().toISOString(),
-    toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
+    toolVersion: currentToolVersion,
     project: manifest,
     files: allFiles,
     manifestHash,
@@ -543,7 +544,7 @@ export async function buildSourceIndex(
   const index: SourceIndex = {
     schemaVersion: "1.2",
     generatedAt: new Date().toISOString(),
-    toolVersion: manifest.toolVersion ?? manifest.packageVersion ?? "unknown",
+    toolVersion: currentToolVersion,
     project: manifest,
     files: allFiles,
     manifestHash,
@@ -670,7 +671,7 @@ async function handleHealth(
   }
 
   // ── Tool version staleness ─────────────────────────────────────────────────
-  const currentToolVersion = (await readManifest(projectRoot)).toolVersion ?? "unknown";
+  const currentToolVersion = getToolVersion();
   const cacheToolVersion = index.toolVersion;
   if (cacheToolVersion !== currentToolVersion) {
     staleReasons.push("tool version changed");

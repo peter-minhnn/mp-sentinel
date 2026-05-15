@@ -54,6 +54,29 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   ".codex",
   ".mp-sentinel-cache/source-index.json",
   ".mp-sentinelrc.json",
+  ".prettierrc",
+  ".prettierrc.json",
+  ".prettierrc.yaml",
+  ".prettierrc.yml",
+  ".prettierrc.toml",
+  ".prettierrc.js",
+  ".prettierrc.cjs",
+  ".prettierrc.mjs",
+  "prettier.config.js",
+  "prettier.config.cjs",
+  "prettier.config.mjs",
+  ".editorconfig",
+  "biome.json",
+  "biome.jsonc",
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.ts",
+  "eslint.config.mts",
+  "eslint.config.cts",
+  ".svelte",
+  "+page.server.ts",
+  "+page.ts",
   ".sentinel",
   ".sentinel/",
   ".sentinel/skills/",
@@ -69,6 +92,9 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   "references/architecture.md",
   "references/modules.md",
   "references/commands.md",
+  "references/code-style.md",
+  "references/language-patterns.md",
+  "references/clean-code-checklist.md",
 ]);
 
 // ── Multi-file adapters ─────────────────────────────────────────────────────
@@ -162,6 +188,11 @@ function isPathToken(token: string): boolean {
   if (/^https?:\/\//i.test(token)) return false;
   // Skip tokens with spaces (commands, prose)
   if (/\s/.test(token)) return false;
+  // Skip obvious API/member references and fluent-call examples.
+  if (!token.includes("/") && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(token)) {
+    return false;
+  }
+  if (!token.includes("/") && /^\.?[A-Za-z_$][\w$]*\(\)$/.test(token)) return false;
   // Skip scoped npm packages like @scope/name
   if (/^@[^/]+\//.test(token)) return false;
   // Backtick-wrapped reference links like [text](./path)
@@ -194,6 +225,58 @@ function normalizePathToken(token: string): string {
   if (t.startsWith("./")) t = t.slice(2);
   if (t.endsWith("/")) t = t.slice(0, -1);
   return t;
+}
+
+function getPackageNameFromImportToken(token: string): string | null {
+  if (token.startsWith("@/")) return null;
+  const parts = token.split("/");
+  const first = parts[0];
+  if (!first) return null;
+  if (first.startsWith("@")) {
+    const second = parts[1];
+    return second ? `${first}/${second}` : first;
+  }
+  return first;
+}
+
+function getKnownImportPrefixes(index: SourceIndex): Set<string> {
+  const prefixes = new Set<string>();
+
+  const pathAliases = index.project.tsConfig?.compilerOptions?.paths;
+  if (pathAliases && typeof pathAliases === "object" && !Array.isArray(pathAliases)) {
+    for (const pattern of Object.keys(pathAliases as Record<string, unknown>)) {
+      const wildcardIndex = pattern.indexOf("*");
+      prefixes.add(wildcardIndex >= 0 ? pattern.slice(0, wildcardIndex) : pattern);
+    }
+  }
+
+  for (const file of index.files) {
+    for (const imp of file.imports) {
+      prefixes.add(imp.source);
+      if (imp.source.startsWith("@/")) {
+        const [, segment] = imp.source.split("/");
+        if (segment) prefixes.add(`@/${segment}`);
+      }
+    }
+  }
+
+  return prefixes;
+}
+
+function isKnownPackageOrImportToken(token: string, index: SourceIndex): boolean {
+  const allDeps = { ...index.project.dependencies, ...index.project.devDependencies };
+  const packageName = getPackageNameFromImportToken(token);
+  if (packageName && Object.prototype.hasOwnProperty.call(allDeps, packageName)) {
+    return true;
+  }
+
+  const prefixes = getKnownImportPrefixes(index);
+  for (const prefix of prefixes) {
+    if (!prefix) continue;
+    if (token === prefix || token.startsWith(`${prefix}/`)) return true;
+  }
+
+  return false;
 }
 
 // ── Individual checks ──────────────────────────────────────────────────────
@@ -469,6 +552,8 @@ function checkUnknownPaths(
     const tsVariant = normalized.replace(/\.js$/, ".ts");
     const tsxVariant = normalized.replace(/\.js$/, ".tsx");
     if (tsVariant !== normalized && (known.has(tsVariant) || known.has(tsxVariant))) continue;
+    // Skip package subpaths and import aliases that are valid project signals, not files.
+    if (isKnownPackageOrImportToken(token, index)) continue;
 
     checks.push({
       type: "unknown-path",
