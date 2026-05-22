@@ -203,17 +203,17 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     `1. **Read SKILL.md** - project profile, conventions, pitfalls.`,
     instructionFilesLine,
     `3. **Check parser health first**:`,
-    `   - \`mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
+    `   - \`npx mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
     `4. **Drilldown when health suggests issues**:`,
-    `   - \`mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries`,
-    `   - \`mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors`,
+    `   - \`npx mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries`,
+    `   - \`npx mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors`,
     `5. **Before editing**, use source index diagnostics:`,
-    `   - \`mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands`,
-    `   - \`mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
-    `   - \`mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
-    `   - \`mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage`,
-    `   - \`mp-sentinel indexing --stats --index-format json\` - index statistics`,
-    `   - \`mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
+    `   - \`npx mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands`,
+    `   - \`npx mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
+    `   - \`npx mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
+    `   - \`npx mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage`,
+    `   - \`npx mp-sentinel indexing --stats --index-format json\` - index statistics`,
+    `   - \`npx mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
     `6. **Load only the relevant references**:`,
     ...refFiles,
     `7. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
@@ -246,7 +246,7 @@ const MAX_ROUTING_ROWS = 15;
  */
 function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase | null): string {
   if (!index || !kb) {
-    return "## Reference Routing\n\nNo source index available. Run `mp-sentinel indexing` first.";
+    return "## Reference Routing\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
   }
 
   // ── Extract directory candidates from indexed file paths ────────────────
@@ -428,7 +428,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     .sort((a, b) => (b.importCount ?? 0) - (a.importCount ?? 0))[0];
   if (topHub) {
     exampleLines.push(
-      `   - \`mp-sentinel indexing --agent-context ${topHub.file} --index-format json\` - top hub file (imported by ${topHub.importCount} files)`,
+      `   - \`npx mp-sentinel indexing --agent-context ${topHub.file} --index-format json\` - top hub file (imported by ${topHub.importCount} files)`,
     );
   }
 
@@ -436,7 +436,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
   const topDep = kb.dependencies[0];
   if (topDep) {
     exampleLines.push(
-      `   - \`mp-sentinel indexing --find-import ${topDep.packageName} --index-format json\` - top dependency (used by ${topDep.fileCount} files)`,
+      `   - \`npx mp-sentinel indexing --find-import ${topDep.packageName} --index-format json\` - top dependency (used by ${topDep.fileCount} files)`,
     );
   }
 
@@ -457,7 +457,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = mod?.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`npx mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
       break;
     }
@@ -469,7 +469,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = largestModule.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`npx mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
     }
   }
@@ -564,7 +564,7 @@ function buildOverview(
 
 function buildArchitecture(index: SourceIndex | null): string {
   if (!index || index.files.length === 0) {
-    return "## Architecture\n\nNo source index available. Run `mp-sentinel indexing` first.";
+    return "## Architecture\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
   }
 
   const hasGraph = index.files.some((f) => (f.importsFrom ?? f.importedBy) !== undefined);
@@ -993,7 +993,8 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
 // ── Codebase Map ──────────────────────────────────────────────────────────
 
 function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
-  if (!kb) return "## Codebase Map\n\nNo source index available. Run `mp-sentinel indexing` first.";
+  if (!kb)
+    return "## Codebase Map\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
 
   const lines = [`## Codebase Map`];
 
@@ -1043,7 +1044,8 @@ function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
 // ── Testing Map ────────────────────────────────────────────────────────────
 
 function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
-  if (!kb) return "## Testing Map\n\nNo source index available. Run `mp-sentinel indexing` first.";
+  if (!kb)
+    return "## Testing Map\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
 
   const lines = [`## Testing Map`];
 
@@ -1096,7 +1098,8 @@ function buildDependenciesSection(
   kb: SkillKnowledgeBase | null,
   enrichment?: AIEnrichmentOutput | null,
 ): string {
-  if (!kb) return "## Dependencies\n\nNo source index available. Run `mp-sentinel indexing` first.";
+  if (!kb)
+    return "## Dependencies\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
 
   const lines = [`## Dependencies`];
 
@@ -1170,7 +1173,8 @@ function buildDependenciesSection(
 // ── Public API ─────────────────────────────────────────────────────────────
 
 function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
-  if (!kb) return "## Public API\n\nNo source index available. Run `mp-sentinel indexing` first.";
+  if (!kb)
+    return "## Public API\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
 
   const lines = [`## Public API Surface`];
 
@@ -1456,7 +1460,7 @@ export function buildCodeStyleReference(
   policies?: CreateSkillsPolicies | null,
 ): string {
   if (!csp) {
-    return "## Code Style\n\nNo code style profile available. Run `mp-sentinel create-skills` with indexing first.";
+    return "## Code Style\n\nNo code style profile available. Run `npx mp-sentinel create-skills` with indexing first.";
   }
 
   const lines: string[] = [

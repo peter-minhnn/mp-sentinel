@@ -738,7 +738,7 @@ function checkAgentWorkflowContract(
         type: "agent-workflow-contract",
         severity: "error",
         file: file.outputPath,
-        message: `Required Agent Workflow must include \`mp-sentinel indexing --${label}\` diagnostic command`,
+        message: `Required Agent Workflow must include \`npx mp-sentinel indexing --${label}\` diagnostic command`,
       });
       continue;
     }
@@ -751,7 +751,7 @@ function checkAgentWorkflowContract(
         type: "agent-workflow-contract",
         severity: "error",
         file: file.outputPath,
-        message: `\`mp-sentinel indexing --${label}\` command must include --index-format json`,
+        message: `\`npx mp-sentinel indexing --${label}\` command must include --index-format json`,
       });
     }
   }
