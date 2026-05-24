@@ -38,6 +38,7 @@ export interface CLIValues {
   explainIndex?: string;
   findSymbol?: string;
   findImport?: string;
+  findCode?: string;
   agentContext?: string;
   recovered?: boolean;
   parseErrors?: boolean;
@@ -121,6 +122,7 @@ export const buildProgram = (): Command => {
       "Search index for symbols (functions, classes, interfaces, etc.)",
     )
     .option("--find-import <query>", "Search index for files importing a package or path")
+    .option("--find-code <query>", "Search index for code snippets matching a text query")
     .option(
       "--agent-context <file>",
       "AI-agent-friendly context pack: symbols, imports, dependents, hub files, suggested next commands",
@@ -335,6 +337,9 @@ export const parseCliArgs = (): {
       }),
       ...(typeof indexingOptions["findImport"] === "string" && {
         findImport: indexingOptions["findImport"] as string,
+      }),
+      ...(typeof indexingOptions["findCode"] === "string" && {
+        findCode: indexingOptions["findCode"] as string,
       }),
       ...(typeof indexingOptions["agentContext"] === "string" && {
         agentContext: indexingOptions["agentContext"] as string,

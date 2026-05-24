@@ -6,6 +6,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { log } from "../../utils/logger.js";
+import { CURRENT_SOURCE_INDEX_SCHEMA } from "../../types/index.js";
 import type { SourceIndex, CacheValidity, SourceIndexFile } from "../../types/index.js";
 
 const DEFAULT_CACHE_PATH = ".mp-sentinel-cache/source-index.json";
@@ -42,12 +43,11 @@ export async function readIndex(
     const content = await readFile(cachePath, "utf-8");
     const index = JSON.parse(content) as SourceIndex;
 
-    // Validate schema version (accept 1.0, 1.1, and 1.2)
+    // Validate schema version (accept 1.0, 1.1, 1.2, and 1.3)
+    const validSchemas = ["1.0", "1.1", "1.2", "1.3"] as const;
     if (
       !index.schemaVersion ||
-      (index.schemaVersion !== "1.0" &&
-        index.schemaVersion !== "1.1" &&
-        index.schemaVersion !== "1.2")
+      !validSchemas.includes(index.schemaVersion as (typeof validSchemas)[number])
     ) {
       log.warning(`Invalid or unsupported index schema version: ${index.schemaVersion}`);
       return null;
@@ -176,6 +176,15 @@ export async function getFilesToIndex(
   }
 
   if (validity.valid) {
+    // Old schemas are readable for diagnostics, but force rebuild for lookup
+    // correctness so new features (e.g. --find-code) never silently miss data.
+    if (existingIndex.schemaVersion !== CURRENT_SOURCE_INDEX_SCHEMA) {
+      return {
+        toIndex: allFiles,
+        fromCache: [],
+        validity: { valid: false, schemaOutdated: true },
+      };
+    }
     return {
       toIndex: [],
       fromCache: existingIndex.files,

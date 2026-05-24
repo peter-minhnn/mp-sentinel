@@ -545,6 +545,7 @@ Generated skill files and the `create-skills` quality gate enforce an agent work
 | `indexing --explain-index <file>` | Full parser diagnostics for a single file |
 | `indexing --find-symbol <name>` | Locate a symbol across the index |
 | `indexing --find-import <package>` | Find files that import a given package |
+| `indexing --find-code <query>` | Search indexed code snippets for a query |
 | `indexing --stats` | Aggregate index statistics |
 | `--explain-context` | Review context diagnostics (available on the root CLI) |
 

@@ -26,7 +26,15 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -126,10 +134,7 @@ function stepIndexing() {
 
 function stepHealthCheck() {
   stepHeader(4, "indexing --health (positive check)");
-  const out = run(
-    "node dist/index.js indexing --health --index-format json",
-    "indexing --health",
-  );
+  const out = run("node dist/index.js indexing --health --index-format json", "indexing --health");
   if (out === null) return false;
 
   const json = parseJson(out, "indexing --health");
@@ -191,10 +196,7 @@ function stepHealthCheck() {
   const hasParseErrors = typeof json.parseErrorCount === "number" && json.parseErrorCount > 0;
   if (hasRecovered || hasParseErrors) {
     if (!Array.isArray(json.suggestedCommands) || json.suggestedCommands.length === 0) {
-      fail(
-        "indexing --health",
-        "suggestedCommands missing or empty when parser issues exist",
-      );
+      fail("indexing --health", "suggestedCommands missing or empty when parser issues exist");
       return false;
     }
     if (hasRecovered && !json.suggestedCommands.some((c) => c.includes("--recovered"))) {
@@ -227,17 +229,11 @@ function stepHealthCheck() {
       return false;
     }
     if (typeof json.totalChunkBoundaryWarnings !== "number") {
-      fail(
-        "indexing --health",
-        "totalChunkBoundaryWarnings missing when chunked files exist",
-      );
+      fail("indexing --health", "totalChunkBoundaryWarnings missing when chunked files exist");
       return false;
     }
     if (typeof json.totalChunkActionableWarnings !== "number") {
-      fail(
-        "indexing --health",
-        "totalChunkActionableWarnings missing when chunked files exist",
-      );
+      fail("indexing --health", "totalChunkActionableWarnings missing when chunked files exist");
       return false;
     }
     if (json.totalChunkActionableWarnings !== 0) {
@@ -505,7 +501,9 @@ function stepIndexQuery() {
     fail("indexing --agent-context", "suggestedCommands is not an array");
     return false;
   }
-  const acSymbols = acJson.file.symbolsTruncated ? `${acJson.file.symbols.length}+` : acJson.file.symbols.length;
+  const acSymbols = acJson.file.symbolsTruncated
+    ? `${acJson.file.symbols.length}+`
+    : acJson.file.symbols.length;
 
   // v1.27.0: agent-context chunk fields
   if (acJson.file.parserMode === "chunked-tree-sitter") {
@@ -540,7 +538,10 @@ function stepIndexQuery() {
     }
   } else {
     if ("chunkCount" in acJson.file) {
-      fail("indexing --agent-context", `chunkCount present for non-chunked file (parserMode=${acJson.file.parserMode ?? "tree-sitter"})`);
+      fail(
+        "indexing --agent-context",
+        `chunkCount present for non-chunked file (parserMode=${acJson.file.parserMode ?? "tree-sitter"})`,
+      );
       return false;
     }
   }
@@ -591,7 +592,10 @@ function stepIndexQuery() {
     }
   } else {
     if ("chunkCount" in eiJson) {
-      fail("indexing --explain-index", `chunkCount present for non-chunked file (parserMode=${eiJson.parserMode ?? "tree-sitter"})`);
+      fail(
+        "indexing --explain-index",
+        `chunkCount present for non-chunked file (parserMode=${eiJson.parserMode ?? "tree-sitter"})`,
+      );
       return false;
     }
   }
@@ -624,7 +628,10 @@ function stepIndexQuery() {
               return false;
             }
             if (typeof acChunkedJson.file.chunkWarningCount !== "number") {
-              fail("indexing --agent-context (chunked)", "chunkWarningCount missing for chunked file");
+              fail(
+                "indexing --agent-context (chunked)",
+                "chunkWarningCount missing for chunked file",
+              );
               return false;
             }
             if (typeof acChunkedJson.file.chunkBoundaryWarningCount !== "number") {
@@ -663,7 +670,10 @@ function stepIndexQuery() {
               return false;
             }
             if (typeof eiChunkedJson.chunkWarningCount !== "number") {
-              fail("indexing --explain-index (chunked)", "chunkWarningCount missing for chunked file");
+              fail(
+                "indexing --explain-index (chunked)",
+                "chunkWarningCount missing for chunked file",
+              );
               return false;
             }
             if (typeof eiChunkedJson.chunkBoundaryWarningCount !== "number") {
@@ -735,9 +745,46 @@ function stepIndexQuery() {
     return false;
   }
 
+  // --find-code
+  const fcOut = run(
+    "node dist/index.js indexing --find-code buildSourceIndex --index-format json",
+    "indexing --find-code",
+  );
+  if (fcOut === null) return false;
+
+  const fcJson = parseJson(fcOut, "indexing --find-code");
+  if (!fcJson) return false;
+
+  if (typeof fcJson.query !== "string") {
+    fail("indexing --find-code", "JSON output missing 'query' field");
+    return false;
+  }
+  if (!Array.isArray(fcJson.results)) {
+    fail("indexing --find-code", "results is not an array");
+    return false;
+  }
+  if (fcJson.results.length === 0) {
+    fail("indexing --find-code", "expected results for 'buildSourceIndex', got 0");
+    return false;
+  }
+
+  // Verify top find-code result is the real declaration, not a call site or string literal
+  const topCode = fcJson.results[0];
+  const isDeclaration =
+    /(?:function|class|interface|type|enum|const|let|var)\s+buildSourceIndex/i.test(
+      topCode.entry.text,
+    );
+  if (!isDeclaration) {
+    fail(
+      "indexing --find-code",
+      `top result is not the declaration: ${topCode.file}:${topCode.entry.line} "${topCode.entry.text}"`,
+    );
+    return false;
+  }
+
   ok(
     "index queries",
-    `agent-context ${acSymbols} symbols, find-symbol ${fsJson.results.length} hits, find-import ${fiJson.results.length} hits`,
+    `agent-context ${acSymbols} symbols, find-symbol ${fsJson.results.length} hits, find-import ${fiJson.results.length} hits, find-code ${fcJson.results.length} hits`,
   );
   return true;
 }
@@ -773,7 +820,10 @@ function stepCreateSkills() {
       qualityErrors += entry.quality.errors;
       for (const check of entry.quality.checks) {
         if (check.severity === "error") {
-          fail("create-skills --dry-run", `[quality:${entry.agent}] ${check.file}: ${check.message}`);
+          fail(
+            "create-skills --dry-run",
+            `[quality:${entry.agent}] ${check.file}: ${check.message}`,
+          );
         }
       }
     }
@@ -845,8 +895,15 @@ function stepExplainAgents() {
     }
   }
 
-  const detected = json.agents.filter((a) => a.detected).map((a) => a.id).join(", ") || "none";
-  ok("explain-agents", `${json.agents.length} agents, project=${json.projectName}, default=${json.defaultSelection}, detected=[${detected}]`);
+  const detected =
+    json.agents
+      .filter((a) => a.detected)
+      .map((a) => a.id)
+      .join(", ") || "none";
+  ok(
+    "explain-agents",
+    `${json.agents.length} agents, project=${json.projectName}, default=${json.defaultSelection}, detected=[${detected}]`,
+  );
   return true;
 }
 
@@ -1021,7 +1078,11 @@ function stepPositiveExplainContext() {
     fail("positive-explain-context", e.stderr || e.message);
     return false;
   } finally {
-    try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort cleanup */
+    }
   }
 }
 
@@ -1029,10 +1090,11 @@ function stepDoctor() {
   stepHeader(11, "create-skills --doctor");
   let raw;
   try {
-    raw = execSync(
-      "node dist/index.js create-skills --doctor --format json",
-      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
-    );
+    raw = execSync("node dist/index.js create-skills --doctor --format json", {
+      encoding: "utf-8",
+      timeout: 120000,
+      stdio: "pipe",
+    });
   } catch (e) {
     // Doctor exits 1 for action-required (e.g. stale skills in dogfood).
     // That's expected; capture its stdout and validate the JSON regardless.
@@ -1048,8 +1110,14 @@ function stepDoctor() {
 
   // Assert top-level fields
   const requiredFields = [
-    "status", "projectName", "agents", "index",
-    "skills", "legacyFiles", "scripts", "recommendedActions",
+    "status",
+    "projectName",
+    "agents",
+    "index",
+    "skills",
+    "legacyFiles",
+    "scripts",
+    "recommendedActions",
     "recommendedCommands",
   ];
   for (const field of requiredFields) {
@@ -1071,7 +1139,10 @@ function stepDoctor() {
       fail("create-skills --doctor", "index.recoveredFiles missing or not a number");
       return false;
     }
-    if (typeof json.index.parserModeBreakdown !== "object" || json.index.parserModeBreakdown === null) {
+    if (
+      typeof json.index.parserModeBreakdown !== "object" ||
+      json.index.parserModeBreakdown === null
+    ) {
       fail("create-skills --doctor", "index.parserModeBreakdown missing or not an object");
       return false;
     }
@@ -1147,16 +1218,19 @@ function stepDoctor() {
   }
 
   let parserSummary = "";
-  if (typeof json.index.recoveredFiles === "number" && typeof json.index.parseErrorCount === "number") {
+  if (
+    typeof json.index.recoveredFiles === "number" &&
+    typeof json.index.parseErrorCount === "number"
+  ) {
     parserSummary = `, parser: ${json.index.recoveredFiles} recovered, ${json.index.parseErrorCount} hard errors`;
   }
 
   ok(
     "create-skills --doctor",
     `status=${json.status}, index=${json.index.status}, ` +
-    `skills=${json.skills.length} agents, ${json.legacyFiles?.length ?? 0} legacy, ` +
-    `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions, ` +
-    `${json.recommendedCommands?.length ?? 0} commands${parserSummary}`,
+      `skills=${json.skills.length} agents, ${json.legacyFiles?.length ?? 0} legacy, ` +
+      `${json.scripts?.length ?? 0} scripts, ${json.recommendedActions?.length ?? 0} actions, ` +
+      `${json.recommendedCommands?.length ?? 0} commands${parserSummary}`,
   );
   return true;
 }
@@ -1218,10 +1292,11 @@ function stepAgentSkillsCheck() {
   stepHeader(13, "agent:skills:check");
   let raw;
   try {
-    raw = execSync(
-      "npm run agent:skills:check --silent",
-      { encoding: "utf-8", timeout: 120000, stdio: "pipe" },
-    );
+    raw = execSync("npm run agent:skills:check --silent", {
+      encoding: "utf-8",
+      timeout: 120000,
+      stdio: "pipe",
+    });
   } catch (e) {
     // Exit 1 = stale/missing/wrong-agent, exit 2 = runtime error. Both fail dogfood.
     const detail =

@@ -51,7 +51,8 @@ import {
   resolveAIEnrichmentConfig,
   validateSkillQuality,
 } from "../services/skills-generator/index.js";
-import { buildSourceIndex, getIndexingConfig, getParserModeBreakdown } from "./indexing.js";
+import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
+import { getParserModeBreakdown } from "../services/source-index/diagnostics.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { AIConfig } from "../services/ai/config.js";
 import { GENERATOR_VERSION, parseGeneratorMajor } from "../services/skills-generator/metadata.js";

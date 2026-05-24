@@ -31,7 +31,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
     ...overrides,
   };
   return {
-    schemaVersion: "1.2",
+    schemaVersion: "1.3",
     generatedAt: "2026-01-01T00:00:00.000Z",
     toolVersion: "1.0.0",
     project,
@@ -1414,6 +1414,7 @@ describe("validateSkillQuality", () => {
       "   - `mp-sentinel indexing --explain-index <file> --index-format json` - imports, dependents, symbols",
       "   - `mp-sentinel indexing --find-symbol <name> --index-format json` - search for symbols",
       "   - `mp-sentinel indexing --find-import <pkg> --index-format json` - search for imports",
+      "   - `mp-sentinel indexing --find-code <query> --index-format json` - search code snippets",
       "   - `mp-sentinel indexing --stats --index-format json` - index summary",
       "   - `mp-sentinel --explain-context --format json --files <file>` - review context enrichment",
       "6. **Load only the relevant references**",
@@ -1488,6 +1489,21 @@ describe("validateSkillQuality", () => {
       );
       expect(errors.length).toBe(1);
       expect(errors[0]!.message).toContain("find-import");
+    });
+
+    it("flags missing --find-code as error", () => {
+      const body = VALID_WORKFLOW.replace(
+        "`mp-sentinel indexing --find-code <query> --index-format json`",
+        "`mp-sentinel indexing --some-other`",
+      );
+      const content = makeSingleFileSkillWithWorkflow(body);
+      const files = [makeFile(".cursor/rules/test.mdc", content)];
+      const report = validateSkillQuality(files, "cursor", null);
+      const errors = report.checks.filter(
+        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+      );
+      expect(errors.length).toBe(1);
+      expect(errors[0]!.message).toContain("find-code");
     });
 
     it("flags missing --stats as error", () => {

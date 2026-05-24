@@ -17,6 +17,7 @@ import {
   getExplainContext,
   getFindSymbol,
   getFindImport,
+  getFindCode,
   getExplainFile,
   getIndexStats,
   getRecoveredFiles,
@@ -206,7 +207,42 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
     },
   );
 
-  // ── Tool 6: Explain File ───────────────────────────────────────────
+  // ── Tool 6: Find Code ──────────────────────────────────────────────
+
+  server.tool(
+    "mp_sentinel_index_find_code",
+    "Search source index for code snippets matching a text query.",
+    {
+      query: z.string().min(1).describe("Code text or partial text to search for"),
+    },
+    async ({ query }) => {
+      try {
+        const result = await getFindCode(projectRoot, query);
+        if (result.status === "error") {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            isError: true,
+          };
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                status: "error",
+                message: err instanceof Error ? err.message : String(err),
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── Tool 7: Explain File ───────────────────────────────────────────
 
   server.tool(
     "mp_sentinel_index_explain_file",

@@ -2,6 +2,16 @@
 
 ## v3.0.1
 
+### Fast Index Lookup: Symbols + Code Text
+
+New indexed search paths let users and agents find symbols or code snippets without broad `grep` loops.
+
+- **`mp-sentinel indexing --find-code <query>`** — Search indexed code snippets by exact text, case-insensitive text, or token-normalized query (e.g., `build source index` matches `buildSourceIndex`). Results include file, line, nearest symbol, and redacted snippet text. JSON output with `--index-format json`.
+- **MCP tool `mp_sentinel_index_find_code`** — Read-only code snippet search via the MCP server.
+- **Source index schema 1.3** — Optional `codeSearch` entries per file: trimmed, secret-redacted snippets with nearest symbol metadata. Optional `endLine`/`endColumn` on `SymbolInfo`.
+- **Improved symbol normalization** — Token-variant matching (camelCase, PascalCase, snake_case, concatenated) enables space-separated queries like `build source index` to match `buildSourceIndex` in `--find-symbol`.
+- **Refactored query handlers** — Extracted from the oversized `src/commands/indexing.ts` into `src/commands/indexing-queries.ts`.
+
 ### Source Indexing and `create-skills` Quality Fixes
 
 - **JSONC tsconfig parsing** — path aliases and globs such as `@/*`, `./src/*`, and `**/*.ts` are no longer mistaken for comments.

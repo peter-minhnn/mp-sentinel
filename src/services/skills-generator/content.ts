@@ -212,6 +212,7 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     `   - \`npx mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
     `   - \`npx mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
     `   - \`npx mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage`,
+    `   - \`npx mp-sentinel indexing --find-code <query> --index-format json\` - search indexed code snippets`,
     `   - \`npx mp-sentinel indexing --stats --index-format json\` - index statistics`,
     `   - \`npx mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
     `6. **Load only the relevant references**:`,

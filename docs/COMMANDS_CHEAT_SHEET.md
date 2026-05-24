@@ -36,6 +36,7 @@
 | `--explain-index <file>` | Full parser diagnostics | - |
 | `--find-symbol <name>` | Locate symbol in index | - |
 | `--find-import <pkg>` | Find files importing a package | - |
+| `--find-code <query>` | Search indexed code snippets | - |
 | `--stats` | Aggregate index statistics | false |
 | `--index-format <fmt>` | Output: `console` or `json` | console |
 

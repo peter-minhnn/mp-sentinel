@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`mp-sentinel indexing --find-code <query>`** — Search indexed code snippets by exact text, case-insensitive text, or token-normalized query (e.g., `build source index` matches `buildSourceIndex`). Results include line, column, nearest symbol, and redacted snippet text.
+- **MCP tool `mp_sentinel_index_find_code`** — Read-only code snippet search via MCP server.
+- **Source index schema 1.3** — Optional `codeSearch` entries per file (trimmed, secret-redacted snippets with nearest symbol metadata) and optional `endLine`/`endColumn` on `SymbolInfo`.
+- **Improved symbol lookup normalization** — Token-variant matching (camelCase, PascalCase, snake_case, concatenated) enables queries like `build source index` to match `buildSourceIndex` in `--find-symbol`.
 - **Multi-ecosystem support** — Python, Go, Rust, Dart, PHP, Ruby, Nuxt now first-class
 - `manifests/` abstraction: ecosystem-aware project manifest readers for `pyproject.toml`, `go.mod`, `Cargo.toml`, `pubspec.yaml`, `composer.json`, `Gemfile`
 - `extractors/lexical-framework.ts`: universal lexical extractor registry — register a new language in ~50 lines

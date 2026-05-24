@@ -18,6 +18,7 @@ import { ImportResolver } from "../services/source-index/resolver.js";
 import {
   querySymbols,
   queryImports,
+  queryCode,
   queryAgentContext,
   quoteCliArg,
   getParserTelemetry,
@@ -30,6 +31,7 @@ import {
   lexicalParse,
   chunkedParse,
   clearParserCache,
+  buildCodeSearchEntries,
 } from "../services/source-index/parser.js";
 import { getLanguageForFile } from "../services/source-index/manifest.js";
 import { calculateSHA256 } from "../services/source-index/storage.js";
@@ -331,7 +333,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.2");
+      expect(parsed.schemaVersion).toBe("1.3");
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
     } finally {
@@ -442,7 +444,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.2");
+      expect(parsed.schemaVersion).toBe("1.3");
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
       expect(parsed.stats.indexedFiles).toBe(1);
@@ -1026,7 +1028,7 @@ describe("manifest hash cache invalidation", () => {
 
     // Inject a cache with a different toolVersion
     const oldIndex: SourceIndex = {
-      schemaVersion: "1.2",
+      schemaVersion: "1.3",
       generatedAt: new Date().toISOString(),
       toolVersion: "1.0.0", // Different from current tool version
       project: {
@@ -1670,6 +1672,15 @@ describe("find-symbol and find-import CLI args", () => {
     expect(parsed.values.findImport).toBe("react");
   });
 
+  it("parses --find-code option", () => {
+    process.argv = ["node", "mp-sentinel", "indexing", "--find-code", "buildSourceIndex"];
+
+    const parsed = parseCliArgs();
+
+    expect(parsed.command).toBe("indexing");
+    expect(parsed.values.findCode).toBe("buildSourceIndex");
+  });
+
   it("parses --find-symbol with --index-format json", () => {
     process.argv = [
       "node",
@@ -2023,6 +2034,186 @@ describe("find-import query", () => {
   });
 });
 
+describe("find-code query", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "code-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `export function buildSourceIndex() { return "ok"; }\n` +
+        `const apiKey = "sk-test-1234567890abcdef";\n` +
+        `export class HelloWorld { }\n`,
+    );
+  };
+
+  it("finds code snippets by exact text", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand(
+        { findCode: 'export function buildSourceIndex() { return "ok"; }', "index-format": "json" },
+        cwd,
+      );
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe('export function buildSourceIndex() { return "ok"; }');
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const exact = parsed.results.find(
+        (r: { entry: { text: string } }) =>
+          r.entry.text === 'export function buildSourceIndex() { return "ok"; }',
+      );
+      expect(exact).toBeDefined();
+      expect(exact.score).toBe(100);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds code snippets by case-insensitive text", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand(
+        { findCode: 'EXPORT FUNCTION BUILDSOURCEINDEX() { RETURN "OK"; }', "index-format": "json" },
+        cwd,
+      );
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const match = parsed.results.find(
+        (r: { entry: { text: string } }) =>
+          r.entry.text === 'export function buildSourceIndex() { return "ok"; }',
+      );
+      expect(match).toBeDefined();
+      expect(match.score).toBe(90);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("finds code snippets by partial text", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findCode: 'return "ok"', "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const match = parsed.results.find((r: { entry: { text: string } }) =>
+        r.entry.text.includes("buildSourceIndex"),
+      );
+      expect(match).toBeDefined();
+      expect(match.score).toBe(70);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("token-normalized query matches camelCase code", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findCode: "build source index", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const match = parsed.results.find((r: { entry: { text: string } }) =>
+        r.entry.text.includes("buildSourceIndex"),
+      );
+      expect(match).toBeDefined();
+      expect(match.score).toBe(95);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("redacts secrets in snippet text", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findCode: "const", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.results.length).toBeGreaterThanOrEqual(1);
+      const match = parsed.results.find((r: { entry: { text: string } }) =>
+        r.entry.text.includes("const"),
+      );
+      expect(match).toBeDefined();
+      // Secret should be redacted
+      expect(match.entry.text).toContain("<REDACTED_SECRET>");
+      expect(match.entry.text).not.toContain("sk-test-1234567890abcdef");
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("no match returns empty results", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await runIndexingCommand({ findCode: "nonexistent-code-xyz", "index-format": "json" }, cwd);
+
+      const parsed = JSON.parse(logs.join("\n"));
+      expect(parsed.query).toBe("nonexistent-code-xyz");
+      expect(parsed.results).toEqual([]);
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  it("empty query string throws UserError", async () => {
+    const cwd = await makeTempDir();
+    await expect(
+      runIndexingCommand({ findCode: "   ", "index-format": "json" }, cwd),
+    ).rejects.toThrow("--find-code query must not be empty");
+  });
+});
+
 // -- Lane A: agent-context CLI -------------------------------------------------
 
 describe("agent-context CLI args", () => {
@@ -2330,7 +2521,7 @@ describe("querySymbols (service)", () => {
 
   it("returns empty results for empty index", () => {
     const emptyIndex: SourceIndex = {
-      schemaVersion: "1.2",
+      schemaVersion: "1.3",
       generatedAt: new Date().toISOString(),
       toolVersion: "1.0.0",
       project: {
@@ -2487,7 +2678,7 @@ describe("queryImports (service)", () => {
 
   it("returns empty results for empty index", () => {
     const emptyIndex: SourceIndex = {
-      schemaVersion: "1.2",
+      schemaVersion: "1.3",
       generatedAt: new Date().toISOString(),
       toolVersion: "1.0.0",
       project: {
@@ -2637,6 +2828,210 @@ describe("queryImports (service)", () => {
 
     const results = queryImports(index!, "nonexistent-pkg-xyz");
     expect(results).toEqual([]);
+  });
+});
+
+describe("queryCode (service)", () => {
+  const makeProject = async (cwd: string) => {
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "code-query-test", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "main.ts"),
+      `export function buildSourceIndex() { return "ok"; }\n` +
+        `const secretToken = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";\n` +
+        `export class HelloWorld { }\n`,
+    );
+  };
+
+  it("returns empty results for null index", () => {
+    const results = queryCode(null, "foo");
+    expect(results).toEqual([]);
+  });
+
+  it("returns empty results for empty index", () => {
+    const emptyIndex: SourceIndex = {
+      schemaVersion: "1.3",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "1.0.0",
+      project: {
+        packageName: "test",
+        ecosystem: "node",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [],
+      stats: { totalFiles: 0, indexedFiles: 0, skippedFiles: 0, parseErrors: 0 },
+    };
+    const results = queryCode(emptyIndex, "foo");
+    expect(results).toEqual([]);
+  });
+
+  it("exact text match gives score 100", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, 'export function buildSourceIndex() { return "ok"; }');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const exact = results.find(
+      (r) => r.entry.text === 'export function buildSourceIndex() { return "ok"; }',
+    );
+    expect(exact).toBeDefined();
+    expect(exact!.score).toBe(100);
+  });
+
+  it("case-insensitive text match gives score 90", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, 'EXPORT FUNCTION BUILDSOURCEINDEX() { RETURN "OK"; }');
+    const ciMatch = results.find(
+      (r) => r.entry.text === 'export function buildSourceIndex() { return "ok"; }',
+    );
+    expect(ciMatch).toBeDefined();
+    expect(ciMatch!.score).toBe(90);
+  });
+
+  it("partial text match gives score 70", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, 'return "ok"');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const partial = results.find((r) => r.entry.text.includes("buildSourceIndex"));
+    expect(partial).toBeDefined();
+    expect(partial!.score).toBe(70);
+  });
+
+  it("token-normalized match gives score 60", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, "build source index");
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const match = results.find((r) => r.entry.text.includes("buildSourceIndex"));
+    expect(match).toBeDefined();
+    expect(match!.score).toBe(95);
+  });
+
+  it("caps results at 20", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "code-cap-test", version: "1.0.0" }),
+    );
+    let content = "";
+    for (let i = 0; i < 30; i++) {
+      content += `const x${i} = ${i};\n`;
+    }
+    content += `export const y = 1;\n`;
+    await writeFile(join(cwd, "src", "many-lines.ts"), content);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, "const x");
+    expect(results.length).toBeLessThanOrEqual(20);
+  });
+
+  it("redacts secrets in snippet text", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, "const");
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const match = results.find((r) => r.entry.text.includes("const"));
+    expect(match).toBeDefined();
+    expect(match!.entry.text).toContain("<REDACTED_SECRET>");
+    expect(match!.entry.text).not.toContain("ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+  });
+
+  it("nearestSymbol is attached to snippets", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    const results = queryCode(index!, 'return "ok"');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const match = results.find((r) => r.entry.nearestSymbol === "buildSourceIndex");
+    expect(match).toBeDefined();
   });
 });
 
@@ -2839,7 +3234,7 @@ describe("queryAgentContext (service)", () => {
     files.push(mainFile);
 
     const index: SourceIndex = {
-      schemaVersion: "1.2",
+      schemaVersion: "1.3",
       generatedAt: new Date().toISOString(),
       toolVersion: "1.0.0",
       project: {
@@ -5875,5 +6270,400 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
     } finally {
       stdoutWrite.mockRestore();
     }
+  });
+
+  // ── queryCode ranking and declaration detection ──────────────────────────
+
+  describe("queryCode", () => {
+    const makeIndex = (
+      entries: Array<{
+        path: string;
+        text: string;
+        line: number;
+        column: number;
+        nearestSymbol?: string;
+      }>,
+    ): SourceIndex => ({
+      schemaVersion: "1.3",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "test",
+      project: {
+        packageName: "test",
+        packageVersion: "1.0.0",
+        ecosystem: "node",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: entries.map((e) => ({
+        path: e.path,
+        language: "typescript",
+        sha256: "a",
+        sizeBytes: 100,
+        mtimeMs: 0,
+        imports: [],
+        exports: [],
+        symbols: e.nearestSymbol
+          ? [{ name: e.nearestSymbol, type: "function" as const, line: e.line, column: e.column }]
+          : [],
+        codeSearch: [
+          {
+            line: e.line,
+            column: e.column,
+            text: e.text,
+            ...(e.nearestSymbol
+              ? { nearestSymbol: e.nearestSymbol, nearestSymbolType: "function" }
+              : {}),
+          },
+        ],
+      })),
+      stats: {
+        totalFiles: entries.length,
+        indexedFiles: entries.length,
+        skippedFiles: 0,
+        parseErrors: 0,
+      },
+    });
+
+    it("declarations outrank call sites for exact identifier query", () => {
+      const index = makeIndex([
+        {
+          path: "src/call.ts",
+          text: "const index = await buildSourceIndex(projectRoot, config);",
+          line: 5,
+          column: 0,
+        },
+        {
+          path: "src/decl.ts",
+          text: "export async function buildSourceIndex(",
+          line: 10,
+          column: 0,
+          nearestSymbol: "buildSourceIndex",
+        },
+        { path: "src/string.ts", text: 'const name = "buildSourceIndex";', line: 3, column: 0 },
+      ]);
+
+      const results = queryCode(index, "buildSourceIndex");
+      expect(results.length).toBeGreaterThanOrEqual(3);
+      expect(results[0]!.file).toBe("src/decl.ts");
+      expect(results[0]!.score).toBeGreaterThanOrEqual(95);
+      expect(results[0]!.reason).toContain("declaration match");
+    });
+
+    it("token-normalized query boosts matching declaration", () => {
+      const index = makeIndex([
+        {
+          path: "src/call.ts",
+          text: "const index = await buildSourceIndex(projectRoot, config);",
+          line: 5,
+          column: 0,
+        },
+        {
+          path: "src/decl.ts",
+          text: "export async function buildSourceIndex(",
+          line: 10,
+          column: 0,
+          nearestSymbol: "buildSourceIndex",
+        },
+      ]);
+
+      const results = queryCode(index, "build source index");
+      expect(results[0]!.file).toBe("src/decl.ts");
+      expect(results[0]!.score).toBeGreaterThanOrEqual(95);
+      expect(results[0]!.reason).toContain("declaration match");
+    });
+
+    it("query with function keyword still finds declaration", () => {
+      const index = makeIndex([
+        {
+          path: "src/decl.ts",
+          text: "export async function buildSourceIndex(",
+          line: 10,
+          column: 0,
+          nearestSymbol: "buildSourceIndex",
+        },
+        {
+          path: "src/call.ts",
+          text: "const index = await buildSourceIndex(projectRoot, config);",
+          line: 5,
+          column: 0,
+        },
+      ]);
+
+      const results = queryCode(index, "function buildSourceIndex");
+      expect(results[0]!.file).toBe("src/decl.ts");
+      expect(results[0]!.score).toBeGreaterThanOrEqual(95);
+    });
+
+    it("export default function declarations are detected", () => {
+      const index = makeIndex([
+        {
+          path: "src/decl.ts",
+          text: "export default function run() { return 1; }",
+          line: 10,
+          column: 0,
+          nearestSymbol: "run",
+        },
+        {
+          path: "src/call.ts",
+          text: "const result = run();",
+          line: 5,
+          column: 0,
+        },
+      ]);
+
+      const results = queryCode(index, "run");
+      expect(results[0]!.file).toBe("src/decl.ts");
+      expect(results[0]!.score).toBeGreaterThanOrEqual(95);
+      expect(results[0]!.reason).toContain("declaration match");
+    });
+
+    it("call sites remain lower-scored contains matches", () => {
+      const index = makeIndex([
+        {
+          path: "src/call.ts",
+          text: "const index = await buildSourceIndex(projectRoot, config);",
+          line: 5,
+          column: 0,
+        },
+      ]);
+
+      const results = queryCode(index, "buildSourceIndex");
+      expect(results.length).toBe(1);
+      expect(results[0]!.score).toBe(70);
+      expect(results[0]!.reason).not.toContain("declaration match");
+    });
+
+    it("string literals remain lower-scored contains matches", () => {
+      const index = makeIndex([
+        { path: "src/test.ts", text: 'const query = "buildSourceIndex";', line: 2, column: 0 },
+      ]);
+
+      const results = queryCode(index, "buildSourceIndex");
+      expect(results.length).toBe(1);
+      expect(results[0]!.score).toBe(70);
+      expect(results[0]!.reason).not.toContain("declaration match");
+    });
+
+    it("does not falsely boost non-declarations when query has no declared identifier", () => {
+      const index = makeIndex([
+        {
+          path: "src/string.ts",
+          text: '"node dist/index.js indexing --find-symbol buildSourceIndex --index-format json",',
+          line: 1,
+          column: 0,
+        },
+        {
+          path: "src/decl.ts",
+          text: "export async function buildSourceIndex(",
+          line: 10,
+          column: 0,
+          nearestSymbol: "buildSourceIndex",
+        },
+      ]);
+
+      const results = queryCode(index, "buildSourceIndex");
+      expect(results[0]!.file).toBe("src/decl.ts");
+      expect(results[0]!.score).toBeGreaterThanOrEqual(95);
+      expect(results[0]!.reason).toContain("declaration match");
+      // The string literal should NOT get a declaration boost
+      const stringResult = results.find((r) => r.file === "src/string.ts");
+      expect(stringResult).toBeDefined();
+      expect(stringResult!.score).toBe(70);
+      expect(stringResult!.reason).not.toContain("declaration match");
+    });
+  });
+
+  // ── buildCodeSearchEntries unit tests ─────────────────────────────────────
+
+  describe("buildCodeSearchEntries", () => {
+    it("truncates long lines to MAX_SNIPPET_LENGTH", () => {
+      const longLine = "export const x = ".padEnd(200, "0") + ";";
+      const result = buildCodeSearchEntries(longLine, []);
+      expect(result.length).toBe(1);
+      expect(result[0]!.text.length).toBeLessThanOrEqual(120);
+    });
+
+    it("sets column to first non-whitespace character", () => {
+      const content = "    export const foo = 1;";
+      const result = buildCodeSearchEntries(content, []);
+      expect(result.length).toBe(1);
+      expect(result[0]!.column).toBe(4);
+    });
+
+    it("skips import lines", () => {
+      const content = 'import { z } from "zod";\nexport const foo = 1;';
+      const result = buildCodeSearchEntries(content, []);
+      expect(result.length).toBe(1);
+      expect(result[0]!.text).toBe("export const foo = 1;");
+    });
+
+    it("tags nearest symbol for declaration lines", () => {
+      const content = "export function hello() { return 1; }";
+      const symbols = [{ name: "hello", type: "function" as const, line: 1, column: 0 }];
+      const result = buildCodeSearchEntries(content, symbols);
+      expect(result.length).toBe(1);
+      expect(result[0]!.nearestSymbol).toBe("hello");
+    });
+  });
+
+  // ── Schema-outdated health/rebuild behavior ───────────────────────────────
+
+  describe("schema outdated health", () => {
+    it("reports stale when cached index uses an old schema version", async () => {
+      const cwd = await makeTempDir();
+      await mkdir(join(cwd, "src"), { recursive: true });
+      await writeFile(
+        join(cwd, "package.json"),
+        JSON.stringify({ name: "schema-stale", version: "1.0.0" }),
+      );
+      await writeFile(join(cwd, "src", "index.ts"), "export const x = 1;");
+
+      // Build an initial index with current schema
+      await runIndexingCommand({ "index-format": "json", force: true }, cwd);
+
+      // Mutate cache to old schema
+      const cachePath = join(cwd, ".mp-sentinel-cache", "source-index.json");
+      const cached = JSON.parse(await readFile(cachePath, "utf-8"));
+      cached.schemaVersion = "1.0";
+      await writeFile(cachePath, JSON.stringify(cached));
+
+      let jsonBlob: string | null = null;
+      const originalLog = console.log;
+      console.log = (...args: unknown[]) => {
+        const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+        if (text.trim().startsWith("{")) {
+          jsonBlob = text;
+        }
+      };
+
+      try {
+        const exitCode = await runIndexingCommand({ "index-format": "json", health: true }, cwd);
+        expect(exitCode).toBe(1);
+        const parsed = JSON.parse(jsonBlob!.trim());
+        expect(parsed.status).toBe("stale");
+        expect(parsed.staleReasons).toContain("schema outdated");
+      } finally {
+        console.log = originalLog;
+      }
+    });
+
+    it("rebuilds cache when schema is outdated on indexing command", async () => {
+      const cwd = await makeTempDir();
+      await mkdir(join(cwd, "src"), { recursive: true });
+      await writeFile(
+        join(cwd, "package.json"),
+        JSON.stringify({ name: "schema-rebuild", version: "1.0.0" }),
+      );
+      await writeFile(join(cwd, "src", "index.ts"), "export const x = 1;");
+
+      // Inject an old-schema cache
+      await mkdir(join(cwd, ".mp-sentinel-cache"), { recursive: true });
+      const oldIndex: SourceIndex = {
+        schemaVersion: "1.0",
+        generatedAt: new Date().toISOString(),
+        toolVersion: "test",
+        project: {
+          packageName: "schema-rebuild",
+          ecosystem: "node",
+          packageVersion: "1.0.0",
+          dependencies: {},
+          devDependencies: {},
+          detectedFrameworks: [],
+        },
+        files: [
+          {
+            path: "src/index.ts",
+            language: "typescript",
+            sha256: "abc",
+            sizeBytes: 100,
+            mtimeMs: 0,
+            imports: [],
+            exports: [],
+            symbols: [{ name: "x", type: "variable", line: 1, column: 0 }],
+          },
+        ],
+        stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+      };
+      await writeFile(
+        join(cwd, ".mp-sentinel-cache", "source-index.json"),
+        JSON.stringify(oldIndex),
+      );
+
+      let jsonBlob: string | null = null;
+      const originalLog = console.log;
+      console.log = (...args: unknown[]) => {
+        const text = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+        if (text.trim().startsWith("{") && text.includes("schemaVersion")) {
+          jsonBlob = text;
+        }
+      };
+
+      try {
+        const exitCode = await runIndexingCommand({ "index-format": "json", force: false }, cwd);
+        expect(exitCode).toBe(0);
+        expect(jsonBlob).not.toBeNull();
+        const parsed = JSON.parse(jsonBlob!.trim());
+        expect(parsed.schemaVersion).toBe("1.3");
+      } finally {
+        console.log = originalLog;
+      }
+    });
+  });
+
+  // ── find-code CLI query tests ─────────────────────────────────────────────
+
+  describe("find-code query", () => {
+    const makeProject = async (cwd: string) => {
+      await mkdir(join(cwd, "src"), { recursive: true });
+      await writeFile(
+        join(cwd, "package.json"),
+        JSON.stringify({ name: "code-test", version: "1.0.0" }),
+      );
+      await writeFile(
+        join(cwd, "src", "index.ts"),
+        "export function buildSourceIndex(projectRoot: string, config: unknown) {\n" +
+          "  return { projectRoot, config };\n" +
+          "}\n" +
+          'export const callSite = buildSourceIndex(".", {});\n',
+      );
+    };
+
+    it("finds code snippets by exact text match", async () => {
+      const cwd = await makeTempDir();
+      await makeProject(cwd);
+
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => {
+        logs.push(args.map(String).join(" "));
+      };
+
+      try {
+        await runIndexingCommand(
+          { findCode: "buildSourceIndex", "index-format": "json", force: true },
+          cwd,
+        );
+
+        const parsed = JSON.parse(logs.join("\n"));
+        expect(parsed.query).toBe("buildSourceIndex");
+        expect(parsed.results.length).toBeGreaterThanOrEqual(2);
+        // Declaration should outrank call site
+        const decl = parsed.results.find((r: { entry: { text: string } }) =>
+          r.entry.text.includes("export function buildSourceIndex"),
+        );
+        expect(decl).toBeDefined();
+        expect(decl.score).toBeGreaterThanOrEqual(95);
+      } finally {
+        console.log = origLog;
+      }
+    });
+
+    it("empty query string throws UserError", async () => {
+      const cwd = await makeTempDir();
+      await expect(
+        runIndexingCommand({ findCode: "   ", "index-format": "json" }, cwd),
+      ).rejects.toThrow("--find-code query must not be empty");
+    });
   });
 });

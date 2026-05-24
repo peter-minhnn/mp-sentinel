@@ -314,6 +314,7 @@ describe("release-check", () => {
       "--agent-context",
       "--find-symbol",
       "--find-import",
+      "--find-code",
       "--stats",
       "--explain-index",
       "--recovered",

@@ -187,7 +187,7 @@ describe("mcp-server InMemoryTransport integration", () => {
 
     const { tools } = await client.listTools();
     const names = tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(16);
     expect(names).toContain("mp_sentinel_review_scope");
     expect(names).toContain("mp_sentinel_review_deterministic");
     expect(names).toContain("mp_sentinel_review_filter_files");
@@ -282,6 +282,29 @@ const writeRichIndex = async (cachePath: string): Promise<void> => {
         importsFrom: ["src/helper.ts"],
         importedBy: ["src/other.ts"],
         parserMode: "tree-sitter",
+        codeSearch: [
+          {
+            line: 10,
+            column: 0,
+            text: "export default function run() { return 1; }",
+            nearestSymbol: "run",
+            nearestSymbolType: "function",
+          },
+          {
+            line: 12,
+            column: 0,
+            text: "const result = run();",
+            nearestSymbol: "run",
+            nearestSymbolType: "function",
+          },
+          {
+            line: 5,
+            column: 0,
+            text: 'const name = "run";',
+            nearestSymbol: "mainConfig",
+            nearestSymbolType: "variable",
+          },
+        ],
       },
       {
         path: "src/helper.ts",
@@ -592,9 +615,10 @@ describe("mcp-server index query integration", () => {
 
     const { tools } = await client.listTools();
     const names = tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(16);
     expect(names).toContain("mp_sentinel_index_find_symbol");
     expect(names).toContain("mp_sentinel_index_find_import");
+    expect(names).toContain("mp_sentinel_index_find_code");
     expect(names).toContain("mp_sentinel_index_explain_file");
     expect(names).toContain("mp_sentinel_index_stats");
     expect(names).toContain("mp_sentinel_index_recovered_files");
@@ -632,6 +656,48 @@ describe("mcp-server index query integration", () => {
     const parsed = JSON.parse(text);
     expect(parsed.status).toBe("ok");
     expect(parsed.resultCount).toBeGreaterThanOrEqual(1);
+
+    await client.close();
+  });
+
+  it("callTool: mp_sentinel_index_find_code returns real snippet results", async () => {
+    await writeRichIndex(join(tempDir, DEFAULT_CACHE_REL));
+
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMPSentinelMCPServer(tempDir);
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: "test-client", version: "1.0" }, { capabilities: {} });
+    await client.connect(clientTransport);
+
+    const result = (await client.callTool({
+      name: "mp_sentinel_index_find_code",
+      arguments: { query: "run" },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0]!.text;
+    const parsed = JSON.parse(text);
+    expect(parsed.status).toBe("ok");
+    expect(parsed.resultCount).toBeGreaterThanOrEqual(1);
+    expect(parsed.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: "src/main.ts",
+          entry: expect.objectContaining({
+            text: expect.stringContaining("export default function run"),
+          }),
+          score: expect.any(Number),
+        }),
+      ]),
+    );
+    // Declaration should outrank call site and string literal
+    const topResult = parsed.results[0];
+    expect(topResult.entry.text).toContain("export default function run");
+    expect(topResult.score).toBeGreaterThanOrEqual(95);
 
     await client.close();
   });

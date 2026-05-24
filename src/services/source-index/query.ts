@@ -6,7 +6,7 @@
  * never write to stdout/stderr.
  */
 
-import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
+import type { SourceIndex, SourceIndexFile, CodeSearchResult } from "../../types/index.js";
 
 // ── Shared Serializer ─────────────────────────────────────────────────────────
 
@@ -98,6 +98,35 @@ export function quoteCliArg(value: string): string {
   return `"${escaped}"`;
 }
 
+// ── Token Normalization Helpers ───────────────────────────────────────────────
+
+/**
+ * Normalize a query for fuzzy code/symbol matching.
+ *
+ * Turns space-separated tokens into common code naming conventions:
+ * - "build source index" → "buildSourceIndex" (camelCase)
+ * - "build source index" → "BuildSourceIndex" (PascalCase)
+ * - "build source index" → "build_source_index" (snake_case)
+ * - "build source index" → "buildsourceindex" (concatenated lowercase)
+ */
+function tokenVariants(query: string): string[] {
+  const trimmed = query.trim();
+  if (!trimmed.includes(" ")) return [];
+
+  const parts = trimmed.split(/\s+/);
+  const camel =
+    parts[0]!.toLowerCase() +
+    parts
+      .slice(1)
+      .map((p) => p[0]!.toUpperCase() + p.slice(1).toLowerCase())
+      .join("");
+  const pascal = parts.map((p) => p[0]!.toUpperCase() + p.slice(1).toLowerCase()).join("");
+  const snake = parts.map((p) => p.toLowerCase()).join("_");
+  const concat = parts.map((p) => p.toLowerCase()).join("");
+
+  return [...new Set([camel, pascal, snake, concat])];
+}
+
 // ── Symbol Query ──────────────────────────────────────────────────────────────
 
 const MAX_SYMBOL_RESULTS = 20;
@@ -131,6 +160,7 @@ export function querySymbols(index: SourceIndex | null, query: string): SymbolRe
   if (!index) return [];
 
   const lowerQuery = query.toLowerCase();
+  const variants = tokenVariants(query);
   const results: SymbolResult[] = [];
 
   for (const file of index.files) {
@@ -151,6 +181,12 @@ export function querySymbols(index: SourceIndex | null, query: string): SymbolRe
       } else if (lowerName.includes(lowerQuery)) {
         score = 50;
         reason = "name contains query";
+      } else if (variants.some((v) => sym.name === v)) {
+        score = 60;
+        reason = "token-normalized name match";
+      } else if (variants.some((v) => lowerName === v.toLowerCase())) {
+        score = 55;
+        reason = "case-insensitive token-normalized name match";
       }
 
       if (score > 0) {
@@ -250,6 +286,95 @@ export function queryImports(index: SourceIndex | null, query: string): ImportRe
 
   results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
   return results.slice(0, MAX_IMPORT_RESULTS);
+}
+
+// ── Code Search Query ───────────────────────────────────────────────────────────
+
+const MAX_CODE_RESULTS = 20;
+
+/**
+ * Search indexed code snippets for text matching the query.
+ *
+ * Scoring:
+ * - Exact snippet text match: 100
+ * - Case-insensitive exact: 90
+ * - Snippet contains query: 70
+ * - Token-normalized match (e.g., "build source index" → "buildSourceIndex"): 60
+ * - Whitespace-normalized match: 50
+ *
+ * Declaration identifier matches are boosted to at least 95 when the declared
+ * identifier (extracted from declaration keywords) matches the query or a
+ * token-normalized variant.
+ *
+ * Results are sorted by score descending, then by file path, and capped at 20.
+ */
+export function queryCode(index: SourceIndex | null, query: string): CodeSearchResult[] {
+  if (!index) return [];
+
+  const lowerQuery = query.toLowerCase().trim();
+  const normalizedQuery = lowerQuery.replace(/\s+/g, " ");
+  const variants = tokenVariants(query);
+  const results: CodeSearchResult[] = [];
+
+  for (const file of index.files) {
+    if (!file.codeSearch) continue;
+    for (const entry of file.codeSearch) {
+      const lowerText = entry.text.toLowerCase();
+      let score = 0;
+      let reason = "";
+
+      if (entry.text === query) {
+        score = 100;
+        reason = "exact text match";
+      } else if (lowerText === lowerQuery) {
+        score = 90;
+        reason = "case-insensitive text match";
+      } else if (lowerText.includes(lowerQuery)) {
+        score = 70;
+        reason = "text contains query";
+      } else if (variants.some((v) => entry.text.includes(v))) {
+        score = 60;
+        reason = "token-normalized text match";
+      } else if (lowerText.replace(/\s+/g, " ") === normalizedQuery) {
+        score = 50;
+        reason = "whitespace-normalized text match";
+      }
+
+      if (score > 0) {
+        // Identifier-aware declaration detection: only boost when the declared
+        // identifier (extracted from declaration keywords) matches the query or a
+        // token-normalized variant. Also handle queries like "function buildSourceIndex"
+        // by extracting the identifier from the query itself.
+        const declRegex =
+          /^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function|class|interface|type|enum|const|let|var)\s+([A-Za-z_$][\w$]*)/;
+        const declMatch = declRegex.exec(entry.text);
+        const declaredId = declMatch && declMatch[1] ? declMatch[1].toLowerCase() : "";
+        const queryDeclMatch = declRegex.exec(query.trim());
+        const queryDeclaredId =
+          queryDeclMatch && queryDeclMatch[1] ? queryDeclMatch[1].toLowerCase() : "";
+        const isIdentifierDeclarationMatch =
+          declaredId === lowerQuery ||
+          (queryDeclaredId && declaredId === queryDeclaredId) ||
+          variants.some((v) => declaredId === v.toLowerCase());
+
+        if (isIdentifierDeclarationMatch) {
+          score = Math.max(score, 95);
+          reason += " (declaration match)";
+        }
+
+        results.push({
+          file: file.path,
+          language: file.language,
+          entry,
+          score,
+          reason,
+        });
+      }
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+  return results.slice(0, MAX_CODE_RESULTS);
 }
 
 // ── Agent Context Query ───────────────────────────────────────────────────────

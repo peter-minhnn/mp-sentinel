@@ -542,9 +542,40 @@ export interface SymbolInfo {
     | "arrow-function";
   line: number;
   column: number;
+  /** End line of the symbol (schema 1.3+) */
+  endLine?: number;
+  /** End column of the symbol (schema 1.3+) */
+  endColumn?: number;
   parent?: string;
   /** For classes: extends/implements, for functions: return type hint */
   metadata?: Record<string, string>;
+}
+
+/**
+ * A searchable code snippet extracted from a source file (schema 1.3+)
+ */
+export interface CodeSearchEntry {
+  /** 1-based line number where the snippet starts */
+  line: number;
+  /** 0-based column number where the snippet starts */
+  column: number;
+  /** Trimmed, redacted snippet text */
+  text: string;
+  /** Name of the nearest enclosing symbol, if any */
+  nearestSymbol?: string;
+  /** Type of the nearest enclosing symbol */
+  nearestSymbolType?: SymbolInfo["type"];
+}
+
+/**
+ * Result of a code-text search query (schema 1.3+)
+ */
+export interface CodeSearchResult {
+  file: string;
+  language: string;
+  entry: CodeSearchEntry;
+  score: number;
+  reason: string;
 }
 
 /**
@@ -684,6 +715,8 @@ export interface SourceIndexFile {
   exportedSymbols?: string[];
   /** Detected file role (schema 1.2+) */
   role?: FileRole;
+  /** Code search snippets (schema 1.3+) */
+  codeSearch?: CodeSearchEntry[];
 }
 
 /**
@@ -725,10 +758,15 @@ export interface ProjectManifest {
 }
 
 /**
- * Source index schema v1.0 / v1.1 / v1.2
+ * Current source index schema version.
+ */
+export const CURRENT_SOURCE_INDEX_SCHEMA = "1.3" as const;
+
+/**
+ * Source index schema v1.0 / v1.1 / v1.2 / v1.3
  */
 export interface SourceIndex {
-  schemaVersion: "1.0" | "1.1" | "1.2";
+  schemaVersion: "1.0" | "1.1" | "1.2" | "1.3";
   generatedAt: string;
   toolVersion: string;
   project: ProjectManifest;
@@ -821,6 +859,7 @@ export interface CacheValidity {
   staleFiles?: string[];
   missingFiles?: string[];
   modifiedFiles?: string[];
+  schemaOutdated?: boolean;
 }
 
 /**

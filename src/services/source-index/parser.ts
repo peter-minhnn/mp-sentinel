@@ -10,8 +10,10 @@ import type {
   SymbolInfo,
   ParserMode,
   SourceIndexFile,
+  CodeSearchEntry,
 } from "../../types/index.js";
 import { log } from "../../utils/logger.js";
+import { getSecurityService } from "../../services/security/index.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -133,6 +135,73 @@ function getNodeName(node: any): string | null {
   return null;
 }
 
+// ── Code Search Snippet Extraction ────────────────────────────────────────────
+
+const MAX_SNIPPET_LENGTH = 120;
+const MIN_SNIPPET_LENGTH = 3;
+
+/**
+ * Build searchable code snippets from file content.
+ *
+ * - Redacts secrets using the shared security service.
+ * - Skips empty lines, pure-punctuation lines, and import/export lines.
+ * - Caps each snippet to MAX_SNIPPET_LENGTH characters.
+ * - Tags each snippet with the nearest enclosing symbol.
+ */
+export function buildCodeSearchEntries(content: string, symbols: SymbolInfo[]): CodeSearchEntry[] {
+  const redacted = getSecurityService().sanitizeContent(content).content;
+  const lines = redacted.split("\n");
+  const entries: CodeSearchEntry[] = [];
+
+  // Pre-sort symbols by start line for fast lookup
+  const sortedSymbols = [...symbols].sort((a, b) => a.line - b.line || a.column - b.column);
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw) continue;
+
+    // Compute first non-whitespace column
+    const leadingWhitespace = raw.match(/^(\s*)/);
+    const column = leadingWhitespace ? leadingWhitespace[1]!.length : 0;
+
+    const trimmed = raw.trim();
+    if (trimmed.length < MIN_SNIPPET_LENGTH) continue;
+
+    // Skip pure-punctuation / structural lines
+    if (/^[{}\[\]()\];,.*]+$/.test(trimmed)) continue;
+
+    // Skip pure import/export lines, but keep exported declarations
+    if (/^import\b/.test(trimmed)) continue;
+    if (/^export\s+(?:\{|\*|\w+\s+from\s)/.test(trimmed)) continue;
+
+    const lineNum = i + 1;
+
+    // Truncate long lines instead of dropping them
+    const text =
+      trimmed.length > MAX_SNIPPET_LENGTH ? trimmed.slice(0, MAX_SNIPPET_LENGTH) : trimmed;
+
+    // Find nearest symbol
+    let nearest: SymbolInfo | undefined;
+    for (const sym of sortedSymbols) {
+      if (sym.line > lineNum) break;
+      if (sym.endLine !== undefined && sym.endLine < lineNum) continue;
+      nearest = sym;
+    }
+
+    entries.push({
+      line: lineNum,
+      column,
+      text,
+      ...(nearest && {
+        nearestSymbol: nearest.name,
+        nearestSymbolType: nearest.type,
+      }),
+    });
+  }
+
+  return entries;
+}
+
 function collectErrorNodeTexts(node: any, errors: string[] = []): string[] {
   if (node.type === "ERROR") {
     errors.push(node.text);
@@ -204,6 +273,8 @@ function extractSymbolInfo(node: any, parentName?: string): SymbolInfo | null {
     type: symbolType,
     line: node.startPosition.row + 1,
     column: node.startPosition.column,
+    endLine: node.endPosition.row + 1,
+    endColumn: node.endPosition.column,
     ...(parentName && { parent: parentName }),
   };
 }
@@ -1045,6 +1116,7 @@ export async function parseFile(
       exports,
       symbols,
       parserMode: "tree-sitter" as ParserMode,
+      codeSearch: buildCodeSearchEntries(content, symbols),
     };
     if (parseErrors.length > 0) {
       result.parseErrors = parseErrors;
@@ -1084,6 +1156,7 @@ export async function parseFile(
           chunkWarningCount: chunked.chunkWarningCount,
           chunkBoundaryWarningCount: chunked.chunkBoundaryWarningCount,
           chunkActionableWarningCount: chunked.chunkActionableWarningCount,
+          codeSearch: buildCodeSearchEntries(content, chunked.symbols),
         };
         if (chunked.parseErrors.length > 0) {
           result.parseErrors = chunked.parseErrors;
@@ -1118,6 +1191,7 @@ export async function parseFile(
               symbols,
               parserMode: "ascii-fallback" as ParserMode,
               parseWarnings: ["Invalid argument; parsed with ASCII fallback", ...normWarnings],
+              codeSearch: buildCodeSearchEntries(content, symbols),
             };
             if (normErrors.length > 0) {
               result.parseErrors = normErrors;
@@ -1154,6 +1228,7 @@ export async function parseFile(
               symbols,
               parserMode: "tree-sitter" as ParserMode,
               parseWarnings: ["Invalid argument; parsed with retry", ...retryWarnings],
+              codeSearch: buildCodeSearchEntries(content, symbols),
             };
             if (retryErrors.length > 0) {
               result.parseErrors = retryErrors;
@@ -1181,6 +1256,7 @@ export async function parseFile(
         symbols: lexical.symbols,
         parserMode: "lexical-fallback" as ParserMode,
         parseWarnings: ["Invalid argument; parsed with lexical fallback"],
+        codeSearch: buildCodeSearchEntries(content, lexical.symbols),
       };
     }
 
@@ -1221,21 +1297,7 @@ import { extractFromVue } from "./extractors/vue.js";
  * Parser mode is set to `lexical-fallback` so `--health` reports show
  * these files as recovered via fallback.
  */
-export function parseNonIndexableFile(
-  filePath: string,
-  content: string,
-): {
-  path: string;
-  language: "typescript";
-  sha256: string;
-  sizeBytes: number;
-  mtimeMs: number;
-  imports: ImportInfo[];
-  exports: ExportInfo[];
-  symbols: SymbolInfo[];
-  parserMode: ParserMode;
-  parseWarnings: string[];
-} {
+export function parseNonIndexableFile(filePath: string, content: string): SourceIndexFile {
   const ext = filePath.split(".").pop()?.toLowerCase();
   let result: { imports: ImportInfo[]; exports: ExportInfo[]; symbols: SymbolInfo[] };
 
@@ -1258,5 +1320,6 @@ export function parseNonIndexableFile(
     symbols: result.symbols,
     parserMode: "lexical-fallback" as ParserMode,
     parseWarnings: ["Non-indexable file parsed via Svelte/Vue lexical extractor"],
+    codeSearch: buildCodeSearchEntries(content, result.symbols),
   };
 }

@@ -11,6 +11,7 @@ import {
   queryAgentContext,
   querySymbols,
   queryImports,
+  queryCode,
   getParserTelemetry,
 } from "../source-index/query.js";
 import { buildReviewContext } from "../source-index/context-builder.js";
@@ -22,6 +23,11 @@ import {
   getSkillsCheck,
 } from "../skills-generator/mcp-diagnostics.js";
 import { getReviewScope, getReviewDeterministic, getReviewFilterFiles } from "./review-preview.js";
+import {
+  getRecoveredFileCount,
+  getParserModeBreakdown,
+  getChunkTelemetry,
+} from "../source-index/diagnostics.js";
 
 export interface IndexHealthResult {
   status: "ok" | "missing";
@@ -141,59 +147,6 @@ export async function getExplainContext(
 
 // ── Private parser-summary helpers (pure, same logic as commands/indexing.ts) ──
 
-const getRecoveredFileCount = (index: SourceIndex): number =>
-  index.files.filter(
-    (f) =>
-      (f.parserMode === "chunked-tree-sitter" ||
-        f.parserMode === "ascii-fallback" ||
-        f.parserMode === "lexical-fallback") &&
-      (!f.parseErrors || f.parseErrors.length === 0),
-  ).length;
-
-const getParserModeBreakdown = (index: SourceIndex): Record<string, number> => {
-  const breakdown: Record<string, number> = {
-    "tree-sitter": 0,
-    "chunked-tree-sitter": 0,
-    "ascii-fallback": 0,
-    "lexical-fallback": 0,
-  };
-  for (const file of index.files) {
-    const mode = file.parserMode ?? "tree-sitter";
-    breakdown[mode] = (breakdown[mode] ?? 0) + 1;
-  }
-  return breakdown;
-};
-
-const getChunkTelemetry = (index: SourceIndex): Record<string, number> | undefined => {
-  const chunked = index.files.filter(
-    (f) =>
-      f.parserMode === "chunked-tree-sitter" &&
-      f.chunkCount !== undefined &&
-      f.chunkSize !== undefined,
-  );
-  if (chunked.length === 0) return undefined;
-  let totalChunks = 0;
-  let totalChunkWarnings = 0;
-  let totalBoundaryWarnings = 0;
-  let totalActionableWarnings = 0;
-  let chunkSize = 0;
-  for (const f of chunked) {
-    totalChunks += f.chunkCount ?? 0;
-    totalChunkWarnings += f.chunkWarningCount ?? 0;
-    totalBoundaryWarnings += f.chunkBoundaryWarningCount ?? 0;
-    totalActionableWarnings += f.chunkActionableWarningCount ?? 0;
-    chunkSize = f.chunkSize ?? 0;
-  }
-  return {
-    chunkedFiles: chunked.length,
-    totalChunks,
-    totalChunkWarnings,
-    totalChunkBoundaryWarnings: totalBoundaryWarnings,
-    totalChunkActionableWarnings: totalActionableWarnings,
-    chunkSize,
-  };
-};
-
 // ── Index Query Handlers ──────────────────────────────────────────────
 
 export async function getFindSymbol(
@@ -222,6 +175,23 @@ export async function getFindImport(
   if (!index) return { status: "error", message: "No source index found" };
 
   const results = queryImports(index, query);
+  return {
+    status: "ok",
+    query,
+    resultCount: results.length,
+    results,
+  };
+}
+
+export async function getFindCode(
+  projectRoot: string,
+  query: string,
+): Promise<Record<string, unknown>> {
+  const cachePath = await resolveCachePath(projectRoot);
+  const index = await readIndex(cachePath);
+  if (!index) return { status: "error", message: "No source index found" };
+
+  const results = queryCode(index, query);
   return {
     status: "ok",
     query,

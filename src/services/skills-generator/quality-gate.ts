@@ -691,6 +691,7 @@ const INDEX_COMMANDS = [
   { flag: "--explain-index", label: "explain-index" },
   { flag: "--find-symbol", label: "find-symbol" },
   { flag: "--find-import", label: "find-import" },
+  { flag: "--find-code", label: "find-code" },
   { flag: "--stats", label: "stats" },
 ] as const;
 
