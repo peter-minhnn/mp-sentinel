@@ -1,6 +1,6 @@
-# What's New in v3.0.1
+# What's New in v3.0.2
 
-## v3.0.1
+## v3.0.2
 
 ### Fast Index Lookup: Symbols + Code Text
 
