@@ -28,6 +28,7 @@ import {
   computeManifestHash,
 } from "../services/source-index/manifest.js";
 import { parseFile, parseNonIndexableFile } from "../services/source-index/parser.js";
+import { defaultIndexingConcurrency, parallelMap } from "../services/source-index/parallel.js";
 import {
   readIndex,
   writeIndex,
@@ -40,6 +41,7 @@ import type { CLIValues } from "../cli/args.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
+import { getCurrentHeadSha } from "../utils/git.js";
 import {
   handleRecovered,
   handleParseErrors,
@@ -268,28 +270,42 @@ export async function buildSourceIndex(
     cachedFiles = [];
   }
 
-  // Parse files
-  log.info(`Parsing ${filesToIndex.length} files...`);
-  const parsedFiles: SourceIndexFile[] = [];
+  // Parse files (Phase 3.1: bounded-concurrency parallel map).
+  // Each file pipeline is independent: readFile + sha256 + mtime + parse.
+  // We overlap the async I/O across N files in flight so the wall-clock
+  // time drops even though tree-sitter's parse() itself is synchronous.
+  const concurrency = defaultIndexingConcurrency();
+  log.info(`Parsing ${filesToIndex.length} files (concurrency=${concurrency})...`);
   let parseErrors = 0;
+  let parsedSoFar = 0;
+  const PROGRESS_INTERVAL = 100;
 
-  for (let i = 0; i < filesToIndex.length; i++) {
-    const relPath = filesToIndex[i];
-    if (!relPath) continue;
+  /**
+   * Parse a single file, returning either a SourceIndexFile or null if
+   * the language is unsupported. Errors are converted into a return of
+   * `{ kind: "error", path }` so the parallel driver can keep going and
+   * we can count them centrally.
+   */
+  type ParseOutcome =
+    | { kind: "ok"; file: SourceIndexFile }
+    | { kind: "skipped" }
+    | { kind: "error" };
+
+  const parseSingleFile = async (relPath: string): Promise<ParseOutcome> => {
     const absPath = resolve(projectRoot, relPath);
     const language = getLanguageForFile(relPath);
 
     if (!language) {
-      // Check if this is a lexically-extractable file (Svelte/Vue)
       const lexLang = isLexicallyExtractableLanguage(relPath);
-      if (lexLang) {
-        try {
-          const content = await readFile(absPath, "utf-8");
-          const sha256 = await calculateSHA256(content);
-          const mtimeMs = await getFileMtime(absPath);
-
-          const parsed = parseNonIndexableFile(relPath, content);
-          parsedFiles.push({
+      if (!lexLang) return { kind: "skipped" };
+      try {
+        const content = await readFile(absPath, "utf-8");
+        const sha256 = await calculateSHA256(content);
+        const mtimeMs = await getFileMtime(absPath);
+        const parsed = parseNonIndexableFile(relPath, content);
+        return {
+          kind: "ok",
+          file: {
             ...parsed,
             language: lexLang as IndexedLanguage,
             sha256,
@@ -297,47 +313,55 @@ export async function buildSourceIndex(
             mtimeMs,
             parserMode: "lexical-fallback",
             parseErrors: [],
-          });
-        } catch (error) {
-          log.warning(
-            `Failed to parse ${relPath}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          parseErrors++;
-        }
-      } else {
-        log.debug(`Skipping unsupported language: ${relPath}`);
+          },
+        };
+      } catch (error) {
+        log.warning(
+          `Failed to parse ${relPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return { kind: "error" };
       }
-      continue;
     }
 
     try {
       const content = await readFile(absPath, "utf-8");
       const sha256 = await calculateSHA256(content);
       const mtimeMs = await getFileMtime(absPath);
-
       const parsed = await parseFile(relPath, content, language);
-
-      if (parsed) {
-        parsedFiles.push({
-          ...parsed,
-          sha256,
-          mtimeMs,
-        });
-
-        if (parsed.parseErrors && parsed.parseErrors.length > 0) {
-          parseErrors++;
-        }
-      }
+      if (!parsed) return { kind: "skipped" };
+      const fileEntry: SourceIndexFile = { ...parsed, sha256, mtimeMs };
+      return { kind: "ok", file: fileEntry };
     } catch (error) {
       log.warning(
         `Failed to parse ${relPath}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      parseErrors++;
+      return { kind: "error" };
     }
+  };
 
-    // Progress logging
-    if ((i + 1) % 100 === 0 || i === filesToIndex.length - 1) {
-      log.info(`  Progress: ${i + 1}/${filesToIndex.length} files`);
+  const outcomes = await parallelMap(
+    filesToIndex,
+    async (relPath) => {
+      if (!relPath) return { kind: "skipped" } as ParseOutcome;
+      const result = await parseSingleFile(relPath);
+      parsedSoFar++;
+      if (parsedSoFar % PROGRESS_INTERVAL === 0 || parsedSoFar === filesToIndex.length) {
+        log.info(`  Progress: ${parsedSoFar}/${filesToIndex.length} files`);
+      }
+      return result;
+    },
+    concurrency,
+  );
+
+  const parsedFiles: SourceIndexFile[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.kind === "ok") {
+      parsedFiles.push(outcome.file);
+      if (outcome.file.parseErrors && outcome.file.parseErrors.length > 0) {
+        parseErrors++;
+      }
+    } else if (outcome.kind === "error") {
+      parseErrors++;
     }
   }
 
@@ -435,6 +459,11 @@ export async function buildSourceIndex(
     }
   }
 
+  // Phase 3.1: capture git HEAD SHA so health checks can detect drift
+  // between the indexed snapshot and the current working tree. Absent
+  // when projectRoot isn't a git repo — never throws.
+  const gitHeadSha = await getCurrentHeadSha(projectRoot);
+
   // Build preliminary index for insights computation
   const preIndex: SourceIndex = {
     schemaVersion: CURRENT_SOURCE_INDEX_SCHEMA,
@@ -443,6 +472,7 @@ export async function buildSourceIndex(
     project: manifest,
     files: allFiles,
     manifestHash,
+    ...(gitHeadSha && { gitHeadSha }),
     stats: {
       totalFiles: allCandidateFiles.length,
       indexedFiles: allFiles.length,
@@ -475,6 +505,7 @@ export async function buildSourceIndex(
     project: manifest,
     files: allFiles,
     manifestHash,
+    ...(gitHeadSha && { gitHeadSha }),
     stats: {
       totalFiles: allCandidateFiles.length,
       indexedFiles: allFiles.length,
@@ -657,6 +688,13 @@ async function handleHealth(
 
   const chunkTelemetry = getChunkTelemetry(index);
 
+  // Phase 3.1: report git HEAD drift between indexed snapshot and the
+  // current working tree. Both fields are optional so older caches
+  // (no `gitHeadSha`) or non-git projects degrade gracefully.
+  const currentGitHeadSha = await getCurrentHeadSha(projectRoot);
+  const gitHeadDrift =
+    !!index.gitHeadSha && !!currentGitHeadSha && index.gitHeadSha !== currentGitHeadSha;
+
   const output: IndexHealthOutput = {
     status,
     schemaVersion: index.schemaVersion,
@@ -674,6 +712,9 @@ async function handleHealth(
     parseErrorCount,
     ...(chunkTelemetry && chunkTelemetry),
     ...(suggestedCommands.length > 0 && { suggestedCommands }),
+    ...(index.gitHeadSha && { gitHeadSha: index.gitHeadSha }),
+    ...(currentGitHeadSha && { currentGitHeadSha }),
+    ...(gitHeadDrift && { gitHeadDrift: true }),
   };
 
   if (format === "json") {
@@ -703,6 +744,13 @@ async function handleHealth(
     console.log(`  Current manifest: ${currentManifestHash}`);
     console.log(`  Tool version (cache):  ${cacheToolVersion}`);
     console.log(`  Tool version (current): ${currentToolVersion}`);
+    if (index.gitHeadSha || currentGitHeadSha) {
+      console.log(`  Git HEAD (cache):  ${index.gitHeadSha ?? "(unrecorded)"}`);
+      console.log(`  Git HEAD (current): ${currentGitHeadSha ?? "(not a git repo)"}`);
+      if (gitHeadDrift) {
+        console.log(`  Git HEAD drift:    yes (run \`mp-sentinel indexing\` to refresh)`);
+      }
+    }
     if (uniqueReasons.length > 0) {
       console.log(`  Stale reasons:`);
       for (const reason of uniqueReasons) {

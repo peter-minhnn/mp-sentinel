@@ -1,4 +1,5 @@
 {
+  "$schema": "./schemas/mp-sentinelrc.schema.json",
   "techStack": "TypeScript 5.7, Node.js 20 (ESM), React 18, PostgreSQL 15",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,

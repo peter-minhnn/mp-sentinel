@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, jest } from "@jest/globals";
-import { withRetry, isRetryableError } from "../utils/retry.js";
+import { withRetry, isRetryableError, parseRetryAfterMs } from "../utils/retry.js";
 
 // -- isRetryableError ----------------------------------------------------------
 
@@ -16,14 +16,59 @@ describe("isRetryableError", () => {
     expect(isRetryableError(new Error("503 Service Unavailable"))).toBe(true);
   });
 
+  it("returns true for 502 Bad Gateway errors", () => {
+    expect(isRetryableError(new Error("HTTP 502 Bad Gateway"))).toBe(true);
+  });
+
+  it("returns true for 504 Gateway Timeout errors", () => {
+    expect(isRetryableError(new Error("HTTP 504 Gateway Timeout"))).toBe(true);
+  });
+
+  it("returns true for 408 request timeout", () => {
+    expect(isRetryableError(new Error("HTTP 408 Request Timeout"))).toBe(true);
+  });
+
+  it("returns true for 500 internal server error", () => {
+    expect(isRetryableError(new Error("HTTP 500 Internal Server Error"))).toBe(true);
+  });
+
+  it("returns true for Cloudflare 522 / 524", () => {
+    expect(isRetryableError(new Error("HTTP 522 Connection timed out"))).toBe(true);
+    expect(isRetryableError(new Error("HTTP 524 A timeout occurred"))).toBe(true);
+  });
+
   it("returns true for ECONNRESET errors", () => {
     expect(isRetryableError(new Error("ECONNRESET"))).toBe(true);
+  });
+
+  it("returns true for ETIMEDOUT", () => {
+    expect(isRetryableError(new Error("ETIMEDOUT during fetch"))).toBe(true);
+  });
+
+  it("returns true for EAI_AGAIN (DNS hiccup)", () => {
+    expect(isRetryableError(new Error("getaddrinfo EAI_AGAIN api.example.com"))).toBe(true);
+  });
+
+  it("returns true for 'socket hang up'", () => {
+    expect(isRetryableError(new Error("socket hang up"))).toBe(true);
+  });
+
+  it("returns true for 'fetch failed'", () => {
+    expect(isRetryableError(new Error("fetch failed"))).toBe(true);
   });
 
   it("returns true for AbortError", () => {
     const err = new Error("aborted");
     err.name = "AbortError";
     expect(isRetryableError(err)).toBe(true);
+  });
+
+  it("returns false for 400 Bad Request", () => {
+    expect(isRetryableError(new Error("HTTP 400 Bad Request"))).toBe(false);
+  });
+
+  it("returns false for 401 Unauthorized", () => {
+    expect(isRetryableError(new Error("HTTP 401 Unauthorized"))).toBe(false);
   });
 
   it("returns false for non-retryable errors", () => {
@@ -33,6 +78,30 @@ describe("isRetryableError", () => {
   it("returns false for non-Error values", () => {
     expect(isRetryableError("string error")).toBe(false);
     expect(isRetryableError(null)).toBe(false);
+  });
+});
+
+// -- parseRetryAfterMs ---------------------------------------------------------
+
+describe("parseRetryAfterMs", () => {
+  it("parses RFC 7231 'Retry-After: N' header in seconds", () => {
+    expect(parseRetryAfterMs("HTTP 429 ... Retry-After: 5 ...", 60_000)).toBe(5_000);
+  });
+
+  it("parses JSON 'retry_after' (seconds)", () => {
+    expect(parseRetryAfterMs('{"error": {"retry_after": 3}}', 60_000)).toBe(3_000);
+  });
+
+  it("parses JSON 'retry_after_ms' (milliseconds)", () => {
+    expect(parseRetryAfterMs('{"retry_after_ms": 1500}', 60_000)).toBe(1_500);
+  });
+
+  it("caps to maxDelayMs", () => {
+    expect(parseRetryAfterMs("Retry-After: 600", 10_000)).toBe(10_000);
+  });
+
+  it("returns undefined when no Retry-After signal is present", () => {
+    expect(parseRetryAfterMs("plain old error", 60_000)).toBeUndefined();
   });
 });
 

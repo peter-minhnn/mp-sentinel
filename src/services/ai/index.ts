@@ -14,11 +14,18 @@ import { parseAuditResponse } from "../../utils/parser.js";
 import { log } from "../../utils/logger.js";
 import { withRetry, isRetryableError } from "../../utils/retry.js";
 import { chunkFileWithMetadata } from "../../utils/tokens.js";
-import type { IAIProvider, AIProvider, ModelTier } from "./types.js";
+import type { AIResponse, IAIProvider, AIProvider, ModelTier } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { AIConfig } from "./config.js";
 import { buildAuditCacheKey, readCachedAuditResult, writeCachedAuditResult } from "./cache.js";
 import { getToolVersion } from "../../utils/version.js";
+import { getDefaultCircuitBreaker } from "./circuit-breaker.js";
+import { breakerKey, callGenerate, sumUsages, withUsage } from "./usage.js";
+import { AUDIT_RESPONSE_SCHEMA } from "./audit-schema.js";
+
+// Re-export for callers that historically imported summarizeUsage from this module
+export { summarizeUsage } from "./usage.js";
+export type { ReviewUsageSummary } from "./usage.js";
 
 let providerInstance: IAIProvider | null = null;
 let providerConfigCache: ReturnType<typeof AIConfig.fromEnvironment> | null = null;
@@ -85,29 +92,46 @@ const parseFallbackChain = (fallbackProvider?: string): AIProvider[] => {
 
 /**
  * Try to generate content using a fallback provider chain.
- * Returns null if all fallbacks fail.
+ * Returns the structured AIResponse from the first successful fallback,
+ * or null if all fallbacks fail. Skips fallback providers whose breaker
+ * is currently open.
  */
 const tryFallbackProviders = async (
   fallbackChain: AIProvider[],
   systemPrompt: string,
   userPrompt: string,
   modelTier?: ModelTier,
-): Promise<string | null> => {
+): Promise<AIResponse | null> => {
+  const breaker = getDefaultCircuitBreaker();
   for (const providerName of fallbackChain) {
     try {
       const fallbackConfig = AIConfig.fromEnvironmentForProvider(providerName, { modelTier });
+      const key = breakerKey(fallbackConfig.provider, fallbackConfig.model);
+      if (!breaker.allow(key)) {
+        log.warning(`Fallback ${providerName} skipped: circuit breaker open for ${key}.`);
+        continue;
+      }
       const fallbackProvider = AIProviderFactory.createProvider(fallbackConfig);
       log.warning(
         `Primary provider failed. Trying fallback: ${providerName} (${fallbackConfig.model})`,
       );
       const response = await withRetry(() =>
-        fallbackProvider.generateContent(systemPrompt, userPrompt),
+        callGenerate(fallbackProvider, systemPrompt, userPrompt, AUDIT_RESPONSE_SCHEMA),
       );
+      breaker.onSuccess(key);
       log.info(`Fallback provider ${providerName} succeeded.`);
       return response;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warning(`Fallback provider ${providerName} also failed: ${msg}`);
+      try {
+        const fallbackConfig = AIConfig.fromEnvironmentForProvider(providerName, { modelTier });
+        getDefaultCircuitBreaker().onFailure(
+          breakerKey(fallbackConfig.provider, fallbackConfig.model),
+        );
+      } catch {
+        // Config resolution failed (e.g. missing key) — nothing to record.
+      }
     }
   }
   return null;
@@ -125,9 +149,9 @@ export const auditCommit = async (message: string, config: ProjectConfig): Promi
 
   try {
     const response = await withRetry(() =>
-      provider.generateContent(systemPrompt, `Commit Message: "${message}"`),
+      callGenerate(provider, systemPrompt, `Commit Message: "${message}"`),
     );
-    return parseAuditResponse(response);
+    return withUsage(parseAuditResponse(response.text), response);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
     log.warning(`AI commit check failed: ${errorMsg}`);
@@ -149,11 +173,33 @@ export const auditFile = async (
   const provider = getProvider(modelTier);
   const userPrompt = `Code to review:\n${content}`;
 
+  const primaryConfig = getProviderConfig(modelTier);
+  const breaker = getDefaultCircuitBreaker();
+  const primaryKey = breakerKey(primaryConfig.provider, primaryConfig.model);
+
+  // Primary skipped: breaker open. Jump straight to the fallback chain.
+  if (!breaker.allow(primaryKey)) {
+    log.warning(`Primary provider ${primaryKey} skipped: circuit breaker open. Trying fallbacks.`);
+    if (fallbackChain.length > 0) {
+      const fb = await tryFallbackProviders(fallbackChain, systemPrompt, userPrompt, modelTier);
+      if (fb !== null) return withUsage(parseAuditResponse(fb.text), fb);
+    }
+    return {
+      status: "ERROR",
+      message: `Primary provider unavailable (circuit breaker open) and no fallback succeeded.`,
+      issues: [],
+    };
+  }
+
   try {
-    const response = await withRetry(() => provider.generateContent(systemPrompt, userPrompt));
-    return parseAuditResponse(response);
+    const response = await withRetry(() =>
+      callGenerate(provider, systemPrompt, userPrompt, AUDIT_RESPONSE_SCHEMA),
+    );
+    breaker.onSuccess(primaryKey);
+    return withUsage(parseAuditResponse(response.text), response);
   } catch (primaryError) {
     const primaryMsg = primaryError instanceof Error ? primaryError.message : "Unknown error";
+    breaker.onFailure(primaryKey);
 
     // Attempt fallback providers if primary fails with a retryable error
     if (fallbackChain.length > 0 && isRetryableError(primaryError)) {
@@ -164,7 +210,7 @@ export const auditFile = async (
         modelTier,
       );
       if (fallbackResponse !== null) {
-        return parseAuditResponse(fallbackResponse);
+        return withUsage(parseAuditResponse(fallbackResponse.text), fallbackResponse);
       }
     }
 
@@ -351,10 +397,13 @@ export const auditFilesWithConcurrency = async (
         );
         const hasError = chunkResults.some((r) => r.status === "ERROR");
         const hasFail = chunkResults.some((r) => r.status === "FAIL");
+        // Sum per-chunk usage so multi-chunk files don't drop tokens
+        const mergedUsage = sumUsages(chunkResults.map((r) => r.usage));
         result = {
           status: hasError ? "ERROR" : hasFail ? "FAIL" : "PASS",
           issues: allIssues,
           ...(hasError && { message: "One or more chunks failed to audit" }),
+          ...(mergedUsage && { usage: mergedUsage }),
         };
       } else {
         result = await limit(() =>
@@ -428,14 +477,19 @@ export const offsetChunkIssues = (issues: AuditIssue[], chunkStartLine: number):
   issues.map((i) => ({ ...i, line: i.line + Math.max(0, chunkStartLine - 1) }));
 
 /**
- * Clear provider cache (useful for testing)
+ * Clear provider cache (useful for testing). Also resets the default
+ * circuit breaker so that breaker state from a prior test cannot leak
+ * into the next one — tests that fail providers on purpose would
+ * otherwise trip the breaker and short-circuit subsequent tests.
  */
 export const clearProviderCache = (modelTier?: ModelTier): void => {
   providerInstance = null;
   providerConfigCache = null;
+  getDefaultCircuitBreaker().reset();
 };
 
 // Export types and utilities
 export * from "./types.js";
 export { AIProviderFactory } from "./factory.js";
 export { AIConfig } from "./config.js";
+export { CircuitBreaker, getDefaultCircuitBreaker } from "./circuit-breaker.js";

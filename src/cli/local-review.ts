@@ -24,6 +24,7 @@ import { printResultsSummary } from "./summary.js";
 import { gatherMCPContext } from "../services/mcp/index.js";
 import { runDeterministicReview } from "./deterministic-review.js";
 import type { CLIValues } from "./args.js";
+import { resolveSeverityThreshold } from "../utils/severity.js";
 
 export interface LocalReviewOptions {
   values: CLIValues;
@@ -284,9 +285,14 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
 
-  // Print summary
+  // Print summary — honor severity threshold (CLI flag > branch override > config baseline)
+  const threshold = resolveSeverityThreshold({
+    ...(values["severity-threshold"] && { cliFlag: values["severity-threshold"] }),
+    config,
+    currentBranch,
+  });
   const auditDuration = performance.now() - startTime;
-  const allPassed = printResultsSummary(auditResults, auditDuration);
+  const allPassed = printResultsSummary(auditResults, auditDuration, threshold);
 
   if (!allPassed) {
     hasErrors = true;

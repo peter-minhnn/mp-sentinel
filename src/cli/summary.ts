@@ -3,18 +3,26 @@
  * Formats and prints audit results for CLI output
  */
 
-import type { FileAuditResult } from "../types/index.js";
+import type { FileAuditResult, SeverityThreshold } from "../types/index.js";
 import { log, formatDuration } from "../utils/logger.js";
 import { printBanner, sortIssues, sortFileResults } from "../utils/display.js";
+import { DEFAULT_SEVERITY_THRESHOLD, issuesFailThreshold } from "../utils/severity.js";
 
 const dividerLine = "─".repeat(50);
 
 /**
  * Print audit results summary and return whether all checks passed
  *
- * @returns `true` if no critical issues or system errors were found
+ * @param threshold — Issues below this severity are not counted as failures.
+ *                    Defaults to WARNING (the historical behavior).
+ * @returns `true` if no issues meet-or-exceed the threshold and no runtime
+ *          errors occurred.
  */
-export const printResultsSummary = (results: FileAuditResult[], totalDuration: number): boolean => {
+export const printResultsSummary = (
+  results: FileAuditResult[],
+  totalDuration: number,
+  threshold: SeverityThreshold = DEFAULT_SEVERITY_THRESHOLD,
+): boolean => {
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
   const errored = results.filter((r) => r.result.status === "ERROR");
@@ -74,6 +82,12 @@ export const printResultsSummary = (results: FileAuditResult[], totalDuration: n
     }
   }
 
-  // Fail if there are any FAIL/ERROR results
-  return failed.length === 0 && errored.length === 0;
+  // Fail if any result reports an error, an issue at-or-above the threshold,
+  // OR a status === "FAIL" with no issues (edge case where AI explicitly
+  // marks FAIL without listing findings).
+  const hasThresholdViolations = results.some((r) =>
+    issuesFailThreshold(r.result.issues, threshold),
+  );
+  const hasFailWithoutIssues = failed.some((r) => !r.result.issues || r.result.issues.length === 0);
+  return errored.length === 0 && !hasThresholdViolations && !hasFailWithoutIssues;
 };

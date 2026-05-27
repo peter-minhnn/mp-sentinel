@@ -95,6 +95,15 @@ export const DEFAULT_SECRET_PATTERNS: SecretPattern[] = [
   },
 
   // ── Private Key Blocks ────────────────────────────────────────────────
+  // GCP service-account composite pattern comes BEFORE the generic PEM
+  // pattern. Otherwise PEM would redact the inner private_key block on
+  // its own pass, leaving the outer `private_key_id` field intact and
+  // unrecognised by the GCP-specific matcher (Phase 2.2 fix).
+  {
+    name: "GCP Service Account private_key block",
+    pattern:
+      /"private_key_id"\s*:\s*"[a-f0-9]{20,}"[\s\S]{0,200}?"private_key"\s*:\s*"-----BEGIN[\s\S]*?-----END[\s\S]*?-----\\n?"/g,
+  },
   {
     name: "PEM Private Key",
     pattern:
@@ -165,6 +174,77 @@ export const DEFAULT_SECRET_PATTERNS: SecretPattern[] = [
     name: "Stripe Secret Key",
     pattern: /sk_(?:live|test)_[A-Za-z0-9]{24,}/g,
   },
+
+  // ── AI provider keys (Phase 2.2) ──────────────────────────────────────
+  {
+    name: "Anthropic API Key",
+    // Format: sk-ant-api{NN}-… (admin keys use sk-ant-admin01-…). The
+    // suffix is base62-with-underscores-and-hyphens, conventionally 93+ chars.
+    pattern: /sk-ant-(?:api\d{2}|admin\d{2})-[A-Za-z0-9_-]{90,}/g,
+  },
+  {
+    name: "OpenAI API Key",
+    // Three accepted shapes:
+    //   sk-{48,}              — legacy keys (48 base62 chars)
+    //   sk-proj-{40,}         — project keys
+    //   sk-svcacct-{40,}      — service-account keys
+    // Anchored to a non-word boundary on the right so we don't match the
+    // tail of a longer token. Stripe (`sk_(live|test)_…`) uses underscores
+    // and is matched separately.
+    pattern: /\bsk-(?:proj-[A-Za-z0-9_-]{40,}|svcacct-[A-Za-z0-9_-]{40,}|[A-Za-z0-9]{48,})\b/g,
+  },
+
+  // ── Azure ──────────────────────────────────────────────────────────────
+  {
+    name: "Azure Storage Connection String",
+    pattern:
+      /(?:DefaultEndpointsProtocol|AccountName|AccountKey|SharedAccessSignature|EndpointSuffix)\s*=\s*[^;\s"']+/gi,
+  },
+  {
+    name: "Azure SAS Token",
+    pattern: /[?&]sig=[A-Za-z0-9%]{20,}/g,
+  },
+
+  // ── Twilio ─────────────────────────────────────────────────────────────
+  {
+    name: "Twilio API Key",
+    pattern: /\bSK[0-9a-fA-F]{32}\b/g,
+  },
+  {
+    name: "Twilio Account SID",
+    pattern: /\bAC[0-9a-fA-F]{32}\b/g,
+  },
+
+  // ── SendGrid ───────────────────────────────────────────────────────────
+  {
+    name: "SendGrid API Key",
+    pattern: /SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g,
+  },
+
+  // ── Datadog ────────────────────────────────────────────────────────────
+  {
+    name: "Datadog API/App Key",
+    pattern: /\bdd[ap]_[A-Za-z0-9]{32,}\b/g,
+  },
+
+  // ── Postman ────────────────────────────────────────────────────────────
+  {
+    name: "Postman API Key",
+    pattern: /PMAK-[A-Fa-f0-9]{24}-[A-Fa-f0-9]{34}/g,
+  },
+
+  // ── Shopify / Square (high-confidence shapes) ─────────────────────────
+  {
+    name: "Shopify Access Token",
+    pattern: /\bshpat_[a-fA-F0-9]{32}\b/g,
+  },
+  {
+    name: "Square Access Token",
+    pattern: /\bEAAA[A-Za-z0-9_-]{60,}\b/g,
+  },
+  // (GCP Service Account private_key block is registered earlier — before
+  // PEM Private Key — so its composite pattern can match the outer block
+  // first. See the Private Key Blocks section above.)
 ];
 
 // ──────────────────────────────────────────────────────────────────────────────

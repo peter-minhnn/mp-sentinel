@@ -1,22 +1,27 @@
 /**
  * Persistent cache for AI audit responses.
+ *
+ * Phase 3.3: the storage mechanics moved into pluggable backends under
+ * `./cache-backends/`. This file keeps two stable public surfaces:
+ *   - `buildAuditCacheKey` — deterministic SHA-256 over the inputs that
+ *     determine the AI response. Backends share this key so an entry
+ *     written by `fs` can be read by `http` and vice-versa.
+ *   - `readCachedAuditResult` / `writeCachedAuditResult` — thin shims
+ *     around the configured backend (defaults to `fs`).
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import type { AuditResult } from "../../types/index.js";
-import { parseAuditResponse } from "../../utils/parser.js";
-import { log } from "../../utils/logger.js";
+import type { AuditResult, ProjectConfig } from "../../types/index.js";
+import type { CacheBackend } from "./cache-backends/types.js";
+import { createFsCacheBackend } from "./cache-backends/fs.js";
+import { createHttpCacheBackend } from "./cache-backends/http.js";
 
-const CACHE_DIR = ".mp-sentinel-cache";
-// v3 — invalidates cache entries produced before the OpenAI Responses API
-// migration, Gemini @google/genai SDK migration, and refreshed model tier
-// catalog (removed gemini-3-pro-preview, gpt-5.3-codex).
-const CACHE_VERSION = "3";
-
-const getCachePath = (key: string, cwd: string = process.cwd()): string =>
-  resolve(cwd, CACHE_DIR, `${key}.json`);
+// v4 — invalidates cache entries produced before Phase 2.5 structured-
+// output rollout. The request/response shape changes when providers honor
+// `responseSchema` (OpenAI json_schema, Anthropic tool_use, Gemini
+// responseSchema), so cached v3 entries are stale w.r.t. the new prompt
+// contract even though the parsed AuditResult shape is unchanged.
+const CACHE_VERSION = "4";
 
 export const buildAuditCacheKey = (input: {
   provider: string;
@@ -40,30 +45,66 @@ export const buildAuditCacheKey = (input: {
     input.payload,
   ];
   const source = parts.join("::");
-
   return createHash("sha256").update(source).digest("hex");
 };
+
+// ── Backend management ──────────────────────────────────────────────────
+
+let currentBackend: CacheBackend | null = null;
+
+/**
+ * Configure the cache backend from a `ProjectConfig.cache` block. Pass
+ * `undefined` to reset to the default `fs` backend.
+ */
+export const configureCacheBackend = (
+  settings: ProjectConfig["cache"] | undefined,
+  cwd: string = process.cwd(),
+): void => {
+  if (!settings || !settings.backend || settings.backend === "fs") {
+    currentBackend = createFsCacheBackend({
+      cwd,
+      ...(settings?.fs?.cacheDir && { cacheDir: settings.fs.cacheDir }),
+    });
+    return;
+  }
+  if (settings.backend === "http") {
+    if (!settings.http?.baseUrl) {
+      throw new Error(`cache.http.baseUrl is required when cache.backend = "http"`);
+    }
+    currentBackend = createHttpCacheBackend({
+      baseUrl: settings.http.baseUrl,
+      ...(settings.http.headers && { headers: settings.http.headers }),
+      ...(typeof settings.http.timeoutMs === "number" && { timeoutMs: settings.http.timeoutMs }),
+    });
+    return;
+  }
+  throw new Error(`Unsupported cache.backend: "${String(settings.backend)}"`);
+};
+
+/** Test helper — replace the backend with a stub. */
+export const setCacheBackendForTest = (backend: CacheBackend): void => {
+  currentBackend = backend;
+};
+
+/** Reset to defaults (for tests). */
+export const resetCacheBackend = (): void => {
+  currentBackend = null;
+};
+
+const getBackend = (cwd: string = process.cwd()): CacheBackend => {
+  if (!currentBackend) {
+    currentBackend = createFsCacheBackend({ cwd });
+  }
+  return currentBackend;
+};
+
+// ── Public read/write API (backwards compatible) ────────────────────────
 
 export const readCachedAuditResult = async (
   key: string,
   cwd: string = process.cwd(),
 ): Promise<AuditResult | null> => {
-  try {
-    const fullPath = getCachePath(key, cwd);
-    const content = await readFile(fullPath, "utf-8");
-    // Validate cached data through the same normalizer used for live responses
-    // to prevent tampered/corrupted cache files from injecting bad data.
-    const result = parseAuditResponse(content);
-    // Cached ERROR results are always invalid — the runtime never writes
-    // ERROR to cache (see auditFilesWithConcurrency), so a cached ERROR
-    // means the cache file was tampered or the schema has drifted.
-    if (result.status === "ERROR") {
-      return null; // treat as a cache miss
-    }
-    return result;
-  } catch {
-    return null;
-  }
+  return getBackend(cwd).read(key);
 };
 
 export const writeCachedAuditResult = async (
@@ -71,17 +112,10 @@ export const writeCachedAuditResult = async (
   result: AuditResult,
   cwd: string = process.cwd(),
 ): Promise<void> => {
-  try {
-    const fullPath = getCachePath(key, cwd);
-    const dir = resolve(cwd, CACHE_DIR);
-    await mkdir(dir, { recursive: true });
-    // Atomic write: write to a temp file first, then rename to final path.
-    // This prevents readers from seeing a partially-written cache file.
-    const tmpPath = fullPath + ".tmp." + Date.now();
-    await writeFile(tmpPath, JSON.stringify(result), "utf-8");
-    await rename(tmpPath, fullPath);
-  } catch (err) {
-    log.warning(`Failed to write audit cache: ${(err as Error).message}`);
-    // Cache writes are best-effort; a write failure must not propagate.
-  }
+  return getBackend(cwd).write(key, result);
 };
+
+// Re-exports so callers can construct backends directly if they want.
+export { createFsCacheBackend } from "./cache-backends/fs.js";
+export { createHttpCacheBackend } from "./cache-backends/http.js";
+export type { CacheBackend } from "./cache-backends/types.js";

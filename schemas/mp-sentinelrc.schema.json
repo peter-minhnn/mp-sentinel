@@ -1,0 +1,556 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/peter-minhnn/mp-sentinel/schemas/mp-sentinelrc.schema.json",
+  "title": "MP Sentinel project configuration",
+  "description": "Schema for .mp-sentinelrc.json — controls reviews, indexing, create-skills, and MCP integration.",
+  "type": "object",
+  "properties": {
+    "techStack": {
+      "type": "string"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ruleFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bypassKeyword": {
+      "type": "string"
+    },
+    "commitFormat": {
+      "type": "string"
+    },
+    "maxConcurrency": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "cacheEnabled": {
+      "type": "boolean"
+    },
+    "gitProvider": {
+      "type": "string",
+      "enum": [
+        "github",
+        "gitlab"
+      ]
+    },
+    "repoUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "localReview": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "commitCount": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "commitPatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "pattern"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "filterByPattern": {
+          "type": "boolean"
+        },
+        "skipPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excludePatterns": {
+          "description": "Regex patterns — commits matching any of these are excluded",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "includeMergeCommits": {
+          "type": "boolean"
+        },
+        "branchDiffMode": {
+          "type": "boolean"
+        },
+        "compareBranch": {
+          "type": "string"
+        },
+        "patternMatchMode": {
+          "type": "string",
+          "enum": [
+            "any",
+            "all",
+            "exclude-first"
+          ]
+        },
+        "verbosePatternMatching": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "enableSkillsFetch": {
+      "type": "boolean"
+    },
+    "skillsFetchTimeout": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxFiles": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxDiffLines": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxCharsPerFile": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "promptVersion": {
+          "type": "string"
+        },
+        "fallbackProvider": {
+          "type": "string"
+        },
+        "tokenLimit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "modelTier": {
+          "type": "string",
+          "enum": [
+            "premium",
+            "balanced",
+            "budget"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "indexing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "languages": {
+          "description": "Languages to include in source indexing",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "typescript",
+              "tsx",
+              "javascript",
+              "jsx"
+            ]
+          }
+        },
+        "cachePath": {
+          "type": "string"
+        },
+        "maxFileSize": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxRelatedFiles": {
+          "description": "Maximum number of related files (imports/dependents) per changed file in review context",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "createSkills": {
+      "type": "object",
+      "properties": {
+        "ai": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable AI enrichment for create-skills",
+              "type": "boolean"
+            },
+            "provider": {
+              "description": "AI provider for enrichment (gemini, openai, anthropic, grok)",
+              "type": "string"
+            },
+            "model": {
+              "description": "Model name for enrichment provider",
+              "type": "string"
+            },
+            "temperature": {
+              "description": "Temperature for enrichment (0-2)",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "maxTokens": {
+              "description": "Max tokens for enrichment response",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxContextChars": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cacheEnabled": {
+          "type": "boolean"
+        },
+        "cacheTtlMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "servers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "transport": {
+                "type": "string",
+                "const": "stdio"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "args": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "calls": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "input": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {},
+                      "description": "JSON input for the MCP tool call"
+                    },
+                    "maxChars": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "tool",
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "transport",
+              "command",
+              "args",
+              "calls"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "github"
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "fetch"
+                  },
+                  "calls": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "preset"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "review": {
+      "type": "object",
+      "properties": {
+        "severityThreshold": {
+          "type": "string",
+          "enum": [
+            "CRITICAL",
+            "WARNING",
+            "INFO"
+          ]
+        },
+        "protectedBranches": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "WARNING",
+              "INFO"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "entropyEnabled": {
+          "type": "boolean"
+        },
+        "entropyMinLength": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "entropyMinBitsPerChar": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "allowValues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "customPatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "flags": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "pattern"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

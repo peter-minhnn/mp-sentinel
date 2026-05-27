@@ -35,24 +35,50 @@ interface SummaryRow {
   value: string;
 }
 
-const buildSummaryRows = (report: ReviewReport): SummaryRow[] => [
-  { icon: "", label: "Status", value: `${statusIcon(report.status)} ${report.status}` },
-  {
-    icon: "",
-    label: "Target",
-    value: `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`,
-  },
-  { icon: "", label: "AI Enabled", value: report.aiEnabled ? "yes" : "no" },
-  { icon: "", label: "Total files", value: String(report.summary.totalFiles) },
-  { icon: "", label: "Audited files", value: String(report.summary.auditedFiles) },
-  { icon: "✅", label: "Passed", value: String(report.summary.passedFiles) },
-  { icon: "❌", label: "Failed", value: String(report.summary.failedFiles) },
-  { icon: "🚨", label: "Critical", value: String(report.summary.criticalIssues) },
-  { icon: "⚠️ ", label: "Warning", value: String(report.summary.warningIssues) },
-  { icon: "ℹ️ ", label: "Info", value: String(report.summary.infoIssues) },
-  { icon: "⏱️ ", label: "Duration", value: formatDuration(report.summary.durationMs) },
-  { icon: "🔢", label: "Diff lines", value: String(report.summary.totalChangedLines) },
-];
+const formatCostUsd = (cost: number): string => {
+  // Show 4 decimal places under $1 for sub-cent accuracy; 2 for higher.
+  if (cost < 1) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+};
+
+const buildSummaryRows = (report: ReviewReport): SummaryRow[] => {
+  const rows: SummaryRow[] = [
+    { icon: "", label: "Status", value: `${statusIcon(report.status)} ${report.status}` },
+    {
+      icon: "",
+      label: "Target",
+      value: `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`,
+    },
+    { icon: "", label: "AI Enabled", value: report.aiEnabled ? "yes" : "no" },
+    { icon: "", label: "Total files", value: String(report.summary.totalFiles) },
+    { icon: "", label: "Audited files", value: String(report.summary.auditedFiles) },
+    { icon: "✅", label: "Passed", value: String(report.summary.passedFiles) },
+    { icon: "❌", label: "Failed", value: String(report.summary.failedFiles) },
+    { icon: "🚨", label: "Critical", value: String(report.summary.criticalIssues) },
+    { icon: "⚠️ ", label: "Warning", value: String(report.summary.warningIssues) },
+    { icon: "ℹ️ ", label: "Info", value: String(report.summary.infoIssues) },
+    { icon: "⏱️ ", label: "Duration", value: formatDuration(report.summary.durationMs) },
+    { icon: "🔢", label: "Diff lines", value: String(report.summary.totalChangedLines) },
+  ];
+
+  const usage = report.summary.tokenUsage;
+  if (usage) {
+    rows.push({
+      icon: "🪙",
+      label: "Tokens",
+      value: `in=${usage.inputTokens.toLocaleString()}, out=${usage.outputTokens.toLocaleString()} (${usage.callCount} call${usage.callCount === 1 ? "" : "s"})`,
+    });
+    if (typeof usage.estimatedCostUsd === "number") {
+      rows.push({
+        icon: "💵",
+        label: "Est. cost",
+        value: formatCostUsd(usage.estimatedCostUsd),
+      });
+    }
+  }
+
+  return rows;
+};
 
 const dividerLine = "─".repeat(50);
 
@@ -156,6 +182,8 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     Info: "ℹ️",
     Duration: "⏱️",
     "Diff lines": "🔢",
+    Tokens: "🪙",
+    "Est. cost": "💵",
   };
 
   for (const row of buildSummaryRows(report)) {

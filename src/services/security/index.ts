@@ -21,6 +21,7 @@ import type {
   PayloadFileSummary,
   PayloadSummary,
 } from "./patterns.js";
+import { scanEntropyMatches, type EntropyOptions } from "./entropy.js";
 
 // Re-export types for consumers
 export type {
@@ -35,10 +36,35 @@ export type {
 // SecurityService class
 // ──────────────────────────────────────────────────────────────────────────────
 
+export interface SecurityServiceOptions {
+  /** Extra regex-based patterns appended after defaults. */
+  extraPatterns?: SecretPattern[];
+  /**
+   * Phase 2.1: enable Shannon-entropy fallback detection. When true, the
+   * service scans content for high-entropy assignment-style values that
+   * don't match any known regex pattern and redacts them too.
+   */
+  entropyEnabled?: boolean;
+  /** Entropy detector options (forwarded to scanEntropyMatches). */
+  entropy?: EntropyOptions;
+}
+
 export class SecurityService {
   private readonly patterns: SecretPattern[];
+  private readonly entropyEnabled: boolean;
+  private readonly entropyOptions: EntropyOptions;
 
-  constructor(extraPatterns?: SecretPattern[]) {
+  /**
+   * Backward compatible: the legacy single-arg form `new SecurityService(extraPatterns)`
+   * still works. New callers should pass an options object.
+   */
+  constructor(extraPatternsOrOptions?: SecretPattern[] | SecurityServiceOptions) {
+    let options: SecurityServiceOptions = {};
+    if (Array.isArray(extraPatternsOrOptions)) {
+      options = { extraPatterns: extraPatternsOrOptions };
+    } else if (extraPatternsOrOptions) {
+      options = extraPatternsOrOptions;
+    }
     // Clone the default patterns so each instance is independent, then append
     // any caller-supplied extras.
     this.patterns = [
@@ -46,8 +72,10 @@ export class SecurityService {
         name: p.name,
         pattern: new RegExp(p.pattern.source, p.pattern.flags),
       })),
-      ...(extraPatterns ?? []),
+      ...(options.extraPatterns ?? []),
     ];
+    this.entropyEnabled = options.entropyEnabled ?? false;
+    this.entropyOptions = options.entropy ?? {};
   }
 
   // ── Layer 2 – Secret Scrubbing ──────────────────────────────────────────
@@ -71,6 +99,21 @@ export class SecurityService {
         sanitized = sanitized.replace(pattern, REDACTION_MARKER);
         // Reset again after replacement
         pattern.lastIndex = 0;
+      }
+    }
+
+    // Phase 2.1: entropy fallback. Run after the regex pass so already-
+    // redacted content (which is short and low-entropy) can't trigger us.
+    if (this.entropyEnabled) {
+      const entropyMatches = scanEntropyMatches(sanitized, this.entropyOptions);
+      if (entropyMatches.length > 0) {
+        // Replace right-to-left so earlier indices remain valid.
+        const ordered = [...entropyMatches].sort((a, b) => b.start - a.start);
+        for (const m of ordered) {
+          sanitized = sanitized.slice(0, m.start) + REDACTION_MARKER + sanitized.slice(m.end);
+        }
+        totalRedacted += entropyMatches.length;
+        matchedPatterns.push("High-entropy assignment (Phase 2.1)");
       }
     }
 
@@ -278,6 +321,45 @@ export class SecurityService {
 // ──────────────────────────────────────────────────────────────────────────────
 
 let _instance: SecurityService | null = null;
+
+/**
+ * Configure (or reconfigure) the singleton from a ProjectConfig.security
+ * block. Should be called once per review run, before sanitizeFiles().
+ * Passing undefined / empty config resets to defaults.
+ */
+export const configureSecurityService = (
+  settings:
+    | {
+        entropyEnabled?: boolean;
+        entropyMinLength?: number;
+        entropyMinBitsPerChar?: number;
+        allowValues?: string[];
+        customPatterns?: Array<{ name: string; pattern: string; flags?: string }>;
+      }
+    | undefined,
+): void => {
+  if (!settings) {
+    _instance = new SecurityService();
+    return;
+  }
+  const extraPatterns: SecretPattern[] = (settings.customPatterns ?? []).map((p) => ({
+    name: p.name,
+    pattern: new RegExp(p.pattern, p.flags ?? "g"),
+  }));
+  const entropy: EntropyOptions = {};
+  if (typeof settings.entropyMinLength === "number") entropy.minLength = settings.entropyMinLength;
+  if (typeof settings.entropyMinBitsPerChar === "number") {
+    entropy.minEntropy = settings.entropyMinBitsPerChar;
+  }
+  if (settings.allowValues && settings.allowValues.length > 0) {
+    entropy.allowValues = settings.allowValues;
+  }
+  _instance = new SecurityService({
+    extraPatterns,
+    entropyEnabled: settings.entropyEnabled === true,
+    entropy,
+  });
+};
 
 /**
  * Return a lazily-created singleton `SecurityService`.

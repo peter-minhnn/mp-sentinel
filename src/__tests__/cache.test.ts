@@ -265,20 +265,31 @@ describe("buildAuditCacheKey", () => {
     expect(a).toBe(b);
   });
 
-  it("preserves existing no-baseUrl fixture hash", () => {
+  it("preserves the current no-baseUrl fixture hash (v4)", () => {
     const key = buildAuditCacheKey(BASE_INPUT);
-    expect(key).toBe("086f3b7a417620b313e0f2c7543f9dfc12e2926ef7725e9b35caece4ddc8c2f7");
+    // Phase 2.5 bumped CACHE_VERSION 3 → 4 because providers now honor
+    // responseSchema in their request bodies, so the prompt-response
+    // contract changed. The new hash is captured here as the v4 fixture.
+    expect(key).toBe("df3c79ae90b9d5333a84ef37d3ab6f619fcb8135b17c16bf70fca7d1066f0826");
   });
 
   // ── Cache version fixture tests ──
 
-  it("produces the expected v3 fixture hash", () => {
+  it("produces the expected v4 fixture hash", () => {
     const key = buildAuditCacheKey(BASE_INPUT);
-    expect(key).toBe("086f3b7a417620b313e0f2c7543f9dfc12e2926ef7725e9b35caece4ddc8c2f7");
+    expect(key).toBe("df3c79ae90b9d5333a84ef37d3ab6f619fcb8135b17c16bf70fca7d1066f0826");
   });
 
   it("no longer produces the old v2 fixture hash", () => {
     const key = buildAuditCacheKey(BASE_INPUT);
     expect(key).not.toBe("99cae7d2355dea0268d18cb28a497edd35f123451570b3e7a2c8409b185b6abe");
+  });
+
+  it("no longer produces the old v3 fixture hash", () => {
+    const key = buildAuditCacheKey(BASE_INPUT);
+    // Pinned so a future contributor accidentally reverting the v3→v4 bump
+    // gets a loud, intentional failure rather than silently serving stale
+    // cache entries from a different prompt/response contract.
+    expect(key).not.toBe("086f3b7a417620b313e0f2c7543f9dfc12e2926ef7725e9b35caece4ddc8c2f7");
   });
 });

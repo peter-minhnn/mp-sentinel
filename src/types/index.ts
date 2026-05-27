@@ -3,7 +3,7 @@
  */
 
 export type ReviewMode = "commit" | "range" | "staged" | "files";
-export type ReviewFormat = "console" | "json" | "markdown";
+export type ReviewFormat = "console" | "json" | "markdown" | "sarif";
 
 export interface ReviewTarget {
   mode: ReviewMode;
@@ -35,6 +35,18 @@ export interface ReviewSummary {
   infoIssues: number;
   durationMs: number;
   totalChangedLines: number;
+  /**
+   * Aggregate token usage across all AI calls in this review (Phase 1.1).
+   * Absent when no AI calls were made (dry-run / deterministic / all-cached).
+   */
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    /** Number of AI calls that contributed usage data (may be < auditedFiles when some calls were cached) */
+    callCount: number;
+    /** Best-effort USD cost estimate. Absent when the model has no entry in the pricing table. */
+    estimatedCostUsd?: number;
+  };
 }
 
 export interface ReviewReport {
@@ -149,6 +161,89 @@ export interface ProjectConfig {
   createSkills?: CreateSkillsConfig;
   /** MCP (Model Context Protocol) external context configuration */
   mcp?: MCPConfig;
+  /** Review pass/fail decision controls (Phase 1.5) */
+  review?: ReviewSettings;
+  /** Security service tuning (Phase 2.1) — entropy detection + custom patterns */
+  security?: SecuritySettings;
+  /** Cache backend selection (Phase 3.3) — fs (default) or http */
+  cache?: CacheSettings;
+}
+
+/**
+ * Cache backend settings (Phase 3.3). Choose where audit-result cache
+ * entries are stored:
+ *   - `fs` (default): local `.mp-sentinel-cache/` directory
+ *   - `http`: shared HTTP key-value store (e.g. for CI runners)
+ *
+ * The fs and http backends share the same SHA-256 key derivation, so an
+ * entry written by one is readable by the other if both point at the
+ * same logical store.
+ */
+export interface CacheSettings {
+  /** Which backend to use. Defaults to `fs`. */
+  backend?: "fs" | "http";
+  /** Filesystem backend options (cwd-relative). */
+  fs?: {
+    /** Override the default `.mp-sentinel-cache/` directory. */
+    cacheDir?: string;
+  };
+  /** HTTP backend options. */
+  http?: {
+    /** Required. Base URL — joined with `/<key>` per entry. */
+    baseUrl?: string;
+    /** Extra headers (e.g. Authorization). */
+    headers?: Record<string, string>;
+    /** Per-request timeout in milliseconds (default 5000). */
+    timeoutMs?: number;
+  };
+}
+
+export interface SecurityCustomPattern {
+  /** Display name used in logs (e.g. "Internal Webhook Secret"). */
+  name: string;
+  /** Source string for the RegExp body — must be a valid regular expression. */
+  pattern: string;
+  /** Regex flags (default: "g"). */
+  flags?: string;
+}
+
+export interface SecuritySettings {
+  /** Turn on the Shannon-entropy secret detector (Phase 2.1). Default: false. */
+  entropyEnabled?: boolean;
+  /** Minimum length for entropy candidates (default: 24). */
+  entropyMinLength?: number;
+  /** Minimum bits/char for entropy candidates (default: 4.5). */
+  entropyMinBitsPerChar?: number;
+  /** Exact values never flagged — useful for publishable keys, fixtures. */
+  allowValues?: string[];
+  /** Globs of files where the security service is skipped entirely. */
+  allowPaths?: string[];
+  /** Project-specific extra regex patterns appended after the defaults. */
+  customPatterns?: SecurityCustomPattern[];
+}
+
+/**
+ * Severity levels used by the review pass/fail decision (Phase 1.5).
+ * `CRITICAL` is the strictest (only CRITICAL fails), `INFO` is the loosest
+ * (any finding at INFO or higher fails).
+ */
+export type SeverityThreshold = "CRITICAL" | "WARNING" | "INFO";
+
+export interface ReviewSettings {
+  /**
+   * Minimum severity that causes the review to FAIL (default: CRITICAL).
+   * Examples:
+   *   - "CRITICAL" — only CRITICAL findings fail the review
+   *   - "WARNING"  — CRITICAL or WARNING findings fail the review
+   *   - "INFO"     — any finding fails the review
+   */
+  severityThreshold?: SeverityThreshold;
+  /**
+   * Per-branch overrides keyed by branch name. When the current branch
+   * matches a key (exact match against `getCurrentBranch()`), the override
+   * supersedes `severityThreshold`.
+   */
+  protectedBranches?: Record<string, SeverityThreshold>;
 }
 
 // ====================================================================================
@@ -362,6 +457,15 @@ export interface AuditResult {
   issues?: AuditIssue[];
   message?: string;
   suggestion?: string;
+  /**
+   * Token usage reported by the provider for this single audit call (Phase 1.1).
+   * Absent for cached, deterministic, or commit-message audits — anything that
+   * did not consume provider tokens.
+   */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 
 export interface FileAuditResult {
@@ -428,6 +532,9 @@ export const DEFAULT_CONFIG: Required<
     | "createSkills"
     | "mcp"
     | "ruleFiles"
+    | "review"
+    | "security"
+    | "cache"
   >
 > & {
   localReview: LocalReviewConfig;
@@ -773,6 +880,12 @@ export interface SourceIndex {
   files: SourceIndexFile[];
   /** Deterministic hash of manifest inputs (package.json, tsconfig, lockfile). Absent = manifest-stale. */
   manifestHash?: string;
+  /**
+   * Git HEAD SHA at index time (Phase 3.1). Used by `indexing --health` to
+   * report drift between the indexed snapshot and the current working tree.
+   * Absent when the project root isn't a git repo.
+   */
+  gitHeadSha?: string;
   stats: {
     totalFiles: number;
     indexedFiles: number;
@@ -837,6 +950,23 @@ export interface IndexHealthOutput {
   parseErrorCount?: number;
   /** Suggested next commands based on parser recovery state */
   suggestedCommands?: string[];
+  /**
+   * Git HEAD SHA recorded at index time (Phase 3.1). Absent for caches
+   * built before 3.1 or when the project root isn't a git repo.
+   */
+  gitHeadSha?: string;
+  /**
+   * Current git HEAD SHA at health-check time. When it differs from
+   * `gitHeadSha`, the index reflects an older snapshot — incremental
+   * rebuilds will still produce a correct index, but the user may want
+   * to run `mp-sentinel indexing` to refresh.
+   */
+  currentGitHeadSha?: string;
+  /**
+   * True when both git HEAD SHAs are known and differ. Surfaces drift
+   * without requiring the user to diff the JSON output by hand.
+   */
+  gitHeadDrift?: boolean;
   /** Number of files parsed via chunked-tree-sitter (optional aggregate chunk telemetry) */
   chunkedFiles?: number;
   /** Total chunk count across all chunked files (optional aggregate chunk telemetry) */

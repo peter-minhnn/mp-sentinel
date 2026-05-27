@@ -438,6 +438,26 @@ export const getCurrentBranch = async (): Promise<string> => {
   }
 };
 
+/**
+ * Resolve the current git HEAD SHA (full 40-char hash). Returns `null`
+ * when the cwd isn't a git repository or git isn't installed. Used by
+ * the source-index pipeline to record drift between an indexed snapshot
+ * and the working tree (Phase 3.1).
+ */
+export const getCurrentHeadSha = async (cwd?: string): Promise<string | null> => {
+  try {
+    const opts: { cwd: string } | undefined = cwd ? { cwd } : undefined;
+    const { stdout } = await execAsync("git rev-parse HEAD", opts);
+    // execAsync widens stdout to `string | NonSharedBuffer` when options
+    // are passed (no explicit encoding). Coerce explicitly — every other
+    // call site in this file does the same.
+    const sha = String(stdout).trim();
+    return /^[a-f0-9]{40}$/i.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+};
+
 const parseAndFilterFiles = (output: string, extensions: RegExp): string[] => {
   return output
     .split("\n")

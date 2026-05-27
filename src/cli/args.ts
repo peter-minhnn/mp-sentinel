@@ -32,6 +32,7 @@ export interface CLIValues {
   "verbose-dry-run": boolean;
   "token-limit"?: string;
   "explain-context"?: boolean;
+  "severity-threshold"?: string;
   "index-format"?: string;
   force?: boolean;
   stats?: boolean;
@@ -83,7 +84,7 @@ export const buildProgram = (): Command => {
     .option("--staged", "Review staged files", false)
     .option("--commit <sha>", "Review a specific commit SHA")
     .option("--range <range>", "Review a git range (e.g. main..HEAD)")
-    .option("--format <fmt>", "Output format: console | json | markdown (default: console)")
+    .option("--format <fmt>", "Output format: console | json | markdown | sarif (default: console)")
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
     .option("--no-skills-fetch", "Disable local skills fetch (air-gapped mode)", false)
@@ -101,6 +102,10 @@ export const buildProgram = (): Command => {
       "--explain-context",
       "Diagnostic mode: show context building details without AI calls",
       false,
+    )
+    .option(
+      "--severity-threshold <level>",
+      "FAIL threshold: CRITICAL | WARNING | INFO (default: CRITICAL)",
     )
     .option("--files [files...]", "Review explicit file paths", [])
     .action(() => {
@@ -319,6 +324,9 @@ export const parseCliArgs = (): {
       }),
       ...(opts["explainContext"] === true && {
         "explain-context": true,
+      }),
+      ...(typeof opts["severityThreshold"] === "string" && {
+        "severity-threshold": opts["severityThreshold"],
       }),
       ...(typeof indexingOptions["indexFormat"] === "string" && {
         "index-format": indexingOptions["indexFormat"],

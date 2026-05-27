@@ -11,10 +11,15 @@
  */
 
 import type { AuditIssue, FileAuditResult } from "../../types/index.js";
+import { PYTHON_RISK_PATTERNS } from "./patterns/python.js";
+import { GO_RISK_PATTERNS } from "./patterns/go.js";
+import { RUST_RISK_PATTERNS } from "./patterns/rust.js";
+import { PHP_RISK_PATTERNS } from "./patterns/php.js";
+import { RUBY_RISK_PATTERNS } from "./patterns/ruby.js";
 
 // ── Pattern definitions ────────────────────────────────────────────────────
 
-interface RiskPattern {
+export interface RiskPattern {
   category: string;
   confidence: "high" | "medium";
   /** Human-readable label */
@@ -114,14 +119,20 @@ const SECURITY_PATTERNS: RiskPattern[] = [
     suggestion: "Use parameterized queries or an ORM with prepared statements.",
     severity: "CRITICAL",
   },
-  // Path traversal
+  // Path traversal (Phase 2.4: scoped to runtime path/fs APIs to avoid
+  // matching every relative import statement). The pattern requires the
+  // `../` to appear inside a known filesystem call (fs.*, path.*, readFile,
+  // writeFile, createReadStream, etc.) OR inside a template string used by
+  // such a call. Keeps a real signal while dropping the noise from
+  // `import "../foo"` and `require("../bar")`.
   {
     category: "security",
     confidence: "medium",
-    label: "Path traversal",
-    regex: /(?:\.\.\/|\.\.\\)/g,
+    label: "Path traversal in fs/path call",
+    regex:
+      /\b(?:fs|fsPromises|fsp|path)\.[A-Za-z_$][\w$]*\s*\([^)]*\.\.\/|\b(?:readFile|writeFile|readFileSync|writeFileSync|createReadStream|createWriteStream|open|openSync|stat|statSync|lstat|lstatSync|access|accessSync|unlink|unlinkSync|rmdir|rmdirSync|mkdir|mkdirSync|rename|renameSync|copyFile|copyFileSync|sendFile|download|attachment)\s*\([^)]*\.\.\//g,
     message:
-      "Path traversal sequences ('../') detected in code paths. Ensure user-controlled path segments are validated.",
+      "Path traversal sequences ('../') passed to a filesystem or HTTP send API. Ensure user-controlled path segments are validated.",
     suggestion: "Use path.resolve() and validate against an allowlist of permitted directories.",
     severity: "WARNING",
   },
@@ -153,16 +164,19 @@ const CRASH_PATTERNS: RiskPattern[] = [
     suggestion: "Use optional chaining (?.) and nullish coalescing (??) for safe property access.",
     severity: "WARNING",
   },
-  // parseInt/parseFloat without radix
+  // parseInt without radix (Phase 2.4: downgraded to INFO + test/fixture
+  // files are filtered out via MATCH_FILTERS to reduce noise). Modern
+  // engines no longer interpret leading-zero as octal, so this is more of
+  // a hygiene hint than a bug.
   {
     category: "runtime-crash",
-    confidence: "high",
+    confidence: "medium",
     label: "parseInt without radix",
     regex: /\bparseInt\s*\(\s*[^,)]+\s*\)/g,
     message:
-      "parseInt() without radix can produce unexpected results with leading-zero strings (octal legacy).",
+      "parseInt() called without a radix. Modern engines default to 10, but explicit is safer and matches lint rules.",
     suggestion: "Always provide the radix: parseInt(value, 10).",
-    severity: "WARNING",
+    severity: "INFO",
   },
 ];
 
@@ -216,6 +230,32 @@ const ALL_RISK_PATTERNS: RiskPattern[] = [
   ...ARCHITECTURE_PATTERNS,
   ...PERFORMANCE_PATTERNS,
 ];
+
+// ── Language-specific patterns (Phase 2.3) ────────────────────────────────
+
+/**
+ * Map a file path extension to its language-specific pattern pack.
+ * Returns `[]` for languages with no extra patterns; the universal
+ * `ALL_RISK_PATTERNS` always applies on top of these.
+ */
+const getLanguageRiskPatterns = (filePath: string): RiskPattern[] => {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  switch (ext) {
+    case "py":
+    case "pyi":
+      return PYTHON_RISK_PATTERNS;
+    case "go":
+      return GO_RISK_PATTERNS;
+    case "rs":
+      return RUST_RISK_PATTERNS;
+    case "php":
+      return PHP_RISK_PATTERNS;
+    case "rb":
+      return RUBY_RISK_PATTERNS;
+    default:
+      return [];
+  }
+};
 
 // ── Exported analyzer ──────────────────────────────────────────────────────
 
@@ -390,19 +430,35 @@ const MATCH_FILTERS: Record<string, (line: string, filePath: string) => boolean>
     if (/\b(?:report|markdown|format|html)\s*`/.test(line)) return false;
     return true;
   },
-  "Path traversal": (line) => {
-    // Skip validation checks (includes, indexOf, startsWith, match)
-    if (/(?:includes|indexOf|startsWith|match)\s*\(\s*['"`]\.\.(?:\/|\\)/.test(line)) return false;
-    // Skip module import/export/require/from/import() paths
+  "Path traversal in fs/path call": (line) => {
+    // The regex itself already scopes to fs/path API calls, but we still
+    // suppress matches inside import/require/from/export module specifiers
+    // that happen to mention fs.* or readFile in adjacent code (rare).
     if (/['"`]\.\.\//.test(line) && /\b(?:import|export|require|from)\b/.test(line)) return false;
-    if (/import\s*\(\s*['"`]\.\./.test(line)) return false;
-    // Only flag in file/path operation context
-    return /(?:fs[.\s]|readFile|writeFile|sendFile|path\.(?:join|resolve)|filePath|filename|\bdir\b|\bpath\b)/.test(
-      line,
-    );
+    return true;
   },
   "Console.log in production code": (_line, filePath) => {
     // Skip for test/example files
+    return !isTestOrExamplePath(filePath);
+  },
+  "parseInt without radix": (line, filePath) => {
+    // Phase 2.4: noise reducer.
+    if (isTestOrExamplePath(filePath)) return false;
+    // Skip cases where the second argument is provided on the SAME line —
+    // the regex is conservative because of `[^,)]+` so it can fire even
+    // when `parseInt(x, 10)` appears further in the line. Re-check here.
+    if (/\bparseInt\s*\([^,)]+,\s*\d+\s*\)/.test(line)) return false;
+    return true;
+  },
+  // Phase 2.3 — Rust pack filters
+  "Result/Option unwrap() outside tests": (_line, filePath) => {
+    return !isTestOrExamplePath(filePath);
+  },
+  "unsafe block": (_line, filePath) => {
+    // Skip in FFI / sys / bindings modules where `unsafe` is expected.
+    const lower = filePath.toLowerCase();
+    if (/(?:^|\/)(?:ffi|sys|bindings|libc)\//.test(lower)) return false;
+    if (/-sys\//.test(lower)) return false;
     return !isTestOrExamplePath(filePath);
   },
 };
@@ -545,7 +601,14 @@ export const analyzeDiffs = (
       }
     }
 
-    for (const pattern of ALL_RISK_PATTERNS) {
+    // Phase 2.3: universal patterns + per-language extras. Language packs
+    // run on Python/Go/Rust/PHP/Ruby files based on extension; the JS/TS-
+    // leaning universal set always applies.
+    const patternsForFile: RiskPattern[] = [
+      ...ALL_RISK_PATTERNS,
+      ...getLanguageRiskPatterns(file.path),
+    ];
+    for (const pattern of patternsForFile) {
       if (pattern.multiLine) {
         // Multi-line patterns scan only added lines (with gap preservation
         // between non-contiguous hunks) to avoid false positives from

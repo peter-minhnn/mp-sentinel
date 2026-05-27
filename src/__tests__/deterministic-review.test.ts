@@ -288,10 +288,25 @@ describe("printResultsSummary", () => {
     expect(printResultsSummary(results, 1000)).toBe(false);
   });
 
-  it("returns false for FAIL with INFO-only issues", () => {
+  it("returns true for FAIL with INFO-only issues under default WARNING threshold (Phase 1.5)", () => {
+    // INFO findings fall below the default WARNING threshold, so even when
+    // an AI marks status=FAIL with only INFO-severity issues the review
+    // passes. To fail on INFO use --severity-threshold INFO.
     const infoIssue = makeIssue("INFO", 1, "info message");
     const results = [makeResult("a.ts", "FAIL", [infoIssue])];
-    expect(printResultsSummary(results, 1000)).toBe(false);
+    expect(printResultsSummary(results, 1000)).toBe(true);
+  });
+
+  it("returns false for FAIL with INFO-only issues when threshold is INFO", () => {
+    const infoIssue = makeIssue("INFO", 1, "info message");
+    const results = [makeResult("a.ts", "FAIL", [infoIssue])];
+    expect(printResultsSummary(results, 1000, "INFO")).toBe(false);
+  });
+
+  it("returns true for FAIL with WARNING-only issues when threshold is CRITICAL", () => {
+    const warningIssue = makeIssue("WARNING", 1, "noisy but not failing");
+    const results = [makeResult("a.ts", "FAIL", [warningIssue])];
+    expect(printResultsSummary(results, 1000, "CRITICAL")).toBe(true);
   });
 
   it("returns false when there are system errors (FAIL with no issues)", () => {

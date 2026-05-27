@@ -222,6 +222,68 @@ const MCPConfigSchema = z.object({
   presets: z.array(MCPPresetSchema).optional(),
 });
 
+/**
+ * Review settings — controls pass/fail thresholds (Phase 1.5).
+ */
+const SeverityThresholdSchema = z.enum(["CRITICAL", "WARNING", "INFO"]);
+
+const ReviewSettingsSchema = z.object({
+  severityThreshold: SeverityThresholdSchema.optional(),
+  protectedBranches: z.record(z.string().min(1), SeverityThresholdSchema).optional(),
+});
+
+/**
+ * Security settings — Phase 2.1.
+ *
+ * `entropyEnabled` turns on the Shannon-entropy fallback secret detector.
+ * `allowValues` / `allowPaths` are escape hatches for known-safe values
+ * (publishable keys, fixtures) and known-safe file paths.
+ * `customPatterns` lets users add project-specific regexes without forking.
+ */
+/**
+ * Cache backend settings (Phase 3.3).
+ */
+const CacheSettingsSchema = z.object({
+  backend: z.enum(["fs", "http"]).optional(),
+  fs: z
+    .object({
+      cacheDir: z.string().min(1, "cache.fs.cacheDir must be non-empty").optional(),
+    })
+    .optional(),
+  http: z
+    .object({
+      baseUrl: z.string().url("cache.http.baseUrl must be a valid URL").optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      timeoutMs: z
+        .number()
+        .int()
+        .positive("cache.http.timeoutMs must be a positive integer")
+        .optional(),
+    })
+    .optional(),
+});
+
+const SecuritySettingsSchema = z.object({
+  entropyEnabled: z.boolean().optional(),
+  entropyMinLength: z
+    .number()
+    .int()
+    .positive("security.entropyMinLength must be a positive integer")
+    .optional(),
+  entropyMinBitsPerChar: z.number().positive().optional(),
+  allowValues: z.array(z.string()).optional(),
+  allowPaths: z.array(z.string()).optional(),
+  customPatterns: z
+    .array(
+      z.object({
+        name: z.string().min(1, "security.customPatterns[].name must be non-empty"),
+        pattern: zodRegexString,
+        flags: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
 export const ProjectConfigSchema = z.object({
   techStack: z.string().optional(),
   rules: z.array(z.string()).optional(),
@@ -244,6 +306,9 @@ export const ProjectConfigSchema = z.object({
   indexing: IndexingConfigSchema.optional(),
   createSkills: CreateSkillsConfigSchema.optional(),
   mcp: MCPConfigSchema.optional(),
+  review: ReviewSettingsSchema.optional(),
+  security: SecuritySettingsSchema.optional(),
+  cache: CacheSettingsSchema.optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────

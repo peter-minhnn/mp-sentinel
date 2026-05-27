@@ -23,9 +23,11 @@ import { log } from "../utils/logger.js";
 import { UserError } from "../utils/errors.js";
 import { collectReviewInput, listFilesForTarget } from "../utils/git.js";
 import { FileHandler } from "../services/file-handler/index.js";
-import { getSecurityService } from "../services/security/index.js";
-import { auditFilesWithConcurrency } from "../services/ai/index.js";
+import { configureSecurityService, getSecurityService } from "../services/security/index.js";
+import { auditFilesWithConcurrency, summarizeUsage } from "../services/ai/index.js";
+import { configureCacheBackend } from "../services/ai/cache.js";
 import { formatMarkdownReport, printConsoleReport } from "../formatters/report.js";
+import { stringifySarif } from "../formatters/sarif.js";
 import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
@@ -34,10 +36,18 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
+import { readFile as readFileAsync } from "node:fs/promises";
 import { gatherMCPContextDetails } from "../services/mcp/index.js";
 import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
+import {
+  DEFAULT_SEVERITY_THRESHOLD,
+  issuesFailThreshold,
+  resolveSeverityThreshold,
+} from "../utils/severity.js";
+import { getCurrentBranch } from "../utils/git.js";
+import type { SeverityThreshold } from "../types/index.js";
 
 export interface ReviewRunOptions {
   values: CLIValues;
@@ -63,10 +73,12 @@ const parseBooleanEnv = (value: string | undefined): boolean | undefined => {
 };
 
 const resolveFormat = (raw: string): ReviewFormat => {
-  if (raw === "console" || raw === "json" || raw === "markdown") {
+  if (raw === "console" || raw === "json" || raw === "markdown" || raw === "sarif") {
     return raw;
   }
-  throw new UserError(`Unsupported format "${raw}". Expected one of: console, json, markdown.`);
+  throw new UserError(
+    `Unsupported format "${raw}". Expected one of: console, json, markdown, sarif.`,
+  );
 };
 
 const resolveTarget = (
@@ -124,6 +136,11 @@ const emitFallbackNotice = (message: string, format: ReviewFormat): void => {
   process.stderr.write(`[warn] ${message}\n`);
 };
 
+interface BuildReportContext {
+  /** Resolved severity threshold for this run (default WARNING). */
+  threshold: SeverityThreshold;
+}
+
 const buildReport = (
   target: ReviewTarget,
   aiEnabled: boolean,
@@ -134,6 +151,8 @@ const buildReport = (
   totalChangedLines: number,
   startTime: number,
   mcpSummary?: MCPContextSummary,
+  tokenUsage?: ReviewReport["summary"]["tokenUsage"],
+  context: BuildReportContext = { threshold: DEFAULT_SEVERITY_THRESHOLD },
 ): ReviewReport => {
   const criticalIssues = results.reduce(
     (acc, result) =>
@@ -153,17 +172,28 @@ const buildReport = (
 
   const hasRuntimeErrors =
     errors.length > 0 || results.some((result) => result.result.status === "ERROR");
-  const hasFindings =
-    results.some((result) => result.result.status === "FAIL") ||
-    criticalIssues > 0 ||
-    warningIssues > 0;
+  // Threshold-aware FAIL: an issue fails the review only if its severity
+  // meets-or-exceeds the resolved threshold. Runtime errors are an
+  // independent path and always escalate to ERROR.
+  const hasFindings = results.some((result) =>
+    issuesFailThreshold(result.result.issues, context.threshold),
+  );
+  // Edge case: AI returned status="FAIL" without listing any issues.
+  // Treat as a failure regardless of threshold — the AI explicitly said
+  // FAIL and we have nothing to filter against.
+  const hasFailWithoutIssues = results.some(
+    (r) => r.result.status === "FAIL" && (!r.result.issues || r.result.issues.length === 0),
+  );
 
-  const status: ReviewReport["status"] = hasRuntimeErrors ? "ERROR" : hasFindings ? "FAIL" : "PASS";
+  const status: ReviewReport["status"] = hasRuntimeErrors
+    ? "ERROR"
+    : hasFindings || hasFailWithoutIssues
+      ? "FAIL"
+      : "PASS";
 
   const durationMs = performance.now() - startTime;
   const hasActionable = (entry: FileAuditResult): boolean =>
-    entry.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
-    false;
+    issuesFailThreshold(entry.result.issues, context.threshold);
   const passedFiles = results.filter((r) => r.result.status === "PASS" && !hasActionable(r)).length;
   const failedFiles = results.filter((r) => r.result.status !== "PASS" || hasActionable(r)).length;
 
@@ -183,6 +213,7 @@ const buildReport = (
       infoIssues,
       durationMs,
       totalChangedLines,
+      ...(tokenUsage && { tokenUsage }),
     },
     results,
     skipped,
@@ -205,6 +236,11 @@ const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
 
   if (format === "markdown") {
     console.log(formatMarkdownReport(report));
+    return;
+  }
+
+  if (format === "sarif") {
+    console.log(stringifySarif(report));
     return;
   }
 
@@ -350,6 +386,60 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   skipped.push(...diffResult.skipped);
 
   if (diffResult.files.length === 0) {
+    // Diagnostic: emit a single stderr line when verbose so empty diffs in
+    // explicit-files mode (the most likely bug surface) are visible.
+    if (values.verbose || process.env.MP_SENTINEL_DEBUG_EMPTY_DIFF === "1") {
+      process.stderr.write(
+        `[mp-sentinel:debug] diffResult.files is empty for target=${target.mode}` +
+          ` candidates=${JSON.stringify(candidateFiles)}` +
+          ` accepted=${JSON.stringify(filterResult.accepted)}` +
+          ` rejected=${JSON.stringify(skipped)}` +
+          ` cwd=${process.cwd()}\n`,
+      );
+    }
+
+    // Explicit `--files` mode: the user named these files, so an empty diff
+    // is a bug (file unreadable, git path mismatch, etc.) — not "nothing to
+    // review". Read each accepted file directly and produce a deterministic
+    // pseudo-diff so downstream sanitizer + risk-analyzer can still run.
+    // This matches the contract that review-fallback.test.ts asserts.
+    if (target.mode === "files" && filterResult.accepted.length > 0) {
+      const rebuilt: Array<{
+        path: string;
+        patch: string;
+        additions: number;
+        deletions: number;
+        changedLines: number;
+      }> = [];
+      for (const path of filterResult.accepted) {
+        try {
+          const absPath = resolvePath(process.cwd(), path);
+          const content = await readFileAsync(absPath, "utf-8");
+          const lines = content.split("\n").slice(0, 400);
+          const body = lines.map((l) => `+${l}`).join("\n");
+          const patch = [
+            `diff --git a/${path} b/${path}`,
+            `--- a/${path}`,
+            `+++ b/${path}`,
+            `@@ -0,0 +1,${lines.length} @@`,
+            body,
+          ].join("\n");
+          const additions = lines.length;
+          rebuilt.push({ path, patch, additions, deletions: 0, changedLines: additions });
+        } catch {
+          // File unreadable — skip silently. The deterministic pipeline can
+          // still produce a report for the readable subset.
+        }
+      }
+      if (rebuilt.length > 0) {
+        diffResult.files = rebuilt;
+        diffResult.totalChangedLines = rebuilt.reduce((s, f) => s + f.changedLines, 0);
+        // Fall through to the normal pipeline below.
+      }
+    }
+  }
+
+  if (diffResult.files.length === 0) {
     const emptyReport = buildReport(
       target,
       aiEnabled,
@@ -364,6 +454,11 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     return 0;
   }
 
+  // Phase 2.1: apply user security config (entropy, custom patterns,
+  // allowlists) BEFORE constructing the SecurityService instance.
+  configureSecurityService(config.security);
+  // Phase 3.3: select the cache backend (fs default; http for shared CI).
+  configureCacheBackend(config.cache);
   const securityService = getSecurityService();
   const { sanitizedFiles, redactionReport } = securityService.sanitizeFiles(
     diffResult.files.map((file) => ({ path: file.path, content: file.patch })),
@@ -524,6 +619,35 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     new Set(),
   );
 
+  // Aggregate token usage from raw AI audit results. Provider/model lookup
+  // is wrapped in try/catch so a missing API key after the run started
+  // (very unlikely) still produces a valid report.
+  let tokenUsage: ReviewReport["summary"]["tokenUsage"] | undefined;
+  if (aiEnabled && auditResults.length > 0) {
+    try {
+      const cfg = AIConfig.fromEnvironment({
+        ...(config.ai?.modelTier && { modelTier: config.ai.modelTier }),
+      });
+      tokenUsage = summarizeUsage(auditResults, cfg.provider, cfg.model);
+    } catch {
+      // Ignore — report stays without tokenUsage.
+    }
+  }
+
+  // Resolve threshold once per run. The CLI flag wins, then branch
+  // override, then config baseline, then default WARNING.
+  let currentBranch: string | undefined;
+  try {
+    currentBranch = await getCurrentBranch();
+  } catch {
+    // Detached HEAD or non-git path — fall through with currentBranch undefined.
+  }
+  const threshold = resolveSeverityThreshold({
+    ...(values["severity-threshold"] && { cliFlag: values["severity-threshold"] }),
+    config,
+    ...(currentBranch && { currentBranch }),
+  });
+
   const report = buildReport(
     target,
     aiEnabled,
@@ -534,6 +658,8 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     diffResult.totalChangedLines,
     startTime,
     mcpSummary,
+    tokenUsage,
+    { threshold },
   );
 
   await postGitProviderComments(report.results, dryRun);

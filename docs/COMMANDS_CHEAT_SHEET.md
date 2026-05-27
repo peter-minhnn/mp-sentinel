@@ -47,8 +47,9 @@
 | `--files <paths>` | Explicit file paths to review | auto |
 | `--local` | Review local changes | false |
 | `--interactive` | Interactive review | false |
-| `--format <fmt>` | Output: `console` or `json` | console |
+| `--format <fmt>` | Output: `console`, `json`, `markdown`, `sarif` | console |
 | `--bypass-keyword <kw>` | Staging bypass keyword | skip: |
+| `--severity-threshold <lvl>` | FAIL threshold: `CRITICAL`, `WARNING`, `INFO` | WARNING |
 
 ## Root CLI
 

@@ -64,7 +64,11 @@ const run = async (): Promise<void> => {
       : command === "create-skills"
         ? values["create-skills-format"]
         : (values.format ?? process.env.MP_SENTINEL_FORMAT);
-  const quietLogs = values.quiet || requestedFormat === "json" || requestedFormat === "markdown";
+  const quietLogs =
+    values.quiet ||
+    requestedFormat === "json" ||
+    requestedFormat === "markdown" ||
+    requestedFormat === "sarif";
   setLogQuietMode(quietLogs);
 
   // Handle indexing command with lazy loading

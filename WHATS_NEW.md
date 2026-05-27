@@ -1,5 +1,136 @@
 # What's New in v3.0.2
 
+## Unreleased (Phase 3.2 — Streaming AI + Phase 3.3 — Pluggable Cache)
+
+### Streaming AI responses (3.2)
+
+`IAIProvider.generateStream(systemPrompt, userPrompt, schema?)` is now part of the provider contract. Implemented natively for **Anthropic** (SSE `content_block_delta` + `input_json_delta` for tool_use) and **OpenAI Responses API** (`response.output_text.delta`). Providers without a streaming implementation fall back through `callGenerateStream` → `generate()` and emit a single terminal chunk, so callers can always `for await (…)` regardless of provider.
+
+`assembleStream(iter, onDelta?)` collapses a stream back into a complete `AIResponse` with the same `usage` and `finishReason` accounting, so cache writes / JSON-output mode / SARIF / etc. stay unchanged. A new `parseSseStream` helper lives in `src/services/ai/sse.ts` and is shared by both streaming providers.
+
+### Pluggable cache backends (3.3)
+
+Cache storage is now backend-driven. The default behavior is unchanged (local `.mp-sentinel-cache/` directory), but teams running parallel CI workers can swap in a shared store:
+
+```jsonc
+{
+  "cache": {
+    "backend": "http",
+    "http": {
+      "baseUrl": "https://cache.internal.example.com/mp-sentinel",
+      "headers": { "Authorization": "Bearer ..." },
+      "timeoutMs": 5000
+    }
+  }
+}
+```
+
+The HTTP backend is `GET /<key>` + `PUT /<key>` — drop-in for Cloudflare Workers KV (via its REST proxy), in-house Redis-HTTP shims, or any KV service. Uses Node's built-in `fetch` — no new dependencies. Backends share the same SHA-256 key derivation, so an entry written by one is readable by the other.
+
+## Unreleased (Phase 3.1 — Parallel + Incremental Indexing)
+
+### Parallel parsing
+
+`buildSourceIndex` now drives the parse loop through a bounded-concurrency `parallelMap` helper (default = `os.availableParallelism()` capped at 8). File I/O (`readFile`, sha256, mtime stat) and tree-sitter parse work overlap across files, cutting wall-clock time on cold cache rebuilds without needing the IPC overhead of worker threads.
+
+### Incremental indexing — git HEAD drift
+
+SHA-256-based incremental indexing was already in place: files whose content hash matches the cached entry are reused, only changed/new files are reparsed. Phase 3.1 adds a git-HEAD snapshot:
+
+- `SourceIndex.gitHeadSha` — recorded at index time.
+- `IndexHealthOutput.currentGitHeadSha` — current HEAD at health-check time.
+- `IndexHealthOutput.gitHeadDrift` — `true` when the two differ.
+
+Surfaced in `indexing --health` (console + JSON). Lets you spot stale indexes from old branches at a glance.
+
+## Unreleased (Phase 2 — Detection Quality)
+
+### Entropy-based secret detection (2.1)
+
+`src/services/security/entropy.ts` adds a Shannon-entropy fallback that complements the regex prefix patterns. When `security.entropyEnabled` is true in `.mp-sentinelrc.json`, the sanitizer scans assignment-style values (`KEY = "VALUE"`, `--token VALUE`) and redacts anything ≥ 24 chars with entropy ≥ 4.5 bits/char that isn't a URL, dictionary word, or in the configured allowlist.
+
+```jsonc
+{
+  "security": {
+    "entropyEnabled": true,
+    "allowValues": ["pk_live_publishable_key_safe_to_share"],
+    "customPatterns": [
+      { "name": "Internal Webhook", "pattern": "WHK-[A-Z0-9]{16}" }
+    ]
+  }
+}
+```
+
+### High-value secret patterns (2.2)
+
+Added regex patterns for: Anthropic API keys (`sk-ant-api…`), OpenAI (legacy `sk-…`, `sk-proj-…`, `sk-svcacct-…`), Azure storage connection strings + SAS tokens, Twilio (`SK…`/`AC…`), SendGrid (`SG.…`), Datadog (`ddp_…`/`dda_…`), Postman (`PMAK-…`), Shopify (`shpat_…`), Square (`EAAA…`), and GCP service-account JSON blocks.
+
+### Risk-analyzer language packs (2.3)
+
+The risk analyzer now dispatches per-language patterns based on file extension. New language-specific checks fire only for matching files:
+
+| File ext | Sample checks |
+|---|---|
+| `.py` | `pickle.loads`, `subprocess shell=True`, `yaml.load`, `os.system`, `mark_safe` |
+| `.go` | `exec.Command("sh","-c",…)`, `unsafe.Pointer`, `crypto/md5`, `http.Client{}` no timeout |
+| `.rs` | `mem::transmute`, `.unwrap()` outside tests, `unsafe { … }` outside FFI |
+| `.php` | `unserialize($_POST)`, `extract($_REQUEST)`, `include $_GET[…]`, `shell_exec` |
+| `.rb` | `Marshal.load`, `YAML.load` w/o safe_load, `eval`, `system("… #{x}")` |
+
+The universal JS/TS-leaning pack still runs on every file.
+
+### Tighter noisy patterns (2.4)
+
+- **`Path traversal in fs/path call`** — the regex now requires `../` to be syntactically inside a call to `fs.*`, `path.*`, `readFile`, `writeFile`, `sendFile`, etc. `import "../foo"` no longer triggers.
+- **`parseInt without radix`** — downgraded from WARNING to INFO and suppressed inside test/example paths. Modern engines no longer interpret leading-zero as octal, so this is a hygiene hint rather than a bug.
+
+### Provider-native structured output (2.5)
+
+`IAIProvider.generate()` accepts an optional `responseSchema` parameter. `AUDIT_RESPONSE_SCHEMA` — a JSON Schema mirror of the audit rubric — is now forwarded to:
+
+- **OpenAI** → `text.format.json_schema` (strict)
+- **Anthropic** → `tools[]` + `tool_choice: { type: "tool", name }` (the `tool_use` block's `input` is serialized back to a JSON string for the existing parser)
+- **Gemini** → `responseSchema` + `responseMimeType: "application/json"`
+- **Grok** → `response_format.json_schema`
+- **OpenRouter** → `response_format.json_schema` for `openai/*` models; legacy `json_object` otherwise
+
+AI audit cache version bumped to `4` because the request shape changes when structured output is on.
+
+## Unreleased (Phase 1 — Stability & Observability)
+
+### Token usage & cost capture (1.1)
+
+Every AI call now reports token usage. The review report (`--format json` and console) surfaces aggregate input/output tokens, AI call count, and a best-effort USD cost estimate. Pricing lives in `src/services/ai/pricing.ts` and is keyed by exact model id with a family-prefix fallback so preview variants still get costed.
+
+### Broader retries + circuit breaker (1.2)
+
+`isRetryableError` previously caught only 429/503/ECONNRESET/AbortError. It now also covers 408, 425, 500, 502, 504, 522, 524, `ETIMEDOUT`, `EAI_AGAIN`, `ENETUNREACH`, `ENOTFOUND`, "socket hang up", "fetch failed", and the human-readable variants. `withRetry` honors `Retry-After` headers (RFC 7231) and JSON `retry_after` / `retry_after_ms` fields, capped at `maxDelayMs`.
+
+A new per-provider circuit breaker (`src/services/ai/circuit-breaker.ts`) tracks consecutive failures and trips to **open** after 5 in a row, skipping the primary provider for 30s and going straight to the fallback chain. After cooldown it transitions to **half-open** and a successful call closes it again.
+
+### SARIF formatter (1.3)
+
+`--format sarif` produces SARIF 2.1.0 output suitable for GitHub Code Scanning, GitLab Security Dashboard, and SonarQube. Each finding becomes a `result` with severity → `level` mapping (CRITICAL→error, WARNING→warning, INFO→note); evidence and suggestion ride along in `properties`.
+
+### JSON Schema for `.mp-sentinelrc.json` (1.4)
+
+`schemas/mp-sentinelrc.schema.json` is now shipped with the package. The example config references it via `$schema` so VSCode and JetBrains editors get autocomplete and hover docs out of the box. Regenerate with `npm run schema:gen`.
+
+### `--severity-threshold` (1.5)
+
+New CLI flag and config keys let teams escalate or relax the FAIL boundary without code changes:
+
+```jsonc
+{
+  "review": {
+    "severityThreshold": "CRITICAL",
+    "protectedBranches": { "main": "WARNING" }
+  }
+}
+```
+
+CLI flag beats branch override beats config baseline. Default remains **WARNING** to preserve historical behavior.
+
 ## v3.0.2
 
 ### Fast Code Search with Declaration-Aware Ranking

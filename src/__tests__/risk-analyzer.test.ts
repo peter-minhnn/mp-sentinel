@@ -94,13 +94,24 @@ describe("ReviewRiskAnalyzer — Security Patterns", () => {
     expect(result.files[0]!.issues.some((i) => i.message.includes("redirect"))).toBe(true);
   });
 
-  it("detects path traversal in file operations as WARNING", () => {
+  it("detects path traversal when '../' reaches an fs.* call (Phase 2.4)", () => {
     const result = createAnalysis(
       "src/utils/fs.ts",
       `const baseDir = "/app";
-  const filePath = baseDir + "/../../config.json";`,
+  fs.readFileSync(baseDir + "/../../config.json");`,
     );
     expect(result.totalWarning).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT flag a bare variable assignment that contains '../' (Phase 2.4)", () => {
+    // Phase 2.4 tightening: the regex now requires the traversal to be
+    // syntactically inside a fs/path/sendFile call. Bare assignments to a
+    // `filePath`-named variable no longer fire on their own.
+    const result = createAnalysis(
+      "src/utils/fs.ts",
+      `const filePath = "/app" + "/../../config.json";`,
+    );
+    expect(result.totalWarning).toBe(0);
   });
 
   it("does NOT flag safe validation via includes() as path traversal", () => {
@@ -219,13 +230,26 @@ const output = execSync('ls -la');`,
     expect(result.totalWarning).toBeGreaterThanOrEqual(1);
   });
 
-  it("detects parseInt without radix as WARNING", () => {
+  it("detects parseInt without radix as INFO (Phase 2.4 — downgraded)", () => {
     const result = createAnalysis(
       "src/utils/parse.ts",
       `const value = parseInt(input);
 console.log(value);`,
     );
-    expect(result.totalWarning).toBeGreaterThanOrEqual(1);
+    // Modern engines no longer interpret leading-zero strings as octal, so
+    // this is a hygiene hint, not a crash bug.
+    expect(result.totalInfo).toBeGreaterThanOrEqual(1);
+    expect(result.totalWarning).toBe(0);
+  });
+
+  it("does NOT flag parseInt(value, 10) with explicit radix", () => {
+    const result = createAnalysis("src/utils/parse.ts", `const value = parseInt(input, 10);`);
+    expect(result.totalInfo).toBe(0);
+  });
+
+  it("does NOT flag parseInt in test files (Phase 2.4 — filter)", () => {
+    const result = createAnalysis("src/__tests__/parse.test.ts", `const value = parseInt(input);`);
+    expect(result.totalInfo).toBe(0);
   });
 
   it("detects non-null assertions as WARNING", () => {
