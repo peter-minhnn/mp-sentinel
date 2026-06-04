@@ -11,6 +11,14 @@ The source index now records outgoing call edges per file (`calls: CallEdge[]`):
 - `file.calls` — outbound call edges (capped at 30, with `callsTruncated`).
 - `incomingCalls` — call sites in other indexed files whose textual callee matches a symbol defined in the requested file (capped at 20). These are candidates, not proof: matching is textual, so same-named symbols elsewhere also match.
 
+### Call-aware review intelligence (4.6)
+
+The schema 1.4 call-edge index now feeds normal AI review context, not just `indexing --agent-context`. When a changed file's exported symbols are called elsewhere, the review prompt gains a compact `Call Impact` section listing top caller files and call sites (capped, clearly marked as candidate/textual matches), so the AI can catch caller contract breaks and judge real blast radius.
+
+- Context ranking is now: changed file -> direct imports -> direct dependents -> caller files (call edges) -> hub files. Callers already included as dependents are deduped and tagged with both relations.
+- `--explain-context --format json` reports the new `call-impact` signal in `includedSignals` / `intelligenceSignals` / `evidenceSummary`, the `caller` relation in `relationTypes`, and suggests `indexing --agent-context <caller-file>` for top callers.
+- Strict budget behavior: the Call Impact section is the first thing omitted before the context would overflow. Old caches without `calls` simply produce no signal.
+
 ### `--check` now catches config-only changes
 
 Generated skill files carry a new `generationConfigHash` metadata field covering `createSkills.policies` and `createSkills.disableRules`. Changing either in `.mp-sentinelrc.json` now flags existing files as stale in `create-skills --check`, even though the source index itself didn't change. Files generated before this field existed are treated as "generated with default config".

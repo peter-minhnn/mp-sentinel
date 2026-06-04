@@ -59,6 +59,7 @@ When index insights are available, the context builder appends a `--- Review Int
 - **Hub File Blast Radius** — changed files imported by many other files (high-impact changes).
 - **Test Coverage Gap** — changed source files with no associated tests.
 - **Key Dependencies Used** — external packages relevant to the changed files.
+- **Call Impact** (schema 1.4+) — call sites in other files whose textual callee matches a changed file's exported symbols. Rendered as a separate compact `--- Call Impact ---` section with capped caller files and call sites, clearly marked as candidate/textual matches; it is the first section omitted under budget pressure. Caller files rank after direct dependents and before hub files, tagged with the `caller` relation.
 
 Each signal type is tracked in `ReviewContextMetadata.includedSignals` and surfaced in `--explain-context --format json` output.
 
@@ -68,7 +69,7 @@ Each intelligence signal now carries structured metadata (`ReviewIntelligenceSig
 
 | Field | Description |
 |-------|-------------|
-| `type` | Signal type: `public-api`, `risk`, `test-gap`, `dependency` |
+| `type` | Signal type: `public-api`, `risk`, `test-gap`, `dependency`, `call-impact` |
 | `file` | File path that triggered the signal |
 | `reason` | Human-readable explanation of why this signal was raised |
 | `evidence` | Supporting data (import count, package name, entrypoint path, test-gap reason) |

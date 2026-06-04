@@ -18,6 +18,100 @@ import { quoteCliArg } from "./query.js";
 
 const INDEX_CONTEXT_MAX_CHARS = 12000;
 
+// Call-impact caps (schema 1.4 call edges). Conservative so the section
+// stays compact even on hot files.
+const MAX_CALL_SITES_PER_CALLER = 2;
+const MAX_CALL_IMPACT_SECTION_LINES = 8;
+
+/** A call site in another file that textually matches a changed file's export. */
+interface CallSiteEvidence {
+  /** Exported symbol name from the changed file that matched. */
+  symbol: string;
+  /** Callee text as written at the call site (may be `obj.symbol`). */
+  callee: string;
+  line: number;
+  inSymbol?: string | undefined;
+}
+
+/** Caller files (with matched call sites) per changed file. */
+type CallerMatches = Map<string, Map<string, CallSiteEvidence[]>>;
+
+/** Exported symbol names of a file, for textual call matching. */
+function getExportedNames(file: SourceIndexFile): Set<string> {
+  const names = new Set<string>();
+  if (file.exportedSymbols) {
+    for (const name of file.exportedSymbols) names.add(name);
+  } else {
+    for (const exp of file.exports) {
+      for (const name of exp.names) names.add(name);
+    }
+  }
+  names.delete("default");
+  names.delete("");
+  return names;
+}
+
+/**
+ * Match changed files' exported symbols against other files' call edges
+ * (schema 1.4 `calls`). Matching is textual/candidate-based: a plain call
+ * matches the exported name exactly; a member call matches a trailing
+ * `.name`. Old caches without `calls` simply produce no matches.
+ */
+function computeCallerMatches(
+  index: SourceIndex,
+  fileIndexMap: Map<string, SourceIndexFile>,
+  changedPaths: string[],
+): CallerMatches {
+  const matches: CallerMatches = new Map();
+
+  for (const changedPath of changedPaths) {
+    const changedFile = fileIndexMap.get(changedPath);
+    if (!changedFile) continue;
+    const exportedNames = getExportedNames(changedFile);
+    if (exportedNames.size === 0) continue;
+
+    const callers = new Map<string, CallSiteEvidence[]>();
+    for (const other of index.files) {
+      if (other.path === changedPath || !other.calls) continue;
+      for (const call of other.calls) {
+        const dotIndex = call.callee.lastIndexOf(".");
+        const tail = dotIndex === -1 ? call.callee : call.callee.slice(dotIndex + 1);
+        if (!exportedNames.has(tail)) continue;
+        const sites = callers.get(other.path) ?? [];
+        sites.push({
+          symbol: tail,
+          callee: call.callee,
+          line: call.line,
+          inSymbol: call.inSymbol,
+        });
+        callers.set(other.path, sites);
+      }
+    }
+    if (callers.size > 0) {
+      matches.set(changedPath, callers);
+    }
+  }
+
+  return matches;
+}
+
+/** Caller file paths ranked by matched-call-site count (desc), then path. */
+function rankCallerFiles(callers: Map<string, CallSiteEvidence[]>): string[] {
+  return [...callers.entries()]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([path]) => path);
+}
+
+/** One compact evidence line per caller file, capped per caller. */
+function formatCallSites(sites: CallSiteEvidence[], callerPath: string): string {
+  const shown = sites
+    .slice(0, MAX_CALL_SITES_PER_CALLER)
+    .map((s) => `${s.callee} @ ${callerPath}:${s.line}${s.inSymbol ? ` (in ${s.inSymbol})` : ""}`)
+    .join(", ");
+  const more = sites.length > MAX_CALL_SITES_PER_CALLER ? ` +${sites.length - 2} more` : "";
+  return `${shown}${more}`;
+}
+
 /**
  * Profile-specific review pitfalls (concise, 3-5 bullets each)
  */
@@ -182,6 +276,34 @@ export async function buildReviewContext(
           relationTypesMap.set(dependentPath, [...types, "dependent"]);
         }
       }
+    }
+  }
+
+  // Tier 3.5: Caller files from call edges (schema 1.4). Candidate/textual
+  // matches of changed files' exported symbols against other files' calls.
+  // Files already included as imports/dependents keep their slot but gain
+  // the "caller" tag; new caller files rank before hub files.
+  const callerMatches = computeCallerMatches(index, fileIndexMap, changedPaths);
+  for (const changedPath of changedPaths) {
+    const callers = callerMatches.get(changedPath);
+    if (!callers) continue;
+    let addedCallers = 0;
+    for (const callerPath of rankCallerFiles(callers)) {
+      if (!fileIndexMap.has(callerPath)) continue;
+      if (seen.has(callerPath)) {
+        // Already included (e.g. as a direct dependent) -- tag, don't re-add.
+        const types = relationTypesMap.get(callerPath) ?? [];
+        if (!types.includes("caller")) {
+          relationTypesMap.set(callerPath, [...types, "caller"]);
+        }
+        continue;
+      }
+      if (addedCallers >= maxRelatedFiles) continue;
+      orderedPaths.push(callerPath);
+      seen.add(callerPath);
+      addedCallers++;
+      const types = relationTypesMap.get(callerPath) ?? [];
+      relationTypesMap.set(callerPath, [...types, "caller"]);
     }
   }
 
@@ -486,6 +608,45 @@ export async function buildReviewContext(
     }
   }
 
+  // Signal: Call impact -- changed files whose exported symbols are called
+  // elsewhere (schema 1.4 call edges; textual/candidate matching). Built as
+  // its own compact section so it can be omitted independently when the
+  // budget is tight. Old caches without `calls` produce no matches.
+  const callImpactLines: string[] = [];
+  const topCallerFiles: string[] = [];
+  try {
+    if (callerMatches.size > 0) {
+      callImpactLines.push("\n--- Call Impact (candidate callers - textual matches) ---");
+      for (const [changedPath, callers] of callerMatches) {
+        const rankedCallers = rankCallerFiles(callers);
+        for (const callerPath of rankedCallers.slice(0, maxRelatedFiles)) {
+          if (callImpactLines.length > MAX_CALL_IMPACT_SECTION_LINES) break;
+          const sites = callers.get(callerPath) ?? [];
+          callImpactLines.push(`${changedPath}: ${formatCallSites(sites, callerPath)}`);
+          if (!topCallerFiles.includes(callerPath)) topCallerFiles.push(callerPath);
+        }
+
+        includedSignals.push("call-impact");
+        for (const callerPath of rankedCallers.slice(0, maxRelatedFiles)) {
+          const sites = callers.get(callerPath) ?? [];
+          const first = sites[0];
+          if (!first) continue;
+          intelligenceSignals.push({
+            type: "call-impact",
+            file: changedPath,
+            reason:
+              `Exported symbol(s) from this file are called in ${callerPath} ` +
+              `(textual candidate match; verify before assuming a real caller).`,
+            evidence: `${first.callee} @ ${callerPath}:${first.line} (${sites.length} call site(s))`,
+            confidence: "medium",
+          });
+        }
+      }
+    }
+  } catch {
+    // Per-signal isolation: call-impact error does not suppress other signals
+  }
+
   // Dedup intelligenceSignals by type + file + evidence
   dedupedIntelligenceSignals = [];
   const seenSignalKeys = new Set<string>();
@@ -503,6 +664,16 @@ export async function buildReviewContext(
     context = context.replace(
       "\n=== End Source Index Context ===",
       signalText + "\n=== End Source Index Context ===",
+    );
+  }
+
+  // Append the Call Impact section only when it still fits -- it is the
+  // first section omitted under budget pressure, never overflowing context.
+  const callImpactText = callImpactLines.join("\n");
+  if (callImpactLines.length > 0 && context.length + callImpactText.length <= budgetChars) {
+    context = context.replace(
+      "\n=== End Source Index Context ===",
+      callImpactText + "\n=== End Source Index Context ===",
     );
   }
 
@@ -526,6 +697,12 @@ export async function buildReviewContext(
   // --agent-context for included files (cap 3)
   for (const file of includedFiles.slice(0, 3)) {
     addCmd(`mp-sentinel indexing --agent-context ${quoteCliArg(file)} --index-format json`);
+  }
+
+  // --agent-context for top caller files from call-impact evidence (cap 2).
+  // addCmd dedupes callers already suggested via includedFiles above.
+  for (const callerFile of topCallerFiles.slice(0, 2)) {
+    addCmd(`mp-sentinel indexing --agent-context ${quoteCliArg(callerFile)} --index-format json`);
   }
 
   // --find-import for dependency evidence (cap 3)

@@ -657,6 +657,84 @@ describe("Review Intelligence \u2014 explain-context JSON output shape", () => {
     }
   });
 
+  it("JSON output includes call-impact signal and caller relation (schema 1.4)", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "call-impact-json", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(cwd, "src", "api.ts"),
+      `export function fetchUser(id: string) { return { id }; }`,
+    );
+    await writeFile(
+      join(cwd, "src", "consumer.ts"),
+      `import { fetchUser } from "./api.js";\nexport function main() { return fetchUser("1"); }\n`,
+    );
+    await buildSourceIndex(cwd, baseIndexingConfig, true);
+
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderExplainContext({
+        values: makeCLIValues({ format: "json", files: ["src/api.ts"] }),
+        config: {
+          enableSkillsFetch: false,
+          maxConcurrency: 5,
+          cacheEnabled: true,
+          indexing: baseIndexingConfig,
+          ai: {
+            maxFiles: 15,
+            maxDiffLines: 1200,
+            maxCharsPerFile: 12000,
+            promptVersion: "2026-05-04",
+          },
+          localReview: {
+            enabled: false,
+            commitCount: 1,
+            commitPatterns: [],
+            filterByPattern: false,
+            skipPatterns: [],
+            includeMergeCommits: false,
+            branchDiffMode: false,
+            compareBranch: "origin/main",
+            patternMatchMode: "any",
+            verbosePatternMatching: false,
+          },
+        },
+        targetBranch: "origin/main",
+        maxConcurrency: 5,
+        startTime: performance.now(),
+      });
+
+      const jsonOutput = parseFirstJsonLog(logSpy.mock.calls);
+      expect(jsonOutput.status).toBe("available");
+      expect(jsonOutput.includedSignals).toContain("call-impact");
+      expect(jsonOutput.relationTypes).toContain("caller");
+      const callSignal = jsonOutput.intelligenceSignals!.find(
+        (s: { type: string }) => s.type === "call-impact",
+      );
+      expect(callSignal).toBeDefined();
+      expect(callSignal!.file).toBe("src/api.ts");
+      expect(callSignal!.evidence).toContain("src/consumer.ts");
+      const evidenceSummary = jsonOutput["evidenceSummary"] as
+        | Array<{ signalType: string; sourceFile: string }>
+        | undefined;
+      expect(evidenceSummary?.some((e) => e.signalType === "call-impact")).toBe(true);
+      expect(
+        jsonOutput.suggestedCommands!.some(
+          (c) => c.includes("--agent-context") && c.includes("src/consumer.ts"),
+        ),
+      ).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+      process.chdir(originalCwd);
+    }
+  });
+
   it("explain-context with disabled indexing reports explicit reason", async () => {
     const cwd = await makeTempDir();
     await mkdir(join(cwd, "src"), { recursive: true });
@@ -1224,5 +1302,162 @@ describe("Review Intelligence \u2014 Lane A precision", () => {
     expect(result.context).not.toContain("Review Intelligence");
     expect(result.metadata.includedSignals).toBeUndefined();
     expect(result.metadata.intelligenceSignals).toBeUndefined();
+  });
+});
+
+// -- Call-impact signal (schema 1.4 call edges) ----------------------------------
+
+describe("Review Intelligence -- call-impact signal (schema 1.4)", () => {
+  const makeIndex = async (files: Record<string, string>): Promise<SourceIndex> => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({ name: "call-impact-test", version: "1.0.0" }),
+    );
+    for (const [path, content] of Object.entries(files)) {
+      const fullPath = join(cwd, path);
+      await mkdir(join(fullPath, ".."), { recursive: true });
+      await writeFile(fullPath, content);
+    }
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    if (!index) throw new Error("Failed to build index");
+    return index;
+  };
+
+  const CALLER_FIXTURE = {
+    "src/api.ts": `export function fetchUser(id: string) { return { id }; }`,
+    "src/consumer.ts": [
+      `import { fetchUser } from "./api.js";`,
+      `export function main() { return fetchUser("1"); }`,
+    ].join("\n"),
+  };
+
+  it("includes call-impact when a changed exported symbol is called by another file", async () => {
+    const index = await makeIndex(CALLER_FIXTURE);
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    expect(result.metadata.includedSignals).toContain("call-impact");
+    const signal = result.metadata.intelligenceSignals?.find((s) => s.type === "call-impact");
+    expect(signal).toBeDefined();
+    expect(signal!.file).toBe("src/api.ts");
+    expect(signal!.evidence).toContain("src/consumer.ts");
+    expect(signal!.confidence).toBe("medium");
+    // Candidate/textual matching is explicitly called out
+    expect(signal!.reason).toContain("candidate");
+    expect(result.context).toContain("Call Impact (candidate callers - textual matches)");
+    expect(result.context).toContain("fetchUser @ src/consumer.ts");
+    expect(result.metadata.relationTypes).toContain("caller");
+    // evidenceSummary carries the call-impact entry
+    const summary = result.metadata.evidenceSummary?.find((e) => e.signalType === "call-impact");
+    expect(summary).toBeDefined();
+    expect(summary!.sourceFile).toBe("src/api.ts");
+  });
+
+  it("matches member-expression calls against exported symbols", async () => {
+    const index = await makeIndex({
+      "src/api.ts": `export function fetchUser(id: string) { return { id }; }`,
+      "src/ns-consumer.ts": [
+        `import * as api from "./api.js";`,
+        `export function load() { return api.fetchUser("2"); }`,
+      ].join("\n"),
+    });
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    expect(result.metadata.includedSignals).toContain("call-impact");
+    expect(result.context).toContain("api.fetchUser @ src/ns-consumer.ts");
+  });
+
+  it("excludes call-impact when calls do not match changed-file symbols", async () => {
+    const index = await makeIndex({
+      "src/api.ts": `export function fetchUser(id: string) { return { id }; }`,
+      "src/other.ts": [
+        `function bar() { return 1; }`,
+        `export function run() { return bar(); }`,
+      ].join("\n"),
+    });
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    expect(result.metadata.includedSignals ?? []).not.toContain("call-impact");
+    expect(result.context).not.toContain("Call Impact");
+    expect(result.metadata.relationTypes).not.toContain("caller");
+  });
+
+  it("handles old caches where calls is absent (no crash, no signal)", async () => {
+    const index = await makeIndex(CALLER_FIXTURE);
+    // Simulate a pre-1.4 cache
+    for (const f of index.files) {
+      delete f.calls;
+    }
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    expect(result.context).toContain("=== Source Index Context ===");
+    expect(result.metadata.includedSignals ?? []).not.toContain("call-impact");
+    expect(result.context).not.toContain("Call Impact");
+    expect(result.metadata.relationTypes).not.toContain("caller");
+  });
+
+  it("dedupes caller files already included as direct dependents", async () => {
+    const index = await makeIndex(CALLER_FIXTURE);
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    // consumer.ts imports api.ts (dependent) AND calls fetchUser (caller):
+    // it must appear exactly once in includedFiles, with both relation tags.
+    const occurrences = result.metadata.includedFiles.filter((f) => f === "src/consumer.ts").length;
+    expect(occurrences).toBe(1);
+    expect(result.metadata.relationTypes).toContain("dependent");
+    expect(result.metadata.relationTypes).toContain("caller");
+    // The file section carries both tags
+    expect(result.context).toMatch(/File: src\/consumer\.ts.*\[dependent, caller\]/);
+  });
+
+  it("respects context budget and omits the Call Impact section first", async () => {
+    const index = await makeIndex(CALLER_FIXTURE);
+    const budgetChars = 600;
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }], { budgetChars });
+
+    expect(result.context.length).toBeLessThanOrEqual(budgetChars);
+    expect(result.context).not.toContain("Call Impact");
+  });
+
+  it("caps call-site output per caller file", async () => {
+    const calls = Array.from({ length: 5 }, (_, i) => `fetchUser("${i}");`).join("\n  ");
+    const index = await makeIndex({
+      "src/api.ts": `export function fetchUser(id: string) { return { id }; }`,
+      "src/busy.ts": [
+        `import { fetchUser } from "./api.js";`,
+        `export function spam() {`,
+        `  ${calls}`,
+        `}`,
+      ].join("\n"),
+    });
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    expect(result.metadata.includedSignals).toContain("call-impact");
+    // Only 2 call sites shown inline; the rest are summarized
+    expect(result.context).toContain("+3 more");
+    const signal = result.metadata.intelligenceSignals?.find((s) => s.type === "call-impact");
+    expect(signal!.evidence).toContain("5 call site(s)");
+  });
+
+  it("suggestedCommands include --agent-context for top caller files", async () => {
+    const index = await makeIndex(CALLER_FIXTURE);
+    const result = await buildReviewContext(index, [{ path: "src/api.ts" }]);
+
+    const cmds = result.metadata.suggestedCommands ?? [];
+    expect(cmds.some((c) => c.includes("--agent-context") && c.includes("src/consumer.ts"))).toBe(
+      true,
+    );
+    // No duplicate commands
+    expect(new Set(cmds).size).toBe(cmds.length);
   });
 });

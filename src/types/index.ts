@@ -1154,7 +1154,7 @@ export interface TechProfile {
  */
 export interface ReviewIntelligenceSignal {
   /** Signal type */
-  type: "public-api" | "risk" | "test-gap" | "dependency";
+  type: "public-api" | "risk" | "test-gap" | "dependency" | "call-impact";
   /** File path that triggered the signal */
   file: string;
   /** Human-readable explanation of why this signal was raised */
@@ -1173,7 +1173,7 @@ export interface EvidenceSummary {
   /** File path that triggered the signal */
   sourceFile: string;
   /** Signal type */
-  signalType: "public-api" | "risk" | "test-gap" | "dependency";
+  signalType: "public-api" | "risk" | "test-gap" | "dependency" | "call-impact";
   /** Compact evidence (path, package, or count) */
   evidence: string;
 }
@@ -1205,6 +1205,7 @@ export type RelationType =
   | "changed"
   | "import"
   | "dependent"
+  | "caller"
   | "hub"
   | "public-api"
   | "test-gap"

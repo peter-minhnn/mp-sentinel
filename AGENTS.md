@@ -176,7 +176,7 @@ Every change to `src/services/source-index/` must maintain passing tests for:
 Every change to signal logic in `src/services/source-index/context-builder.ts` or `src/services/skills-generator/knowledge-base.ts` must keep `src/__tests__/review-intelligence-fixtures.test.ts` passing. The fixture harness covers:
 
 - [ ] 4 profile fixtures (`cli-tooling`, `library`, `node-service`, `react-next`)
-- [ ] Signal precision: `public-api`, `risk` (hub-file), `test-gap`, `dependency` — included when conditions are met, excluded when not
+- [ ] Signal precision: `public-api`, `risk` (hub-file), `test-gap`, `dependency`, `call-impact` (schema 1.4 call edges, textual candidate matching) — included when conditions are met, excluded when not
 - [ ] Graceful degradation: null index, >50% parse errors, disabled indexing, empty changed files
 - [ ] Quality assertions: changed-files-first ordering, no duplicate signals, budget enforcement
 
@@ -184,7 +184,7 @@ Every change to signal logic in `src/services/source-index/context-builder.ts` o
 
 ## 6. Review Context Enrichment
 
-- Context priority order: **changed file → direct imports → direct dependents**.
+- Context priority order: **changed file → direct imports → direct dependents → caller files (call edges) → hub files**.
 - Intelligence signals (public API risk, hub-file blast radius, test gaps, dependency usage) are appended from the shared `SkillKnowledgeBase` when index insights are available. Review and `create-skills` use the same KB — no duplicate summaries.
 - Respect the token budget at all times. Never exceed the configured limit even when adding context.
 - AI cache keys must change whenever the **system prompt**, **context content**, or **model version** changes. Stale cache serving wrong responses is worse than a cache miss.
