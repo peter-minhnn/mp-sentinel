@@ -13,6 +13,7 @@ import type {
   AIEnrichmentOutput,
   CheckFileStatus,
   CodeStyleProfile,
+  CreateSkillsConfig,
   DoctorActionEntry,
   DoctorAIEnrichmentCacheInfo,
   DoctorAIEnrichmentReadinessInfo,
@@ -55,7 +56,12 @@ import { buildSourceIndex, getIndexingConfig } from "./indexing.js";
 import { getParserModeBreakdown } from "../services/source-index/diagnostics.js";
 import { computeManifestHash } from "../services/source-index/manifest.js";
 import { AIConfig } from "../services/ai/config.js";
-import { GENERATOR_VERSION, parseGeneratorMajor } from "../services/skills-generator/metadata.js";
+import {
+  computeGenerationConfigHash,
+  EMPTY_GENERATION_CONFIG_HASH,
+  GENERATOR_VERSION,
+  parseGeneratorMajor,
+} from "../services/skills-generator/metadata.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -220,6 +226,7 @@ async function runAdapter(
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
   codeStyleProfile?: CodeStyleProfile | undefined,
+  createSkills?: CreateSkillsConfig | undefined,
 ): Promise<SkillsGenerationResult> {
   const context: SkillsGenerationContext = {
     projectRoot,
@@ -228,6 +235,8 @@ async function runAdapter(
     enrichment,
     knowledgeBase,
     codeStyleProfile,
+    policies: createSkills?.policies,
+    disableRules: createSkills?.disableRules,
   };
   const raw = await adapter.generate(index, context);
 
@@ -295,6 +304,7 @@ async function dryRunAdapter(
   enrichment?: AIEnrichmentOutput | undefined,
   knowledgeBase?: SkillKnowledgeBase | undefined,
   codeStyleProfile?: CodeStyleProfile | undefined,
+  createSkills?: CreateSkillsConfig | undefined,
 ): Promise<SkillsDryRunResult> {
   const context: SkillsGenerationContext = {
     projectRoot,
@@ -303,6 +313,8 @@ async function dryRunAdapter(
     enrichment,
     knowledgeBase,
     codeStyleProfile,
+    policies: createSkills?.policies,
+    disableRules: createSkills?.disableRules,
   };
   const raw = await adapter.generate(index, context);
 
@@ -346,7 +358,9 @@ async function checkAdapter(
   enrichmentMeta?: EnrichmentMetadata,
   knowledgeBase?: SkillKnowledgeBase | undefined,
   codeStyleProfile?: CodeStyleProfile | undefined,
+  createSkills?: CreateSkillsConfig | undefined,
 ): Promise<SkillsCheckResult> {
+  const currentGenerationConfigHash = computeGenerationConfigHash(createSkills);
   const context: SkillsGenerationContext = {
     projectRoot,
     projectName,
@@ -354,6 +368,8 @@ async function checkAdapter(
     enrichment,
     knowledgeBase,
     codeStyleProfile,
+    policies: createSkills?.policies,
+    disableRules: createSkills?.disableRules,
   };
   const raw = await adapter.generate(index, context);
 
@@ -385,6 +401,15 @@ async function checkAdapter(
       }
 
       if (meta.sourceIndexHash !== currentHash) {
+        return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
+      }
+
+      // Config-only changes (createSkills.policies / disableRules) don't move
+      // the source index hash -- compare the generation config hash too.
+      // Files generated before this field existed carry no hash and are
+      // treated as "generated with default config".
+      const fileGenerationConfigHash = meta.generationConfigHash ?? EMPTY_GENERATION_CONFIG_HASH;
+      if (fileGenerationConfigHash !== currentGenerationConfigHash) {
         return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
       }
 
@@ -869,6 +894,8 @@ async function runDoctor(
       projectName,
       force: false,
       knowledgeBase,
+      policies: config.createSkills?.policies,
+      disableRules: config.createSkills?.disableRules,
     };
 
     for (const adapter of selectedAdapters) {
@@ -1355,6 +1382,7 @@ export async function runCreateSkillsCommand(
           enrichmentMetadata,
           knowledgeBase,
           codeStyleProfile,
+          config.createSkills,
         );
         checkResults.push(result);
 
@@ -1416,6 +1444,7 @@ export async function runCreateSkillsCommand(
           enrichment,
           knowledgeBase,
           codeStyleProfile,
+          config.createSkills,
         );
         dryRunResults.push(result);
 
@@ -1458,6 +1487,7 @@ export async function runCreateSkillsCommand(
     }
 
     const indexHash = computeIndexHash(index, projectRoot);
+    const generationConfigHash = computeGenerationConfigHash(config.createSkills);
     const results: SkillsGenerationResult[] = [];
 
     for (const adapter of adapters) {
@@ -1467,6 +1497,7 @@ export async function runCreateSkillsCommand(
         sourceIndexHash: indexHash,
         agent: adapter.id,
         projectName,
+        generationConfigHash,
         enrichment: enrichmentMetadata,
       });
 
@@ -1481,6 +1512,7 @@ export async function runCreateSkillsCommand(
         enrichment,
         knowledgeBase,
         codeStyleProfile,
+        config.createSkills,
       );
       results.push(result);
 

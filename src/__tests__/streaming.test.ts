@@ -26,9 +26,7 @@ const sseBody = (text: string): ReadableStream<Uint8Array> => {
   });
 };
 
-const collectChunks = async (
-  iter: AsyncIterable<AIStreamChunk>,
-): Promise<AIStreamChunk[]> => {
+const collectChunks = async (iter: AsyncIterable<AIStreamChunk>): Promise<AIStreamChunk[]> => {
   const out: AIStreamChunk[] = [];
   for await (const c of iter) out.push(c);
   return out;

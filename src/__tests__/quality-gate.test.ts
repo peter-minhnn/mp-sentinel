@@ -1655,9 +1655,14 @@ describe("validateSkillQuality", () => {
       }
     });
 
-    it("primary adapters have workspacePath with {projectName}", () => {
-      const primaryAdapters = ADAPTER_REGISTRY.filter((a) => a.id !== "generic");
-      for (const adapter of primaryAdapters) {
+    it("skill adapters have workspacePath with {projectName}", () => {
+      // Skill adapters always produce per-project directories.
+      // Rule adapters may be per-project OR project-global (e.g. CONVENTIONS.md,
+      // .rules, .github/copilot-instructions.md), so the placeholder is optional there.
+      const skillAdapters = ADAPTER_REGISTRY.filter(
+        (a) => a.spec.outputKind === "skill" && a.id !== "generic",
+      );
+      for (const adapter of skillAdapters) {
         expect(adapter.spec.workspacePath).toContain("{projectName}");
       }
     });

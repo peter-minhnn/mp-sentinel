@@ -7,6 +7,12 @@ import { codexAdapter } from "./adapters/codex.adapter.js";
 import { windsurfAdapter } from "./adapters/windsurf.adapter.js";
 import { antigravityAdapter } from "./adapters/antigravity.adapter.js";
 import { clineAdapter } from "./adapters/cline.adapter.js";
+import { aiderAdapter } from "./adapters/aider.adapter.js";
+import { continueAdapter } from "./adapters/continue.adapter.js";
+import { rooAdapter } from "./adapters/roo.adapter.js";
+import { copilotAdapter } from "./adapters/copilot.adapter.js";
+import { zedAdapter } from "./adapters/zed.adapter.js";
+import { jetbrainsAdapter } from "./adapters/jetbrains.adapter.js";
 import { genericAdapter } from "./adapters/generic.adapter.js";
 
 /** Ordered list of all supported adapters (generic last — it's always a fallback). */
@@ -17,6 +23,13 @@ export const ADAPTER_REGISTRY: AgentAdapter[] = [
   windsurfAdapter,
   antigravityAdapter,
   clineAdapter,
+  // Phase 4.2 -- additional adapters
+  aiderAdapter,
+  continueAdapter,
+  rooAdapter,
+  copilotAdapter,
+  zedAdapter,
+  jetbrainsAdapter,
   genericAdapter,
 ];
 
@@ -84,6 +97,34 @@ function getDetectionSignals(projectRoot: string, adapter: AgentAdapter): string
       break;
     case "windsurf":
       if (exists(".windsurf")) signals.push(".windsurf/ exists");
+      break;
+    // Phase 4.2 -- additional adapters
+    case "aider":
+      if (exists(".aider.conf.yml")) signals.push(".aider.conf.yml exists");
+      if (exists("CONVENTIONS.md")) signals.push("CONVENTIONS.md exists");
+      break;
+    case "continue":
+      if (exists(".continue")) signals.push(".continue/ exists");
+      if (exists(".continuerc.json")) signals.push(".continuerc.json exists");
+      break;
+    case "roo":
+      if (exists(".roo")) signals.push(".roo/ exists");
+      if (exists(".roorules")) signals.push(".roorules exists");
+      break;
+    case "copilot":
+      if (exists(".github/copilot-instructions.md")) {
+        signals.push(".github/copilot-instructions.md exists");
+      } else if (exists(".github")) {
+        signals.push(".github/ exists");
+      }
+      break;
+    case "zed":
+      if (exists(".zed")) signals.push(".zed/ exists");
+      if (exists(".rules")) signals.push(".rules exists");
+      break;
+    case "jetbrains":
+      if (exists(".junie")) signals.push(".junie/ exists");
+      if (exists(".idea")) signals.push(".idea/ exists");
       break;
     // generic is never auto-detected
   }

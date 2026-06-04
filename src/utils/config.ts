@@ -118,10 +118,39 @@ const CreateSkillsAIConfigSchema = z.object({
 });
 
 /**
+ * CreateSkills clean-code policy thresholds schema.
+ * All fields required when the object is present -- partial policies would
+ * silently fall back to defaults for missing fields, which is confusing.
+ */
+const CreateSkillsPoliciesSchema = z.object({
+  maxFileLines: z.number().int().positive("createSkills.policies.maxFileLines must be positive"),
+  warnFileLines: z.number().int().positive("createSkills.policies.warnFileLines must be positive"),
+  maxFunctionLines: z
+    .number()
+    .int()
+    .positive("createSkills.policies.maxFunctionLines must be positive"),
+  maxParams: z.number().int().positive("createSkills.policies.maxParams must be positive"),
+  maxCyclomaticHint: z
+    .number()
+    .int()
+    .positive("createSkills.policies.maxCyclomaticHint must be positive"),
+  forbidDefaultExports: z.boolean(),
+});
+
+/**
  * CreateSkills config schema
  */
 const CreateSkillsConfigSchema = z.object({
   ai: CreateSkillsAIConfigSchema.optional(),
+  /** Clean-code policy thresholds applied to generated skill content. */
+  policies: CreateSkillsPoliciesSchema.optional(),
+  /**
+   * Phase 4.3: rule ids (`<packId>/<ruleId>`) to omit from generated
+   * SKILL.md output. Rules without an `id` can't be disabled.
+   */
+  disableRules: z
+    .array(z.string().min(1, "createSkills.disableRules entries must be non-empty"))
+    .optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -180,9 +209,50 @@ const MCPFetchPresetSchema = z
     message: 'Fetch preset requires at least one of "calls" or "urls" to be non-empty.',
   });
 
+// Phase 4.4 -- additional preset schemas (filesystem, git, slack, linear, postgres)
+const MCPFilesystemPresetSchema = z.object({
+  preset: z.literal("filesystem"),
+  rootPaths: z.array(z.string().min(1)).optional(),
+  calls: z.array(MCPCallSchema).min(1, "Filesystem preset must have at least one tool call"),
+});
+
+const MCPGitPresetSchema = z.object({
+  preset: z.literal("git"),
+  repository: z.string().min(1).optional(),
+  calls: z.array(MCPCallSchema).min(1, "Git preset must have at least one tool call"),
+});
+
+const MCPSlackPresetSchema = z.object({
+  preset: z.literal("slack"),
+  calls: z.array(MCPCallSchema).min(1, "Slack preset must have at least one tool call"),
+  env: PresetEnvSchema,
+});
+
+const MCPLinearPresetSchema = z.object({
+  preset: z.literal("linear"),
+  calls: z.array(MCPCallSchema).min(1, "Linear preset must have at least one tool call"),
+  env: PresetEnvSchema,
+});
+
+const MCPPostgresPresetSchema = z.object({
+  preset: z.literal("postgres"),
+  calls: z.array(MCPCallSchema).min(1, "Postgres preset must have at least one tool call"),
+  /** Env var name holding the postgresql:// connection URL (default: DATABASE_URL). */
+  connectionUrlEnv: z
+    .string()
+    .min(1, "connectionUrlEnv must be a non-empty env var name")
+    .optional(),
+  env: PresetEnvSchema,
+});
+
 const MCPPresetSchema = z.discriminatedUnion("preset", [
   MCPGitHubPresetSchema,
   MCPFetchPresetSchema,
+  MCPFilesystemPresetSchema,
+  MCPGitPresetSchema,
+  MCPSlackPresetSchema,
+  MCPLinearPresetSchema,
+  MCPPostgresPresetSchema,
 ]);
 
 const MCPServerSchema = z.object({
@@ -340,6 +410,12 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
       ...DEFAULT_CONFIG.createSkills.ai,
       ...(userConfig.createSkills?.ai ?? {}),
     },
+    // Preserve generation-affecting fields -- dropping them here would make
+    // create-skills silently ignore user config (and --check blind to it).
+    // Fall back to the same defaults loadProjectConfig returns when no
+    // config file exists, so both paths produce an identical shape.
+    policies: userConfig.createSkills?.policies ?? DEFAULT_CONFIG.createSkills.policies,
+    disableRules: userConfig.createSkills?.disableRules ?? DEFAULT_CONFIG.createSkills.disableRules,
   },
   mcp: {
     ...DEFAULT_CONFIG.mcp,

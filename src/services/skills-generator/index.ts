@@ -19,6 +19,8 @@ export {
 } from "./registry.js";
 export {
   computeIndexHash,
+  computeGenerationConfigHash,
+  EMPTY_GENERATION_CONFIG_HASH,
   renderMetadataHeader,
   parseMetadataFromContent,
   applyMetadataHeader,

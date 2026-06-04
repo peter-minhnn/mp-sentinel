@@ -50,6 +50,13 @@ const CURRENT_OUTPUT_PREFIXES: Partial<Record<AgentAdapterId, ExpectedPathFn>> =
   antigravity: (pn) => [`.agents/skills/${pn}-antigravity-best-practices/`],
   cline: (pn) => [`.clinerules/${pn}-best-practices.md`],
   generic: (pn) => [`.agents/rules/${pn}-best-practices.md`],
+  // Phase 4.2 adapters
+  aider: () => [`CONVENTIONS.md`],
+  continue: (pn) => [`.continue/rules/${pn}-best-practices.md`],
+  roo: (pn) => [`.roo/rules/${pn}-best-practices.md`],
+  copilot: () => [`.github/copilot-instructions.md`],
+  zed: (pn) => [`.agents/skills/${pn}-zed-best-practices/`],
+  jetbrains: () => [`.junie/AGENTS.md`],
 };
 
 /** Root-level directories where agent adapters write output. */

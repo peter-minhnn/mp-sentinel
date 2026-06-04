@@ -49,9 +49,15 @@ Each adapter declares an `AdapterSpec` with the official layout verified against
 | `cursor` | rule | `.cursor/rules/{projectName}-best-practices.mdc` | [Cursor Rules](https://docs.cursor.com/context/rules-for-ai) |
 | `windsurf` | rule | `.windsurf/rules/{projectName}-best-practices.md` | [Windsurf Rules](https://docs.windsurf.com/rules) |
 | `cline` | rule | `.clinerules/{projectName}-best-practices.md` | [Cline Rules](https://docs.cline.bot/rules) |
+| `aider` | rule | `CONVENTIONS.md` | [Aider Conventions](https://aider.chat/docs/usage/conventions.html) |
+| `continue` | rule | `.continue/rules/{projectName}-best-practices.md` | [Continue Rules](https://docs.continue.dev/customize/deep-dives/rules) |
+| `roo` | rule | `.roo/rules/{projectName}-best-practices.md` | [Roo Code Custom Instructions](https://docs.roocode.com/features/custom-instructions) |
+| `copilot` | rule | `.github/copilot-instructions.md` | [GitHub Copilot Response Customization](https://docs.github.com/en/copilot/concepts/prompting/response-customization) |
+| `zed` | skill | `.agents/skills/{projectName}-zed-best-practices/` | [Zed Rules & Skills](https://zed.dev/docs/ai/rules) |
+| `jetbrains` | rule | `.junie/AGENTS.md` | [JetBrains Junie Guidelines](https://www.jetbrains.com/help/junie/customize-guidelines.html) |
 | `generic` | rule | `.agents/rules/{projectName}-best-practices.md` | — (fallback) |
 
-> **`--all-agents`** generates for the 6 primary adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`. The `generic` adapter is excluded from `--all-agents` — use `--agent generic` to target it explicitly.
+> **`--all-agents`** generates for all 12 registered non-generic adapters: `claude`, `cursor`, `codex`, `windsurf`, `antigravity`, `cline`, `aider`, `continue`, `roo`, `copilot`, `zed`, `jetbrains`. The `generic` adapter is excluded from `--all-agents` — use `--agent generic` to target it explicitly.
 
 ### Migration Notes (v1.0.17)
 
@@ -541,7 +547,7 @@ Generated skill files and the `create-skills` quality gate enforce an agent work
 | `indexing --health` | Check index health: status, version consistency, parser telemetry, suggested commands |
 | `indexing --recovered` | List files parsed with recovery modes (chunked, ASCII, lexical fallback) |
 | `indexing --parse-errors` | List files with hard parse errors |
-| `indexing --agent-context <file>` | Per-file diagnostics: symbols, imports, dependents, parser mode, chunk telemetry |
+| `indexing --agent-context <file>` | Per-file diagnostics: symbols, imports, dependents, parser mode, chunk telemetry, outbound calls + incoming call candidates (schema 1.4+) |
 | `indexing --explain-index <file>` | Full parser diagnostics for a single file |
 | `indexing --find-symbol <name>` | Locate a symbol across the index |
 | `indexing --find-import <package>` | Find files that import a given package |

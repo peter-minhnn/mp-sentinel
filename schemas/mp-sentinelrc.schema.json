@@ -243,6 +243,55 @@
             }
           },
           "additionalProperties": false
+        },
+        "policies": {
+          "type": "object",
+          "properties": {
+            "maxFileLines": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "warnFileLines": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxFunctionLines": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxParams": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxCyclomaticHint": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "forbidDefaultExports": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "maxFileLines",
+            "warnFileLines",
+            "maxFunctionLines",
+            "maxParams",
+            "maxCyclomaticHint",
+            "forbidDefaultExports"
+          ],
+          "additionalProperties": false
+        },
+        "disableRules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "additionalProperties": false
@@ -462,6 +511,273 @@
                   "preset"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "filesystem"
+                  },
+                  "rootPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "git"
+                  },
+                  "repository": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "slack"
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "linear"
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "const": "postgres"
+                  },
+                  "calls": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {},
+                          "description": "JSON input for the MCP tool call"
+                        },
+                        "maxChars": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "tool",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "connectionUrlEnv": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "calls"
+                ],
+                "additionalProperties": false
               }
             ]
           }
@@ -547,6 +863,53 @@
             ],
             "additionalProperties": false
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": [
+            "fs",
+            "http"
+          ]
+        },
+        "fs": {
+          "type": "object",
+          "properties": {
+            "cacheDir": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "http": {
+          "type": "object",
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

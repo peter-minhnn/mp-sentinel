@@ -3,7 +3,13 @@ import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
 import { bannerText } from "../utils/display.js";
 
-export type CLICommand = "review" | "indexing" | "create-skills" | "mcp-server" | "default";
+export type CLICommand =
+  | "review"
+  | "indexing"
+  | "create-skills"
+  | "mcp-server"
+  | "init"
+  | "default";
 
 export interface CLIValues {
   help: boolean;
@@ -55,6 +61,9 @@ export interface CLIValues {
   "explain-agents"?: boolean;
   doctor?: boolean;
   health?: boolean;
+  "init-force"?: boolean;
+  "init-non-interactive"?: boolean;
+  "init-format"?: "console" | "json";
 }
 
 const PACKAGE_VERSION = getToolVersion();
@@ -153,9 +162,13 @@ export const buildProgram = (): Command => {
     .description("Generate agent/IDE skill files from the source index")
     .option(
       "--agent <agents>",
-      "Comma-separated adapter ids: claude,cursor,codex,windsurf,antigravity,cline,generic",
+      "Comma-separated adapter ids: claude,cursor,codex,windsurf,antigravity,cline,aider,continue,roo,copilot,zed,jetbrains,generic",
     )
-    .option("--all-agents", "Generate for all supported agent adapters", false)
+    .option(
+      "--all-agents",
+      "Generate for all registered non-generic adapters (use --agent generic for the fallback adapter)",
+      false,
+    )
     .option(
       "--format <fmt>",
       "Output format: console | json (json requires --agent or --all-agents)",
@@ -188,6 +201,16 @@ export const buildProgram = (): Command => {
   program
     .command("mcp-server")
     .description("Run mp-sentinel as a stdio MCP server (read-only, no AI)");
+
+  program
+    .command("init")
+    .description("Interactively generate .mp-sentinelrc.json from detected project tech")
+    .option("--force", "Overwrite an existing .mp-sentinelrc.json", false)
+    .option("--non-interactive", "Skip prompts and write the proposed defaults verbatim", false)
+    // No default value: the root command also declares --format and captures
+    // the flag when it appears after `init`. The mapping below falls back to
+    // the root value, which a subcommand default would otherwise mask.
+    .option("--format <fmt>", "Output format: console | json (default: console)");
 
   program.addHelpText(
     "after",
@@ -222,6 +245,9 @@ Examples:
   $ npx mp-sentinel create-skills --doctor                # Health check (console)
   $ npx mp-sentinel create-skills --doctor --format json   # Health check (JSON)
   $ npx mp-sentinel create-skills --doctor --agent claude  # Scoped to Claude
+  $ npx mp-sentinel init                                  # Interactive .mp-sentinelrc.json setup
+  $ npx mp-sentinel init --non-interactive                # Write proposed defaults without prompting
+  $ npx mp-sentinel init --force --format json            # Overwrite existing config, JSON output
 `,
   );
 
@@ -270,6 +296,10 @@ export const parseCliArgs = (): {
       program.commands
         .find((candidate) => candidate.name() === "create-skills")
         ?.opts<Record<string, unknown>>() ?? {};
+    const initOptions =
+      program.commands
+        .find((candidate) => candidate.name() === "init")
+        ?.opts<Record<string, unknown>>() ?? {};
     const rawPositionals = program.args;
 
     const command: CLICommand =
@@ -279,9 +309,11 @@ export const parseCliArgs = (): {
           ? "create-skills"
           : rawPositionals[0] === "mcp-server"
             ? "mcp-server"
-            : "review";
+            : rawPositionals[0] === "init"
+              ? "init"
+              : "review";
     const commandPositionals =
-      command === "indexing" || command === "create-skills"
+      command === "indexing" || command === "create-skills" || command === "init"
         ? rawPositionals.slice(1)
         : rawPositionals;
 
@@ -381,6 +413,13 @@ export const parseCliArgs = (): {
         }),
       ...(command === "create-skills" &&
         createSkillsOptions["doctor"] === true && { doctor: true }),
+      ...(command === "init" && {
+        "init-force": Boolean(initOptions["force"] ?? false),
+        "init-non-interactive": Boolean(initOptions["nonInteractive"] ?? false),
+        ...((typeof initOptions["format"] === "string" || typeof opts["format"] === "string") && {
+          "init-format": (initOptions["format"] ?? opts["format"]) === "json" ? "json" : "console",
+        }),
+      }),
     } as CLIValues;
 
     return {

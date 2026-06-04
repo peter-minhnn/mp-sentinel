@@ -43,6 +43,8 @@ export const cursorAdapter: AgentAdapter = {
       enrichment,
       knowledgeBase,
       context.codeStyleProfile,
+      context.policies,
+      context.disableRules,
     );
     const outputPath = this.getDefaultOutput(context.projectRoot, projectName);
 

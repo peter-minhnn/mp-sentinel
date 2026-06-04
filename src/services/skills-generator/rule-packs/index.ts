@@ -23,7 +23,27 @@ export type RuleKind = "must" | "should" | "avoid";
 export interface RulePackRule {
   kind: RuleKind;
   text: string;
+  /**
+   * Stable identifier for this rule (Phase 4.3). Format: `<packId>/<rule-id>`.
+   * Optional for backward compatibility with rule packs that haven't been
+   * migrated yet -- rules without an id can't be selectively disabled.
+   */
+  id?: string;
 }
+
+/**
+ * Filter out rules whose id appears in the user's `disableRules` list
+ * (Phase 4.3). Rules without an `id` field are always kept -- they can't
+ * be targeted by the opt-out mechanism.
+ */
+export const applyDisabledRules = (
+  rules: readonly RulePackRule[],
+  disableRules: readonly string[] | undefined,
+): RulePackRule[] => {
+  if (!disableRules || disableRules.length === 0) return [...rules];
+  const disabled = new Set(disableRules);
+  return rules.filter((r) => !r.id || !disabled.has(r.id));
+};
 
 /**
  * Result of a single evaluator check against a file.
@@ -117,14 +137,25 @@ export const ALL_PACKS: RulePack[] = [
 export interface RulePackSelection {
   packs: RulePack[];
   allRules: RulePackRule[];
+  /** Rule ids removed via `createSkills.disableRules` (Phase 4.3). */
+  disabledRuleIds: string[];
 }
 
 /**
  * Select active rule packs based on the codebase context.
- * Returns both the selected packs and the flattened rule list.
+ * Returns both the selected packs and the flattened rule list, with
+ * `createSkills.disableRules` honored (Phase 4.3) when provided.
  */
-export function selectActiveRulePacks(ctx: RulePackContext): RulePackSelection {
+export function selectActiveRulePacks(
+  ctx: RulePackContext,
+  disableRules?: readonly string[],
+): RulePackSelection {
   const packs = ALL_PACKS.filter((p) => p.when(ctx));
-  const allRules = packs.flatMap((p) => p.rules);
-  return { packs, allRules };
+  const rawRules = packs.flatMap((p) => p.rules);
+  const allRules = applyDisabledRules(rawRules, disableRules);
+  const allowedIds = new Set(allRules.map((r) => r.id).filter((id): id is string => !!id));
+  const disabledRuleIds = (disableRules ?? []).filter((id) =>
+    rawRules.some((r) => r.id === id && !allowedIds.has(id)),
+  );
+  return { packs, allRules, disabledRuleIds };
 }

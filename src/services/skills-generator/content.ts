@@ -95,6 +95,12 @@ export function generateContent(
   knowledgeBase?: SkillKnowledgeBase | null,
   codeStyleProfile?: CodeStyleProfile | null,
   policies?: CreateSkillsPolicies | null,
+  /**
+   * Rule ids (Phase 4.3) to drop from the generated rule list. Passed
+   * straight through to `selectActiveRulePacks`. Undefined means no rules
+   * are disabled.
+   */
+  disableRules?: readonly string[],
 ): GeneratedContent {
   const name = index?.project.packageName ?? projectName;
   const version = index?.project.packageVersion ?? "unknown";
@@ -113,13 +119,16 @@ export function generateContent(
   // Build knowledge base internally if not provided
   const kb = knowledgeBase ?? (index ? buildSkillKnowledgeBase(index) : null);
 
-  // Compute rule packs
+  // Compute rule packs (Phase 4.3: honor createSkills.disableRules)
   const allDeps = index ? { ...index.project.dependencies, ...index.project.devDependencies } : {};
-  const rulePackSelection = selectActiveRulePacks({
-    langProfile: languageProfile,
-    frameworks,
-    deps: allDeps,
-  });
+  const rulePackSelection = selectActiveRulePacks(
+    {
+      langProfile: languageProfile,
+      frameworks,
+      deps: allDeps,
+    },
+    disableRules,
+  );
 
   const sections: SkillSections = {
     agentWorkflow: buildAgentWorkflow(name, kb),

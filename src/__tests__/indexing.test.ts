@@ -37,6 +37,7 @@ import { getLanguageForFile } from "../services/source-index/manifest.js";
 import { calculateSHA256 } from "../services/source-index/storage.js";
 import { getToolVersion } from "../utils/version.js";
 import type { SourceIndex, IndexableLanguage } from "../types/index.js";
+import { CURRENT_SOURCE_INDEX_SCHEMA } from "../types/index.js";
 
 const tempDirs: string[] = [];
 
@@ -333,7 +334,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.3");
+      expect(parsed.schemaVersion).toBe(CURRENT_SOURCE_INDEX_SCHEMA);
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
     } finally {
@@ -444,7 +445,7 @@ describe("indexing command output", () => {
       expect(exitCode).toBe(0);
       expect(jsonBlob).not.toBeNull();
       const parsed = JSON.parse(jsonBlob!.trim());
-      expect(parsed.schemaVersion).toBe("1.3");
+      expect(parsed.schemaVersion).toBe(CURRENT_SOURCE_INDEX_SCHEMA);
       expect(parsed.project).toBeDefined();
       expect(parsed.stats).toHaveProperty("durationMs");
       expect(parsed.stats.indexedFiles).toBe(1);
@@ -3116,7 +3117,77 @@ describe("queryAgentContext (service)", () => {
     expect(Array.isArray(ctx.directImports)).toBe(true);
     expect(Array.isArray(ctx.directDependents)).toBe(true);
     expect(Array.isArray(ctx.hubFiles)).toBe(true);
+    expect(Array.isArray(ctx.incomingCalls)).toBe(true);
+    expect(typeof ctx.incomingCallsTruncated).toBe("number");
     expect(Array.isArray(ctx.suggestedCommands)).toBe(true);
+  });
+
+  it("surfaces outbound calls and incoming call candidates (schema 1.4)", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    // main.ts calls helper() inside main() -- outbound from main.ts
+    const mainCtx = queryAgentContext(index!, "src/main.ts");
+    expect(mainCtx.file!.calls).toBeDefined();
+    const helperCall = mainCtx.file!.calls!.find((c) => c.callee === "helper");
+    expect(helperCall).toBeDefined();
+    expect(helperCall!.inSymbol).toBe("main");
+    expect(typeof mainCtx.file!.callsTruncated).toBe("number");
+
+    // consumer.ts calls main() -- incoming candidate for main.ts
+    const incoming = mainCtx.incomingCalls.find(
+      (c) => c.fromFile === "src/consumer.ts" && c.callee === "main",
+    );
+    expect(incoming).toBeDefined();
+
+    // helper.ts is called from main.ts -- incoming candidate for helper.ts
+    const helperCtx = queryAgentContext(index!, "src/helper.ts");
+    const incomingHelper = helperCtx.incomingCalls.find(
+      (c) => c.fromFile === "src/main.ts" && c.callee === "helper",
+    );
+    expect(incomingHelper).toBeDefined();
+    expect(incomingHelper!.inSymbol).toBe("main");
+
+    // A file never lists itself as an incoming caller
+    expect(mainCtx.incomingCalls.every((c) => c.fromFile !== "src/main.ts")).toBe(true);
+  });
+
+  it("omits calls field but keeps incomingCalls empty for pre-1.4 caches", async () => {
+    const cwd = await makeTempDir();
+    await makeProject(cwd);
+    const index = await buildSourceIndex(
+      cwd,
+      {
+        enabled: true,
+        languages: ["typescript", "tsx", "javascript", "jsx"],
+        cachePath: ".mp-sentinel-cache/source-index.json",
+        maxFileSize: 512000,
+      },
+      true,
+    );
+    expect(index).not.toBeNull();
+
+    // Simulate an old cache: strip the calls field everywhere
+    for (const f of index!.files) {
+      delete f.calls;
+    }
+
+    const ctx = queryAgentContext(index!, "src/main.ts");
+    expect(ctx.error).toBeUndefined();
+    expect(ctx.file!.calls).toBeUndefined();
+    expect(ctx.incomingCalls).toEqual([]);
+    expect(ctx.incomingCallsTruncated).toBe(0);
   });
 
   it("includes direct imports and dependents", async () => {
@@ -4243,6 +4314,161 @@ describe("parseFile chunked tree-sitter", () => {
     expect(result!.symbols.some((s) => s.name === "helperB")).toBe(true);
     expect(result!.imports.some((i) => i.source === "node:fs")).toBe(true);
     expect(result!.imports.some((i) => i.source === "node:path")).toBe(true);
+  });
+});
+
+// -- Call-edge extraction (schema 1.4) --------------------------------------
+
+describe("parseFile call edges (schema 1.4)", () => {
+  it("records plain function calls with line/column", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const content = ["function run() {", "  doWork();", "}", "run();", ""].join("\n");
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    expect(result!.calls).toBeDefined();
+    const doWork = result!.calls!.find((c) => c.callee === "doWork");
+    expect(doWork).toBeDefined();
+    expect(doWork!.line).toBe(2);
+    expect(doWork!.column).toBeGreaterThanOrEqual(2);
+    const topLevel = result!.calls!.find((c) => c.callee === "run");
+    expect(topLevel).toBeDefined();
+    expect(topLevel!.line).toBe(4);
+    expect(topLevel!.inSymbol).toBeUndefined();
+  });
+
+  it("records member-expression calls with full callee text", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const content = [
+      'import axios from "axios";',
+      "export async function fetchUser(id: string) {",
+      "  const res = await axios.get(`/users/${id}`);",
+      "  return res.data;",
+      "}",
+      "",
+    ].join("\n");
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    const axiosGet = result!.calls!.find((c) => c.callee === "axios.get");
+    expect(axiosGet).toBeDefined();
+    expect(axiosGet!.line).toBe(3);
+    expect(axiosGet!.inSymbol).toBe("fetchUser");
+  });
+
+  it("records constructor (new) calls", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const content = [
+      "export function makeMap(): Map<string, number> {",
+      "  return new Map();",
+      "}",
+      "",
+    ].join("\n");
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    const ctor = result!.calls!.find((c) => c.callee === "Map");
+    expect(ctor).toBeDefined();
+    expect(ctor!.line).toBe(2);
+    expect(ctor!.inSymbol).toBe("makeMap");
+  });
+
+  it("attributes inSymbol to methods and nested arrow functions", async () => {
+    const lang = getLanguageForFile("test.ts");
+    const content = [
+      "class Service {",
+      "  start() {",
+      "    boot();",
+      "  }",
+      "}",
+      "const handler = () => {",
+      "  process();",
+      "};",
+      "",
+    ].join("\n");
+    const result = await parseFile("test.ts", content, lang!);
+
+    expect(result).not.toBeNull();
+    const boot = result!.calls!.find((c) => c.callee === "boot");
+    expect(boot).toBeDefined();
+    expect(boot!.inSymbol).toBe("start");
+    const proc = result!.calls!.find((c) => c.callee === "process");
+    expect(proc).toBeDefined();
+    expect(proc!.inSymbol).toBe("handler");
+  });
+
+  it("chunked parse preserves call line offsets across chunks", async () => {
+    const lang = getLanguageForFile("test.ts");
+    // Build a file large enough to force chunking, with a recognisable call
+    // near the end so we can verify the line offset survives merging.
+    const fillerLine = "const x: number = 0;\n";
+    const repeatCount = Math.ceil(30000 / fillerLine.length) + 10;
+    let body = "";
+    for (let i = 0; i < repeatCount; i++) {
+      body += `const x${i}: number = ${i};\n`;
+    }
+    const callLine = repeatCount + 2;
+    body += "export function finish(): void {\n  farCall();\n}\n";
+
+    const result = await parseFile("large-calls.ts", body, lang!);
+    expect(result).not.toBeNull();
+    // Whichever parser mode handled it, the call must be present with a
+    // line number pointing near the end of the file (not chunk-relative).
+    if (result!.parserMode !== "lexical-fallback") {
+      const far = result!.calls!.find((c) => c.callee === "farCall");
+      expect(far).toBeDefined();
+      expect(Math.abs(far!.line - callLine)).toBeLessThan(5);
+      expect(far!.inSymbol).toBe("finish");
+    }
+  });
+
+  it("caps call edges per file at 1000", async () => {
+    const lang = getLanguageForFile("test.ts");
+    let body = "";
+    for (let i = 0; i < 1200; i++) {
+      body += `call${i}();\n`;
+    }
+    const result = await parseFile("many-calls.ts", body, lang!);
+    expect(result).not.toBeNull();
+    expect(result!.calls!.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("readIndex accepts old-schema caches without calls (backward compat)", async () => {
+    const cwd = await makeTempDir();
+    const cachePath = join(cwd, "source-index.json");
+    const oldIndex = {
+      schemaVersion: "1.3",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "test",
+      project: {
+        packageName: "compat",
+        ecosystem: "node",
+        dependencies: {},
+        devDependencies: {},
+        detectedFrameworks: [],
+      },
+      files: [
+        {
+          path: "src/index.ts",
+          language: "typescript",
+          sha256: "abc",
+          sizeBytes: 10,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [],
+          // no `calls` field -- pre-1.4 cache
+        },
+      ],
+      stats: { totalFiles: 1, indexedFiles: 1, skippedFiles: 0, parseErrors: 0 },
+    };
+    await writeFile(cachePath, JSON.stringify(oldIndex));
+
+    const { readIndex } = await import("../services/source-index/storage.js");
+    const loaded = await readIndex(cachePath);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.schemaVersion).toBe("1.3");
+    expect(loaded!.files[0]!.calls).toBeUndefined();
   });
 });
 
@@ -6604,7 +6830,7 @@ describe("explain-index and agent-context JSON chunk telemetry", () => {
         expect(exitCode).toBe(0);
         expect(jsonBlob).not.toBeNull();
         const parsed = JSON.parse(jsonBlob!.trim());
-        expect(parsed.schemaVersion).toBe("1.3");
+        expect(parsed.schemaVersion).toBe(CURRENT_SOURCE_INDEX_SCHEMA);
       } finally {
         console.log = originalLog;
       }

@@ -1,5 +1,96 @@
 # What's New in v3.0.2
 
+## Unreleased (Phase 4 — Quick Wins: Adapters, Rules, MCP Presets, Init Command)
+
+### Call-edge indexing (4.1) — source index schema 1.4
+
+The source index now records outgoing call edges per file (`calls: CallEdge[]`): plain calls (`doWork`), member calls (`axios.get`), and constructor calls (`new Map`), each with line/column and the nearest enclosing function (`inSymbol`). Capped at 1,000 edges per file; backwards compatible (older caches without `calls` still load).
+
+`indexing --agent-context <file>` surfaces the new data:
+
+- `file.calls` — outbound call edges (capped at 30, with `callsTruncated`).
+- `incomingCalls` — call sites in other indexed files whose textual callee matches a symbol defined in the requested file (capped at 20). These are candidates, not proof: matching is textual, so same-named symbols elsewhere also match.
+
+### `--check` now catches config-only changes
+
+Generated skill files carry a new `generationConfigHash` metadata field covering `createSkills.policies` and `createSkills.disableRules`. Changing either in `.mp-sentinelrc.json` now flags existing files as stale in `create-skills --check`, even though the source index itself didn't change. Files generated before this field existed are treated as "generated with default config".
+
+
+### `init` command (4.5)
+
+A guided setup that writes `.mp-sentinelrc.json` from a detected tech profile. New users no longer have to copy `.mp-sentinelrc.example.json` and edit by hand.
+
+```sh
+npx mp-sentinel init                       # interactive prompts
+npx mp-sentinel init --non-interactive     # accept proposed defaults silently
+npx mp-sentinel init --force               # overwrite an existing config
+npx mp-sentinel init --format json         # CI-friendly summary
+```
+
+Behavior:
+
+- Detects the project's tech stack via the same logic the review pipeline uses (`detectTechProfile`) — derives `techStack` and a starter `rules[]` list.
+- Picks a provider based on env: `ANTHROPIC_API_KEY` -> anthropic, `GEMINI_API_KEY`/`GOOGLE_API_KEY` -> gemini, `OPENAI_API_KEY` -> openai, otherwise falls back to gemini.
+- Enables the GitHub MCP preset automatically if `GITHUB_TOKEN` is set.
+- Defaults to `severityThreshold: "WARNING"` (the existing default); `node-service` projects get `CRITICAL` to encourage stricter gating on services.
+- Refuses to overwrite an existing config without `--force` (exits 1).
+- `--non-interactive` (or `MP_SENTINEL_INIT_NONINTERACTIVE=1`) writes the proposed defaults without prompts -- this is what CI and tests use.
+
+
+### New agent adapters (4.2)
+
+Six additional agents recognised by `create-skills`:
+
+| Adapter | Output path | Docs |
+|---|---|---|
+| `aider` | `CONVENTIONS.md` | https://aider.chat/docs/usage/conventions.html |
+| `continue` | `.continue/rules/<project>-best-practices.md` | https://docs.continue.dev/customize/deep-dives/rules |
+| `roo` | `.roo/rules/<project>-best-practices.md` | https://docs.roocode.com/features/custom-instructions |
+| `copilot` | `.github/copilot-instructions.md` | https://docs.github.com/en/copilot/concepts/prompting/response-customization |
+| `zed` | `.agents/skills/<project>-zed-best-practices/SKILL.md` | https://zed.dev/docs/ai/rules |
+| `jetbrains` | `.junie/AGENTS.md` | https://www.jetbrains.com/help/junie/customize-guidelines.html |
+
+Each adapter auto-detects from its respective dotfile or config marker. Run `mp-sentinel create-skills --explain-agents` to see which adapters detect on your project.
+
+### Per-rule opt-out (4.3)
+
+You can now disable individual rules in generated SKILL.md output without dropping the entire pack:
+
+```jsonc
+{
+  "createSkills": {
+    "disableRules": ["next/image-optimization", "react/strict-mode-only"]
+  }
+}
+```
+
+Rule IDs follow the `<packId>/<ruleId>` convention. Rules without an `id` field aren't targetable yet — those will be migrated incrementally.
+
+### MCP preset library expansion (4.4)
+
+Five new MCP presets to complement `github` / `fetch`:
+
+```jsonc
+{
+  "mcp": {
+    "enabled": true,
+    "presets": [
+      { "preset": "filesystem", "rootPaths": ["./docs"], "calls": [...] },
+      { "preset": "git",        "calls": [{ "tool": "git_log", "input": { "max_count": 5 } }] },
+      { "preset": "slack",      "calls": [{ "tool": "channels_list", "input": {} }] },
+      { "preset": "linear",     "calls": [{ "tool": "list_issues", "input": {} }] },
+      { "preset": "postgres",   "calls": [{ "tool": "query", "input": { "sql": "SELECT 1" } }] }
+      // postgres reads the connection URL from DATABASE_URL (override via "connectionUrlEnv")
+      // and passes it as the CLI argument @modelcontextprotocol/server-postgres expects.
+      // linear spawns the community stdio server (@tacticlaunch/mcp-linear) -- it is NOT
+      // Linear's hosted remote MCP server; use an explicit servers[] entry for that.
+    ]
+  }
+}
+```
+
+Mutating-tool prefixes (`create*`, `update*`, `delete*`, etc.) are still rejected globally — these presets only carry read-only verbs. No new npm dependencies: each preset spawns the community MCP server via `npx`/`uvx`.
+
 ## Unreleased (Phase 3.2 — Streaming AI + Phase 3.3 — Pluggable Cache)
 
 ### Streaming AI responses (3.2)

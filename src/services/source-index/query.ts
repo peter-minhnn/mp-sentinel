@@ -385,6 +385,8 @@ const MAX_EXPORTS = 20;
 const MAX_DIRECT_IMPORTS = 10;
 const MAX_DIRECT_DEPENDENTS = 10;
 const MAX_HUB_FILES = 5;
+const MAX_CALLS = 30;
+const MAX_INCOMING_CALLS = 20;
 
 interface FileInfo {
   path: string;
@@ -415,6 +417,14 @@ interface FileInfo {
     isDefault?: boolean;
   }>;
   exportsTruncated: number;
+  /** Outbound call edges (schema 1.4+; absent on older caches). */
+  calls?: Array<{
+    callee: string;
+    line: number;
+    column: number;
+    inSymbol?: string;
+  }>;
+  callsTruncated?: number;
   parseErrors?: number;
   parseErrorMessages?: string[];
   parserMode?: string;
@@ -431,6 +441,21 @@ interface HubFileEntry {
   importedByCount: number;
 }
 
+/**
+ * An incoming call candidate -- a call site in another indexed file whose
+ * textual callee matches a symbol defined in the requested file.
+ *
+ * "Candidate" because matching is textual (schema 1.4 records callee text,
+ * not resolved symbol ids): a same-named function in an unrelated file
+ * will also match. Agents should treat these as leads, not proof.
+ */
+export interface IncomingCallEntry {
+  fromFile: string;
+  callee: string;
+  line: number;
+  inSymbol?: string;
+}
+
 export interface AgentContextResult {
   file: FileInfo | null;
   directImports: string[];
@@ -439,6 +464,9 @@ export interface AgentContextResult {
   directDependentsTruncated: number;
   hubFiles: HubFileEntry[];
   hubFilesTruncated: number;
+  /** Call sites in other files that textually match this file's symbols (schema 1.4+). */
+  incomingCalls: IncomingCallEntry[];
+  incomingCallsTruncated: number;
   suggestedCommands: string[];
   error?: string;
 }
@@ -494,6 +522,8 @@ export function queryAgentContext(
     directDependentsTruncated: 0,
     hubFiles: [],
     hubFilesTruncated: 0,
+    incomingCalls: [],
+    incomingCallsTruncated: 0,
     suggestedCommands: [],
     error: msg,
   });
@@ -540,6 +570,19 @@ export function queryAgentContext(
     ...getParserTelemetry(file, { agentContext: true }),
   };
 
+  // Outbound call edges (schema 1.4+). Older caches have no `calls` field --
+  // omit rather than emit empty arrays so agents can distinguish "no data"
+  // from "no calls".
+  if (file.calls) {
+    fileInfo.calls = file.calls.slice(0, MAX_CALLS).map((c) => ({
+      callee: c.callee,
+      line: c.line,
+      column: c.column,
+      ...(c.inSymbol && { inSymbol: c.inSymbol }),
+    }));
+    fileInfo.callsTruncated = file.calls.length > MAX_CALLS ? file.calls.length - MAX_CALLS : 0;
+  }
+
   const importsFrom = file.importsFrom ?? [];
   const importedBy = file.importedBy ?? [];
 
@@ -567,6 +610,40 @@ export function queryAgentContext(
   const hubFiles = hubCandidates.slice(0, MAX_HUB_FILES);
   const hubFilesTruncated =
     hubCandidates.length > MAX_HUB_FILES ? hubCandidates.length - MAX_HUB_FILES : 0;
+
+  // Incoming call candidates (schema 1.4+): call sites elsewhere whose
+  // textual callee matches a symbol defined in this file. Plain calls
+  // match `name`; member calls match a trailing `.name` (e.g. `svc.start`
+  // matches symbol `start`). Deterministic order: path, then line.
+  const callableNames = new Set(
+    file.symbols
+      .filter((s) => ["function", "class", "method", "variable"].includes(s.type))
+      .map((s) => s.name),
+  );
+  const incomingCandidates: IncomingCallEntry[] = [];
+  if (callableNames.size > 0) {
+    for (const other of index.files) {
+      if (other.path === file.path || !other.calls) continue;
+      for (const call of other.calls) {
+        const dotIndex = call.callee.lastIndexOf(".");
+        const tail = dotIndex === -1 ? call.callee : call.callee.slice(dotIndex + 1);
+        if (callableNames.has(tail)) {
+          incomingCandidates.push({
+            fromFile: other.path,
+            callee: call.callee,
+            line: call.line,
+            ...(call.inSymbol && { inSymbol: call.inSymbol }),
+          });
+        }
+      }
+    }
+  }
+  incomingCandidates.sort((a, b) => a.fromFile.localeCompare(b.fromFile) || a.line - b.line);
+  const incomingCalls = incomingCandidates.slice(0, MAX_INCOMING_CALLS);
+  const incomingCallsTruncated =
+    incomingCandidates.length > MAX_INCOMING_CALLS
+      ? incomingCandidates.length - MAX_INCOMING_CALLS
+      : 0;
 
   // Suggested diagnostic commands
   const suggestedCommands: string[] = [];
@@ -620,6 +697,8 @@ export function queryAgentContext(
     directDependentsTruncated,
     hubFiles,
     hubFilesTruncated,
+    incomingCalls,
+    incomingCallsTruncated,
     suggestedCommands: uniqueCommands,
   };
 }

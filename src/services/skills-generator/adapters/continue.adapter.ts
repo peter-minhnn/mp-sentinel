@@ -1,3 +1,17 @@
+/**
+ * Continue.dev adapter (Phase 4.2).
+ *
+ * Continue is a VS Code / JetBrains IDE extension. It supports per-project
+ * `rules` configured in `.continue/config.json` (or `.continuerc.json`).
+ * The simpler path the project documents for ad-hoc usage is to ship a
+ * Markdown file under `.continue/rules/` that Continue picks up as a
+ * system rule -- that's where we write.
+ *
+ * Detection signals:
+ *   - `.continue/` directory
+ *   - existing `.continuerc.json`
+ */
+
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -9,27 +23,28 @@ import type {
 } from "../../../types/index.js";
 import { generateContent } from "../content.js";
 
-export const windsurfAdapter: AgentAdapter = {
-  id: "windsurf" as AgentAdapterId,
-  label: "Windsurf (.windsurf/rules/)",
+export const continueAdapter: AgentAdapter = {
+  id: "continue" as AgentAdapterId,
+  label: "Continue.dev (.continue/rules/)",
 
   spec: {
-    officialDocsUrl: "https://docs.windsurf.com/rules",
+    officialDocsUrl: "https://docs.continue.dev/customize/deep-dives/rules",
     outputKind: "rule",
-    workspacePath: ".windsurf/rules/{projectName}-best-practices.md",
+    workspacePath: ".continue/rules/{projectName}-best-practices.md",
     requiredFiles: [],
-    frontmatterRules: {
-      required: [],
-    },
+    frontmatterRules: { required: [] },
     sizeLimit: 20000,
   },
 
   detect(projectRoot: string): boolean {
-    return existsSync(join(projectRoot, ".windsurf"));
+    return (
+      existsSync(join(projectRoot, ".continue")) ||
+      existsSync(join(projectRoot, ".continuerc.json"))
+    );
   },
 
   getDefaultOutput(projectRoot: string, projectName: string): string {
-    return join(projectRoot, ".windsurf", "rules", `${projectName}-best-practices.md`);
+    return join(projectRoot, ".continue", "rules", `${projectName}-best-practices.md`);
   },
 
   async generate(

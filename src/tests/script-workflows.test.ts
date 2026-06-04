@@ -296,7 +296,9 @@ describe("agent-skills-check.mjs", () => {
       // Always restore
       await rename(backupFile, skillFile);
     }
-  });
+    // Spawns two real CLI runs (refresh + check), each with a 60s spawn
+    // timeout -- the jest default of 5s is far too tight on slower machines.
+  }, 150000);
 });
 
 // --- Risky Unicode safety -----------------------------------------

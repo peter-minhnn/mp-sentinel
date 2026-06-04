@@ -22,6 +22,17 @@
     "promptVersion": "2026-05-04",
     "modelTier": "balanced"
   },
+  "createSkills": {
+    "policies": {
+      "maxFileLines": 500,
+      "warnFileLines": 350,
+      "maxFunctionLines": 80,
+      "maxParams": 5,
+      "maxCyclomaticHint": 12,
+      "forbidDefaultExports": false
+    },
+    "disableRules": []
+  },
   "localReview": {
     "enabled": true,
     "commitCount": 10,

@@ -99,7 +99,7 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
 
 // ── Multi-file adapters ─────────────────────────────────────────────────────
 
-const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude", "codex", "antigravity"]);
+const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude", "codex", "antigravity", "zed"]);
 
 // ── Required H2 sections per Claude reference file ──────────────────────────
 
@@ -1115,12 +1115,21 @@ export function validateAdapterSpec(adapter: AgentAdapter): string[] {
 
   if (!spec.workspacePath || typeof spec.workspacePath !== "string") {
     issues.push(`${id}: workspacePath is required`);
-  } else if (!spec.workspacePath.includes("{projectName}")) {
-    issues.push(`${id}: workspacePath must contain {projectName} placeholder`);
-  } else if (spec.outputKind === "skill" && !spec.workspacePath.endsWith("/")) {
-    issues.push(`${id}: skill workspacePath must end with "/"`);
-  } else if (spec.outputKind === "rule" && !/\.[a-z]+$/.test(spec.workspacePath)) {
-    issues.push(`${id}: rule workspacePath must end with a file extension`);
+  } else if (spec.outputKind === "skill") {
+    // Skill adapters always produce per-project directories -- {projectName}
+    // is required so each project gets its own SKILL.md folder.
+    if (!spec.workspacePath.includes("{projectName}")) {
+      issues.push(`${id}: skill workspacePath must contain {projectName} placeholder`);
+    } else if (!spec.workspacePath.endsWith("/")) {
+      issues.push(`${id}: skill workspacePath must end with "/"`);
+    }
+  } else if (spec.outputKind === "rule") {
+    // Rule adapters may be per-project (`{projectName}-best-practices.md`)
+    // or project-global (`CONVENTIONS.md`, `.rules`, `.github/copilot-instructions.md`).
+    // Either form is valid; we only require a file extension.
+    if (!/\.[a-z]+$/.test(spec.workspacePath)) {
+      issues.push(`${id}: rule workspacePath must end with a file extension`);
+    }
   }
 
   if (!Array.isArray(spec.requiredFiles)) {

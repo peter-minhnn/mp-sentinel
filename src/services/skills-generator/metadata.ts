@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentAdapterId, EnrichmentMetadata, SourceIndex } from "../../types/index.js";
+import type {
+  AgentAdapterId,
+  CreateSkillsConfig,
+  CreateSkillsPolicies,
+  EnrichmentMetadata,
+  SourceIndex,
+} from "../../types/index.js";
+import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
 
 export const METADATA_MARKER = "@mp-sentinel-generated";
 
@@ -61,8 +68,54 @@ export interface SkillsMetadata {
   sourceIndexHash: string;
   agent: AgentAdapterId;
   projectName: string;
+  /**
+   * Deterministic hash of generation-affecting `createSkills` config
+   * (policies + disableRules). Lets `--check` flag files as stale when
+   * only the config changed (the source index hash alone can't see that).
+   * Absent on files generated before this field existed -- treated as
+   * "generated with default config".
+   */
+  generationConfigHash?: string;
   enrichment?: EnrichmentMetadata;
 }
+
+/** True when the given policies match the built-in defaults field-for-field. */
+function isDefaultPolicies(policies: CreateSkillsPolicies): boolean {
+  return (Object.keys(DEFAULT_CREATE_SKILLS_POLICIES) as Array<keyof CreateSkillsPolicies>).every(
+    (key) => policies[key] === DEFAULT_CREATE_SKILLS_POLICIES[key],
+  );
+}
+
+/**
+ * Deterministic hash of the `createSkills` config fields that change
+ * generated output: `policies` and `disableRules`. AI enrichment config is
+ * excluded -- enrichment staleness is tracked by the enrichment metadata.
+ *
+ * Default-equivalent config (default policies, empty disableRules) is
+ * normalized to the same hash as "no config" so that files generated
+ * before this field existed -- or with no `.mp-sentinelrc.json` at all --
+ * stay up-to-date until the user actually changes something.
+ */
+export function computeGenerationConfigHash(createSkills?: CreateSkillsConfig): string {
+  const policies =
+    createSkills?.policies && !isDefaultPolicies(createSkills.policies)
+      ? createSkills.policies
+      : undefined;
+  const disableRules =
+    createSkills?.disableRules && createSkills.disableRules.length > 0
+      ? [...createSkills.disableRules].sort()
+      : undefined;
+  const stable = {
+    policies: policies
+      ? sortRecord(Object.fromEntries(Object.entries(policies).map(([k, v]) => [k, String(v)])))
+      : undefined,
+    disableRules,
+  };
+  return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
+}
+
+/** Hash representing "no generation-affecting config" (pre-field files). */
+export const EMPTY_GENERATION_CONFIG_HASH = computeGenerationConfigHash(undefined);
 
 /** Sort a string-keyed record into stable [key, value] pairs for hashing. */
 function sortRecord(obj: Record<string, string>): [string, string][] {
@@ -139,6 +192,11 @@ export function computeIndexHash(index: SourceIndex, projectRoot?: string): stri
           ),
         importsFrom: (f.importsFrom ?? []).slice().sort(),
         importedBy: (f.importedBy ?? []).slice().sort(),
+        // Call edges (schema 1.4+). Hash callee/inSymbol only -- line/column
+        // shifts from whitespace-only edits must not invalidate skills.
+        calls: [
+          ...new Set((f.calls ?? []).map((c) => `${c.callee}\u0000${c.inSymbol ?? ""}`)),
+        ].sort(),
       }))
       .sort((a, b) => a.path.localeCompare(b.path)),
     insights: index.insights
@@ -187,6 +245,10 @@ export function renderMetadataHeader(meta: SkillsMetadata): string {
     `agent=${meta.agent}`,
     `projectName=${meta.projectName}`,
   ];
+
+  if (meta.generationConfigHash) {
+    parts.push(`generationConfigHash=${meta.generationConfigHash}`);
+  }
 
   if (meta.enrichment && meta.enrichment.mode !== "none") {
     parts.push(`enrichmentMode=${meta.enrichment.mode}`);
@@ -288,6 +350,9 @@ export function parseMetadataFromContent(content: string): SkillsMetadata | null
           agent: agent as AgentAdapterId,
           projectName: projectName ?? "",
         };
+        if (pairs["generationConfigHash"]) {
+          result.generationConfigHash = pairs["generationConfigHash"];
+        }
         if (enrichment) result.enrichment = enrichment;
         return result;
       }
@@ -339,6 +404,9 @@ export function parseMetadataFromContent(content: string): SkillsMetadata | null
       agent: agent as AgentAdapterId,
       projectName: projectName ?? "",
     };
+    if (pairs["generationConfigHash"]) {
+      result.generationConfigHash = pairs["generationConfigHash"];
+    }
     if (enrichment) result.enrichment = enrichment;
     return result;
   }

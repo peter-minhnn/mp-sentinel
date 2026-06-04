@@ -50,7 +50,14 @@ export const buildAuditCacheKey = (input: {
 
 // ── Backend management ──────────────────────────────────────────────────
 
-let currentBackend: CacheBackend | null = null;
+/**
+ * The configured backend (set by `configureCacheBackend()` during the
+ * review run). Legacy shims that take an explicit `cwd` BYPASS this
+ * singleton because their callers (tests, programmatic API users) rely
+ * on every call being independently scoped to that cwd -- without
+ * bypassing, the first cwd would stick across calls.
+ */
+let configuredBackend: CacheBackend | null = null;
 
 /**
  * Configure the cache backend from a `ProjectConfig.cache` block. Pass
@@ -61,7 +68,7 @@ export const configureCacheBackend = (
   cwd: string = process.cwd(),
 ): void => {
   if (!settings || !settings.backend || settings.backend === "fs") {
-    currentBackend = createFsCacheBackend({
+    configuredBackend = createFsCacheBackend({
       cwd,
       ...(settings?.fs?.cacheDir && { cacheDir: settings.fs.cacheDir }),
     });
@@ -71,7 +78,7 @@ export const configureCacheBackend = (
     if (!settings.http?.baseUrl) {
       throw new Error(`cache.http.baseUrl is required when cache.backend = "http"`);
     }
-    currentBackend = createHttpCacheBackend({
+    configuredBackend = createHttpCacheBackend({
       baseUrl: settings.http.baseUrl,
       ...(settings.http.headers && { headers: settings.http.headers }),
       ...(typeof settings.http.timeoutMs === "number" && { timeoutMs: settings.http.timeoutMs }),
@@ -83,36 +90,43 @@ export const configureCacheBackend = (
 
 /** Test helper — replace the backend with a stub. */
 export const setCacheBackendForTest = (backend: CacheBackend): void => {
-  currentBackend = backend;
+  configuredBackend = backend;
 };
 
 /** Reset to defaults (for tests). */
 export const resetCacheBackend = (): void => {
-  currentBackend = null;
-};
-
-const getBackend = (cwd: string = process.cwd()): CacheBackend => {
-  if (!currentBackend) {
-    currentBackend = createFsCacheBackend({ cwd });
-  }
-  return currentBackend;
+  configuredBackend = null;
 };
 
 // ── Public read/write API (backwards compatible) ────────────────────────
 
+/**
+ * Read an entry. When `cwd` is explicitly provided (legacy programmatic
+ * use, tests), we create a fresh fs backend scoped to that cwd. Otherwise
+ * we use the configured backend (or a default fs one rooted at
+ * `process.cwd()`).
+ */
 export const readCachedAuditResult = async (
   key: string,
-  cwd: string = process.cwd(),
+  cwd?: string,
 ): Promise<AuditResult | null> => {
-  return getBackend(cwd).read(key);
+  if (cwd !== undefined) {
+    return createFsCacheBackend({ cwd }).read(key);
+  }
+  if (configuredBackend) return configuredBackend.read(key);
+  return createFsCacheBackend({ cwd: process.cwd() }).read(key);
 };
 
 export const writeCachedAuditResult = async (
   key: string,
   result: AuditResult,
-  cwd: string = process.cwd(),
+  cwd?: string,
 ): Promise<void> => {
-  return getBackend(cwd).write(key, result);
+  if (cwd !== undefined) {
+    return createFsCacheBackend({ cwd }).write(key, result);
+  }
+  if (configuredBackend) return configuredBackend.write(key, result);
+  return createFsCacheBackend({ cwd: process.cwd() }).write(key, result);
 };
 
 // Re-exports so callers can construct backends directly if they want.

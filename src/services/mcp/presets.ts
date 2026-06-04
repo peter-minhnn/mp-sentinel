@@ -56,6 +56,92 @@ const expandFetchPreset = (preset: Extract<MCPPreset, { preset: "fetch" }>): MCP
   return server;
 };
 
+// -- Phase 4.4 -- additional presets ----------------------------------------
+
+const FILESYSTEM_DEFAULT_PATHS = [process.cwd()];
+
+const expandFilesystemPreset = (
+  preset: Extract<MCPPreset, { preset: "filesystem" }>,
+): MCPServer => ({
+  id: "filesystem",
+  transport: "stdio",
+  command: "npx",
+  args: [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    ...(preset.rootPaths ?? FILESYSTEM_DEFAULT_PATHS),
+  ],
+  calls: preset.calls,
+});
+
+const expandGitPreset = (preset: Extract<MCPPreset, { preset: "git" }>): MCPServer => ({
+  id: "git",
+  transport: "stdio",
+  command: "uvx",
+  args: ["mcp-server-git", "--repository", preset.repository ?? process.cwd()],
+  calls: preset.calls,
+});
+
+const SLACK_DEFAULT_ENV: Record<string, string> = {
+  SLACK_BOT_TOKEN: "SLACK_BOT_TOKEN",
+  SLACK_TEAM_ID: "SLACK_TEAM_ID",
+};
+
+const expandSlackPreset = (preset: Extract<MCPPreset, { preset: "slack" }>): MCPServer => ({
+  id: "slack",
+  transport: "stdio",
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-slack"],
+  env: preset.env ?? SLACK_DEFAULT_ENV,
+  calls: preset.calls,
+});
+
+const LINEAR_DEFAULT_ENV: Record<string, string> = { LINEAR_API_KEY: "LINEAR_API_KEY" };
+
+const expandLinearPreset = (preset: Extract<MCPPreset, { preset: "linear" }>): MCPServer => ({
+  id: "linear",
+  transport: "stdio",
+  // Linear's community MCP server is published under @tacticlaunch/mcp-linear
+  // (read-only by default). Users can override via explicit servers[] if
+  // they want a different package.
+  command: "npx",
+  args: ["-y", "@tacticlaunch/mcp-linear"],
+  env: preset.env ?? LINEAR_DEFAULT_ENV,
+  calls: preset.calls,
+});
+
+const POSTGRES_DEFAULT_URL_ENV = "DATABASE_URL";
+
+/**
+ * The reference Postgres MCP server takes the connection URL as a CLI
+ * argument (`npx -y @modelcontextprotocol/server-postgres <url>`) -- it
+ * does not read DATABASE_URL itself. Resolve the URL from process.env
+ * at expansion time; fail with a clear error when it's missing.
+ */
+const expandPostgresPreset = (
+  preset: Extract<MCPPreset, { preset: "postgres" }>,
+): MCPServer | string => {
+  const urlEnvName = preset.connectionUrlEnv ?? POSTGRES_DEFAULT_URL_ENV;
+  const connectionUrl = process.env[urlEnvName];
+  if (!connectionUrl) {
+    return (
+      `Postgres preset requires a connection URL: set ${urlEnvName} ` +
+      `(or point "connectionUrlEnv" at another env var holding a postgresql:// URL).`
+    );
+  }
+  const server: MCPServer = {
+    id: "postgres",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-postgres", connectionUrl],
+    calls: preset.calls,
+  };
+  if (preset.env) {
+    server.env = preset.env;
+  }
+  return server;
+};
+
 /**
  * Expand a list of MCP presets into full MCPServer definitions.
  * Returns expanded servers and errors. Duplicate preset names are errors.
@@ -80,6 +166,21 @@ export const expandPresets = (presets: MCPPreset[]): PresetExpansion => {
         servers.push(server);
       } else {
         errors.push(`Fetch preset requires at least one of "calls" or "urls" to be non-empty.`);
+      }
+    } else if (preset.preset === "filesystem") {
+      servers.push(expandFilesystemPreset(preset));
+    } else if (preset.preset === "git") {
+      servers.push(expandGitPreset(preset));
+    } else if (preset.preset === "slack") {
+      servers.push(expandSlackPreset(preset));
+    } else if (preset.preset === "linear") {
+      servers.push(expandLinearPreset(preset));
+    } else if (preset.preset === "postgres") {
+      const result = expandPostgresPreset(preset);
+      if (typeof result === "string") {
+        errors.push(result);
+      } else {
+        servers.push(result);
       }
     }
   }

@@ -11,6 +11,7 @@ import type {
   ParserMode,
   SourceIndexFile,
   CodeSearchEntry,
+  CallEdge,
 } from "../../types/index.js";
 import { log } from "../../utils/logger.js";
 import { getSecurityService } from "../../services/security/index.js";
@@ -112,6 +113,23 @@ const SYMBOL_NODE_TYPES = new Set([
 const IMPORT_NODE_TYPES = new Set(["import_statement", "import_declaration"]);
 
 const EXPORT_NODE_TYPES = new Set(["export_statement", "export_declaration"]);
+
+/**
+ * Call-expression node types (Phase 4.1).
+ *
+ * Tree-sitter's TypeScript / JavaScript grammars use `call_expression`
+ * for ordinary calls and `new_expression` for constructor calls. We
+ * capture both because blast-radius queries care about constructors too.
+ */
+const CALL_NODE_TYPES = new Set(["call_expression", "new_expression"]);
+
+/**
+ * Cap the number of call edges recorded per file to keep the index from
+ * exploding on generated / minified files. The number is generous -- a
+ * 2,000-line typical file rarely has more than ~400 distinct call
+ * sites, and we still always honor the per-file size limit upstream.
+ */
+const CALL_EDGE_CAP_PER_FILE = 1000;
 
 /**
  * Get the name from an identifier node
@@ -393,14 +411,115 @@ function extractExportInfo(node: any): ExportInfo | null {
 /**
  * Walk the AST and collect symbols, imports, and exports
  */
+/**
+ * Extract a callee text from a `call_expression` / `new_expression` node.
+ *
+ * Returns the textual callee (e.g. "fetch", "user.save", "axios.get",
+ * "this.handler", "obj?.method") rather than resolving to an exported
+ * symbol id. Resolution happens lazily at query time.
+ *
+ * Returns null when the callee can't be read (parens-only IIFEs, computed
+ * member expressions like `obj[key]()` where key isn't a literal, etc.).
+ * Skipping these is correct for v1 of call-graph indexing -- they're
+ * rare and resolving them right would require type info we don't have.
+ */
+function extractCallEdge(node: any): CallEdge | null {
+  if (!node || !node.children || node.children.length === 0) return null;
+
+  // For `call_expression`, the callee is the `function` field (first
+  // non-trivia child in the simple case). For `new_expression`, it's
+  // the `constructor` field, but tree-sitter exposes both as the
+  // first significant child for our purposes.
+  const calleeNode =
+    typeof node.childForFieldName === "function"
+      ? (node.childForFieldName("function") ?? node.childForFieldName("constructor"))
+      : null;
+
+  const target = calleeNode ?? node.children[0];
+  if (!target) return null;
+
+  const text = typeof target.text === "string" ? target.text.trim() : "";
+  if (!text || text.length === 0 || text.length > 200) return null;
+
+  // Skip parens-only IIFEs (`(() => {})()`) and other non-identifier shells.
+  if (text.startsWith("(") && text.endsWith(")")) return null;
+
+  const startPosition = target.startPosition;
+  if (!startPosition || typeof startPosition.row !== "number") return null;
+
+  return {
+    callee: text,
+    line: startPosition.row + 1,
+    column: startPosition.column ?? 0,
+  };
+}
+
+/**
+ * Names whose enclosing function context we propagate down through
+ * `walkAST` as the `currentSymbol` parameter. Methods and arrow
+ * functions both count so calls in `class Foo { bar() { x() } }` get
+ * `inSymbol: "bar"`.
+ */
+const ENCLOSING_SYMBOL_TYPES = new Set([
+  "function_declaration",
+  "method_definition",
+  "arrow_function",
+]);
+
+/**
+ * Derive a name for an anonymous arrow function from its assignment
+ * context (`const handler = () => {...}` -> "handler"). Used only for
+ * call-edge `inSymbol` attribution -- does not create a symbol entry.
+ */
+function getArrowFunctionName(node: any): string | undefined {
+  const parent = node.parent;
+  if (!parent) return undefined;
+  if (parent.type === "variable_declarator" || parent.type === "public_field_definition") {
+    const id = parent.children?.find((c: any) =>
+      ["identifier", "property_identifier"].includes(c.type),
+    );
+    if (id && typeof id.text === "string" && id.text.length > 0) return id.text;
+  }
+  if (parent.type === "pair") {
+    const key = parent.children?.[0];
+    if (key && typeof key.text === "string" && key.text.length > 0) return key.text;
+  }
+  return undefined;
+}
+
 function walkAST(
   node: any,
   symbols: SymbolInfo[],
   imports: ImportInfo[],
   exports: ExportInfo[],
+  calls: CallEdge[],
   parentName?: string,
+  currentSymbol?: string,
 ): void {
   if (!node || !node.children) return;
+
+  // Record call edges before recursing. We cap to keep generated files
+  // from blowing up the cache.
+  if (CALL_NODE_TYPES.has(node.type) && calls.length < CALL_EDGE_CAP_PER_FILE) {
+    const edge = extractCallEdge(node);
+    if (edge) {
+      if (currentSymbol) edge.inSymbol = currentSymbol;
+      calls.push(edge);
+    }
+  }
+
+  // Anonymous arrow functions don't yield a symbol entry, but calls inside
+  // them should still be attributed to the assigned name when one exists
+  // (`const handler = () => { process(); }` -> inSymbol: "handler").
+  if (node.type === "arrow_function") {
+    const arrowName = getArrowFunctionName(node);
+    if (arrowName) {
+      for (const child of node.children) {
+        walkAST(child, symbols, imports, exports, calls, parentName, arrowName);
+      }
+      return;
+    }
+  }
 
   // Check if current node is a symbol
   if (SYMBOL_NODE_TYPES.has(node.type)) {
@@ -409,10 +528,13 @@ function walkAST(
       symbols.push(symbol);
       // For classes, track as parent for methods
       const currentParent = symbol.type === "class" ? symbol.name : parentName;
+      // Track function/method scope for call edge inSymbol attribution.
+      const nextSymbol =
+        ENCLOSING_SYMBOL_TYPES.has(node.type) && symbol.name ? symbol.name : currentSymbol;
 
       // Recurse into children with new parent
       for (const child of node.children) {
-        walkAST(child, symbols, imports, exports, currentParent);
+        walkAST(child, symbols, imports, exports, calls, currentParent, nextSymbol);
       }
       return;
     }
@@ -431,7 +553,7 @@ function walkAST(
 
   // Recurse into all children
   for (const child of node.children) {
-    walkAST(child, symbols, imports, exports, parentName);
+    walkAST(child, symbols, imports, exports, calls, parentName, currentSymbol);
   }
 }
 
@@ -863,6 +985,7 @@ export async function chunkedParse(
   symbols: SymbolInfo[];
   imports: ImportInfo[];
   exports: ExportInfo[];
+  calls: CallEdge[];
   parseWarnings: string[];
   parseErrors: string[];
   chunkCount: number;
@@ -940,6 +1063,7 @@ export async function chunkedParse(
   const allSymbols: SymbolInfo[] = [];
   const allImports: ImportInfo[] = [];
   const allExports: ExportInfo[] = [];
+  const allCalls: CallEdge[] = [];
   const allParseWarnings: string[] = [];
   const allParseErrors: string[] = [];
   let boundaryWarningCount = 0;
@@ -963,8 +1087,9 @@ export async function chunkedParse(
       const symbols: SymbolInfo[] = [];
       const imports: ImportInfo[] = [];
       const exports: ExportInfo[] = [];
+      const calls: CallEdge[] = [];
 
-      walkAST(tree.rootNode, symbols, imports, exports);
+      walkAST(tree.rootNode, symbols, imports, exports, calls);
 
       // Apply line offset to all extracted items
       const lineOffset = chunk.startLine - 1;
@@ -979,6 +1104,11 @@ export async function chunkedParse(
       for (const exp of exports) {
         exp.line += lineOffset;
         allExports.push(exp);
+      }
+      for (const call of calls) {
+        if (allCalls.length >= CALL_EDGE_CAP_PER_FILE) break;
+        call.line += lineOffset;
+        allCalls.push(call);
       }
 
       for (const err of chunkErrors) {
@@ -1024,6 +1154,7 @@ export async function chunkedParse(
     symbols: allSymbols,
     imports: dedupedImports,
     exports: dedupedExports,
+    calls: allCalls,
     parseWarnings: allParseWarnings,
     parseErrors: allParseErrors,
     chunkCount: chunks.length,
@@ -1103,8 +1234,9 @@ export async function parseFile(
     const symbols: SymbolInfo[] = [];
     const imports: ImportInfo[] = [];
     const exports: ExportInfo[] = [];
+    const calls: CallEdge[] = [];
 
-    walkAST(tree.rootNode, symbols, imports, exports);
+    walkAST(tree.rootNode, symbols, imports, exports, calls);
 
     const result: SourceIndexFile = {
       path: filePath,
@@ -1115,6 +1247,7 @@ export async function parseFile(
       imports,
       exports,
       symbols,
+      calls,
       parserMode: "tree-sitter" as ParserMode,
       codeSearch: buildCodeSearchEntries(content, symbols),
     };
@@ -1149,6 +1282,7 @@ export async function parseFile(
           imports: chunked.imports,
           exports: chunked.exports,
           symbols: chunked.symbols,
+          calls: chunked.calls,
           parserMode: "chunked-tree-sitter" as ParserMode,
           parseWarnings,
           chunkCount: chunked.chunkCount,
@@ -1177,8 +1311,9 @@ export async function parseFile(
             const symbols: SymbolInfo[] = [];
             const imports: ImportInfo[] = [];
             const exports: ExportInfo[] = [];
+            const calls: CallEdge[] = [];
 
-            walkAST(tree.rootNode, symbols, imports, exports);
+            walkAST(tree.rootNode, symbols, imports, exports, calls);
 
             const result: SourceIndexFile = {
               path: filePath,
@@ -1189,6 +1324,7 @@ export async function parseFile(
               imports,
               exports,
               symbols,
+              calls,
               parserMode: "ascii-fallback" as ParserMode,
               parseWarnings: ["Invalid argument; parsed with ASCII fallback", ...normWarnings],
               codeSearch: buildCodeSearchEntries(content, symbols),
@@ -1214,8 +1350,9 @@ export async function parseFile(
             const symbols: SymbolInfo[] = [];
             const imports: ImportInfo[] = [];
             const exports: ExportInfo[] = [];
+            const calls: CallEdge[] = [];
 
-            walkAST(tree.rootNode, symbols, imports, exports);
+            walkAST(tree.rootNode, symbols, imports, exports, calls);
 
             const result: SourceIndexFile = {
               path: filePath,
@@ -1226,6 +1363,7 @@ export async function parseFile(
               imports,
               exports,
               symbols,
+              calls,
               parserMode: "tree-sitter" as ParserMode,
               parseWarnings: ["Invalid argument; parsed with retry", ...retryWarnings],
               codeSearch: buildCodeSearchEntries(content, symbols),

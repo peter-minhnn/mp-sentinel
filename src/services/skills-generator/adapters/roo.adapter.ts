@@ -1,3 +1,16 @@
+/**
+ * Roo Code adapter (Phase 4.2).
+ *
+ * Roo Code (a Cline fork) uses `.roo/rules/` (workspace) or
+ * `.roo/rules-{mode}/` (workspace-mode-specific) for project-scoped
+ * rules. We write to the workspace-level `.roo/rules/` so the file
+ * applies regardless of mode.
+ *
+ * Detection signals:
+ *   - `.roo/` directory
+ *   - `.roorules` legacy file
+ */
+
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -9,27 +22,25 @@ import type {
 } from "../../../types/index.js";
 import { generateContent } from "../content.js";
 
-export const windsurfAdapter: AgentAdapter = {
-  id: "windsurf" as AgentAdapterId,
-  label: "Windsurf (.windsurf/rules/)",
+export const rooAdapter: AgentAdapter = {
+  id: "roo" as AgentAdapterId,
+  label: "Roo Code (.roo/rules/)",
 
   spec: {
-    officialDocsUrl: "https://docs.windsurf.com/rules",
+    officialDocsUrl: "https://docs.roocode.com/features/custom-instructions",
     outputKind: "rule",
-    workspacePath: ".windsurf/rules/{projectName}-best-practices.md",
+    workspacePath: ".roo/rules/{projectName}-best-practices.md",
     requiredFiles: [],
-    frontmatterRules: {
-      required: [],
-    },
+    frontmatterRules: { required: [] },
     sizeLimit: 20000,
   },
 
   detect(projectRoot: string): boolean {
-    return existsSync(join(projectRoot, ".windsurf"));
+    return existsSync(join(projectRoot, ".roo")) || existsSync(join(projectRoot, ".roorules"));
   },
 
   getDefaultOutput(projectRoot: string, projectName: string): string {
-    return join(projectRoot, ".windsurf", "rules", `${projectName}-best-practices.md`);
+    return join(projectRoot, ".roo", "rules", `${projectName}-best-practices.md`);
   },
 
   async generate(

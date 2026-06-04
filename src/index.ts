@@ -63,7 +63,9 @@ const run = async (): Promise<void> => {
       ? values["index-format"]
       : command === "create-skills"
         ? values["create-skills-format"]
-        : (values.format ?? process.env.MP_SENTINEL_FORMAT);
+        : command === "init"
+          ? values["init-format"]
+          : (values.format ?? process.env.MP_SENTINEL_FORMAT);
   const quietLogs =
     values.quiet ||
     requestedFormat === "json" ||
@@ -131,6 +133,37 @@ const run = async (): Promise<void> => {
         log.critical(`create-skills failed: ${error.message}`);
       } else {
         log.critical("create-skills failed with unknown error");
+      }
+      process.exitCode = 2;
+    }
+    return;
+  }
+
+  // Handle init command -- routes before git/config review startup so a
+  // fresh repo (no .mp-sentinelrc.json yet) can still bootstrap.
+  if (command === "init") {
+    try {
+      const { runInitCommand } = await import("./commands/init.js");
+      process.exitCode = await runInitCommand({
+        ...(values["init-force"] === true && { "init-force": true }),
+        ...(values["init-non-interactive"] === true && { "init-non-interactive": true }),
+        ...(values["init-format"] && { "init-format": values["init-format"] }),
+      });
+    } catch (error) {
+      if (values["init-format"] === "json") {
+        console.log(
+          JSON.stringify({
+            status: "ERROR",
+            error: error instanceof Error ? error.message : "init failed with unknown error",
+          }),
+        );
+        process.exitCode = 2;
+        return;
+      }
+      if (error instanceof Error) {
+        log.critical(`init failed: ${error.message}`);
+      } else {
+        log.critical("init failed with unknown error");
       }
       process.exitCode = 2;
     }

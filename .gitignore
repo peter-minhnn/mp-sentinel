@@ -27,3 +27,11 @@ pnpm-lock.yaml
 .windsurf/rules/*-best-practices.md
 .antigravity/rules/*-best-practices.md
 .agents/rules/*-best-practices.md
+# Phase 4.2 adapter outputs (also local bootstrap)
+CONVENTIONS.md
+.continue/
+.github/copilot-instructions.md
+.junie/
+.rules
+# FUSE artifacts (deleted-but-open files on mounted filesystems)
+.fuse_hidden*

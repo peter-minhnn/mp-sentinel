@@ -147,8 +147,10 @@ describe("create-skills CLI args", () => {
 // -- Registry ------------------------------------------------------------------
 
 describe("adapter registry", () => {
-  it("has 7 adapters", () => {
-    expect(ADAPTER_REGISTRY).toHaveLength(7);
+  it("has 13 adapters", () => {
+    // 7 original (claude, cursor, codex, windsurf, antigravity, cline, generic)
+    // + 6 added in Phase 4.2 (aider, continue, roo, copilot, zed, jetbrains)
+    expect(ADAPTER_REGISTRY).toHaveLength(13);
   });
 
   it("getAdapter returns the right adapter", () => {
@@ -859,6 +861,8 @@ describe("runCreateSkillsCommand", () => {
 
 import {
   computeIndexHash,
+  computeGenerationConfigHash,
+  EMPTY_GENERATION_CONFIG_HASH,
   parseMetadataFromContent,
   renderMetadataHeader,
   applyMetadataHeader,
@@ -925,6 +929,51 @@ describe("metadata utilities", () => {
   it("parseMetadataFromContent returns null for content without marker", () => {
     const content = "# My file\nno metadata here";
     expect(parseMetadataFromContent(content)).toBeNull();
+  });
+
+  it("computeGenerationConfigHash is deterministic and order-insensitive", () => {
+    const a = computeGenerationConfigHash({ disableRules: ["next/a", "react/b"] });
+    const b = computeGenerationConfigHash({ disableRules: ["react/b", "next/a"] });
+    expect(a).toBe(b);
+    expect(a).toHaveLength(16);
+    expect(computeGenerationConfigHash(undefined)).toBe(EMPTY_GENERATION_CONFIG_HASH);
+    expect(computeGenerationConfigHash({})).toBe(EMPTY_GENERATION_CONFIG_HASH);
+  });
+
+  it("computeGenerationConfigHash changes when policies or disableRules change", () => {
+    const base = computeGenerationConfigHash(undefined);
+    const withRules = computeGenerationConfigHash({ disableRules: ["next/image-optimization"] });
+    const withPolicies = computeGenerationConfigHash({
+      policies: {
+        maxFileLines: 400,
+        warnFileLines: 300,
+        maxFunctionLines: 60,
+        maxParams: 4,
+        maxCyclomaticHint: 10,
+        forbidDefaultExports: true,
+      },
+    });
+    expect(withRules).not.toBe(base);
+    expect(withPolicies).not.toBe(base);
+    expect(withPolicies).not.toBe(withRules);
+    // AI config must NOT affect the generation config hash
+    expect(computeGenerationConfigHash({ ai: { enabled: true, provider: "gemini" } })).toBe(base);
+  });
+
+  it("renderMetadataHeader round-trips generationConfigHash", () => {
+    const meta = {
+      generatorVersion: "2.0.0",
+      sourceIndexSchema: "1.4" as const,
+      sourceIndexHash: "abc123def456abcd",
+      agent: "claude" as const,
+      projectName: "test-proj",
+      generationConfigHash: "1234567890abcdef",
+    };
+    const header = renderMetadataHeader(meta);
+    expect(header).toContain("generationConfigHash=1234567890abcdef");
+    const parsed = parseMetadataFromContent(header + "\n\n# Test");
+    expect(parsed).not.toBeNull();
+    expect(parsed!.generationConfigHash).toBe("1234567890abcdef");
   });
 
   it("generated Claude SKILL.md starts with frontmatter and metadata follows", async () => {
@@ -1021,6 +1070,78 @@ describe("metadata utilities", () => {
     );
 
     expect(exitCode).toBe(0);
+  });
+
+  it("--check flags files stale after a config-only change (generationConfigHash)", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    // Generate with default config
+    await runCreateSkillsCommand(
+      createSkillsValues({ agent: "claude", "create-skills-force": false }),
+      cwd,
+    );
+
+    const skillFile = join(cwd, ".claude", "skills", "fixture-best-practices", "SKILL.md");
+    const meta = parseMetadataFromContent(await readFile(skillFile, "utf-8"));
+    expect(meta).not.toBeNull();
+    expect(meta!.generationConfigHash).toBe(EMPTY_GENERATION_CONFIG_HASH);
+
+    // Add a generation-affecting config (no source change at all)
+    clearConfigCache();
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({ createSkills: { disableRules: ["next/image-optimization"] } }),
+    );
+
+    const exitCode = await runCreateSkillsCommand(
+      createSkillsValues({ agent: "claude", "create-skills-check": true }),
+      cwd,
+    );
+    expect(exitCode).toBe(1);
+
+    // Regenerate with the new config, then check passes again
+    clearConfigCache();
+    await runCreateSkillsCommand(
+      createSkillsValues({ agent: "claude", "create-skills-force": true }),
+      cwd,
+    );
+    clearConfigCache();
+    const okExit = await runCreateSkillsCommand(
+      createSkillsValues({ agent: "claude", "create-skills-check": true }),
+      cwd,
+    );
+    expect(okExit).toBe(0);
+
+    const regenMeta = parseMetadataFromContent(await readFile(skillFile, "utf-8"));
+    expect(regenMeta!.generationConfigHash).toBe(
+      computeGenerationConfigHash({ disableRules: ["next/image-optimization"] }),
+    );
+  });
+
+  it("createSkills.policies and disableRules survive config load (mergeConfig)", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    const policies = {
+      maxFileLines: 400,
+      warnFileLines: 300,
+      maxFunctionLines: 60,
+      maxParams: 4,
+      maxCyclomaticHint: 10,
+      forbidDefaultExports: true,
+    };
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        createSkills: { policies, disableRules: ["react/hooks-deps"] },
+      }),
+    );
+    clearConfigCache();
+    const { loadProjectConfig } = await import("../utils/config.js");
+    const config = await loadProjectConfig(cwd);
+    expect(config.createSkills?.policies).toEqual(policies);
+    expect(config.createSkills?.disableRules).toEqual(["react/hooks-deps"]);
+    clearConfigCache();
   });
 });
 

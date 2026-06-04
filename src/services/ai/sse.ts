@@ -84,8 +84,7 @@ export async function* parseSseStream(
         const field = colonIdx === -1 ? line : line.slice(0, colonIdx);
         // Per spec, a single leading space after the colon is stripped.
         const rawValue = colonIdx === -1 ? "" : line.slice(colonIdx + 1);
-        const value =
-          rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+        const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
 
         if (field === "event") {
           pendingEvent = value;
@@ -110,8 +109,7 @@ export async function* parseSseStream(
         const colonIdx = line.indexOf(":");
         const field = colonIdx === -1 ? line : line.slice(0, colonIdx);
         const rawValue = colonIdx === -1 ? "" : line.slice(colonIdx + 1);
-        const value =
-          rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+        const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
         if (field === "event") pendingEvent = value;
         else if (field === "data") pendingData.push(value);
       }

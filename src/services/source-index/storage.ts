@@ -43,8 +43,8 @@ export async function readIndex(
     const content = await readFile(cachePath, "utf-8");
     const index = JSON.parse(content) as SourceIndex;
 
-    // Validate schema version (accept 1.0, 1.1, 1.2, and 1.3)
-    const validSchemas = ["1.0", "1.1", "1.2", "1.3"] as const;
+    // Validate schema version (accept 1.0, 1.1, 1.2, 1.3, and 1.4)
+    const validSchemas = ["1.0", "1.1", "1.2", "1.3", "1.4"] as const;
     if (
       !index.schemaVersion ||
       !validSchemas.includes(index.schemaVersion as (typeof validSchemas)[number])

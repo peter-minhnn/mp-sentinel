@@ -55,7 +55,18 @@ mp-sentinel
 
 ## 4) Guardrails (Less Tokens, Better Signal)
 
-Create `.mp-sentinelrc.json`:
+Scaffold `.mp-sentinelrc.json` with the `init` command:
+
+```bash
+npx mp-sentinel init                    # interactive prompts from detected tech stack
+npx mp-sentinel init --non-interactive  # accept proposed defaults (CI-friendly)
+npx mp-sentinel init --force            # overwrite an existing config (refuses + exit 1 without it)
+npx mp-sentinel init --format json      # machine-readable summary on stdout
+```
+
+`init` detects your tech stack, picks an AI provider from environment variables (`ANTHROPIC_API_KEY` → anthropic, `GEMINI_API_KEY`/`GOOGLE_API_KEY` → gemini, `OPENAI_API_KEY` → openai, fallback gemini), and enables the GitHub MCP preset when `GITHUB_TOKEN` is set. With `--format json`, stdout is a single parseable JSON object — logs go to stderr.
+
+Or create `.mp-sentinelrc.json` by hand:
 
 ```json
 {

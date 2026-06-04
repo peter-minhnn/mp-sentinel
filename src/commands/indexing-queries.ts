@@ -618,6 +618,8 @@ export function handleAgentContext(
     directDependentsTruncated: ctx.directDependentsTruncated,
     hubFiles: ctx.hubFiles,
     hubFilesTruncated: ctx.hubFilesTruncated,
+    incomingCalls: ctx.incomingCalls,
+    incomingCallsTruncated: ctx.incomingCallsTruncated,
     suggestedCommands: ctx.suggestedCommands,
   };
 
@@ -679,6 +681,26 @@ export function handleAgentContext(
       );
       for (const h of ctx.hubFiles) {
         console.log(`    - ${h.path} (imported by ${h.importedByCount} files)`);
+      }
+    }
+
+    if (fileInfo.calls && fileInfo.calls.length > 0) {
+      console.log(
+        `\n  Outbound calls (${fileInfo.calls.length}${(fileInfo.callsTruncated ?? 0) > 0 ? `, ${fileInfo.callsTruncated} more not shown` : ""}):`,
+      );
+      for (const c of fileInfo.calls) {
+        console.log(`    ${c.callee} @ ${c.line}${c.inSymbol ? ` (in ${c.inSymbol})` : ""}`);
+      }
+    }
+
+    if (ctx.incomingCalls.length > 0) {
+      console.log(
+        `\n  Incoming call candidates (${ctx.incomingCalls.length}${ctx.incomingCallsTruncated > 0 ? `, ${ctx.incomingCallsTruncated} more not shown` : ""}):`,
+      );
+      for (const c of ctx.incomingCalls) {
+        console.log(
+          `    ${c.callee} @ ${c.fromFile}:${c.line}${c.inSymbol ? ` (in ${c.inSymbol})` : ""}`,
+        );
       }
     }
 

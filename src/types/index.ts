@@ -283,6 +283,15 @@ export interface CreateSkillsConfig {
   ai?: CreateSkillsAIConfig;
   policies?: CreateSkillsPolicies;
   rulePacks?: CreateSkillsRulePacksConfig;
+  /**
+   * Rule ids to omit from generated SKILL.md output (Phase 4.3). Format
+   * is `<packId>/<ruleId>`, matching the same convention used by file
+   * evaluators. Rules without an `id` field can't be targeted.
+   *
+   * Example:
+   *   { "createSkills": { "disableRules": ["next/image-optimization"] } }
+   */
+  disableRules?: string[];
 }
 
 export const DEFAULT_CREATE_SKILLS_POLICIES: CreateSkillsPolicies = {
@@ -329,8 +338,19 @@ export interface MCPServer {
   calls: MCPCall[];
 }
 
-/** Pre-configured MCP server preset — "github" or "fetch" */
-export type MCPPreset = MCPGitHubPreset | MCPFetchPreset;
+/**
+ * Pre-configured MCP server preset. Each preset expands to a full
+ * `MCPServer` definition with a known command + default env mapping.
+ * Phase 4.4 added: filesystem, git, slack, linear, postgres.
+ */
+export type MCPPreset =
+  | MCPGitHubPreset
+  | MCPFetchPreset
+  | MCPFilesystemPreset
+  | MCPGitPreset
+  | MCPSlackPreset
+  | MCPLinearPreset
+  | MCPPostgresPreset;
 
 /** GitHub MCP server preset */
 export interface MCPGitHubPreset {
@@ -347,6 +367,85 @@ export interface MCPFetchPreset {
   urls?: string[];
   /** Env var mapping: { "CHILD_NAME": "PROCESS_ENV_NAME" }. */
   env?: Record<string, string>;
+}
+
+/**
+ * Filesystem MCP server (Phase 4.4). Read-only access to project files
+ * via `@modelcontextprotocol/server-filesystem`. The official server
+ * already enforces a sandboxed root path; `rootPaths` (defaults to the
+ * project cwd) determines which directories are visible.
+ */
+export interface MCPFilesystemPreset {
+  preset: "filesystem";
+  /** Directories the MCP server may read from. Defaults to `${cwd}`. */
+  rootPaths?: string[];
+  /** Tool calls to make. Typically `read_file` / `list_directory`. */
+  calls: MCPCall[];
+}
+
+/**
+ * Git MCP server (Phase 4.4). Read-only git operations via `uvx
+ * mcp-server-git`. Used for `git_log`, `git_show`, `git_diff_unstaged`,
+ * etc. -- read-only verbs only; mutating tools are rejected at the
+ * MCPCallSchema layer.
+ */
+export interface MCPGitPreset {
+  preset: "git";
+  /** Repository root the MCP server reads from. Defaults to `${cwd}`. */
+  repository?: string;
+  calls: MCPCall[];
+}
+
+/**
+ * Slack MCP server (Phase 4.4). Gated on `SLACK_BOT_TOKEN` (and optionally
+ * `SLACK_TEAM_ID`). Read-only verbs (`channels_list`, `channels_history`,
+ * `users_list`) are typical; mutating tools (`chat_postMessage`, etc.)
+ * are rejected by the global MCPCallSchema mutating-prefix guard.
+ */
+export interface MCPSlackPreset {
+  preset: "slack";
+  calls: MCPCall[];
+  /** Defaults to { SLACK_BOT_TOKEN: "SLACK_BOT_TOKEN", SLACK_TEAM_ID: "SLACK_TEAM_ID" }. */
+  env?: Record<string, string>;
+}
+
+/**
+ * Linear MCP server (Phase 4.4). Gated on `LINEAR_API_KEY`. Read verbs
+ * like `list_issues`, `get_issue`, `list_projects`.
+ *
+ * Note: this preset spawns the **community stdio server**
+ * (`@tacticlaunch/mcp-linear` via `npx`) -- it is *not* Linear's hosted
+ * remote MCP server (`https://mcp.linear.app/...`), which uses a remote
+ * transport and OAuth. To use a different package or transport, define
+ * an explicit entry in `mcp.servers[]` instead of this preset.
+ */
+export interface MCPLinearPreset {
+  preset: "linear";
+  calls: MCPCall[];
+  /** Defaults to { LINEAR_API_KEY: "LINEAR_API_KEY" }. */
+  env?: Record<string, string>;
+}
+
+/**
+ * Postgres MCP server (Phase 4.4). Read-only -- the reference Postgres MCP
+ * server (`@modelcontextprotocol/server-postgres`) only exposes read
+ * tools and **requires the connection URL as a CLI argument**, not an
+ * env var. The standard mutating-tool guard still blocks anything with
+ * a `create/update/delete/...` prefix.
+ */
+export interface MCPPostgresPreset {
+  preset: "postgres";
+  /**
+   * Name of the process.env variable holding the Postgres connection URL
+   * (e.g. `postgresql://user:pass@host:5432/db`). The value is appended
+   * as the connection-URL argument the server expects. Default:
+   * `DATABASE_URL`. Expansion fails with a clear error when the variable
+   * is unset.
+   */
+  connectionUrlEnv?: string;
+  /** Extra env vars to forward to the child process (optional). */
+  env?: Record<string, string>;
+  calls: MCPCall[];
 }
 
 /** Top-level MCP configuration */
@@ -585,6 +684,9 @@ export const DEFAULT_CONFIG: Required<
       exclude: [],
       extends: [],
     },
+    // Phase 4.3: list of rule ids to omit from generated SKILL.md output.
+    // Empty by default -- users opt in by listing `<packId>/<ruleId>`.
+    disableRules: [],
   },
   mcp: {
     enabled: false,
@@ -672,6 +774,31 @@ export interface CodeSearchEntry {
   nearestSymbol?: string;
   /** Type of the nearest enclosing symbol */
   nearestSymbolType?: SymbolInfo["type"];
+}
+
+/**
+ * A single outgoing call edge captured at parse time (schema 1.4+).
+ *
+ * Phase 4.1 -- call-graph indexing.
+ *
+ * We record the textual callee (e.g. "getUser", "user.save",
+ * "axios.get") rather than resolving to a fully-qualified symbol id at
+ * parse time. Resolution happens lazily at query time so the index stays
+ * cheap to build and survives renames / re-exports that the symbol
+ * resolver doesn't track perfectly.
+ *
+ * The `inSymbol` field lets queries answer "which functions in this file
+ * call X" without rescanning the AST.
+ */
+export interface CallEdge {
+  /** Callee text as written at the call site (no resolution). */
+  callee: string;
+  /** 1-indexed line number of the call expression. */
+  line: number;
+  /** 0-indexed column where the callee identifier begins. */
+  column: number;
+  /** Name of the nearest enclosing function/method/arrow, if any. */
+  inSymbol?: string;
 }
 
 /**
@@ -824,6 +951,12 @@ export interface SourceIndexFile {
   role?: FileRole;
   /** Code search snippets (schema 1.3+) */
   codeSearch?: CodeSearchEntry[];
+  /**
+   * Outgoing call edges captured during AST traversal (schema 1.4+).
+   * Only populated for tree-sitter parsed JS/TS/JSX/TSX files; lexical
+   * fallback languages don't currently emit call edges.
+   */
+  calls?: CallEdge[];
 }
 
 /**
@@ -866,14 +999,18 @@ export interface ProjectManifest {
 
 /**
  * Current source index schema version.
+ *
+ * 1.4 (Phase 4.1) -- adds optional `calls: CallEdge[]` to SourceIndexFile.
+ * Backwards compatible: older readers ignore the new field; older caches
+ * still load (the field is optional). No rename or removal.
  */
-export const CURRENT_SOURCE_INDEX_SCHEMA = "1.3" as const;
+export const CURRENT_SOURCE_INDEX_SCHEMA = "1.4" as const;
 
 /**
- * Source index schema v1.0 / v1.1 / v1.2 / v1.3
+ * Source index schema v1.0 / v1.1 / v1.2 / v1.3 / v1.4
  */
 export interface SourceIndex {
-  schemaVersion: "1.0" | "1.1" | "1.2" | "1.3";
+  schemaVersion: "1.0" | "1.1" | "1.2" | "1.3" | "1.4";
   generatedAt: string;
   toolVersion: string;
   project: ProjectManifest;
@@ -1123,7 +1260,14 @@ export type AgentAdapterId =
   | "windsurf"
   | "antigravity"
   | "cline"
-  | "generic";
+  | "generic"
+  // Phase 4.2 -- additional adapters
+  | "aider"
+  | "continue"
+  | "roo"
+  | "copilot"
+  | "zed"
+  | "jetbrains";
 
 /**
  * Context passed to an adapter's generate() call
@@ -1138,6 +1282,10 @@ export interface SkillsGenerationContext {
   knowledgeBase?: SkillKnowledgeBase | undefined;
   /** Deterministic code style profile (no AI needed). Populated when index is available. */
   codeStyleProfile?: CodeStyleProfile | undefined;
+  /** Clean-code policy thresholds from `createSkills.policies`. */
+  policies?: CreateSkillsPolicies | undefined;
+  /** Rule ids to omit from generated content (Phase 4.3 -- createSkills.disableRules). */
+  disableRules?: readonly string[] | undefined;
 }
 
 /**

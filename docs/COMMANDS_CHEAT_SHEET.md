@@ -4,8 +4,8 @@
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--agent <ids>` | Comma-separated: claude,cursor,codex,windsurf,antigravity,cline,generic | Auto-detect |
-| `--all-agents` | Generate for all primary agents (excl. generic) | false |
+| `--agent <ids>` | Comma-separated: claude,cursor,codex,windsurf,antigravity,cline,aider,continue,roo,copilot,zed,jetbrains,generic | Auto-detect |
+| `--all-agents` | Generate for all 12 registered non-generic adapters | false |
 | `--force` | Overwrite existing files | false |
 | `--skip-index-refresh` | Use existing index cache; fail if absent | false |
 | `--dry-run` | Preview output without writing | false |
@@ -59,6 +59,16 @@
 | `--format json` | JSON output for all modes |
 | `--quiet` | Suppress non-JSON output |
 | `--verbose` | Detailed logging |
+
+## `init` — Scaffold .mp-sentinelrc.json
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite an existing config |
+| `--non-interactive` | Skip prompts; use proposed defaults |
+| `--format json` | Machine-readable summary |
+
+Detects tech stack via `detectTechProfile`, picks a provider from env vars (`ANTHROPIC_API_KEY`/`GEMINI_API_KEY`/`OPENAI_API_KEY`), enables the GitHub MCP preset if `GITHUB_TOKEN` is set, and writes a config that passes `ProjectConfigSchema`. Refuses to overwrite without `--force` (exit 1).
 
 ## Config (.mp-sentinelrc.json)
 

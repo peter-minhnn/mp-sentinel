@@ -44,6 +44,8 @@ export const claudeAdapter: AgentAdapter = {
       enrichment,
       knowledgeBase,
       context.codeStyleProfile,
+      context.policies,
+      context.disableRules,
     );
 
     const skillDir = this.getDefaultOutput(context.projectRoot, projectName);
