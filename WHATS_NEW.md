@@ -1,6 +1,6 @@
 # What's New in v3.0.2
 
-## Unreleased (Phase 4 — Quick Wins: Adapters, Rules, MCP Presets, Init Command)
+## Phase 4 — Quick Wins: Adapters, Rules, MCP Presets, Init Command
 
 ### Call-edge indexing (4.1) — source index schema 1.4
 
@@ -99,7 +99,7 @@ Five new MCP presets to complement `github` / `fetch`:
 
 Mutating-tool prefixes (`create*`, `update*`, `delete*`, etc.) are still rejected globally — these presets only carry read-only verbs. No new npm dependencies: each preset spawns the community MCP server via `npx`/`uvx`.
 
-## Unreleased (Phase 3.2 — Streaming AI + Phase 3.3 — Pluggable Cache)
+## Phase 3.2 — Streaming AI + Phase 3.3 — Pluggable Cache
 
 ### Streaming AI responses (3.2)
 
@@ -126,7 +126,7 @@ Cache storage is now backend-driven. The default behavior is unchanged (local `.
 
 The HTTP backend is `GET /<key>` + `PUT /<key>` — drop-in for Cloudflare Workers KV (via its REST proxy), in-house Redis-HTTP shims, or any KV service. Uses Node's built-in `fetch` — no new dependencies. Backends share the same SHA-256 key derivation, so an entry written by one is readable by the other.
 
-## Unreleased (Phase 3.1 — Parallel + Incremental Indexing)
+## Phase 3.1 — Parallel + Incremental Indexing
 
 ### Parallel parsing
 
@@ -142,7 +142,7 @@ SHA-256-based incremental indexing was already in place: files whose content has
 
 Surfaced in `indexing --health` (console + JSON). Lets you spot stale indexes from old branches at a glance.
 
-## Unreleased (Phase 2 — Detection Quality)
+## Phase 2 — Detection Quality
 
 ### Entropy-based secret detection (2.1)
 
@@ -195,7 +195,7 @@ The universal JS/TS-leaning pack still runs on every file.
 
 AI audit cache version bumped to `4` because the request shape changes when structured output is on.
 
-## Unreleased (Phase 1 — Stability & Observability)
+## Phase 1 — Stability & Observability
 
 ### Token usage & cost capture (1.1)
 
