@@ -1,4 +1,4 @@
-# What's New in v3.0.2
+# What's New in v3.0.3
 
 ## Phase 4 — Quick Wins: Adapters, Rules, MCP Presets, Init Command
 

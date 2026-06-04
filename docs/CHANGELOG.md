@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.svelte` and `.vue` files were silently dropped from the source index — `parseNonIndexableFile()` was defined but never called. **This is the central Phase 7 bug fix.**
 - AI-only gate on `CodeStyleProfile` — profile now built for all `create-skills` runs, not just AI-enriched ones
 
-## [3.0.2] - 2026-05-25
+## [3.0.3] - 2026-06-04
 
 ### Added
 - `mp-sentinel indexing --find-code <query>` — fast code snippet search with declaration-aware ranking.
