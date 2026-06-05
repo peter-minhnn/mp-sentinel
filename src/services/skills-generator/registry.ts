@@ -90,6 +90,7 @@ function getDetectionSignals(projectRoot: string, adapter: AgentAdapter): string
       if (exists(".agent")) signals.push(".agent/ exists");
       break;
     case "cline":
+      if (exists(".cline")) signals.push(".cline/ exists");
       if (exists(".clinerules")) signals.push(".clinerules/ exists");
       break;
     case "cursor":

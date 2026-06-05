@@ -1,14 +1,28 @@
 /**
  * Audit Results Summary
- * Formats and prints audit results for CLI output
+ * Formats and prints audit results for CLI output using the shared
+ * terminal UI theme (same look as the review console report).
  */
 
 import type { FileAuditResult, SeverityThreshold } from "../types/index.js";
-import { log, formatDuration } from "../utils/logger.js";
-import { printBanner, sortIssues, sortFileResults } from "../utils/display.js";
+import { formatDuration } from "../utils/logger.js";
+import { getToolVersion } from "../utils/version.js";
+import { printConsoleFindings } from "../formatters/report.js";
 import { DEFAULT_SEVERITY_THRESHOLD, issuesFailThreshold } from "../utils/severity.js";
+import {
+  appHeader,
+  countToken,
+  dot,
+  keyValueRow,
+  sectionHeader,
+  statusBadge,
+} from "../utils/terminal-ui.js";
 
-const dividerLine = "─".repeat(50);
+const countIssues = (results: FileAuditResult[], severity: string): number =>
+  results.reduce(
+    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === severity).length ?? 0),
+    0,
+  );
 
 /**
  * Print audit results summary and return whether all checks passed
@@ -26,61 +40,9 @@ export const printResultsSummary = (
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
   const errored = results.filter((r) => r.result.status === "ERROR");
-  const criticalIssues = results.reduce(
-    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "CRITICAL").length ?? 0),
-    0,
-  );
-  const warningIssues = results.reduce(
-    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "WARNING").length ?? 0),
-    0,
-  );
-  const infoIssues = results.reduce(
-    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === "INFO").length ?? 0),
-    0,
-  );
-
-  printBanner();
-  console.log(`📊 Audit Summary`);
-  console.log(`  ${dividerLine}`);
-  console.log(`  Total files        ${results.length}`);
-  console.log(`  ✅ Passed           ${passed.length}`);
-  console.log(`  ❌ Failed           ${failed.length}`);
-  console.log(`  💥 Errors           ${errored.length}`);
-  console.log(`  🚨 Critical         ${criticalIssues}`);
-  console.log(`  ⚠️  Warning         ${warningIssues}`);
-  console.log(`  ℹ️  Info            ${infoIssues}`);
-  console.log(`  ⏱️  Duration        ${formatDuration(totalDuration)}`);
-
-  // Print detailed issues — sorted by severity
-  const findingResults = results.filter(
-    (r) =>
-      r.result.status === "FAIL" ||
-      r.result.status === "ERROR" ||
-      (r.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
-        false),
-  );
-
-  if (findingResults.length > 0) {
-    console.log();
-    const sorted = sortFileResults(findingResults);
-    for (const result of sorted) {
-      const marker = result.result.status === "ERROR" ? "💥" : "❌";
-      console.log(`${marker} ${result.filePath}:`);
-
-      if (result.result.issues && result.result.issues.length > 0) {
-        const sortedIssues = sortIssues(result.result.issues);
-        for (const issue of sortedIssues) {
-          log.issue(issue.severity, issue.line, issue.message);
-          if (issue.suggestion) {
-            log.file(`💡 ${issue.suggestion}`);
-          }
-        }
-      } else {
-        log.error(result.result.message || "Unknown error occurred during audit");
-      }
-      console.log();
-    }
-  }
+  const criticalIssues = countIssues(results, "CRITICAL");
+  const warningIssues = countIssues(results, "WARNING");
+  const infoIssues = countIssues(results, "INFO");
 
   // Fail if any result reports an error, an issue at-or-above the threshold,
   // OR a status === "FAIL" with no issues (edge case where AI explicitly
@@ -89,5 +51,48 @@ export const printResultsSummary = (
     issuesFailThreshold(r.result.issues, threshold),
   );
   const hasFailWithoutIssues = failed.some((r) => !r.result.issues || r.result.issues.length === 0);
-  return errored.length === 0 && !hasThresholdViolations && !hasFailWithoutIssues;
+  const allPassed = errored.length === 0 && !hasThresholdViolations && !hasFailWithoutIssues;
+  const status = errored.length > 0 ? "ERROR" : allPassed ? "PASS" : "FAIL";
+
+  const subtitle = [
+    statusBadge(status),
+    `${results.length} file${results.length === 1 ? "" : "s"}`,
+    formatDuration(totalDuration),
+  ].join(dot());
+  for (const line of appHeader(getToolVersion(), subtitle)) {
+    console.log(line);
+  }
+
+  for (const line of sectionHeader("Overview")) {
+    console.log(line);
+  }
+  console.log(keyValueRow("Status", statusBadge(status)));
+  console.log(
+    keyValueRow(
+      "Files",
+      `${results.length} total` +
+        dot() +
+        [
+          countToken(passed.length, "passed", "green"),
+          countToken(failed.length, "failed", "red"),
+          countToken(errored.length, "errors", "magenta"),
+        ].join(dot()),
+    ),
+  );
+  console.log(
+    keyValueRow(
+      "Findings",
+      [
+        countToken(criticalIssues, "critical", "red"),
+        countToken(warningIssues, "warning", "yellow"),
+        countToken(infoIssues, "info", "blue"),
+      ].join(dot()),
+    ),
+  );
+  console.log(keyValueRow("Duration", formatDuration(totalDuration)));
+
+  // Detailed findings — same layout as the review console report
+  printConsoleFindings(results);
+
+  return allPassed;
 };

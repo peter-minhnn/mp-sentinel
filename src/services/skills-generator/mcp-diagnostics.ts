@@ -219,7 +219,7 @@ export const getSkillsDoctor = async (
 
   // Index health
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   const indexInfo = await buildDoctorIndexInfo(index, cachePath, projectRoot);
   const currentHash = index ? computeIndexHash(index, projectRoot) : null;
 
@@ -384,7 +384,7 @@ export const getSkillsCheck = async (
 
   // Read index — error if missing
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) {
     return { error: "No source index found" };
   }

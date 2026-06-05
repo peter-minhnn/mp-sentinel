@@ -67,4 +67,4 @@ Use `src/types/index.ts` as the single source for shared types. Do not redeclare
 - `src/index.ts` beyond SIGINT handling and top-level command routing.
 - Exit codes — `0 / 1 / 2` semantics are contractual.
 - `.sentinel/skills/` — these are runtime review prompts injected for end users, not agent rules.
-- Generated skill files (`.agents/skills/`, `.cursor/rules/*-best-practices.mdc`, `.clinerules/*.md`, `.windsurf/rules/*.md`, `.antigravity/rules/*.md`, `.agents/rules/*-best-practices.md`) — these are local bootstrap artifacts, never commit them.
+- Generated skill files (`.agents/skills/`, `.cursor/rules/*-best-practices.mdc`, `.cline/skills/`, `.clinerules/*.md`, `.windsurf/skills/`, `.windsurf/rules/*.md`, `.roo/skills/`, `.antigravity/rules/*.md`, `.agents/rules/*-best-practices.md`) — these are local bootstrap artifacts, never commit them.

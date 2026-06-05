@@ -118,7 +118,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -197,7 +197,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -280,7 +280,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -363,7 +363,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
       - run: npm ci
       - run: npm run build
@@ -509,7 +509,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.pr.outputs.head_repo == github.repository
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
 
       - if: steps.pr.outputs.head_repo == github.repository

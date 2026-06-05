@@ -281,7 +281,13 @@ describe("agent-skills-check.mjs", () => {
     expect(refresh.status).toBe(0);
 
     // Temporarily move a generated skill file to simulate "missing"
-    const skillFile = join(REPO_ROOT, ".windsurf", "rules", "mp-sentinel-best-practices.md");
+    const skillFile = join(
+      REPO_ROOT,
+      ".windsurf",
+      "skills",
+      "mp-sentinel-windsurf-best-practices",
+      "SKILL.md",
+    );
     const backupFile = skillFile + ".lane-c-test-backup";
 
     try {

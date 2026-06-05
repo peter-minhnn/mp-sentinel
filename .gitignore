@@ -15,6 +15,7 @@ pnpm-lock.yaml
 .idea
 .mp-sentinel-cache/
 .claude
+.cline
 .clinerules
 .roo
 .cursor
@@ -25,6 +26,9 @@ pnpm-lock.yaml
 .agents/skills/
 .cursor/rules/*-best-practices.mdc
 .windsurf/rules/*-best-practices.md
+.windsurf/skills/
+.roo/skills/
+.cline/skills/
 .antigravity/rules/*-best-practices.md
 .agents/rules/*-best-practices.md
 # Phase 4.2 adapter outputs (also local bootstrap)

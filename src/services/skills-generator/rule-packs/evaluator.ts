@@ -10,7 +10,7 @@
  */
 
 import type { AuditIssue } from "../../../types/index.js";
-import { ALL_PACKS } from "./index.js";
+import { ALL_PACKS, requirementsSatisfied } from "./index.js";
 import type { FileEvaluator, RulePack, RulePackContext } from "./index.js";
 
 export { ALL_PACKS } from "./index.js";
@@ -71,6 +71,9 @@ export function evaluateChangedFiles(
     if (!pack.evaluators || pack.evaluators.length === 0) continue;
 
     for (const evaluator of pack.evaluators) {
+      // Version gating: skip evaluators whose dependency constraints are not
+      // safely satisfied (unknown/broad ranges never satisfy — conservative).
+      if (!requirementsSatisfied(evaluator.requires, ctx.deps)) continue;
       // For each file that matches the evaluator, run it
       for (const [filePath, content] of files) {
         const lines = content.split("\n");

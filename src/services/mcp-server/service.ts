@@ -12,6 +12,7 @@ import {
   querySymbols,
   queryImports,
   queryCode,
+  queryCodeStream,
   getParserTelemetry,
 } from "../source-index/query.js";
 import { buildReviewContext } from "../source-index/context-builder.js";
@@ -44,6 +45,10 @@ export interface ExplainContextResult {
   contextPreview?: string;
   relatedFileCount?: number;
   suggestedCommands?: string[];
+  /** Intelligence signals included in the preview (e.g. "call-impact"). */
+  includedSignals?: string[];
+  /** Relation tiers present in the context (e.g. "caller", "hub"). */
+  relationTypes?: string[];
   mcp?: unknown;
 }
 
@@ -63,7 +68,7 @@ async function resolveCachePath(projectRoot: string): Promise<string> {
  */
 export async function getIndexHealth(projectRoot: string): Promise<IndexHealthResult> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
 
   if (!index) {
     return {
@@ -90,7 +95,8 @@ export async function getAgentContext(
   file: string,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  // Calls hydration: agent context reports outbound + incoming call edges.
+  const index = await readIndex(cachePath, { hydrate: "calls" });
 
   if (!index) {
     return { error: "No source index found" };
@@ -108,7 +114,10 @@ export async function getExplainContext(
   files: string[],
 ): Promise<ExplainContextResult> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  // Calls hydration: explain-context builds review context, and the
+  // call-impact/caller intelligence tier reads call edges — match the CLI
+  // explain-context behavior on light caches.
+  const index = await readIndex(cachePath, { hydrate: "calls" });
 
   if (!index) {
     return {
@@ -141,6 +150,12 @@ export async function getExplainContext(
     contextPreview: context,
     relatedFileCount: metadata.relatedFileCount,
     ...(metadata.suggestedCommands ? { suggestedCommands: metadata.suggestedCommands } : {}),
+    ...(metadata.includedSignals && metadata.includedSignals.length > 0
+      ? { includedSignals: metadata.includedSignals }
+      : {}),
+    ...(metadata.relationTypes && metadata.relationTypes.length > 0
+      ? { relationTypes: metadata.relationTypes }
+      : {}),
     mcp,
   };
 }
@@ -154,7 +169,7 @@ export async function getFindSymbol(
   query: string,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
   const results = querySymbols(index, query);
@@ -171,7 +186,7 @@ export async function getFindImport(
   query: string,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
   const results = queryImports(index, query);
@@ -188,10 +203,10 @@ export async function getFindCode(
   query: string,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
-  const results = queryCode(index, query);
+  const results = await queryCodeStream(index, cachePath, query);
   return {
     status: "ok",
     query,
@@ -205,7 +220,7 @@ export async function getExplainFile(
   file: string,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { error: "No source index found" };
 
   const sourceFile = index.files.find((f) => f.path === file);
@@ -274,7 +289,7 @@ export async function getExplainFile(
 
 export async function getIndexStats(projectRoot: string): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
   const chunkTelemetry = getChunkTelemetry(index);
@@ -311,7 +326,7 @@ export async function getRecoveredFiles(
   limit?: number,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
   const recovered = index.files.filter(
@@ -351,7 +366,7 @@ export async function getParseErrors(
   limit?: number,
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
   const withErrors = index.files.filter((f) => (f.parseErrors?.length ?? 0) > 0);

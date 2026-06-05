@@ -16,14 +16,20 @@ export const nextRules: RulePack = {
   rules: [
     {
       kind: "must",
+      id: "next/directives",
+      requires: [{ dep: "next", minMajor: 13 }],
       text: "Use `'use client'` and `'use server'` directives correctly. Client components cannot import server-only modules (Node fs, direct DB access, etc.).",
     },
     {
       kind: "should",
+      id: "next/server-components-default",
+      requires: [{ dep: "next", minMajor: 13 }],
       text: "Prefer Server Components by default. Only add `'use client'` when interactivity (hooks, event handlers, browser APIs) is required.",
     },
     {
       kind: "must",
+      id: "next/route-segment-config",
+      requires: [{ dep: "next", minMajor: 13 }],
       text: "Use route segment config (`export const dynamic = 'force-static'`, etc.) at the top of page/layout files for fine-grained caching control.",
     },
     {
@@ -36,6 +42,8 @@ export const nextRules: RulePack = {
     },
     {
       kind: "avoid",
+      id: "next/server-component-bundle-bloat",
+      requires: [{ dep: "next", minMajor: 13 }],
       text: "Do NOT import large client-side libraries in Server Components that re-export them -- this can bloat the client bundle.",
     },
   ],

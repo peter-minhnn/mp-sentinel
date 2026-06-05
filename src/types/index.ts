@@ -1004,13 +1004,42 @@ export interface ProjectManifest {
  * Backwards compatible: older readers ignore the new field; older caches
  * still load (the field is optional). No rename or removal.
  */
-export const CURRENT_SOURCE_INDEX_SCHEMA = "1.4" as const;
+export const CURRENT_SOURCE_INDEX_SCHEMA = "1.5" as const;
+
+/** Metadata for one sidecar payload file (schema 1.5 light cache). */
+export interface SidecarFileMeta {
+  /** Sidecar file name, relative to the core cache file's directory. */
+  file: string;
+  /** Sidecar size in bytes at write time. */
+  bytes: number;
+  /** Number of files contributing rows to this sidecar. */
+  entryCount: number;
+}
 
 /**
- * Source index schema v1.0 / v1.1 / v1.2 / v1.3 / v1.4
+ * Sidecar layout metadata (schema 1.5 "light" cache mode).
+ *
+ * In light mode the core `source-index.json` stays compact: heavy payloads
+ * (`codeSearch`, `calls`) move to JSONL sidecars next to the core file and
+ * are hydrated on demand. `cacheMode: "full"` keeps everything inline and
+ * omits this field entirely (as do all pre-1.5 caches).
+ */
+export interface SourceIndexSidecars {
+  /** Random id tying the core file to its exact sidecar generation. */
+  storageId: string;
+  /** Code-search snippets sidecar (`source-index.<id>.code.jsonl`). */
+  code?: SidecarFileMeta;
+  /** Call-edge sidecar (`source-index.<id>.calls.jsonl`). */
+  calls?: SidecarFileMeta;
+  /** Per-path byte-offset lookup (`source-index.<id>.lookup.json`). */
+  lookup?: { file: string };
+}
+
+/**
+ * Source index schema v1.0 - v1.5
  */
 export interface SourceIndex {
-  schemaVersion: "1.0" | "1.1" | "1.2" | "1.3" | "1.4";
+  schemaVersion: "1.0" | "1.1" | "1.2" | "1.3" | "1.4" | "1.5";
   generatedAt: string;
   toolVersion: string;
   project: ProjectManifest;
@@ -1039,6 +1068,8 @@ export interface SourceIndex {
   };
   /** Index insights (schema 1.2+) */
   insights?: IndexInsights;
+  /** Sidecar layout metadata (schema 1.5 light cache mode only). */
+  sidecars?: SourceIndexSidecars;
 }
 
 /**
@@ -1050,6 +1081,18 @@ export interface IndexingConfig {
   cachePath: string;
   maxFileSize: number;
   maxRelatedFiles: number;
+  /**
+   * Cache layout (schema 1.5+). "light" (default) keeps the core
+   * source-index.json compact and moves codeSearch/calls payloads to
+   * JSONL sidecars; "full" inlines everything (debug/compat).
+   */
+  cacheMode?: "light" | "full";
+  /**
+   * Incremental cache validation strategy. "fast" (default) compares
+   * size+mtime first and hashes only changed candidates; "strict"
+   * hashes every file (pre-1.5 behavior).
+   */
+  validationMode?: "fast" | "strict";
 }
 
 /**
@@ -1104,6 +1147,16 @@ export interface IndexHealthOutput {
    * without requiring the user to diff the JSON output by hand.
    */
   gitHeadDrift?: boolean;
+  /** Cache layout reported by --health/--stats (schema 1.5+). */
+  cacheMode?: "light" | "full" | "legacy";
+  /** Light cache: sidecar files referenced by the core index. */
+  sidecarsPresent?: boolean;
+  /** Light cache: all referenced sidecars exist on disk. */
+  sidecarsValid?: boolean;
+  /** Core cache file size in bytes. */
+  coreBytes?: number;
+  /** Combined sidecar size in bytes. */
+  sidecarBytes?: number;
   /** Number of files parsed via chunked-tree-sitter (optional aggregate chunk telemetry) */
   chunkedFiles?: number;
   /** Total chunk count across all chunked files (optional aggregate chunk telemetry) */

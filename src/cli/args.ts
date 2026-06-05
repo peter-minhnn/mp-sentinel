@@ -44,6 +44,7 @@ export interface CLIValues {
   stats?: boolean;
   explainIndex?: string;
   findSymbol?: string;
+  fullIndex?: boolean;
   findImport?: string;
   findCode?: string;
   agentContext?: string;
@@ -128,6 +129,11 @@ export const buildProgram = (): Command => {
     .description("Build source index cache for enhanced review context")
     .option("--force", "Force rebuild cache even if up-to-date", false)
     .option("--index-format <fmt>", "Output format: console | json (default: console)", "console")
+    .option(
+      "--full-index",
+      "JSON export: hydrate sidecar payloads (codeSearch, calls) into stdout instead of the compact core",
+      false,
+    )
     .option("--stats", "Output index statistics only (with --index-format json)", false)
     .option("--explain-index <file>", "Show dependency info for a specific file")
     .option("--explain <file>", "Alias for --explain-index")
@@ -385,6 +391,7 @@ export const parseCliArgs = (): {
         agentContext: indexingOptions["agentContext"] as string,
       }),
       force: command === "indexing" ? Boolean(indexingOptions["force"] ?? false) : false,
+      fullIndex: command === "indexing" ? Boolean(indexingOptions["fullIndex"] ?? false) : false,
       health: command === "indexing" ? Boolean(indexingOptions["health"] ?? false) : false,
       recovered: command === "indexing" ? Boolean(indexingOptions["recovered"] ?? false) : false,
       parseErrors:

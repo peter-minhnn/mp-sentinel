@@ -75,7 +75,7 @@
   "author": "Nguyen Nhat Minh",
   "license": "MIT",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20.11.0"
   },
   "dependencies": {
     "@google/genai": "^2.0.1",
@@ -96,14 +96,14 @@
     "@jest/globals": "^30.4.1",
     "@types/glob": "8.1.0",
     "@types/jest": "30.0.0",
-    "@types/node": "^25.6.2",
+    "@types/node": "^20.19.41",
     "@types/prompts": "^2.4.9",
     "jest": "^30.4.2",
     "prettier": "^3.8.3",
     "ts-jest": "^29.4.9",
     "ts-node": "10.9.2",
     "tsup": "8.5.1",
-    "tsx": "4.21.0",
+    "tsx": "4.22.4",
     "typescript": "^6.0.3"
   },
   "jest": {

@@ -308,12 +308,28 @@ const MAX_CODE_RESULTS = 20;
  *
  * Results are sorted by score descending, then by file path, and capped at 20.
  */
+interface PreparedCodeQuery {
+  query: string;
+  lowerQuery: string;
+  normalizedQuery: string;
+  variants: string[];
+}
+
+/** Precompute query variants shared across all scored entries. */
+export function prepareCodeQuery(query: string): PreparedCodeQuery {
+  const lowerQuery = query.toLowerCase().trim();
+  return {
+    query,
+    lowerQuery,
+    normalizedQuery: lowerQuery.replace(/\s+/g, " "),
+    variants: tokenVariants(query),
+  };
+}
+
 export function queryCode(index: SourceIndex | null, query: string): CodeSearchResult[] {
   if (!index) return [];
 
-  const lowerQuery = query.toLowerCase().trim();
-  const normalizedQuery = lowerQuery.replace(/\s+/g, " ");
-  const variants = tokenVariants(query);
+  const { lowerQuery, normalizedQuery, variants } = prepareCodeQuery(query);
   const results: CodeSearchResult[] = [];
 
   for (const file of index.files) {
@@ -372,6 +388,51 @@ export function queryCode(index: SourceIndex | null, query: string): CodeSearchR
       }
     }
   }
+
+  results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+  return results.slice(0, MAX_CODE_RESULTS);
+}
+
+/**
+ * Streaming code search for schema 1.5 light caches: scores entries as the
+ * code sidecar is read line-by-line and keeps only a bounded top set in
+ * memory (no full-index hydration). Falls back to inline payloads for
+ * legacy/full caches via streamCodeEntries. Output shape and ranking are
+ * identical to queryCode.
+ */
+export async function queryCodeStream(
+  index: SourceIndex | null,
+  cachePath: string,
+  query: string,
+): Promise<CodeSearchResult[]> {
+  if (!index) return [];
+
+  // Inline payloads present (legacy cache, full mode, or already hydrated)
+  if (!index.sidecars?.code || index.files.some((f) => f.codeSearch)) {
+    return queryCode(index, query);
+  }
+
+  const { streamCodeEntries } = await import("./storage.js");
+  const languageByPath = new Map(index.files.map((f) => [f.path, f.language]));
+  const scratch: SourceIndex = { ...index, files: [] };
+
+  let results: CodeSearchResult[] = [];
+  const BOUND = MAX_CODE_RESULTS * 10;
+
+  await streamCodeEntries(index, cachePath, (path, entries) => {
+    const language = languageByPath.get(path) ?? "unknown";
+    scratch.files = [
+      { path, language, codeSearch: entries } as unknown as SourceIndex["files"][number],
+    ];
+    for (const scored of queryCode(scratch, query)) {
+      results.push(scored);
+    }
+    // Bounded memory: periodically compact to the global top set
+    if (results.length > BOUND) {
+      results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
+      results = results.slice(0, MAX_CODE_RESULTS);
+    }
+  });
 
   results.sort((a, b) => b.score - a.score || a.file.localeCompare(b.file));
   return results.slice(0, MAX_CODE_RESULTS);

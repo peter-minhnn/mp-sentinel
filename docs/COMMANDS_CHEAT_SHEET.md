@@ -39,6 +39,7 @@
 | `--find-code <query>` | Search indexed code snippets | - |
 | `--stats` | Aggregate index statistics | false |
 | `--index-format <fmt>` | Output: `console` or `json` | console |
+| `--full-index` | JSON export: hydrate sidecar payloads (codeSearch, calls) instead of printing the compact core | off |
 
 ## `review` — Review changes
 

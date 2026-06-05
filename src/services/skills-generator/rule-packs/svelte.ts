@@ -23,7 +23,15 @@ export const svelteRules: RulePack = {
     },
     {
       kind: "should",
+      id: "svelte/runes-reactivity",
+      requires: [{ dep: "svelte", minMajor: 5 }],
       text: "Use Svelte 5 runes (`$state`, `$derived`, `$effect`) for reactivity rather than Svelte 4 `$:` reactive declarations when using Svelte 5.",
+    },
+    {
+      kind: "should",
+      id: "svelte/legacy-reactive-statements",
+      requires: [{ dep: "svelte", maxMajor: 4 }],
+      text: "Use `$:` reactive declarations for derived state (Svelte 4 and earlier). Rune APIs are not available in this Svelte major.",
     },
     {
       kind: "avoid",

@@ -14,6 +14,7 @@ import type {
   QualityReport,
   SourceIndex,
 } from "../../types/index.js";
+import { resolveSafeMajor } from "./rule-packs/version-gate.js";
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
@@ -44,6 +45,10 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   ".agents",
   ".clinerules/",
   ".clinerules",
+  ".cline/",
+  ".cline",
+  ".roo/",
+  ".roo",
   ".windsurf/",
   ".windsurf",
   ".antigravity/",
@@ -99,7 +104,15 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
 
 // ── Multi-file adapters ─────────────────────────────────────────────────────
 
-const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>(["claude", "codex", "antigravity", "zed"]);
+const MULTI_FILE_ADAPTERS = new Set<AgentAdapterId>([
+  "claude",
+  "codex",
+  "antigravity",
+  "zed",
+  "windsurf",
+  "roo",
+  "cline",
+]);
 
 // ── Required H2 sections per Claude reference file ──────────────────────────
 
@@ -123,20 +136,16 @@ const PREFIX_MATCH_SECTIONS: Record<string, string[]> = {
   "commands.md": ["Project Profile"],
 };
 
+// Single-file (rule-only) outputs are concise by design: workflow contract,
+// overview, rules, and policies. Bulky maps are skill-folder material.
 const SINGLE_FILE_REQUIRED_SECTIONS = [
   "Required Agent Workflow",
-  "Reference Routing",
   "Overview",
-  "Architecture",
-  "Module Map",
-  "Codebase Map",
-  "Testing Map",
-  "Dependencies",
-  "Public API Surface",
+  "Clean Code Policy",
+  "File Size Policy",
 ];
-// Note: "Hub Files" is content-dependent (only present when hub files exist).
-// "Development Commands" is also content-dependent.
-// "Project Profile" is matched by prefix.
+// Note: "Project Profile" is matched by prefix.
+// "Language & Framework Rules" is content-dependent (only when packs match).
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -405,7 +414,8 @@ function checkRequiredReferences(
   adapterId: AgentAdapterId,
 ): QualityCheck[] {
   const checks: QualityCheck[] = [];
-  if (adapterId !== "claude") return checks;
+  // Every skill-folder adapter must ship the full progressive reference set.
+  if (!MULTI_FILE_ADAPTERS.has(adapterId)) return checks;
 
   const basename = file.outputPath.replace(/\\/g, "/").split("/").pop();
   if (basename !== "SKILL.md") return checks;
@@ -419,6 +429,73 @@ function checkRequiredReferences(
       severity: "error",
       file: file.outputPath,
       message: `SKILL.md should link at least 7 references, found ${refCount}`,
+    });
+  }
+
+  return checks;
+}
+
+/**
+ * Every `./references/*.md` link in a SKILL.md must resolve to a generated
+ * file in the same skill directory — no broken progressive-disclosure links.
+ */
+function checkReferenceLinks(
+  file: GeneratedSkillFile,
+  allFiles: GeneratedSkillFile[],
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const normalizedPath = file.outputPath.replace(/\\/g, "/");
+  if (!normalizedPath.endsWith("/SKILL.md")) return checks;
+
+  const skillDir = normalizedPath.slice(0, -"SKILL.md".length);
+  const generated = new Set(allFiles.map((f) => f.outputPath.replace(/\\/g, "/")));
+
+  const linkMatches = file.content.matchAll(/\(\.\/(references\/[^)]+\.md)\)/g);
+  for (const match of linkMatches) {
+    const target = `${skillDir}${match[1]!}`;
+    if (!generated.has(target)) {
+      checks.push({
+        type: "reference-link",
+        severity: "error",
+        file: file.outputPath,
+        message: `SKILL.md links to "./${match[1]!}" but no such file is generated`,
+      });
+    }
+  }
+
+  return checks;
+}
+
+/**
+ * Skill folder contract: the SKILL.md frontmatter `name` must match the
+ * skill directory name so agents resolve the skill consistently.
+ */
+function checkSkillNameMatchesFolder(
+  file: GeneratedSkillFile,
+  adapterId: AgentAdapterId,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  if (!MULTI_FILE_ADAPTERS.has(adapterId)) return checks;
+
+  const normalizedPath = file.outputPath.replace(/\\/g, "/");
+  if (!normalizedPath.endsWith("/SKILL.md")) return checks;
+
+  const segments = normalizedPath.split("/");
+  const folderName = segments[segments.length - 2];
+  if (!folderName) return checks;
+
+  const fmMatch = file.content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return checks; // Missing frontmatter caught by layout contract
+  const nameMatch = fmMatch[1]!.match(/^name:\s*(.+)$/m);
+  if (!nameMatch) return checks; // name is optional frontmatter
+
+  const name = nameMatch[1]!.trim();
+  if (name !== folderName) {
+    checks.push({
+      type: "skill-name-folder-match",
+      severity: "error",
+      file: file.outputPath,
+      message: `SKILL.md frontmatter name "${name}" must match skill folder name "${folderName}"`,
     });
   }
 
@@ -719,6 +796,7 @@ function checkAgentWorkflowContract(
     workflowBody.includes("read the skill") ||
     workflowBody.includes("SKILL.md") ||
     workflowBody.includes("best-practices") ||
+    workflowBody.includes("Read these rules") ||
     workflowBody.includes("Read the relevant");
   if (!hasReadSkill) {
     checks.push({
@@ -922,6 +1000,57 @@ function checkReferenceRouting(file: GeneratedSkillFile): QualityCheck[] {
       file: file.outputPath,
       message: `Reference Routing table has ${dataRows.length} data rows (max ${MAX_ROUTING_ROWS_QUALITY} + 1 fallback)`,
     });
+  }
+
+  return checks;
+}
+
+// ── Version-gated rule leakage ───────────────────────────────────────────────
+
+/**
+ * Content markers that must never appear unless the dependency's major
+ * version is safely identifiable and at/above the required major.
+ * Mirrors the `requires` gating in the rule packs (defense in depth).
+ */
+const VERSION_GATED_MARKERS: Array<{ dep: string; minMajor: number; marker: string }> = [
+  { dep: "svelte", minMajor: 5, marker: "Svelte 5 runes (`$state`" },
+  { dep: "@angular/core", minMajor: 17, marker: "`inject()` for dependency injection" },
+  { dep: "@angular/core", minMajor: 17, marker: "built-in control flow (`@if`" },
+  { dep: "@angular/core", minMajor: 16, marker: "signals (`signal()`, `computed()`" },
+  { dep: "next", minMajor: 13, marker: "`'use client'` and `'use server'` directives" },
+  { dep: "vue", minMajor: 3, marker: "`<script setup>` syntax" },
+  { dep: "nuxt", minMajor: 3, marker: "`definePageMeta()`" },
+];
+
+/**
+ * Verify that no version-gated framework advice leaked into generated
+ * content when the manifest does not safely identify a qualifying major.
+ */
+function checkVersionGatedLeakage(
+  file: GeneratedSkillFile,
+  index: SourceIndex | null,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  if (!index) return checks;
+
+  const deps: Record<string, string> = {
+    ...index.project.dependencies,
+    ...index.project.devDependencies,
+  };
+
+  for (const { dep, minMajor, marker } of VERSION_GATED_MARKERS) {
+    if (!file.content.includes(marker)) continue;
+    const major = resolveSafeMajor(deps[dep]);
+    if (major === null || major < minMajor) {
+      checks.push({
+        type: "version-gated-rule",
+        severity: "error",
+        file: file.outputPath,
+        message:
+          `Version-gated advice "${marker}" requires ${dep} major >= ${minMajor}, ` +
+          `but the manifest ${major === null ? "does not safely identify the major" : `pins major ${major}`}`,
+      });
+    }
   }
 
   return checks;
@@ -1196,6 +1325,8 @@ export function validateSkillQuality(
     allChecks.push(...checkMaxFileLines(file));
     allChecks.push(...checkRequiredSections(file, adapterId));
     allChecks.push(...checkRequiredReferences(file, adapterId));
+    allChecks.push(...checkReferenceLinks(file, files));
+    allChecks.push(...checkSkillNameMatchesFolder(file, adapterId));
     allChecks.push(...checkDuplicateSections(file));
     allChecks.push(...checkEmptySections(file));
     allChecks.push(...checkUnknownPaths(file, index, knownRefPaths));
@@ -1203,6 +1334,7 @@ export function validateSkillQuality(
     allChecks.push(...checkAgentWorkflowContract(file, adapterId));
     allChecks.push(...checkReferenceRouting(file));
     allChecks.push(...checkRiskyUnicode(file));
+    allChecks.push(...checkVersionGatedLeakage(file, index));
   }
 
   const errors = allChecks.filter((c) => c.severity === "error");

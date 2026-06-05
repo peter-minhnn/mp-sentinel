@@ -56,6 +56,12 @@ export interface ReferenceFileContent {
 
 export interface SkillSections {
   agentWorkflow: string;
+  /**
+   * Compact agent workflow for single-file rule adapters: same contract
+   * (read rules first, index diagnostics) but without the reference-file
+   * list, since rule outputs ship no references/ directory.
+   */
+  agentWorkflowCompact: string;
   referenceRouting: string;
   overview: string;
   architecture: string;
@@ -132,6 +138,7 @@ export function generateContent(
 
   const sections: SkillSections = {
     agentWorkflow: buildAgentWorkflow(name, kb),
+    agentWorkflowCompact: buildAgentWorkflow(name, kb, { includeReferences: false }),
     referenceRouting: buildReferenceRouting(index, kb),
     overview: buildOverview(name, version, frameworks, index, profile, languageProfile),
     architecture: buildArchitecture(index),
@@ -169,7 +176,12 @@ export function generateContent(
   };
 }
 
-function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null): string {
+function buildAgentWorkflow(
+  projectName: string,
+  kb: SkillKnowledgeBase | null,
+  options: { includeReferences?: boolean } = {},
+): string {
+  const includeReferences = options.includeReferences !== false;
   // Build instruction-files list from detected files or fallback to generic pattern
   let instructionFilesLine: string;
   const instructionFiles = kb?.instructionFiles;
@@ -177,7 +189,7 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     const fileList = instructionFiles.map((f) => `\`${f}\``).join(", ");
     instructionFilesLine = `2. **Read local agent instructions**: ${fileList}.`;
   } else {
-    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.agents/rules/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.clinerules/\`.`;
+    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`.`;
   }
 
   // Reference file list from KB entrypoints or static
@@ -209,7 +221,9 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     ``,
     `Before writing any code for **${projectName}**, follow these steps in order:`,
     ``,
-    `1. **Read SKILL.md** - project profile, conventions, pitfalls.`,
+    includeReferences
+      ? `1. **Read SKILL.md** - project profile, conventions, pitfalls.`
+      : `1. **Read these rules first** - project profile, conventions, pitfalls.`,
     instructionFilesLine,
     `3. **Check parser health first**:`,
     `   - \`npx mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
@@ -224,9 +238,8 @@ function buildAgentWorkflow(projectName: string, kb: SkillKnowledgeBase | null):
     `   - \`npx mp-sentinel indexing --find-code <query> --index-format json\` - search indexed code snippets`,
     `   - \`npx mp-sentinel indexing --stats --index-format json\` - index statistics`,
     `   - \`npx mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
-    `6. **Load only the relevant references**:`,
-    ...refFiles,
-    `7. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
+    ...(includeReferences ? [`6. **Load only the relevant references**:`, ...refFiles] : []),
+    `${includeReferences ? "7" : "6"}. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
   ];
 
   if (examples.length > 0) {
@@ -1246,10 +1259,19 @@ function buildLanguageRules(selection: {
     return "";
   }
 
+  // Only packs with at least one rendered rule drive this section. Version
+  // gating / disableRules may empty a pack, and the builtin pack ships
+  // evaluators only — those must not appear as active rendered packs or
+  // inflate the pack count, and never produce empty "### ... Rules" headings.
+  const renderedPacks = selection.packs.filter((p) => p.rules.length > 0);
+  if (renderedPacks.length === 0) {
+    return "";
+  }
+
   const lines: string[] = [];
 
   // Per-pack sections
-  for (const pack of selection.packs) {
+  for (const pack of renderedPacks) {
     lines.push(``, `### ${pack.label} Rules`, ``);
     for (const rule of pack.rules) {
       const prefix =
@@ -1258,22 +1280,24 @@ function buildLanguageRules(selection: {
     }
   }
 
-  // Summary table at the top
+  // Summary table at the top — counts based on rendered rules
   type RuleKind = "must" | "should" | "avoid";
   const ruleKinds: RuleKind[] = ["must", "should", "avoid"];
   const counts: Record<RuleKind, number> = { must: 0, should: 0, avoid: 0 };
-  for (const rule of selection.allRules) {
-    const kind = rule.kind as RuleKind;
-    counts[kind]++;
+  for (const pack of renderedPacks) {
+    for (const rule of pack.rules) {
+      const kind = rule.kind as RuleKind;
+      counts[kind]++;
+    }
   }
   const summaryParts = ruleKinds.filter((k) => counts[k] > 0).map((k) => `${counts[k]} ${k}`);
   const header = [
     ``,
     `## Language & Framework Rules`,
     ``,
-    `Active packs: ${selection.packs.map((p) => `\`${p.label}\``).join(", ")}`,
+    `Active packs: ${renderedPacks.map((p) => `\`${p.label}\``).join(", ")}`,
     ``,
-    `Summary: ${summaryParts.join(", ")} rules across ${selection.packs.length} pack(s).`,
+    `Summary: ${summaryParts.join(", ")} rules across ${renderedPacks.length} pack(s).`,
     ``,
   ];
 

@@ -2,9 +2,22 @@
  * Report formatters for console/json/markdown outputs.
  */
 
-import type { ReviewReport } from "../types/index.js";
+import type { AuditIssue, FileAuditResult, ReviewReport } from "../types/index.js";
 import { formatDuration, log } from "../utils/logger.js";
-import { sortIssues, sortFileResults, printBanner } from "../utils/display.js";
+import { sortIssues, sortFileResults } from "../utils/display.js";
+import { getToolVersion } from "../utils/version.js";
+import {
+  appHeader,
+  bold,
+  countToken,
+  dim,
+  dot,
+  keyValueRow,
+  paint,
+  sectionHeader,
+  severityBadge,
+  statusBadge,
+} from "../utils/terminal-ui.js";
 
 // ── Evidence display helpers ─────────────────────────────────────────────
 
@@ -80,36 +93,77 @@ const buildSummaryRows = (report: ReviewReport): SummaryRow[] => {
   return rows;
 };
 
-const dividerLine = "─".repeat(50);
-
 // ── Console report ────────────────────────────────────────────────────────
 
-export const printConsoleReport = (report: ReviewReport): void => {
-  // ASCII banner
-  printBanner();
+const ISSUE_INDENT = "    ";
+const ISSUE_DETAIL_INDENT = `${ISSUE_INDENT}  `;
 
-  // Summary table — clean two-column layout with icons
-  console.log(`📊 Review Summary`);
-  console.log(`  ${dividerLine}`);
-  for (const row of buildSummaryRows(report)) {
-    if (row.icon) {
-      console.log(`  ${row.icon} ${row.label.padEnd(18)}${row.value}`);
-    } else {
-      console.log(`  ${row.label.padEnd(21)}${row.value}`);
+const targetDescription = (report: ReviewReport): string =>
+  `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`;
+
+const printReportHeader = (report: ReviewReport): void => {
+  const subtitle = [
+    statusBadge(report.status),
+    targetDescription(report),
+    formatDuration(report.summary.durationMs),
+  ].join(dot());
+  for (const line of appHeader(getToolVersion(), subtitle)) {
+    console.log(line);
+  }
+};
+
+const printOverviewSection = (report: ReviewReport): void => {
+  for (const line of sectionHeader("Overview")) {
+    console.log(line);
+  }
+  const s = report.summary;
+  console.log(keyValueRow("Status", statusBadge(report.status)));
+  console.log(keyValueRow("Target", targetDescription(report)));
+  console.log(
+    keyValueRow("AI review", report.aiEnabled ? paint("enabled", "green") : dim("disabled")),
+  );
+  console.log(
+    keyValueRow(
+      "Files",
+      `${s.auditedFiles} audited / ${s.totalFiles} total` +
+        dot() +
+        [
+          countToken(s.passedFiles, "passed", "green"),
+          countToken(s.failedFiles, "failed", "red"),
+        ].join(dot()),
+    ),
+  );
+  console.log(
+    keyValueRow(
+      "Findings",
+      [
+        countToken(s.criticalIssues, "critical", "red"),
+        countToken(s.warningIssues, "warning", "yellow"),
+        countToken(s.infoIssues, "info", "blue"),
+      ].join(dot()),
+    ),
+  );
+  console.log(keyValueRow("Diff lines", String(s.totalChangedLines)));
+  console.log(keyValueRow("Duration", formatDuration(s.durationMs)));
+
+  const usage = s.tokenUsage;
+  if (usage) {
+    console.log(
+      keyValueRow(
+        "Tokens",
+        `in=${usage.inputTokens.toLocaleString()}, out=${usage.outputTokens.toLocaleString()} ` +
+          dim(`(${usage.callCount} call${usage.callCount === 1 ? "" : "s"})`),
+      ),
+    );
+    if (typeof usage.estimatedCostUsd === "number") {
+      console.log(keyValueRow("Est. cost", formatCostUsd(usage.estimatedCostUsd)));
     }
   }
+};
 
-  // Skipped files
-  if (report.skipped.length > 0) {
-    console.log();
-    log.warning(`Skipped ${report.skipped.length} file(s):`);
-    for (const item of report.skipped) {
-      log.file(`${item.path}: ${item.reason}`);
-    }
-  }
-
-  // Filter findings: ERROR, FAIL, or results with CRITICAL/WARNING issues
-  const findingResults = report.results.filter(
+/** Findings filter shared by console renderers: actionable results only. */
+const filterActionableResults = (results: FileAuditResult[]): FileAuditResult[] =>
+  results.filter(
     (entry) =>
       entry.result.status === "FAIL" ||
       entry.result.status === "ERROR" ||
@@ -117,37 +171,70 @@ export const printConsoleReport = (report: ReviewReport): void => {
         false),
   );
 
-  if (findingResults.length > 0) {
-    const sorted = sortFileResults(findingResults);
-    console.log();
-    for (const result of sorted) {
-      const marker = result.result.status === "ERROR" ? "💥" : "❌";
-      console.log(`${marker} ${result.filePath}${result.cached ? " (cached)" : ""}`);
-      if (result.result.issues && result.result.issues.length > 0) {
-        const sortedIssues = sortIssues(result.result.issues);
-        for (const issue of sortedIssues) {
-          const meta = metadataTag(issue.category, issue.confidence);
-          log.issue(issue.severity, issue.line, `${meta}${issue.message}`);
-          if (issue.evidence) {
-            log.file(formatEvidence(issue.evidence));
-          }
-          if (issue.suggestion) {
-            log.file(`💡 ${issue.suggestion}`);
-          }
-        }
-      } else {
-        log.error(result.result.message || "Unknown runtime error");
-      }
-      console.log();
-    }
+const printIssueLines = (issue: AuditIssue): void => {
+  const meta = metadataTag(issue.category, issue.confidence);
+  log.plain(
+    `${ISSUE_INDENT}${severityBadge(issue.severity)} ${dim(`L${issue.line}`)}  ${meta ? dim(meta) : ""}${issue.message}`,
+  );
+  if (issue.evidence) {
+    log.plain(`${ISSUE_DETAIL_INDENT}${dim(`↳ evidence: ${formatEvidence(issue.evidence)}`)}`);
   }
+  if (issue.suggestion) {
+    log.plain(`${ISSUE_DETAIL_INDENT}${dim("↳ suggestion:")} ${issue.suggestion}`);
+  }
+};
 
-  if (report.errors.length > 0) {
-    log.critical("Runtime errors:");
-    for (const error of report.errors) {
-      log.file(error);
-    }
+/**
+ * Print the findings section (grouped by file, severity-sorted) when any
+ * actionable results exist. Shared by the review report and the legacy
+ * review summary so both render the same console UI.
+ */
+export const printConsoleFindings = (results: FileAuditResult[]): void => {
+  const findingResults = filterActionableResults(results);
+  if (findingResults.length === 0) return;
+
+  for (const line of sectionHeader("Findings")) {
+    console.log(line);
   }
+  for (const result of sortFileResults(findingResults)) {
+    const cachedTag = result.cached ? dim(" (cached)") : "";
+    console.log(`  ${bold(result.filePath)}${cachedTag}`);
+    if (result.result.issues && result.result.issues.length > 0) {
+      for (const issue of sortIssues(result.result.issues)) {
+        printIssueLines(issue);
+      }
+    } else {
+      log.error(result.result.message || "Unknown runtime error");
+    }
+    console.log();
+  }
+};
+
+const printSkippedSection = (skipped: ReviewReport["skipped"]): void => {
+  if (skipped.length === 0) return;
+  for (const line of sectionHeader(`Skipped (${skipped.length})`)) {
+    console.log(line);
+  }
+  for (const item of skipped) {
+    log.plain(`  ${item.path} ${dim(`— ${item.reason}`)}`);
+  }
+};
+
+const printRuntimeErrorsSection = (errors: string[]): void => {
+  if (errors.length === 0) return;
+  console.log();
+  log.critical(bold(`Runtime errors (${errors.length})`));
+  for (const error of errors) {
+    log.file(error);
+  }
+};
+
+export const printConsoleReport = (report: ReviewReport): void => {
+  printReportHeader(report);
+  printOverviewSection(report);
+  printConsoleFindings(report.results);
+  printSkippedSection(report.skipped);
+  printRuntimeErrorsSection(report.errors);
 };
 
 // ── Markdown report ───────────────────────────────────────────────────────

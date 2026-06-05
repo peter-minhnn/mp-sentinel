@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type {
   AgentAdapterId,
   CreateSkillsConfig,
@@ -9,8 +7,12 @@ import type {
   SourceIndex,
 } from "../../types/index.js";
 import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
+import { detectInstructionFiles } from "./instruction-files.js";
 
-export const METADATA_MARKER = "@mp-sentinel-generated";
+// The marker lives in constants.ts so instruction-files.ts can use it
+// without a cycle; re-exported here for existing importers.
+import { METADATA_MARKER } from "./constants.js";
+export { METADATA_MARKER };
 
 /**
  * Generator version — bumped manually when the generated skill output schema
@@ -24,8 +26,18 @@ export const METADATA_MARKER = "@mp-sentinel-generated";
  *         RulePack catalog, Clean Code Policy, File Size Policy, three new
  *         reference files (code-style.md, language-patterns.md,
  *         clean-code-checklist.md).
+ *
+ * v3.0.0 — Per-agent skill upgrade: every skill-capable adapter (Claude,
+ *         Codex, Antigravity, Zed, Windsurf, Roo, Cline) shares the
+ *         progressive-disclosure layout (lean SKILL.md + full 10-file
+ *         reference set); Windsurf/Roo/Cline moved to skill folders;
+ *         rule-only adapters emit concise bodies; framework rules are
+ *         version-gated by manifest majors; instruction-file discovery is
+ *         shared between workflow text and the fidelity hash (legacy
+ *         generated rule paths excluded); output dirs pre-created so a
+ *         fresh project's first generation matches its first --check.
  */
-export const GENERATOR_VERSION = "2.0.0";
+export const GENERATOR_VERSION = "3.0.0";
 
 /**
  * Parse the major version from a generator version string.
@@ -40,27 +52,9 @@ export function parseGeneratorMajor(versionStr: string): number {
 
 // ── Fidelity signal detection ────────────────────────────────────────────────
 
-const FIDELITY_INSTRUCTION_FILES = [
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".cursor/rules",
-  ".clinerules",
-  ".agents/rules",
-  ".agents/skills",
-  ".windsurf/rules",
-  ".codex/rules",
-  ".antigravity/rules",
-];
-
-function detectFidelityFiles(projectRoot: string): string[] {
-  const found: string[] = [];
-  for (const relPath of FIDELITY_INSTRUCTION_FILES) {
-    if (existsSync(join(projectRoot, relPath))) {
-      found.push(relPath);
-    }
-  }
-  return found;
-}
+// Fidelity signals share the same instruction-file discovery as the
+// knowledge base (instruction-files.ts) so the workflow text and the
+// --check hash can never drift apart.
 
 export interface SkillsMetadata {
   generatorVersion: string;
@@ -232,7 +226,7 @@ export function computeIndexHash(index: SourceIndex, projectRoot?: string): stri
         }
       : undefined,
     // Fidelity signals — instruction file presence (v1.0.16+)
-    fidelity: projectRoot ? { instructionFiles: detectFidelityFiles(projectRoot) } : undefined,
+    fidelity: projectRoot ? { instructionFiles: detectInstructionFiles(projectRoot) } : undefined,
   };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }

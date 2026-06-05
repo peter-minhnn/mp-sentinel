@@ -314,17 +314,24 @@ describe("printResultsSummary", () => {
     expect(printResultsSummary(results, 1000)).toBe(false);
   });
 
-  it("renders the new icon table layout in output", () => {
+  it("renders the shared modern console layout in output", () => {
     const results = [makeResult("a.ts", "PASS"), makeResult("b.ts", "PASS")];
     printResultsSummary(results, 1000);
 
     const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
-    expect(calls).toContain("📊 Audit Summary");
-    expect(calls).toContain("✅ Passed");
-    expect(calls).toContain("❌ Failed");
-    expect(calls).toContain("💥 Errors");
-    expect(calls).toContain("🚨 Critical");
-    expect(calls).toContain("⏱️  Duration");
+    // Compact header (shared with review report), not the old ASCII banner
+    expect(calls).toContain("MP Sentinel");
+    expect(calls).not.toContain("MP SENTINEL - Code Review");
+    expect(calls).not.toContain("📊 Audit Summary");
+    // Overview section with status and counters
+    expect(calls).toContain("Overview");
+    expect(calls).toContain("Status");
+    expect(calls).toContain("PASS");
+    expect(calls).toContain("2 total");
+    expect(calls).toContain("2 passed");
+    expect(calls).toContain("0 failed");
+    expect(calls).toContain("critical");
+    expect(calls).toContain("Duration");
   });
 
   it("uses severity sorting in output", () => {

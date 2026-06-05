@@ -101,6 +101,14 @@ const IndexingConfigSchema = z.object({
     .describe(
       "Maximum number of related files (imports/dependents) per changed file in review context",
     ),
+  cacheMode: z
+    .enum(["light", "full"])
+    .optional()
+    .describe("Cache layout: light (compact core + sidecars, default) or full (inline payloads)"),
+  validationMode: z
+    .enum(["fast", "strict"])
+    .optional()
+    .describe("Cache validation: fast (size+mtime first, default) or strict (hash every file)"),
 });
 
 /**

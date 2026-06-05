@@ -139,7 +139,7 @@ async function resolveIndex(projectRoot: string, skipRefresh: boolean): Promise<
       );
     }
     const { readIndex } = await import("../services/source-index/storage.js");
-    const cached = await readIndex(cachePath);
+    const cached = await readIndex(cachePath, { hydrate: "calls" });
     if (!cached) {
       throw new UserError(
         `Source index cache at "${indexingConfig.cachePath}" is missing or corrupt. ` +
@@ -772,7 +772,7 @@ async function runDoctor(
   } else {
     if (isJson) setLogQuietMode(true);
     const { readIndex } = await import("../services/source-index/storage.js");
-    const cached = await readIndex(cachePath);
+    const cached = await readIndex(cachePath, { hydrate: "calls" });
     if (!cached) {
       indexInfo = {
         status: "unreadable",
@@ -1277,6 +1277,27 @@ export async function runCreateSkillsCommand(
     // ── Legacy migration detection ───────────────────────────────────────────
     const legacyFiles = await detectAllLegacyAndUnexpected(projectRoot, projectName);
 
+    // ── Pre-create output directories (normal generate mode only) ───────────
+    // The generated workflow text (knowledge base), the fidelity hash
+    // (computeIndexHash), and the post-write --check must all observe the
+    // SAME filesystem state. On a fresh project, creating output dirs only
+    // at write time would make the first generation's content/hash drift
+    // from the next --check. Read-only modes (--check / --dry-run) must NOT
+    // create anything. For skill adapters, create the skill workspace dir
+    // itself so detectInstructionFiles() sees `.claude/skills` etc.
+    if (!isCheck && !isDryRun) {
+      for (const adapter of adapters) {
+        const resolvedWs = resolve(
+          projectRoot,
+          adapter.spec.workspacePath.replace(/\{projectName\}/g, projectName),
+        );
+        const dirPath = adapter.spec.outputKind === "skill" ? resolvedWs : dirname(resolvedWs);
+        if (!existsSync(dirPath)) {
+          await mkdir(dirPath, { recursive: true });
+        }
+      }
+    }
+
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
     const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
 
@@ -1473,18 +1494,8 @@ export async function runCreateSkillsCommand(
     }
 
     // ── Normal generate mode ─────────────────────────────────────────────────
-
-    // Pre-create output directories so fidelity hash is stable on first generation.
-    // Without this, computeIndexHash sees a different disk state than the check
-    // run (which runs after directories were created by this generate step).
-    for (const adapter of adapters) {
-      const dirPath = dirname(
-        resolve(projectRoot, adapter.spec.workspacePath.replace(/\{projectName\}/g, projectName)),
-      );
-      if (!existsSync(dirPath)) {
-        await mkdir(dirPath, { recursive: true });
-      }
-    }
+    // Output directories were pre-created above (before the knowledge base
+    // was built) so content, hash, and the next --check agree on disk state.
 
     const indexHash = computeIndexHash(index, projectRoot);
     const generationConfigHash = computeGenerationConfigHash(config.createSkills);

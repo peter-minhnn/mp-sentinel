@@ -20,10 +20,12 @@ import {
   querySymbols,
   queryImports,
   queryCode,
+  queryCodeStream,
   queryAgentContext,
   quoteCliArg,
   getParserTelemetry,
 } from "../services/source-index/query.js";
+import { getSidecarStatus } from "../services/source-index/storage.js";
 import {
   getRecoveredFileCount,
   getParserModeBreakdown,
@@ -373,7 +375,11 @@ export async function handleExplain(
 /**
  * Handle --stats option
  */
-export function handleStats(index: SourceIndex | null, format: "console" | "json"): number {
+export async function handleStats(
+  index: SourceIndex | null,
+  format: "console" | "json",
+  cachePath: string,
+): Promise<number> {
   if (!index) {
     if (format === "json") {
       console.log(JSON.stringify({ error: "No index available" }, null, 2));
@@ -386,6 +392,7 @@ export function handleStats(index: SourceIndex | null, format: "console" | "json
   const recoveredFiles = getRecoveredFileCount(index);
   const parserModeBreakdown = getParserModeBreakdown(index);
   const chunkTelemetry = getChunkTelemetry(index);
+  const sidecarStatus = await getSidecarStatus(index, cachePath);
 
   const stats = {
     totalFiles: index.stats.totalFiles,
@@ -399,6 +406,11 @@ export function handleStats(index: SourceIndex | null, format: "console" | "json
     importEdges: index.stats.importEdges,
     graphEnabled: index.files.some((f) => f.importsFrom || f.importedBy),
     schemaVersion: index.schemaVersion,
+    cacheMode: sidecarStatus.cacheMode,
+    sidecarsPresent: sidecarStatus.sidecarsPresent,
+    sidecarsValid: sidecarStatus.sidecarsValid,
+    coreBytes: sidecarStatus.coreBytes,
+    sidecarBytes: sidecarStatus.sidecarBytes,
     insights: index.insights
       ? {
           fileRoles: Object.keys(index.insights.fileRoles).length,
@@ -544,12 +556,15 @@ export function handleFindImport(
 /**
  * Handle --find-code query
  */
-export function handleFindCode(
+export async function handleFindCode(
   query: string,
   index: SourceIndex | null,
   format: "console" | "json",
-): number {
-  const results = queryCode(index, query);
+  cachePath: string,
+): Promise<number> {
+  // Streams the code sidecar for light caches (bounded memory); legacy and
+  // full-mode caches score inline payloads. Same ranking either way.
+  const results = await queryCodeStream(index, cachePath, query);
 
   if (!index) {
     if (format === "json") {

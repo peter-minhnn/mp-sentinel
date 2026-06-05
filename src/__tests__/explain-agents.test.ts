@@ -289,7 +289,9 @@ describe("explainAgentDetection", () => {
     expect(codex.resolvedOutput).toContain("SKILL.md");
 
     const windsurf = entries.find((e) => e.id === "windsurf")!;
-    expect(windsurf.resolvedOutput).toBe(".windsurf/rules/my-project-best-practices.md");
+    expect(windsurf.resolvedOutput).toBe(
+      ".windsurf/skills/my-project-windsurf-best-practices/SKILL.md",
+    );
 
     const antigravity = entries.find((e) => e.id === "antigravity")!;
     expect(antigravity.resolvedOutput).toContain(
@@ -298,7 +300,7 @@ describe("explainAgentDetection", () => {
     expect(antigravity.resolvedOutput).toContain("SKILL.md");
 
     const cline = entries.find((e) => e.id === "cline")!;
-    expect(cline.resolvedOutput).toBe(".clinerules/my-project-best-practices.md");
+    expect(cline.resolvedOutput).toBe(".cline/skills/my-project-cline-best-practices/SKILL.md");
   });
 });
 

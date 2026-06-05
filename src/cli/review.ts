@@ -20,6 +20,7 @@ import type {
 } from "../types/index.js";
 import type { CLIValues } from "./args.js";
 import { log } from "../utils/logger.js";
+import { bold, dim, paint } from "../utils/terminal-ui.js";
 import { UserError } from "../utils/errors.js";
 import { collectReviewInput, listFilesForTarget } from "../utils/git.js";
 import { FileHandler } from "../services/file-handler/index.js";
@@ -286,7 +287,7 @@ export async function buildIndexContext(
     projectRoot,
     config.indexing?.cachePath ?? ".mp-sentinel-cache/source-index.json",
   );
-  const index = await readIndex(cachePath);
+  const index = await readIndex(cachePath, { hydrate: "calls" });
 
   if (!index) {
     log.debug("No source index found for context enrichment");
@@ -348,7 +349,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
       "DRY-RUN mode: deterministic non-AI review (secret redaction + risk analyzer) — AI calls skipped.",
     );
   }
-  log.info(`Target: ${target.mode}${target.value ? ` (${target.value})` : ""}`);
+  log.info(`Target: ${bold(`${target.mode}${target.value ? ` (${target.value})` : ""}`)}`);
   if (aiRequested && aiAvailability && aiAvailability.status !== "ready") {
     emitFallbackNotice(
       `AI review unavailable: ${aiAvailability.reason} Falling back to deterministic non-AI review (secret redaction + risk analyzer; not a full AI substitute).`,
@@ -356,9 +357,11 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     );
   }
 
-  log.info(`AI review: ${aiEnabled ? "enabled" : "disabled"}`);
+  log.info(`AI review: ${aiEnabled ? paint("enabled", "green") : dim("disabled")}`);
   log.info(
-    `Guardrails: maxFiles=${maxFiles}, maxDiffLines=${maxDiffLines}, maxCharsPerFile=${maxCharsPerFile}`,
+    `Guardrails: ${dim(
+      `maxFiles=${maxFiles}, maxDiffLines=${maxDiffLines}, maxCharsPerFile=${maxCharsPerFile}`,
+    )}`,
   );
 
   const candidateFiles = await listFilesForTarget(target);
@@ -533,13 +536,15 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     if (dryRun) {
       // In dry-run mode: show full per-file token breakdown + deterministic findings
       log.info(
-        `DRY-RUN preview: ${sanitizedFiles.length} file(s), ~${total.toLocaleString()} estimated tokens (limit: ${tokenLimit.toLocaleString()})`,
+        `DRY-RUN preview: ${bold(String(sanitizedFiles.length))} file(s), ~${bold(
+          total.toLocaleString(),
+        )} estimated tokens ${dim(`(limit: ${tokenLimit.toLocaleString()})`)}`,
       );
       if (perFile.length > 0) {
         log.info("Per-file token breakdown:");
         const sorted = [...perFile].sort((a, b) => b.tokens - a.tokens);
         for (const f of sorted) {
-          log.file(`   ${f.path}: ~${f.tokens.toLocaleString()} tokens`);
+          log.file(`${f.path}: ~${f.tokens.toLocaleString()} tokens`);
         }
       }
     } else if (exceeded) {
@@ -740,7 +745,7 @@ export async function renderExplainContext(opts: {
     if (!indexingEnabled) {
       unavailableReason = "Indexing disabled in configuration (indexing.enabled = false).";
     } else {
-      const index = await readIndex(cachePath);
+      const index = await readIndex(cachePath, { hydrate: "calls" });
       if (!index) {
         unavailableReason = "No source index found. Run 'mp-sentinel indexing' to build it.";
       } else {

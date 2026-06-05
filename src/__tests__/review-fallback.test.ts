@@ -121,10 +121,12 @@ describe("runReview AI environment fallback", () => {
         startTime: performance.now(),
       });
 
-      // JSON stdout must not contain banner text before the JSON payload
+      // JSON stdout must not contain header/banner text or ANSI color codes
       expect(cap.stdout).not.toContain("MP SENTINEL");
+      expect(cap.stdout).not.toContain("MP Sentinel ");
       expect(cap.stdout).not.toContain("__  __");
       expect(cap.stdout).not.toContain("AI-Powered Code Review");
+      expect(cap.stdout).not.toContain("\x1b[");
 
       const report = JSON.parse(cap.stdout);
       expect(exitCode).toBe(0);
@@ -363,16 +365,17 @@ describe("runReview AI environment fallback", () => {
         startTime: performance.now(),
       });
 
-      // Markdown output must start with the report header, not the banner
+      // Markdown output must start with the report header, not the console header
       expect(cap.stdout.trimStart().startsWith("# MP Sentinel Review Report")).toBe(true);
       expect(cap.stdout).not.toContain("MP SENTINEL - Code Review");
+      expect(cap.stdout).not.toContain("\x1b[");
       expect(exitCode).toBe(0);
     } finally {
       cap.restore();
     }
   });
 
-  it("renders banner once in console dry-run output", async () => {
+  it("renders the console header once in dry-run output", async () => {
     const cwd = await makeTempDir();
     await mkdir(join(cwd, "src"), { recursive: true });
     await writeFile(join(cwd, "src", "g.ts"), "export const v = 1;\n");
@@ -406,13 +409,67 @@ describe("runReview AI environment fallback", () => {
         dryRun: true,
       });
 
-      // Banner should appear exactly once in console output
-      const bannerMatches = cap.stdout.match(/MP SENTINEL - Code Review/g);
-      expect(bannerMatches).not.toBeNull();
-      expect(bannerMatches).toHaveLength(1);
+      // Compact header should appear exactly once in console output
+      const headerMatches = cap.stdout.match(/MP Sentinel.*v\d/g);
+      expect(headerMatches).not.toBeNull();
+      expect(headerMatches).toHaveLength(1);
+      expect(cap.stdout).not.toContain("MP SENTINEL - Code Review");
       expect(exitCode).toBe(0);
     } finally {
       cap.restore();
+    }
+  });
+
+  it("emits no ANSI escapes anywhere in console output when NO_COLOR is set", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "h.ts"), 'export const risky = eval("1+1");\n');
+    process.chdir(cwd);
+
+    process.env.NO_COLOR = "1";
+
+    const config: ProjectConfig = {
+      cacheEnabled: false,
+      indexing: { enabled: false },
+      ai: {
+        maxFiles: 5,
+        maxDiffLines: 200,
+        maxCharsPerFile: 4000,
+      },
+    };
+
+    // NOT quiet mode — we want the full console UI, including warnings
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    let extra = "";
+    console.warn = (data?: unknown) => {
+      extra += `${String(data ?? "")}\n`;
+    };
+    console.error = (data?: unknown) => {
+      extra += `${String(data ?? "")}\n`;
+    };
+    const cap = captureOutput();
+    try {
+      const exitCode = await runReview({
+        values: reviewValues({ files: ["src/h.ts"] }),
+        commandPositionals: [],
+        config,
+        targetBranch: "origin/main",
+        maxConcurrency: 1,
+        startTime: performance.now(),
+        dryRun: true,
+      });
+
+      const combined = cap.stdout + cap.stderr + extra;
+      expect(combined).not.toContain("\x1b[");
+      // The report still rendered (header + findings content present)
+      expect(combined).toContain("MP Sentinel");
+      expect(combined).toContain("Findings");
+      expect(exitCode).toBe(1);
+    } finally {
+      cap.restore();
+      console.warn = originalWarn;
+      console.error = originalError;
     }
   });
 });

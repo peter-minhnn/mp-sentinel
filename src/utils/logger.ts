@@ -1,20 +1,12 @@
 /**
- * Console output utilities with colors
+ * Console output utilities with colors.
+ *
+ * Styling goes through the shared terminal UI theme (`paint`), which
+ * honors the NO_COLOR convention — no ANSI escapes are emitted when
+ * NO_COLOR is set to a non-empty value.
  */
 
-// ANSI color codes
-const colors = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  magenta: "\x1b[35m",
-  cyan: "\x1b[36m",
-  white: "\x1b[37m",
-} as const;
+import { paint, type AnsiStyle } from "./terminal-ui.js";
 
 let quietMode = false;
 
@@ -28,23 +20,24 @@ const write = (fn: (...args: Array<string>) => void, value: string): void => {
 };
 
 export const log = {
-  info: (msg: string) => write(console.log, `${colors.blue}ℹ${colors.reset} ${msg}`),
-  success: (msg: string) => write(console.log, `${colors.green}✅${colors.reset} ${msg}`),
-  warning: (msg: string) => write(console.warn, `${colors.yellow}⚠️${colors.reset}  ${msg}`),
-  error: (msg: string) => write(console.error, `${colors.red}❌${colors.reset} ${msg}`),
-  critical: (msg: string) =>
-    write(console.error, `${colors.red}${colors.bold}🚨${colors.reset} ${msg}`),
-  audit: (msg: string) => write(console.log, `${colors.cyan}🔍${colors.reset} ${msg}`),
-  skip: (msg: string) => write(console.log, `${colors.magenta}⏩${colors.reset} ${msg}`),
-  file: (msg: string) => write(console.log, `${colors.dim}   ${msg}${colors.reset}`),
-  debug: (msg: string) => write(console.log, `${colors.dim}🐛 ${msg}${colors.reset}`),
+  info: (msg: string) => write(console.log, `${paint("ℹ", "blue")} ${msg}`),
+  success: (msg: string) => write(console.log, `${paint("✅", "green")} ${msg}`),
+  warning: (msg: string) => write(console.warn, `${paint("⚠️", "yellow")}  ${msg}`),
+  error: (msg: string) => write(console.error, `${paint("❌", "red")} ${msg}`),
+  critical: (msg: string) => write(console.error, `${paint("🚨", "red", "bold")} ${msg}`),
+  audit: (msg: string) => write(console.log, `${paint("🔍", "cyan")} ${msg}`),
+  skip: (msg: string) => write(console.log, `${paint("⏩", "magenta")} ${msg}`),
+  file: (msg: string) => write(console.log, paint(`   ${msg}`, "dim")),
+  // Pre-styled line (caller owns indentation/colors) — still honors quiet mode
+  plain: (msg: string) => write(console.log, msg),
+  debug: (msg: string) => write(console.log, paint(`🐛 ${msg}`, "dim")),
 
   // Issue formatting
   issue: (severity: string, line: number, message: string) => {
     if (quietMode) return;
-    const color =
-      severity === "CRITICAL" ? colors.red : severity === "WARNING" ? colors.yellow : colors.blue;
-    console.log(`   ${color}[${severity}] Line ${line}: ${message}${colors.reset}`);
+    const style: AnsiStyle =
+      severity === "CRITICAL" ? "red" : severity === "WARNING" ? "yellow" : "blue";
+    console.log(`   ${paint(`[${severity}] Line ${line}: ${message}`, style)}`);
   },
 
   // Progress bar — adapts to terminal width to avoid overflow on narrow terminals
@@ -55,7 +48,7 @@ export const log = {
     const barLength = Math.max(10, Math.min(40, cols - label.length - 20));
     const filled = Math.round((current / total) * barLength);
     const bar = "█".repeat(filled) + "░".repeat(barLength - filled);
-    process.stdout.write(`\r${colors.cyan}${bar}${colors.reset} ${percent}% | ${label}`);
+    process.stdout.write(`\r${paint(bar, "cyan")} ${percent}% | ${label}`);
   },
 
   progressEnd: () => {
@@ -66,15 +59,15 @@ export const log = {
   // Divider
   divider: () => {
     if (quietMode) return;
-    console.log(`${colors.dim}${"─".repeat(50)}${colors.reset}`);
+    console.log(paint("─".repeat(50), "dim"));
   },
 
   // Header
   header: (title: string) => {
     if (quietMode) return;
     console.log();
-    console.log(`${colors.bold}${colors.cyan}🏗️  ${title}${colors.reset}`);
-    console.log(`${colors.dim}${"─".repeat(50)}${colors.reset}`);
+    console.log(paint(`🏗️  ${title}`, "cyan", "bold"));
+    console.log(paint("─".repeat(50), "dim"));
   },
 };
 

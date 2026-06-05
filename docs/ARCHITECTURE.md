@@ -90,6 +90,7 @@ Signals are deduplicated by `type + file + evidence` and respect the 12k charact
 - `indexing.enabled` controls whether `review` **consumes** the cache. Default: `false`.
 - The `indexing` command always rebuilds the cache regardless of config.
 - Cache location: `.mp-sentinel-cache/source-index.json` (configurable via `indexing.cachePath`).
+- Cache layout (schema 1.5+): `indexing.cacheMode: "light"` (default) keeps the core file compact and stores `codeSearch`/`calls` payloads in JSONL sidecars (`source-index.<id>.code.jsonl`, `.calls.jsonl`, `.lookup.json`) hydrated on demand; `"full"` inlines everything. Incremental validation is `indexing.validationMode: "fast"` by default (size+mtime first, hash only changed candidates); `"strict"` hashes every file.
 - Context generation respects `indexing.maxRelatedFiles` (default: 3) for imports/dependents per changed file.
 - Character budget: `INDEX_CONTEXT_MAX_CHARS = 12000` (hard limit, truncates with marker).
 
@@ -205,7 +206,9 @@ Configured in `.mp-sentinelrc.json`:
   "indexing": {
     "enabled": true,
     "maxRelatedFiles": 3,
-    "cachePath": ".mp-sentinel-cache/source-index.json"
+    "cachePath": ".mp-sentinel-cache/source-index.json",
+    "cacheMode": "light",
+    "validationMode": "fast"
   }
 }
 ```

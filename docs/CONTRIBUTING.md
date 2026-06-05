@@ -37,7 +37,7 @@ MP Sentinel is a high-performance CLI tool for AI-powered code auditing. It supp
 | Component | Technology |
 |-----------|------------|
 | Language | TypeScript 5.7+ |
-| Runtime | Node.js 24+ |
+| Runtime | Node.js 20.11+ |
 | Module System | ESM (ECMAScript Modules) |
 | Build Tool | tsup (esbuild-based) |
 | Package Manager | npm |

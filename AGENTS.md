@@ -23,8 +23,8 @@ Generated skills are **local bootstrap** — never committed to the repo. Before
    - `.agents/skills/mp-sentinel-antigravity-best-practices/SKILL.md` (Antigravity)
    - `.agents/rules/mp-sentinel-best-practices.md` (Generic)
    - `.cursor/rules/mp-sentinel-best-practices.mdc` (Cursor)
-   - `.windsurf/rules/mp-sentinel-best-practices.md` (Windsurf)
-   - `.clinerules/mp-sentinel-best-practices.md` (Cline)
+   - `.windsurf/skills/mp-sentinel-windsurf-best-practices/SKILL.md` (Windsurf)
+   - `.cline/skills/mp-sentinel-cline-best-practices/SKILL.md` (Cline)
 3. **Read local agent instructions**: `AGENTS.md` (this file), `CLAUDE.md`.
 4. **Prefer source index commands** before broad repo scans when dependency context is needed:
    - `mp-sentinel indexing --health --index-format json`
@@ -73,7 +73,7 @@ Both modes share the same AI pipeline. Do not add mode-specific logic into `ai.t
 
 ## 3. TypeScript / ESM
 
-- **Runtime**: Node ≥ 24, ESM (`"type": "module"` in package.json).
+- **Runtime**: Node ≥ 20.11, ESM (`"type": "module"` in package.json).
 - All internal imports **must** include the `.js` extension (NodeNext resolution).
 - Node built-ins **must** use the `node:` prefix (e.g., `node:fs`, `node:path`).
 - Prefer `import type` for type-only imports (`verbatimModuleSyntax` is enforced).
@@ -122,9 +122,9 @@ The command layer (not adapters) prepends an HTML comment to every generated fil
 | `claude` | `.claude/skills/<project>-best-practices/SKILL.md` + `references/` |
 | `cursor` | `.cursor/rules/<project>-best-practices.mdc` |
 | `codex` | `.agents/skills/<project>-codex-best-practices/SKILL.md` |
-| `windsurf` | `.windsurf/rules/<project>-best-practices.md` |
+| `windsurf` | `.windsurf/skills/<project>-windsurf-best-practices/SKILL.md` |
 | `antigravity` | `.agents/skills/<project>-antigravity-best-practices/SKILL.md` |
-| `cline` | `.clinerules/<project>-best-practices.md` |
+| `cline` | `.cline/skills/<project>-cline-best-practices/SKILL.md` |
 | `generic` | `.agents/rules/<project>-best-practices.md` |
 
 ### Adding a new adapter

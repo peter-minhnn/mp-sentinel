@@ -183,7 +183,7 @@ describe("adapter registry", () => {
 describe("detectAdapters", () => {
   it("detects claude when .claude/ exists", async () => {
     const cwd = await makeTempDir();
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
     const detected = detectAdapters(cwd);
     expect(detected.some((a) => a.id === "claude")).toBe(true);
   });
@@ -435,15 +435,18 @@ describe("Cursor adapter generate()", () => {
     expect(files[0]?.outputPath.endsWith(".mdc")).toBe(true);
     const content = files[0]!.content;
     expect(content).toContain("Required Agent Workflow");
-    expect(content).toContain("Codebase Map");
-    expect(content).toContain("Testing Map");
-    expect(content).toContain("Dependencies");
-    expect(content).toContain("Public API");
+    expect(content).toContain("## Overview");
+    expect(content).toContain("Clean Code Policy");
+    expect(content).toContain("File Size Policy");
+    // Concise rule files omit the bulky maps (skill-folder material)
+    expect(content).not.toContain("## Codebase Map");
+    expect(content).not.toContain("## Testing Map");
+    expect(content).not.toContain("## Public API Surface");
   });
 });
 
 describe("Cline adapter generate()", () => {
-  it("creates a single .md file under .clinerules/", async () => {
+  it("creates a skill folder under .cline/skills/", async () => {
     const cwd = await makeTempDir();
     const adapter = getAdapter("cline")!;
     const files = await adapter.generate(null, {
@@ -451,9 +454,11 @@ describe("Cline adapter generate()", () => {
       projectName: "my-app",
       force: false,
     });
-    expect(files.length).toBe(1);
-    expect(files[0]?.outputPath).toContain(".clinerules");
-    expect(files[0]?.outputPath.endsWith(".md")).toBe(true);
+    const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"));
+    expect(skillMd).toBeDefined();
+    expect(skillMd?.outputPath).toContain(".cline/skills/my-app-cline-best-practices");
+    // Full progressive reference set ships alongside SKILL.md
+    expect(files.filter((f) => f.outputPath.includes("references/")).length).toBe(10);
   });
 });
 
@@ -1594,7 +1599,7 @@ function makeMinimalIndex(overrides?: Partial<ProjectManifest>): SourceIndex {
     ecosystem: "node",
     packageVersion: "1.0.0",
     packageManager: "npm",
-    nodeEngine: ">=24.0.0",
+    nodeEngine: ">=20.11.0",
     dependencies: { typescript: "5.0.0" },
     devDependencies: {},
     detectedFrameworks: [],
@@ -2723,7 +2728,7 @@ describe("quality gate: reference routing", () => {
     expect(refCheck).toHaveLength(0);
   });
 
-  it("single-file adapter output includes Reference Routing section", async () => {
+  it("single-file adapter output is concise (no Reference Routing table)", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
     const index = await buildSourceIndex(
@@ -2745,7 +2750,9 @@ describe("quality gate: reference routing", () => {
       force: false,
       knowledgeBase: kb,
     });
-    expect(files[0]!.content).toContain("## Reference Routing");
+    // Concise rule files omit the routing table (no references/ directory ships)
+    expect(files[0]!.content).not.toContain("## Reference Routing");
+    expect(files[0]!.content).toContain("## Required Agent Workflow");
 
     const report = validateSkillQuality(files, "cursor", index);
     expect(report.errors).toBe(0);
@@ -4276,7 +4283,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     // Use a richer fixture so quality gate passes (zero errors)
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4340,7 +4347,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("stale skills return status 'action-required' and exit 1", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4392,7 +4399,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
     // Detect both claude and codex so they both get current skills
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4548,7 +4555,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     pkg.scripts = scripts;
     await writeFile(join(cwd, "package.json"), JSON.stringify(pkg, null, 2));
 
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     // Build index and write up-to-date skills so recommendedCommands stays empty,
     // exercising the "(none - no automated commands recommended)" rendering path.
@@ -4660,7 +4667,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     scripts["agent:skills:refresh"] = "node scripts/agent-skills-refresh.mjs";
     pkg.scripts = scripts;
     await writeFile(join(cwd, "package.json"), JSON.stringify(pkg, null, 2));
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     // Build index
     const indexConfig = buildIndexConfig();
@@ -4719,7 +4726,7 @@ describe("runCreateSkillsCommand --doctor", () => {
     const cwd = await makeTempDir();
     // Use makeMinimalProject which lacks agent:skills:refresh, then add .claude/
     await makeMinimalProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4773,7 +4780,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor healthy project has empty recommendedCommands", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4831,7 +4838,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor recommendedCommands is deduped and stable", async () => {
     const cwd = await makeTempDir();
     await makeMinimalProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
     // Create .agents/ so codex is also detected
     await mkdir(join(cwd, ".agents"), { recursive: true });
 
@@ -4866,7 +4873,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--all-agents --dry-run reports zero risky-unicode quality errors", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4906,7 +4913,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("generated skills for all agents pass risky-unicode quality check", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
     const index = await buildSourceIndex(cwd, indexConfig, true);
@@ -4970,7 +4977,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json groups legacy files by agent in recommendedActions", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
     await mkdir(join(cwd, ".clinerules"), { recursive: true });
     await mkdir(join(cwd, ".cursor"), { recursive: true });
 
@@ -5054,7 +5061,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json legacyFiles keeps all entries while recommendedActions dedupes", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
     await mkdir(join(cwd, ".clinerules"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
@@ -5142,7 +5149,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor warnItems group legacy advisories by agent", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
     await mkdir(join(cwd, ".clinerules"), { recursive: true });
 
     const indexConfig = buildIndexConfig();
@@ -5347,7 +5354,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor console output renders AI enrichment cache section ASCII-only", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     // Create the cache directory with some files
     const cacheDir = join(cwd, ".mp-sentinel-cache", "ai-enrichment");
@@ -5630,7 +5637,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor disabled AI enrichment has status=disabled and does not affect exit code", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     // Build index and write up-to-date skills (healthy project)
     const indexConfig = buildIndexConfig();
@@ -6161,7 +6168,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json includes parser telemetry for healthy index with recovered files", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectFallbackParserModes(cwd);
@@ -6201,7 +6208,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json returns action-required and exit 1 for hard parse errors", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectHardParseErrors(cwd);
@@ -6240,7 +6247,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json includes chunk aggregate fields when chunked files exist", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectChunkedParserModes(cwd);
@@ -6285,7 +6292,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("--doctor --format json omits chunk aggregate fields when no chunked files exist", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     // No chunk injection — all files use tree-sitter
@@ -6349,7 +6356,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("recovered parser files create [warn] advisory and keep exit 0 when no fail items", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectFallbackParserModes(cwd);
@@ -6388,7 +6395,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("hard parse errors create [fail] and cause action-required with exit 1", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectHardParseErrors(cwd);
@@ -6526,7 +6533,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("recovered file warning recommends --recovered drilldown command", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectFallbackParserModes(cwd);
@@ -6568,7 +6575,7 @@ describe("runCreateSkillsCommand --doctor", () => {
   it("hard parse error failure recommends --parse-errors drilldown command", async () => {
     const cwd = await makeTempDir();
     await makeCliToolingProject(cwd);
-    await mkdir(join(cwd, ".claude"), { recursive: true });
+    await mkdir(join(cwd, ".claude", "skills"), { recursive: true });
 
     await buildSourceIndex(cwd, defaultIndexConfig, true);
     await injectHardParseErrors(cwd);
@@ -6688,5 +6695,71 @@ describe("adapter spec path contract", () => {
     const lines = skillMd.content.split("\n");
     const firstNonEmpty = lines.find((l) => l.trim().length > 0);
     expect(firstNonEmpty).toBe("---");
+  });
+});
+
+// -- Fresh-project first generation (no pre-existing agent dirs) --------------
+
+describe("fresh-project first generation", () => {
+  it("dry-run on a fresh project creates no directories", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+
+    const cap = captureStdout();
+    const exitCode = await runCreateSkillsCommand(
+      createSkillsValues({
+        agent: "claude",
+        "create-skills-format": "json",
+        "create-skills-dry-run": true,
+      }),
+      cwd,
+    );
+    cap.restore();
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(cwd, ".claude"))).toBe(false);
+  });
+
+  it("first generate already lists .claude/skills in the workflow and --check is immediately ok", async () => {
+    const cwd = await makeTempDir();
+    await makeMinimalProject(cwd);
+    await writeFile(join(cwd, "AGENTS.md"), "# project rules\n");
+
+    // Normal generate on a project with NO agent dirs at all
+    let cap = captureStdout();
+    const genExit = await runCreateSkillsCommand(
+      createSkillsValues({
+        agent: "claude",
+        "create-skills-force": true,
+        "create-skills-format": "json",
+      }),
+      cwd,
+    );
+    cap.restore();
+    expect(genExit).toBe(0);
+
+    const skillMd = await readFile(
+      join(cwd, ".claude", "skills", "fixture-best-practices", "SKILL.md"),
+      "utf-8",
+    );
+    const line = skillMd.split("\n").find((l) => l.includes("Read local agent instructions"));
+    expect(line).toBeDefined();
+    expect(line).toContain("AGENTS.md");
+    expect(line).toContain(".claude/skills");
+
+    // --check immediately after the first generation: content/hash agree
+    cap = captureStdout();
+    const checkExit = await runCreateSkillsCommand(
+      createSkillsValues({
+        agent: "claude",
+        "create-skills-check": true,
+        "create-skills-format": "json",
+      }),
+      cwd,
+    );
+    cap.restore();
+    const parsed = JSON.parse(cap.stdout);
+    expect(parsed.status).toBe("ok");
+    expect(checkExit).toBe(0);
   });
 });

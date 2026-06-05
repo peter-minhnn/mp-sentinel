@@ -8,7 +8,6 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { parse as parseToml } from "smol-toml";
 import { log } from "../../../utils/logger.js";
 import type { ManifestReader } from "./types.js";
 import type { ProjectManifest } from "../../../types/index.js";
@@ -140,6 +139,9 @@ export const rustReader: ManifestReader = {
     const cargoPath = resolve(cwd, "Cargo.toml");
     try {
       const content = await readFile(cargoPath, "utf-8");
+      // Lazy import: keeps smol-toml out of dist/lib.js for consumers that
+      // never read Python/Rust manifests.
+      const { parse: parseToml } = await import("smol-toml");
       const parsed = parseToml(content) as Record<string, unknown>;
       cargo = extractFromCargo(parsed);
     } catch (error) {

@@ -5,8 +5,7 @@
  * When index.insights is absent, returns a minimal KB with empty arrays.
  */
 
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { detectInstructionFiles } from "./instruction-files.js";
 import type {
   SourceIndex,
   SourceIndexFile,
@@ -333,28 +332,9 @@ function buildRiskMap(
 
 // ── Main builder ───────────────────────────────────────────────────────────
 
-const KNOWN_INSTRUCTION_FILES = [
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".cursor/rules",
-  ".clinerules",
-  ".agents/rules",
-  ".agents/skills",
-  ".windsurf/rules",
-  ".codex/rules",
-  ".antigravity/rules",
-];
-
-function detectInstructionFiles(projectRoot: string): string[] {
-  const found: string[] = [];
-  for (const relPath of KNOWN_INSTRUCTION_FILES) {
-    const absPath = join(projectRoot, relPath);
-    if (existsSync(absPath)) {
-      found.push(relPath);
-    }
-  }
-  return found;
-}
+// Shared with metadata.ts fidelity signals — see instruction-files.ts.
+// Legacy generated locations (.windsurf/rules, .roo/rules, .clinerules)
+// are included only when they hold user-authored (non-generated) content.
 
 export function buildSkillKnowledgeBase(
   index: SourceIndex,

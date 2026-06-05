@@ -65,13 +65,8 @@ const BANNER_LINES = [
   "",
 ];
 
-/** Return the ASCII banner as a string (version line appended). */
+/** Return the ASCII banner as a string (version line appended). Used by --help only. */
 export const bannerText = (): string => {
   const version = getToolVersion();
   return [...BANNER_LINES, `  v${version} - AI-Powered Code Review`, ""].join("\n");
-};
-
-/** Print the ASCII banner to console. */
-export const printBanner = (): void => {
-  console.log(bannerText());
 };

@@ -9,6 +9,10 @@
  */
 
 import type { LanguageProfile } from "../../../types/index.js";
+import { requirementsSatisfied, type VersionRequirement } from "./version-gate.js";
+
+export { resolveSafeMajor, requirementSatisfied, requirementsSatisfied } from "./version-gate.js";
+export type { VersionRequirement } from "./version-gate.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +33,13 @@ export interface RulePackRule {
    * migrated yet -- rules without an id can't be selectively disabled.
    */
   id?: string;
+  /**
+   * Conservative dependency-version constraints (internal). The rule is
+   * emitted only when every constraint's major version is safely
+   * identifiable from package.json and within range. Unknown/broad ranges
+   * drop the rule — see version-gate.ts.
+   */
+  requires?: VersionRequirement[];
 }
 
 /**
@@ -66,6 +77,12 @@ export interface FileEvaluatorResult {
  */
 export interface FileEvaluator {
   ruleId: string;
+  /**
+   * Conservative dependency-version constraints (internal). The evaluator
+   * runs only when every constraint's major version is safely identifiable
+   * from the rule-pack context's dependency map and within range.
+   */
+  requires?: VersionRequirement[];
   evaluate: (params: {
     filePath: string;
     content: string;
@@ -150,9 +167,21 @@ export function selectActiveRulePacks(
   ctx: RulePackContext,
   disableRules?: readonly string[],
 ): RulePackSelection {
-  const packs = ALL_PACKS.filter((p) => p.when(ctx));
-  const rawRules = packs.flatMap((p) => p.rules);
+  const activePacks = ALL_PACKS.filter((p) => p.when(ctx));
+  // Version gating: drop rules whose dependency-major constraints are not
+  // safely satisfied by the manifest (conservative — unknown drops the rule).
+  const rawRules = activePacks
+    .flatMap((p) => p.rules)
+    .filter((r) => requirementsSatisfied(r.requires, ctx.deps));
   const allRules = applyDisabledRules(rawRules, disableRules);
+  const allowed = new Set(allRules);
+  // Return shallow pack copies whose rule lists honor version gating and
+  // disableRules, so renderers iterating per-pack rules can't leak dropped
+  // rules. Module-level pack singletons are never mutated.
+  const packs = activePacks.map((p) => ({
+    ...p,
+    rules: p.rules.filter((r) => allowed.has(r)),
+  }));
   const allowedIds = new Set(allRules.map((r) => r.id).filter((id): id is string => !!id));
   const disabledRuleIds = (disableRules ?? []).filter((id) =>
     rawRules.some((r) => r.id === id && !allowedIds.has(id)),

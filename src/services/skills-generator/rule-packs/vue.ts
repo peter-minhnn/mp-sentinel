@@ -16,6 +16,8 @@ export const vueRules: RulePack = {
   rules: [
     {
       kind: "must",
+      id: "vue/script-setup",
+      requires: [{ dep: "vue", minMajor: 3 }],
       text: "Use `<script setup>` syntax for Single File Components. It provides better TypeScript inference and smaller bundle size.",
     },
     {
@@ -24,6 +26,8 @@ export const vueRules: RulePack = {
     },
     {
       kind: "should",
+      id: "vue/define-props-emits",
+      requires: [{ dep: "vue", minMajor: 3 }],
       text: "Use `defineProps` and `defineEmits` with TypeScript generics for type-safe component interfaces.",
     },
     {
@@ -36,6 +40,8 @@ export const vueRules: RulePack = {
     },
     {
       kind: "avoid",
+      id: "vue/no-options-api",
+      requires: [{ dep: "vue", minMajor: 3 }],
       text: "Do NOT use Options API for new components when Composition API with `<script setup>` is available.",
     },
   ],

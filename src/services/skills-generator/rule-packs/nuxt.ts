@@ -15,34 +15,50 @@ export const nuxtRules: RulePack = {
   rules: [
     {
       kind: "must",
+      id: "nuxt/define-page-meta",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Use `definePageMeta()` in page components for route metadata (layout, middleware, title, etc.).",
     },
     {
       kind: "must",
+      id: "nuxt/use-fetch",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Use `useFetch()` or `useAsyncData()` for data fetching in pages and components — never `fetch()` directly for SSR-safe data.",
     },
     {
       kind: "must",
+      id: "nuxt/server-directory",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Place server-only logic in `server/` directory (API routes, middleware, plugins). Client code must never import from `server/`.",
     },
     {
       kind: "must",
+      id: "nuxt/navigate-to",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Use `navigateTo()` for programmatic navigation, `<NuxtLink>` for declarative links — never `window.location`.",
     },
     {
       kind: "should",
+      id: "nuxt/runtime-config",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Use `useRuntimeConfig()` for environment variables and runtime configuration instead of `process.env` directly.",
     },
     {
       kind: "should",
+      id: "nuxt/auto-import-dirs",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Keep layouts in `layouts/` and composables in `composables/` — Nuxt auto-imports both directories.",
     },
     {
       kind: "should",
+      id: "nuxt/router-options",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Use `app/router.options.ts` for custom route rules (middleware, transitions, scroll behavior) rather than inline page options.",
     },
     {
       kind: "avoid",
+      id: "nuxt/no-manual-auto-imports",
+      requires: [{ dep: "nuxt", minMajor: 3 }],
       text: "Do NOT manually import auto-imported Vue/Nuxt composables (`useState`, `useFetch`, `ref`, `computed`, etc.) — Nuxt handles this automatically.",
     },
     {

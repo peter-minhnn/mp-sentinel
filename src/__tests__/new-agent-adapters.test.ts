@@ -93,7 +93,7 @@ describe("Phase 4.2 — adapter output paths", () => {
       `${root}/.continue/rules/demo-best-practices.md`,
     );
     expect(find("roo")?.getDefaultOutput(root, "demo")).toBe(
-      `${root}/.roo/rules/demo-best-practices.md`,
+      `${root}/.roo/skills/demo-roo-best-practices`,
     );
     expect(find("copilot")?.getDefaultOutput(root, "demo")).toBe(
       `${root}/.github/copilot-instructions.md`,

@@ -32,9 +32,12 @@ import { defaultIndexingConcurrency, parallelMap } from "../services/source-inde
 import {
   readIndex,
   writeIndex,
+  hydrateIndex,
+  getSidecarStatus,
   getFilesToIndex,
   calculateSHA256,
 } from "../services/source-index/storage.js";
+import type { IndexHydration } from "../services/source-index/storage.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
 import { buildIndexInsights } from "../services/skills-generator/insights.js";
 import type { CLIValues } from "../cli/args.js";
@@ -114,7 +117,8 @@ const getIndexParseErrorRate = (index: SourceIndex): number => {
  */
 export function getIndexingConfig(config: {
   indexing?: Partial<IndexingConfig>;
-}): Required<Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">> {
+}): Required<Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">> &
+  Pick<IndexingConfig, "cacheMode" | "validationMode"> {
   const indexing = config.indexing;
 
   return {
@@ -122,6 +126,8 @@ export function getIndexingConfig(config: {
     languages: indexing?.languages ?? DEFAULT_INDEXING_CONFIG.languages,
     cachePath: indexing?.cachePath ?? DEFAULT_INDEXING_CONFIG.cachePath,
     maxFileSize: indexing?.maxFileSize ?? DEFAULT_INDEXING_CONFIG.maxFileSize,
+    ...(indexing?.cacheMode && { cacheMode: indexing.cacheMode }),
+    ...(indexing?.validationMode && { validationMode: indexing.validationMode }),
   };
 }
 
@@ -130,6 +136,17 @@ export function getIndexingConfig(config: {
  */
 async function readFileContent(path: string): Promise<string> {
   return await readFile(path, "utf-8");
+}
+
+/**
+ * Get file size in bytes (0 on error — caller falls back to hashing)
+ */
+async function getFileSize(path: string): Promise<number> {
+  try {
+    return (await import("node:fs/promises")).stat(path).then((stat) => stat.size);
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -150,8 +167,15 @@ export async function buildSourceIndex(
   projectRoot: string,
   indexingConfig: Required<
     Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
-  >,
+  > &
+    Pick<IndexingConfig, "cacheMode" | "validationMode">,
   force: boolean = false,
+  /**
+   * How much sidecar payload to hydrate when a valid light cache is
+   * returned as-is. Queries that don't touch calls/codeSearch pass
+   * "none"/"calls" to skip loading megabytes they won't read.
+   */
+  cacheHydration: IndexHydration = "full",
 ): Promise<SourceIndex | null> {
   const startTime = performance.now();
 
@@ -206,7 +230,7 @@ export async function buildSourceIndex(
   let manifestChanged = false;
 
   if (!force && existsSync(cachePath)) {
-    existingIndex = await readIndex(cachePath);
+    existingIndex = await readIndex(cachePath, { hydrate: "none" });
     if (existingIndex && getIndexParseErrorRate(existingIndex) > MAX_PARSE_ERROR_RATE) {
       log.warning("Existing source index has too many parse errors. Rebuilding full cache.");
       filesToIndex = allCandidateFiles;
@@ -218,6 +242,11 @@ export async function buildSourceIndex(
         allCandidateFiles,
         readFileContent,
         getFileMtime,
+        {
+          mode: indexingConfig.validationMode ?? "fast",
+          getFileSize,
+          index: existingIndex,
+        },
       );
 
       // Manifest hash check: old indexes without manifestHash are treated as manifest-stale
@@ -243,6 +272,7 @@ export async function buildSourceIndex(
         manifestChanged = true;
       } else if (validity.valid && !manifestChanged) {
         log.info("Cache is up-to-date, skipping re-index");
+        await hydrateIndex(existingIndex!, cachePath, cacheHydration);
         return existingIndex!;
       } else {
         filesToIndex = toIndex;
@@ -254,6 +284,9 @@ export async function buildSourceIndex(
         // rebuild dependency graph with new manifest/tsconfig below.
         log.info("Manifest-only change — reusing cached parsed files, rebuilding graph");
         filesToIndex = [];
+        if (existingIndex) {
+          await hydrateIndex(existingIndex, cachePath, "full");
+        }
         cachedFiles = existingIndex?.files ?? [];
       }
 
@@ -381,7 +414,17 @@ export async function buildSourceIndex(
       if (!parsed) continue;
       if (parsed.parseErrors && parsed.parseErrors.length > 0) {
         const existing = existingFileMap.get(parsed.path);
-        if (existing) {
+        // Fall back only for TRANSIENT flakes: the cached entry must be
+        // healthy AND describe the same content (same sha). If the file
+        // actually changed — or the old entry also failed parsing — keep
+        // the fresh parse: its sha/mtime reflect the current file, while a
+        // stale zombie entry would flag --health "source files changed"
+        // forever.
+        const isTransientFlake =
+          existing &&
+          existing.sha256 === parsed.sha256 &&
+          (!existing.parseErrors || existing.parseErrors.length === 0);
+        if (isTransientFlake) {
           log.warning(
             `Incremental re-parse failed for ${parsed.path} — keeping existing cached entry`,
           );
@@ -446,15 +489,22 @@ export async function buildSourceIndex(
     importEdges += importsFrom.length;
   }
 
-  // Build importedBy reverse relationships
+  // Build importedBy reverse relationships (one pass over importsFrom —
+  // the old per-file scan was O(files^2) and dominated large rebuilds)
+  const importedByMap = new Map<string, string[]>();
   for (const file of allFiles) {
-    const importedBy: string[] = [];
-    for (const other of allFiles) {
-      if (other.importsFrom?.includes(file.path)) {
-        importedBy.push(other.path);
+    for (const target of file.importsFrom ?? []) {
+      const bucket = importedByMap.get(target);
+      if (bucket) {
+        bucket.push(file.path);
+      } else {
+        importedByMap.set(target, [file.path]);
       }
     }
-    if (importedBy.length > 0) {
+  }
+  for (const file of allFiles) {
+    const importedBy = importedByMap.get(file.path);
+    if (importedBy && importedBy.length > 0) {
       file.importedBy = importedBy;
     }
   }
@@ -537,7 +587,7 @@ export async function buildSourceIndex(
 
   // Write cache
   log.info("Writing source index cache...");
-  await writeIndex(index, cachePath);
+  await writeIndex(index, cachePath, { cacheMode: indexingConfig.cacheMode ?? "light" });
 
   const duration = performance.now() - startTime;
   log.info(`Indexing complete in ${duration.toFixed(0)}ms`);
@@ -668,6 +718,12 @@ async function handleHealth(
     }
   }
 
+  // ── Sidecar integrity (schema 1.5 light cache) ─────────────────────────────
+  const sidecarStatus = await getSidecarStatus(index, cachePath);
+  if (!sidecarStatus.sidecarsValid) {
+    staleReasons.push("sidecar files missing");
+  }
+
   // Deduplicate stale reasons
   const uniqueReasons = [...new Set(staleReasons)];
 
@@ -715,6 +771,11 @@ async function handleHealth(
     ...(index.gitHeadSha && { gitHeadSha: index.gitHeadSha }),
     ...(currentGitHeadSha && { currentGitHeadSha }),
     ...(gitHeadDrift && { gitHeadDrift: true }),
+    cacheMode: sidecarStatus.cacheMode,
+    sidecarsPresent: sidecarStatus.sidecarsPresent,
+    sidecarsValid: sidecarStatus.sidecarsValid,
+    coreBytes: sidecarStatus.coreBytes,
+    sidecarBytes: sidecarStatus.sidecarBytes,
   };
 
   if (format === "json") {
@@ -725,6 +786,9 @@ async function handleHealth(
     console.log(`  Schema version:  ${index.schemaVersion}`);
     console.log(`  Total files:     ${index.files.length}`);
     console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
+    console.log(
+      `  Cache layout:    ${sidecarStatus.cacheMode} (core ${sidecarStatus.coreBytes} B, sidecars ${sidecarStatus.sidecarBytes} B${sidecarStatus.sidecarsValid ? "" : ", MISSING SIDECARS"})`,
+    );
     console.log(`  Recovered files:  ${recoveredFiles}`);
     if (
       parserModeBreakdown["chunked-tree-sitter"] ||
@@ -789,6 +853,7 @@ export async function runIndexingCommand(
     agentContext?: string;
     recovered?: boolean;
     parseErrors?: boolean;
+    fullIndex?: boolean;
   },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
@@ -919,10 +984,23 @@ export async function runIndexingCommand(
       enabled: true,
     };
 
+    // Queries hydrate only the sidecar payload they actually read:
+    // symbol/import/code work from the compact core (code search streams its
+    // sidecar); agent context needs call edges for incoming-call matching.
+    const hydration: IndexHydration = values.agentContext
+      ? "calls"
+      : isReadOnlyQuery
+        ? "none"
+        : values.fullIndex
+          ? "full"
+          : "none";
+
+    const cachePath = resolve(projectRoot, indexingConfig.cachePath);
     const index = await buildSourceIndex(
       projectRoot,
       indexingConfig,
       isReadOnlyQuery ? false : values.force,
+      hydration,
     );
 
     // Handle --find-symbol query
@@ -937,7 +1015,7 @@ export async function runIndexingCommand(
 
     // Handle --find-code query
     if (values.findCode) {
-      return handleFindCode(values.findCode, index, format);
+      return await handleFindCode(values.findCode, index, format, cachePath);
     }
 
     // Handle --agent-context query
@@ -952,12 +1030,20 @@ export async function runIndexingCommand(
 
     // Handle --stats option
     if (values.stats) {
-      return handleStats(index, format);
+      return await handleStats(index, format, cachePath);
     }
 
     if (format === "json") {
       if (index) {
-        console.log(JSON.stringify(index, null, 2));
+        // Light mode prints the compact core + sidecar metadata by default;
+        // --full-index hydrates sidecar payloads into the JSON export.
+        if (values.fullIndex) {
+          await hydrateIndex(index, cachePath, "full");
+          console.log(JSON.stringify(index, null, 2));
+        } else {
+          const coreView = (await readIndex(cachePath, { hydrate: "none" })) ?? index;
+          console.log(JSON.stringify(coreView, null, 2));
+        }
       } else {
         // Indexing failed or returned null for other reasons (shouldn't happen with new semantics)
         console.log(JSON.stringify({ status: "NO_INDEX" }, null, 2));

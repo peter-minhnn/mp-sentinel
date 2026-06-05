@@ -398,22 +398,80 @@ describe("printConsoleReport — metadata display", () => {
     expect(calls).toContain("CRITICAL");
   });
 
-  it("renders summary with icons and table layout", () => {
+  it("renders the modern compact header and overview section", () => {
     const report = makeReport();
     printConsoleReport(report);
 
     const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
 
-    // Banner is printed (new ASCII banner with readable text)
-    expect(calls).toContain("MP SENTINEL");
-    // Summary header
-    expect(calls).toContain("📊 Review Summary");
-    // Key metrics with icons
-    expect(calls).toContain("✅ Passed");
-    expect(calls).toContain("❌ Failed");
-    expect(calls).toContain("🚨 Critical");
-    expect(calls).toContain("⏱️  Duration");
-    expect(calls).toContain("🔢 Diff lines");
+    // Compact header with product name + version (no large ASCII banner)
+    expect(calls).toContain("MP Sentinel");
+    expect(calls).toMatch(/MP Sentinel.*v\d/);
+    expect(calls).not.toContain("MP SENTINEL - Code Review");
+    // Overview section with key/value rows
+    expect(calls).toContain("Overview");
+    expect(calls).toContain("Status");
+    expect(calls).toContain("FAIL");
+    expect(calls).toContain("Target");
+    expect(calls).toContain("AI review");
+    expect(calls).toContain("audited");
+    expect(calls).toContain("critical");
+    expect(calls).toContain("Diff lines");
+    expect(calls).toContain("Duration");
+  });
+
+  it("renders token usage and estimated cost when available", () => {
+    const report = makeReport({
+      summary: {
+        totalFiles: 1,
+        auditedFiles: 1,
+        passedFiles: 0,
+        failedFiles: 1,
+        criticalIssues: 1,
+        warningIssues: 0,
+        infoIssues: 0,
+        durationMs: 100,
+        totalChangedLines: 10,
+        tokenUsage: {
+          inputTokens: 1234,
+          outputTokens: 567,
+          callCount: 2,
+          estimatedCostUsd: 0.0123,
+        },
+      },
+    });
+    printConsoleReport(report);
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).toContain("Tokens");
+    expect(calls).toContain("in=1,234");
+    expect(calls).toContain("out=567");
+    expect(calls).toContain("2 calls");
+    expect(calls).toContain("Est. cost");
+    expect(calls).toContain("$0.0123");
+  });
+
+  it("renders skipped and runtime-error sections only when present", () => {
+    const cleanReport = makeReport();
+    printConsoleReport(cleanReport);
+    let calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).not.toContain("Skipped");
+
+    (console.log as jest.Mock).mockClear();
+    (console.error as jest.Mock).mockClear();
+
+    const report = makeReport({
+      skipped: [{ path: "vendor/min.js", reason: "minified file" }],
+      errors: ["provider exploded"],
+    });
+    printConsoleReport(report);
+
+    calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    const errCalls = (console.error as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).toContain("Skipped (1)");
+    expect(calls).toContain("vendor/min.js");
+    expect(calls).toContain("minified file");
+    expect(errCalls).toContain("Runtime errors (1)");
   });
 
   it("sorts findings by severity then file path", () => {
@@ -448,5 +506,64 @@ describe("printConsoleReport — metadata display", () => {
     const criticalIdx = calls.indexOf("critical in z");
     const warningIdx = calls.indexOf("warning in a");
     expect(criticalIdx).toBeLessThan(warningIdx);
+  });
+});
+
+// ── Color behavior tests ───────────────────────────────────────────────────
+
+describe("printConsoleReport — color behavior", () => {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  const originalNoColor = process.env["NO_COLOR"];
+
+  beforeEach(() => {
+    console.log = jest.fn();
+    console.error = jest.fn();
+    console.warn = jest.fn();
+  });
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.error = originalError;
+    console.warn = originalWarn;
+    if (originalNoColor === undefined) {
+      delete process.env["NO_COLOR"];
+    } else {
+      process.env["NO_COLOR"] = originalNoColor;
+    }
+  });
+
+  const reportWithFinding = (): ReviewReport =>
+    makeReport({
+      results: [
+        {
+          filePath: "src/x.ts",
+          duration: 10,
+          result: {
+            status: "FAIL",
+            issues: [{ line: 1, severity: "CRITICAL", message: "boom" }],
+          },
+        },
+      ],
+    });
+
+  it("emits ANSI escape codes by default", () => {
+    delete process.env["NO_COLOR"];
+    printConsoleReport(reportWithFinding());
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).toContain("\x1b[");
+  });
+
+  it("emits no ANSI escape codes when NO_COLOR is set", () => {
+    process.env["NO_COLOR"] = "1";
+    printConsoleReport(reportWithFinding());
+
+    const calls = (console.log as jest.Mock).mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(calls).not.toContain("\x1b[");
+    // Content is still present, just unstyled
+    expect(calls).toContain("MP Sentinel");
+    expect(calls).toContain("boom");
   });
 });

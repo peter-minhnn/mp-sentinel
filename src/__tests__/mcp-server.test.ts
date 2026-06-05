@@ -146,6 +146,64 @@ describe("mcp-server service handlers", () => {
     expect(result.contextPreview).toBeTruthy();
   });
 
+  it("getExplainContext hydrates call edges from light-cache sidecars (caller intelligence)", async () => {
+    await writeMinimalConfig(tempDir);
+    const { writeIndex } = await import("../services/source-index/storage.js");
+    const cachePath = join(tempDir, DEFAULT_CACHE_REL);
+    const lightIndex = {
+      schemaVersion: "1.5",
+      generatedAt: new Date().toISOString(),
+      toolVersion: "test",
+      project: {
+        packageName: "test-project",
+        packageVersion: "1.0.0",
+        detectedFrameworks: [],
+        dependencies: {},
+        devDependencies: {},
+      },
+      files: [
+        {
+          path: "src/core.ts",
+          language: "typescript",
+          sha256: "a",
+          sizeBytes: 10,
+          mtimeMs: 0,
+          imports: [],
+          exports: [{ kind: "named", names: ["fn"], line: 1 }],
+          symbols: [{ name: "fn", type: "function", line: 1, column: 0 }],
+        },
+        {
+          path: "src/caller.ts",
+          language: "typescript",
+          sha256: "b",
+          sizeBytes: 10,
+          mtimeMs: 0,
+          imports: [],
+          exports: [],
+          symbols: [{ name: "useIt", type: "function", line: 2, column: 0 }],
+          importsFrom: ["src/core.ts"],
+          calls: [{ callee: "fn", line: 3, column: 2, inSymbol: "useIt" }],
+        },
+      ],
+      stats: { totalFiles: 2, indexedFiles: 2, skippedFiles: 0, parseErrors: 0 },
+    };
+    await writeIndex(lightIndex as never, cachePath);
+
+    // The on-disk core must not inline call edges — they live in the sidecar
+    const { readFile } = await import("node:fs/promises");
+    const rawCore = await readFile(cachePath, "utf-8");
+    expect(rawCore).not.toContain('"callee"');
+
+    const { getExplainContext } = await import("../services/mcp-server/service.js");
+    const result = await getExplainContext(tempDir, ["src/core.ts"]);
+    expect(result.status).toBe("available");
+    expect(result.indexUsed).toBe(true);
+
+    // Caller/call-impact intelligence must survive the light cache layout
+    const markers = [...(result.includedSignals ?? []), ...(result.relationTypes ?? [])];
+    expect(markers.some((m) => m === "call-impact" || m === "caller")).toBe(true);
+  });
+
   it("custom indexing.cachePath is respected", async () => {
     const customCacheRel = "custom/cache/index.json";
     await writeMinimalConfig(tempDir, { indexing: { cachePath: customCacheRel } });

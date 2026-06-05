@@ -32,9 +32,9 @@ npx mp-sentinel create-skills --agent claude --format json
 | `claude` | Claude Code | `.claude/` exists | `.claude/skills/<project>-best-practices/SKILL.md` + `references/*.md` |
 | `cursor` | Cursor | `.cursor/` exists | `.cursor/rules/<project>-best-practices.mdc` |
 | `codex` | Codex / OpenAI | `.codex/` or `.agents/` exists | `.agents/skills/<project>-codex-best-practices/SKILL.md` |
-| `windsurf` | Windsurf | `.windsurf/` exists | `.windsurf/rules/<project>-best-practices.md` |
+| `windsurf` | Windsurf | `.windsurf/` exists | `.windsurf/skills/<project>-windsurf-best-practices/SKILL.md` |
 | `antigravity` | Google Antigravity | `.antigravity/` or `.agent/` exists | `.agents/skills/<project>-antigravity-best-practices/SKILL.md` |
-| `cline` | Cline | `.clinerules/` exists | `.clinerules/<project>-best-practices.md` |
+| `cline` | Cline | `.cline/` or `.clinerules/` exists | `.cline/skills/<project>-cline-best-practices/SKILL.md` |
 | `generic` | Generic (fallback) | never auto-detected | `.agents/rules/<project>-best-practices.md` |
 
 ### Official Adapter Layouts (v1.0.17+)
@@ -44,16 +44,16 @@ Each adapter declares an `AdapterSpec` with the official layout verified against
 | Adapter | Kind | Workspace | Source |
 |---------|------|-----------|--------|
 | `claude` | skill | `.claude/skills/{projectName}-best-practices/` | [Claude Code Skills](https://docs.anthropic.com/en/docs/claude-code/skills) |
-| `codex` | skill | `.agents/skills/{projectName}-codex-best-practices/` | [Codex Skills](https://codex.openai.com/docs/skills) |
+| `codex` | skill | `.agents/skills/{projectName}-codex-best-practices/` | [Codex Skills](https://developers.openai.com/codex/skills) |
 | `antigravity` | skill | `.agents/skills/{projectName}-antigravity-best-practices/` | [Antigravity Skills](https://antigravity.google/docs/skills) |
 | `cursor` | rule | `.cursor/rules/{projectName}-best-practices.mdc` | [Cursor Rules](https://docs.cursor.com/context/rules-for-ai) |
-| `windsurf` | rule | `.windsurf/rules/{projectName}-best-practices.md` | [Windsurf Rules](https://docs.windsurf.com/rules) |
-| `cline` | rule | `.clinerules/{projectName}-best-practices.md` | [Cline Rules](https://docs.cline.bot/rules) |
+| `windsurf` | skill | `.windsurf/skills/{projectName}-windsurf-best-practices/` | [Windsurf Skills](https://docs.windsurf.com/windsurf/cascade/skills) |
+| `cline` | skill | `.cline/skills/{projectName}-cline-best-practices/` | [Cline Skills](https://docs.cline.bot/customization/skills) |
 | `aider` | rule | `CONVENTIONS.md` | [Aider Conventions](https://aider.chat/docs/usage/conventions.html) |
 | `continue` | rule | `.continue/rules/{projectName}-best-practices.md` | [Continue Rules](https://docs.continue.dev/customize/deep-dives/rules) |
-| `roo` | rule | `.roo/rules/{projectName}-best-practices.md` | [Roo Code Custom Instructions](https://docs.roocode.com/features/custom-instructions) |
+| `roo` | skill | `.roo/skills/{projectName}-roo-best-practices/` | [Roo Code Skills](https://roocodeinc.github.io/Roo-Code/features/skills/) |
 | `copilot` | rule | `.github/copilot-instructions.md` | [GitHub Copilot Response Customization](https://docs.github.com/en/copilot/concepts/prompting/response-customization) |
-| `zed` | skill | `.agents/skills/{projectName}-zed-best-practices/` | [Zed Rules & Skills](https://zed.dev/docs/ai/rules) |
+| `zed` | skill | `.agents/skills/{projectName}-zed-best-practices/` | [Zed Skills](https://zed.dev/docs/ai/skills) |
 | `jetbrains` | rule | `.junie/AGENTS.md` | [JetBrains Junie Guidelines](https://www.jetbrains.com/help/junie/customize-guidelines.html) |
 | `generic` | rule | `.agents/rules/{projectName}-best-practices.md` | — (fallback) |
 
@@ -65,12 +65,22 @@ Each adapter declares an `AdapterSpec` with the official layout verified against
 - **Codex**: Output moved from `.agents/rules/<project>-best-practices.md` to `.agents/skills/<project>-codex-best-practices/SKILL.md`. Old files are not deleted automatically.
 - Folder names are suffixed (`-codex-best-practices`, `-antigravity-best-practices`) to prevent collisions under `.agents/skills/`.
 
+### Migration Notes (v3 generator)
+
+- **Windsurf**: Output moved from `.windsurf/rules/<project>-best-practices.md` to `.windsurf/skills/<project>-windsurf-best-practices/SKILL.md` (skill folder with full reference set). Old files are not deleted automatically.
+- **Roo Code**: Output moved from `.roo/rules/<project>-best-practices.md` to `.roo/skills/<project>-roo-best-practices/SKILL.md`. Old files are not deleted automatically.
+- **Cline**: Output moved from `.clinerules/<project>-best-practices.md` to `.cline/skills/<project>-cline-best-practices/SKILL.md`. Old files are not deleted automatically.
+- All skill adapters (Claude, Codex, Antigravity, Zed, Windsurf, Roo, Cline) now share the same progressive-disclosure layout: a lean `SKILL.md` plus the full reference set (architecture, modules, commands, codebase map, testing map, dependencies, public API, code style, language patterns, clean-code checklist).
+- Rule-only adapters (Cursor, Continue, Copilot, Aider, JetBrains/Junie, generic) now emit concise rule files: workflow contract, overview, language/framework rules, and code policies. Bulky maps are skill-folder material and are no longer inlined.
+- Framework rules are now version-gated: Svelte 5 runes, Angular v16/v17+ rules, Next.js App Router rules, Vue 3 rules, and Nuxt 3 rules are emitted only when package.json safely identifies a qualifying major version. Unknown or broad ranges emit only stable generic rules.
+
 ### Legacy File Detection (v1.0.18+)
 
 `create-skills` automatically detects legacy generated files left over from pre-v1.0.17 paths:
 
 - **Detected**: `.agents/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata → advisory for `codex`.
 - **Detected**: `.antigravity/rules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata → advisory for `antigravity`.
+- **Detected** (v3 generator): `.windsurf/rules/<project>-best-practices.md`, `.roo/rules/<project>-best-practices.md`, and `.clinerules/<project>-best-practices.md` with `@mp-sentinel-generated` metadata → advisories for `windsurf`, `roo`, and `cline`.
 - **Ignored**: Files at those paths without mp-sentinel metadata (user-authored files are never flagged).
 - **Never deleted**: Legacy files are advisory-only. Delete them manually after confirming new official skills exist.
 
@@ -98,7 +108,7 @@ When you run `create-skills` without `--agent` or `--all-agents`, the command:
 | `.codex/` or `.agents/` exists | Codex / OpenAI |
 | `.windsurf/` exists | Windsurf |
 | `.antigravity/` or `.agent/` exists | Google Antigravity |
-| `.clinerules/` exists | Cline |
+| `.cline/` or `.clinerules/` exists | Cline |
 
 - Root `CLAUDE.md` alone does **not** detect Claude.
 - Root `AGENTS.md` alone does **not** detect Codex.
@@ -385,18 +395,18 @@ JSON shape:
 
 ## Generator Version & --check Staleness
 
-Each generated SKILL.md carries a `generatorVersion` field in its metadata header (distinct from the mp-sentinel package version). The current generator version is **`2.0.0`** — bumped when the generated output schema changes meaningfully.
+Each generated SKILL.md carries a `generatorVersion` field in its metadata header (distinct from the mp-sentinel package version). The current generator version is **`3.0.0`** — bumped when the generated output schema changes meaningfully (v3.0.0: per-agent progressive skill layout, version-gated framework rules, shared instruction-file discovery, fresh-project hash/content drift fix).
 
-When `--check` runs, it compares the stored `generatorVersion` against the code's `GENERATOR_VERSION` constant. If they differ, the file is reported as stale with the reason:
+When `--check` runs, it compares the stored `generatorVersion` against the code's `GENERATOR_VERSION` constant by **major version only** (e.g. `2.x.x` files are stale under a `3.x.x` generator, while a `3.0.0` file stays current under `3.1.0`). A lower stored major is reported as stale with the reason:
 
 ```json
 {
   "outputPath": ".claude/skills/my-project-best-practices/SKILL.md",
   "status": "stale",
   "reason": "generatorVersionUpgrade",
-  "from": "1.0.17",
-  "to": "2.0.0",
-  "note": "Run mp-sentinel create-skills to regenerate with the v2 layout."
+  "from": "2.0.0",
+  "to": "3.0.0",
+  "note": "Run mp-sentinel create-skills to regenerate with the v3 layout."
 }
 ```
 
@@ -449,7 +459,7 @@ Quality checks include: max file size, required H2 sections, required references
 
 ### Index Fidelity (v1.0.16+)
 
-`--check` staleness detection now includes instruction file presence (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.clinerules`, etc.) in the deterministic hash. Adding or removing instruction files after skill generation causes `--check` to correctly report stale.
+`--check` staleness detection includes instruction file presence in the deterministic hash — current paths such as `AGENTS.md`, `CLAUDE.md`, `.claude/skills`, `.agents/skills`, `.cursor/rules`, `.windsurf/skills`, `.roo/skills`, and `.cline/skills`. Legacy locations (`.windsurf/rules`, `.roo/rules`, `.clinerules`) count only when they contain user-authored (non-generated) content. Adding or removing instruction files after skill generation causes `--check` to correctly report stale.
 
 ---
 
