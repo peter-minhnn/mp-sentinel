@@ -1,4 +1,10 @@
-# What's New in v3.0.3
+# What's New in v3.0.4
+
+## Schema 1.5 — Light Cache Layout & Sidecar Support
+
+The source index schema has been upgraded to 1.5, introducing a lighter cache layout and sidecar support for improved indexing performance and flexibility.
+
+---
 
 ## Phase 4 — Quick Wins: Adapters, Rules, MCP Presets, Init Command
 
