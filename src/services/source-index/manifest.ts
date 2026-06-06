@@ -8,7 +8,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { log } from "../../utils/logger.js";
 import { readManifest as registryReadManifest, detectEcosystem } from "./manifests/registry.js";
 // Trigger extractor self-registration before isLexicallyExtractableLanguage is used
@@ -39,14 +39,31 @@ function parseStrictJson(content: string, fileName: string): Record<string, unkn
   }
 }
 
+const KNOWN_PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+
 /**
- * Detects the package manager from lock files
+ * Detects the package manager. The `packageManager` field in package.json
+ * (e.g. `"bun@1.1.30"`) wins over lockfile presence.
  */
 export function detectPackageManager(cwd: string): string {
+  const pkgPath = resolve(cwd, "package.json");
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { packageManager?: unknown };
+      if (typeof pkg.packageManager === "string") {
+        const name = pkg.packageManager.split("@")[0]!.trim().toLowerCase();
+        if (KNOWN_PACKAGE_MANAGERS.has(name)) return name;
+      }
+    } catch {
+      // Fall through to lockfile detection
+    }
+  }
+
   const lockFiles = [
     "package-lock.json",
     "yarn.lock",
     "pnpm-lock.yaml",
+    "bun.lock",
     "bun.lockb",
     "npm-shrinkwrap.json",
   ];
@@ -271,6 +288,7 @@ export async function computeManifestHash(cwd: string): Promise<string> {
     "package-lock.json",
     "yarn.lock",
     "pnpm-lock.yaml",
+    "bun.lock",
     "bun.lockb",
     "npm-shrinkwrap.json",
   ];

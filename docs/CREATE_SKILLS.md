@@ -233,7 +233,7 @@ Every adapter generates content derived from the source index and `SkillKnowledg
 | **Dependencies** | Top 20 external dependencies with versions from `package.json` + optional AI-enriched rules |
 | **Public API** | Entry points + risk surface (default exports, re-exports, dynamic imports, type-only imports, hub files) |
 | **Profile Rules** | Project-specific rules derived from manifest: real scripts, `bin`, dependencies, framework signals, import conventions, and profile-specific review pitfalls |
-| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, Astro, Solid, Angular, TypeScript, Python, Go, Rust, Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails) |
+| **Language & Framework Rules** | Deterministic per-language rules from built-in rule packs (Svelte, Vue, React, Next.js, Vite, React Router, TanStack Query, Ant Design, Supabase, Astro, Solid, Angular, TypeScript, Python, Go, Rust, Nuxt, Dart, Flutter, PHP, Laravel, Ruby, Rails) |
 | **Clean Code Policy** | Configurable limits (maxFileLines, maxFunctionLines, maxParams, maxCyclomaticHint, forbidDefaultExports) |
 | **File Size Policy** | Hard limit with current codebase percentiles and observed offender reporting |
 | **AI Enrichment** | Optional version-aware dependency rules from the configured AI provider |
@@ -320,10 +320,15 @@ Built-in rule packs activate based on the detected language profile and dependen
 | **Vue** | `.vue` files or `vue` dependency | `<script setup>`, `defineProps`/`defineEmits`, scoped styles |
 | **React** | `react` dependency | Rules of Hooks, no fetch in render, `key` prop, function components |
 | **Next.js** | `next` dependency | `'use client'`/`'use server'`, Server Components, `next/image`, route segments |
+| **Vite** | `vite` dependency | `VITE_` env prefix + `import.meta.env`, dynamic-import chunking, asset imports, no Node built-ins in client code |
+| **React Router** | `react-router` / `react-router-dom` dependency | Lazy routes, `<Link>`/`useNavigate` over `window.location`, param validation |
+| **TanStack Query** | `@tanstack/react-query` dependency | Stable query keys, invalidate after mutations, no state mirroring |
+| **Ant Design** | `antd` dependency | `Form`-owned field state, `ConfigProvider` theme tokens, stable `rowKey`, hook-based context APIs |
+| **Supabase** | `@supabase/supabase-js` / `@supabase/ssr` dependency | No `service_role` key in clients, RLS as the authz boundary, `{ data, error }` handling, single client instance |
 | **Astro** | `.astro` files or `astro` dependency | Frontmatter logic, `client:*` island directives, content collections, image optimization |
 | **Solid** | `solid-js` dependency + `.tsx`/`.jsx` files | `createSignal`/`createEffect`, no destructured props, `For`/`Show` control flow |
 | **Angular** | `@angular/core` or `@angular/common` dependency | `inject()` over constructor DI, standalone components, signals, `OnPush` change detection |
-| **TypeScript (Strict)** | `.ts` or `.tsx` files | `import type`, `.js` extension, `node:` prefix, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` |
+| **TypeScript (Strict)** | `.ts` or `.tsx` files | Config-aware: `.js` extension + `node:` prefix only under NodeNext/Node16 resolution (never `moduleResolution: "bundler"`); `import type` and strict-flag reminders only when the flags are enabled in `tsconfig.json` |
 | **Python** | `.py` files | Type hints, PEP 8, no top-level side effects, `pathlib`, `async`/`await` |
 | **Go** | `.go` files | `gofmt`, error handling, no panics in libraries, `context.Context` |
 | **Rust** | `.rs` files | `clippy`, `?` operator over `unwrap()`, `cargo fmt`, derive traits |
@@ -457,11 +462,50 @@ Every generated file undergoes deterministic quality validation. Quality issues 
 
 Quality checks include: max file size, required H2 sections, required references (Claude), duplicate sections, empty sections (warning), unknown paths (warning), and the **agent workflow contract** (error — requires workflow to instruct reading skill/rules and using indexing diagnostics).
 
+**Stack-consistency checks** guard against known false-positive guidance regressing: Next.js-only advice in React projects without `next` and NodeNext `.js` import-extension rules under `moduleResolution: "bundler"` fail the gate. **Framework heading guards** reject any `### <Framework> Rules` section whose activating dependency is absent. **Package-manager command checks** reject commands rendered with the wrong manager (`npx` in a pnpm/bun project, `npm run` in a bun project, etc.). **Test guidance checks** require `### Test Expectations` whenever the index contains test files, and **repetitive-output checks** warn on duplicated guidance bullets.
+
+### Script-Aware Workflow Commands
+
+Generated workflow commands prefer the project's own package.json scripts over raw CLI invocations (project scripts may carry env guards): `sentinel:index` wraps indexing diagnostics, `sentinel:context` wraps `--explain-context`, and `agent:skills:refresh` / `sentinel:skills` wraps regeneration. Without those scripts, commands fall back per package manager: `bun run <script>` / `bunx --bun mp-sentinel ...`, `pnpm run <script>` / `pnpm exec mp-sentinel ...`, `npm run <script>` / `npx mp-sentinel ...`.
+
+### Detected Conventions (Deterministic)
+
+A `## Detected Conventions` section reports conventions observed from config and the import graph — tsconfig path aliases actually in use, feature-folder shapes (`features/<feature>/types.ts`, `constants.ts`, hooks, `api/`), central HTTP clients, React Query key constants, shared UI system roots, monorepo workspaces (with the right `--filter`/`-w` script routing per package manager), test framework + placement, data-access layers (Prisma/Drizzle/tRPC/GraphQL/Supabase), and state/form libraries (Zustand/Redux/Jotai, React Hook Form/Formik). Nothing is invented: a convention only renders when the codebase shows it.
+
+### Agent Orientation Sections
+
+Skill-folder outputs additionally carry `## First Files To Read` (entrypoints, public API surface, top hub files, root App Router layout — capped at 6) and `## Common Change Paths` (a task table mapping feature/API/UI/test work to the directories where it happens, with the project's own test command). Rule-only adapters stay concise and omit both.
+
+### Per-Module References
+
+Skill-folder adapters additionally generate `references/modules/<safe-module-name>.md` deep-dives for the top bounded contexts (modules with at least 5 source files, max 6 files). Each contains key files, entrypoints, dependency edges, tests, and relevant conventions. The Reference Routing table points agents at `modules/<safe-name>` entries when available.
+
 ### Index Fidelity (v1.0.16+)
 
 `--check` staleness detection includes instruction file presence in the deterministic hash — current paths such as `AGENTS.md`, `CLAUDE.md`, `.claude/skills`, `.agents/skills`, `.cursor/rules`, `.windsurf/skills`, `.roo/skills`, and `.cline/skills`. Legacy locations (`.windsurf/rules`, `.roo/rules`, `.clinerules`) count only when they contain user-authored (non-generated) content. Adding or removing instruction files after skill generation causes `--check` to correctly report stale.
 
 ---
+
+## Real-Project Rollout
+
+Recommended first run on a repo that has never used mp-sentinel:
+
+```sh
+# 1. Preview without writing anything (use your package manager's runner)
+npx mp-sentinel create-skills --agent claude --dry-run --format json --no-ai-enrich
+
+# 2. Inspect environment + detection diagnostics
+npx mp-sentinel create-skills --doctor
+
+# 3. Generate for the agents you actually use
+npx mp-sentinel create-skills --agent claude,cursor
+```
+
+- `--dry-run` lists every file with its action (`create` / `skip` / `overwrite` / `conflict`) and runs the full quality gate — review `quality.errors` / `quality.warnings` in the JSON before committing to a real run. Note: resolving the source index may still build the local `.mp-sentinel-cache/` index cache.
+- `--doctor` reports index health, detected agents, script availability, and AI-enrichment readiness with recommended commands.
+- Maintainers validating generator changes against an external repo can run `node scripts/adoption-preview.mjs <path-to-repo>` (internal tooling): it copies the repo to a temp sandbox, generates there, and prints profile / package manager / frameworks / conventions / quality — the target repo is never written to.
+- **Monorepos:** run from the workspace root. Workspace globs (package.json `workspaces` or `pnpm-workspace.yaml`) and package-level manifests are detected automatically; module references prefer the nearest package's own scripts (`pnpm --filter <pkg> run build`, `npm run build -w <pkg>`, ...) while root guidance keeps root scripts.
+- **Authoritative local rules:** add `rules` / `ruleFiles` to `.mp-sentinelrc.json` instead of hand-editing generated files. They render as a "Project Rules (authoritative)" section ABOVE generated references, participate in `--check` staleness, and survive regeneration. Hand-written files at generated output paths are never overwritten — even with `--force` — but they also stop receiving updates.
 
 ## Automation / CI
 

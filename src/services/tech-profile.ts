@@ -98,6 +98,12 @@ const PROFILE_CUES: Record<SkillProfile, string[]> = {
     "Colocate data fetching close to where it is used",
     "Avoid large dependencies in client bundles, use dynamic imports",
   ],
+  "react-spa": [
+    "Route-level code splitting — lazy-load route components to keep the initial bundle small",
+    "Keep server state in a data library (React Query/SWR), not in component state",
+    "Audit hooks dependency arrays for completeness",
+    "Avoid large dependencies in the client bundle, use dynamic imports",
+  ],
   library: [
     "Public API surface — consider semver impact of every exported symbol",
     "Ensure .d.ts files are accurate and complete",
@@ -136,13 +142,11 @@ const SERVICE_DEPS = new Set([
  * Precedence matches detectProfile(): react-next > node-service > cli-tooling > library.
  */
 function inferProfileFromKeywords(keywords: Set<string>): SkillProfile {
-  if (
-    keywords.has("react") ||
-    keywords.has("next") ||
-    keywords.has("nextjs") ||
-    keywords.has("next.js")
-  ) {
+  if (keywords.has("next") || keywords.has("nextjs") || keywords.has("next.js")) {
     return "react-next";
+  }
+  if (keywords.has("react")) {
+    return "react-spa";
   }
   if (
     keywords.has("express") ||
@@ -176,12 +180,17 @@ function inferProfileFromManifest(
 ): SkillProfile {
   const allDepKeys = new Set(Object.keys(deps).map((d) => d.toLowerCase()));
 
-  // react-next
-  if (detectedFrameworks.includes("react") || detectedFrameworks.includes("next.js")) {
+  // react-next: only when Next.js is explicitly present
+  if (detectedFrameworks.includes("next.js") || allDepKeys.has("next")) {
     return "react-next";
   }
-  if (allDepKeys.has("next") || allDepKeys.has("react") || allDepKeys.has("react-dom")) {
-    return "react-next";
+  // react-spa: React without Next.js
+  if (
+    detectedFrameworks.includes("react") ||
+    allDepKeys.has("react") ||
+    allDepKeys.has("react-dom")
+  ) {
+    return "react-spa";
   }
 
   // node-service

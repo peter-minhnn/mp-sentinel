@@ -250,6 +250,214 @@ describe("dogfood.mjs", () => {
   });
 });
 
+// --- adoption-preview.mjs -----------------------------------------
+
+describe("adoption-preview.mjs", () => {
+  const adoptionPreview = scriptPath("adoption-preview.mjs");
+  let targetDir: string;
+
+  beforeEach(async () => {
+    targetDir = await mkdtemp(join(tmpdir(), "mp-adopt-target-"));
+    await writeFile(
+      join(targetDir, "package.json"),
+      JSON.stringify({
+        name: "adopt-target",
+        version: "1.0.0",
+        scripts: { test: "vitest run", build: "vite build" },
+        dependencies: { react: "^18.3.0", "react-dom": "^18.3.0" },
+        devDependencies: { vite: "^5.4.0", typescript: "^5.5.0" },
+      }),
+    );
+    await mkdir(join(targetDir, "src"), { recursive: true });
+    await writeFile(join(targetDir, "src", "App.tsx"), "export const App = (): string => 'app';\n");
+    await writeFile(
+      join(targetDir, "src", "main.tsx"),
+      "export const boot = (): string => 'ok';\n",
+    );
+  });
+
+  afterEach(async () => {
+    await rm(targetDir, { recursive: true, force: true });
+  });
+
+  it("prints a detection summary and never writes into the target", () => {
+    const result = runScript(adoptionPreview, REPO_ROOT, [targetDir]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("adoption preview");
+    expect(result.stdout).toContain("Profile:          react-spa");
+    expect(result.stdout).toContain("Package manager:  npm");
+    expect(result.stdout).toContain("Quality errors:         0");
+
+    // The target repo is untouched: no outputs, no index cache
+    expect(readdirSync(targetDir).sort()).toEqual(["package.json", "src"]);
+  });
+
+  it("emits a machine-readable JSON summary with --json", () => {
+    const result = runScript(adoptionPreview, REPO_ROOT, [targetDir, "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as {
+      status: string;
+      strict: boolean;
+      detection: { profile: string; packageManager: string; frameworks: string };
+      generated: { fileCount: number; qualityErrors: number; qualityWarnings: number };
+      conventions: string[];
+      offenders: unknown[];
+      sandbox: { cleaned: boolean };
+    };
+    expect(parsed.status).toBe("ok");
+    expect(parsed.strict).toBe(false);
+    expect(parsed.detection.profile).toBe("react-spa");
+    expect(parsed.detection.packageManager).toBe("npm");
+    expect(parsed.generated.qualityErrors).toBe(0);
+    expect(parsed.generated.qualityWarnings).toBe(0);
+    expect(parsed.generated.fileCount).toBeGreaterThan(0);
+    expect(parsed.offenders).toEqual([]);
+    expect(parsed.sandbox.cleaned).toBe(true);
+    expect(readdirSync(targetDir).sort()).toEqual(["package.json", "src"]);
+  });
+
+  it("passes --strict when output is clean (exit 0)", () => {
+    const result = runScript(adoptionPreview, REPO_ROOT, [targetDir, "--json", "--strict"]);
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { status: string; strict: boolean };
+    expect(parsed.status).toBe("ok");
+    expect(parsed.strict).toBe(true);
+  });
+
+  it("emits a JSON error object (exit 2) for a directory without package.json", async () => {
+    const emptyDir = await mkdtemp(join(tmpdir(), "mp-adopt-empty-"));
+    try {
+      const result = runScript(adoptionPreview, REPO_ROOT, [emptyDir, "--json"]);
+      expect(result.exitCode).toBe(2);
+      const parsed = JSON.parse(result.stdout) as { status: string; error: string };
+      expect(parsed.status).toBe("error");
+      expect(parsed.error).toContain("no package.json");
+    } finally {
+      await rm(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 2 for a directory without package.json", async () => {
+    const emptyDir = await mkdtemp(join(tmpdir(), "mp-adopt-empty-"));
+    try {
+      const result = runScript(adoptionPreview, REPO_ROOT, [emptyDir]);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("no package.json");
+    } finally {
+      await rm(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails --strict (exit 1) on a repo that deterministically produces a warning", async () => {
+    // A project rule that references a backtick path which does not exist in
+    // the index trips the unknown-path warning deterministically (project
+    // rules are rendered verbatim and scanned by the gate). Without --strict
+    // it exits 0; with --strict it must exit 1.
+    const warnDir = await mkdtemp(join(tmpdir(), "mp-adopt-warn-"));
+    try {
+      await writeFile(
+        join(warnDir, "package.json"),
+        JSON.stringify({
+          name: "warn-fixture",
+          version: "1.0.0",
+          scripts: { build: "tsc", test: "vitest run" },
+          devDependencies: { typescript: "^5.5.0" },
+        }),
+      );
+      await writeFile(
+        join(warnDir, ".mp-sentinelrc.json"),
+        JSON.stringify({
+          rules: ["All HTTP calls must go through `src/does-not-exist/api-client.ts`."],
+        }),
+      );
+      await mkdir(join(warnDir, "src"), { recursive: true });
+      await writeFile(join(warnDir, "src", "index.ts"), "export const x = 1;\n");
+      await writeFile(join(warnDir, "src", "util.ts"), "export const y = 2;\n");
+
+      const lenient = runScript(adoptionPreview, REPO_ROOT, [warnDir, "--json"]);
+      const lenientParsed = JSON.parse(lenient.stdout) as {
+        generated: { qualityWarnings: number; qualityErrors: number };
+        offenders: Array<{ type: string }>;
+      };
+
+      // Deterministic: the fake path in the project rule warns, with no errors
+      expect(lenientParsed.generated.qualityErrors).toBe(0);
+      expect(lenientParsed.generated.qualityWarnings).toBeGreaterThan(0);
+      expect(lenientParsed.offenders.some((o) => o.type === "unknown-path")).toBe(true);
+      expect(lenient.exitCode).toBe(0);
+
+      // Strict run on the same repo -> exit 1
+      const strictRun = runScript(adoptionPreview, REPO_ROOT, [warnDir, "--json", "--strict"]);
+      const strictParsed = JSON.parse(strictRun.stdout) as { status: string };
+      expect(strictRun.exitCode).toBe(1);
+      expect(strictParsed.status).toBe("failed");
+    } finally {
+      await rm(warnDir, { recursive: true, force: true });
+    }
+  }, 60000);
+});
+
+// --- adoption-preview against real validation repos (optional) ----------
+//
+// Runs the preview against the two reference repos when their paths are
+// available (MP_SENTINEL_VALIDATION_REPOS=path1,path2 or sibling dirs).
+// Skips with a clear message when absent so CI on a clean checkout stays
+// green.
+
+describe("adoption-preview.mjs real validation repos", () => {
+  const adoptionPreview = scriptPath("adoption-preview.mjs");
+
+  const candidateRoots = (name: string): string[] => {
+    const fromEnv = (process.env["MP_SENTINEL_VALIDATION_REPOS"] ?? "")
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .filter((p) => p.endsWith(name) || p.includes(`${name}`));
+    return [...fromEnv, resolve(REPO_ROOT, "..", name), resolve(REPO_ROOT, "..", "..", name)];
+  };
+
+  const resolveRepo = (name: string): string | null =>
+    candidateRoots(name).find((p) => {
+      try {
+        return readFileSync(join(p, "package.json"), "utf-8").length > 0;
+      } catch {
+        return false;
+      }
+    }) ?? null;
+
+  for (const repoName of ["mvp-listening", "gems-e-approval-web"]) {
+    it(`previews ${repoName} cleanly without touching it (when present)`, () => {
+      const repoRoot = resolveRepo(repoName);
+      if (!repoRoot) {
+        console.info(
+          `[skip] ${repoName} not found (set MP_SENTINEL_VALIDATION_REPOS or place it beside the repo) - skipping real-repo preview.`,
+        );
+        return;
+      }
+
+      const before = readdirSync(repoRoot).sort();
+      const result = runScript(adoptionPreview, REPO_ROOT, [repoRoot, "--json", "--strict"]);
+      const parsed = JSON.parse(result.stdout) as {
+        status: string;
+        generated: { qualityErrors: number; qualityWarnings: number };
+        sandbox: { cleaned: boolean };
+      };
+
+      // Zero errors AND zero warnings under --strict
+      expect(parsed.generated.qualityErrors).toBe(0);
+      expect(parsed.generated.qualityWarnings).toBe(0);
+      expect(parsed.status).toBe("ok");
+      expect(result.exitCode).toBe(0);
+      expect(parsed.sandbox.cleaned).toBe(true);
+
+      // Target repo is byte-for-byte untouched at the top level
+      expect(readdirSync(repoRoot).sort()).toEqual(before);
+    }, 180000);
+  }
+});
+
 // --- agent-skills-check.mjs ---------------------------------------
 
 describe("agent-skills-check.mjs", () => {
@@ -266,6 +474,37 @@ describe("agent-skills-check.mjs", () => {
     expect(result.stdout).toMatch(/stale=0/);
     expect(result.stdout).toMatch(/missing=0/);
   });
+
+  it("dogfood output has zero quality warnings across all adapters", () => {
+    // Warning-clean gate: mp-sentinel's own generated skills must not carry
+    // repetitive-output or any other quality warnings.
+    const result = spawnSync(
+      "node",
+      [
+        "dist/index.js",
+        "create-skills",
+        "--all-agents",
+        "--check",
+        "--format",
+        "json",
+        "--no-ai-enrich",
+      ],
+      { cwd: REPO_ROOT, encoding: "utf-8", timeout: 120000, stdio: "pipe" },
+    );
+    const parsed = JSON.parse(result.stdout || "{}") as {
+      check?: Array<{
+        agent: string;
+        quality?: { checks: Array<{ severity: string; message: string }> };
+      }>;
+    };
+    expect(Array.isArray(parsed.check)).toBe(true);
+    const warnings = (parsed.check ?? []).flatMap((r) =>
+      (r.quality?.checks ?? [])
+        .filter((c) => c.severity === "warning")
+        .map((c) => `${r.agent}: ${c.message}`),
+    );
+    expect(warnings).toEqual([]);
+  }, 120000);
 
   it("exits non-zero (1) when a generated file is missing", async () => {
     // Self-contained: refresh skills first so this test does not depend on

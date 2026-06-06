@@ -23,8 +23,12 @@ function readPackageVersion(packagePath: string): string | null {
 }
 
 export function getToolVersion(): string {
+  // npm_package_version reflects whatever package the current npm/bun/pnpm
+  // script belongs to. When mp-sentinel runs inside ANOTHER project's
+  // scripts, that env var carries the host app's version (e.g. "0.1.0")
+  // and must not be reported as the tool version.
   const envVersion = process.env["npm_package_version"];
-  if (envVersion) return envVersion;
+  if (envVersion && process.env["npm_package_name"] === PACKAGE_NAME) return envVersion;
 
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageCandidates = [

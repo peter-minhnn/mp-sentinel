@@ -7,6 +7,41 @@ interface GitProvider {
   postComment(filePath: string, line: number, issue: AuditIssue): Promise<void>;
 }
 
+/**
+ * Logging for comment posting. In console mode everything uses the normal
+ * logger. For machine-readable formats (`--format json|sarif`) all of it —
+ * progress, success, AND diagnostics — is routed to stderr (bypassing quiet
+ * mode) so stdout stays a clean report while GitLab/GitHub API failures stay
+ * visible to CI operators rather than being silently swallowed.
+ */
+interface CommentLog {
+  info(msg: string): void;
+  success(msg: string): void;
+  warning(msg: string): void;
+  error(msg: string): void;
+}
+
+const stdoutCommentLog: CommentLog = {
+  info: log.info,
+  success: log.success,
+  warning: log.warning,
+  error: log.error,
+};
+const stderrCommentLog: CommentLog = {
+  info: log.infoStderr,
+  success: log.successStderr,
+  warning: log.warningStderr,
+  error: log.errorStderr,
+};
+
+const selectCommentLog = (logToStderr: boolean): CommentLog =>
+  logToStderr ? stderrCommentLog : stdoutCommentLog;
+
+export interface PostCommentsOptions {
+  /** Route info/success logs to stderr (keep stdout clean for JSON/SARIF). */
+  logToStderr?: boolean;
+}
+
 interface GitHubEventContext {
   prNumber?: number;
   headSha?: string;
@@ -19,6 +54,13 @@ interface GitHubReviewComment {
 }
 
 const COMMENT_MARKER = "mp-sentinel-review-comment";
+
+/**
+ * Internal safety cap on inline comments posted per run, to avoid flooding a
+ * PR/MR. Findings beyond the cap are summarized on stderr. Not configurable
+ * yet — promote to a flag/config only if a real need appears.
+ */
+const MAX_COMMENTS_PER_RUN = 50;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -63,21 +105,79 @@ const formatEvidence = (evidence: string): string => {
   return collapsed.slice(0, EVIDENCE_MAX_LENGTH - 3) + "...";
 };
 
+// ── Code suggestion safety (rendering gate) ─────────────────────────────────
+
+const CODE_SUGGESTION_RENDER_MAX_LENGTH = 400;
+
+/**
+ * Final safety gate before a structured `codeSuggestion` is rendered as a
+ * provider ```suggestion``` block. Returns the cleaned replacement, or null
+ * when it must NOT be rendered.
+ *
+ * v1 scope: single-line replacements only. Rejects empty, multi-line,
+ * oversized, nested-fence, or prose-like values. Re-applied at render time
+ * (not just in the parser) to defend against older data or deterministic,
+ * self-constructed issues. Conservative by design — when in doubt, drop the
+ * block; the textual "Suggested fix" still carries the guidance.
+ */
+export const sanitizeCodeSuggestion = (raw: string | undefined): string | null => {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.replace(/\s+$/, "");
+  if (trimmed.trim().length === 0) return null;
+  // v1: single-line replacements only.
+  if (trimmed.includes("\n")) return null;
+  if (trimmed.length > CODE_SUGGESTION_RENDER_MAX_LENGTH) return null;
+  // A nested triple-backtick fence would break the suggestion block.
+  if (trimmed.includes("```")) return null;
+  if (looksLikeProse(trimmed)) return null;
+  return trimmed;
+};
+
+/**
+ * Heuristic: treat a sentence-shaped string with no code punctuation as prose
+ * (e.g. "Remove the eval call and validate input.").
+ */
+const looksLikeProse = (text: string): boolean => {
+  const hasCodePunctuation = /[{}();=<>[\]]|=>|::|\+\+|--/.test(text);
+  if (hasCodePunctuation) return false;
+  // Sentence-like: starts uppercase, ends with terminal punctuation, has spaces.
+  return /^[A-Z].*[.!?]$/.test(text.trim()) && text.trim().includes(" ");
+};
+
 const buildCommentBody = (filePath: string, line: number, issue: AuditIssue): string => {
   const fingerprint = buildReviewCommentFingerprint(filePath, line, issue);
-  const meta = issue.category && issue.confidence ? `[${issue.category}/${issue.confidence}] ` : "";
-  const suggestion = issue.suggestion ? ` — _${issue.suggestion}_` : "";
-  const finding = `- **${issue.severity}** (line ${line}): ${meta}${issue.message}${suggestion}`;
-  const evidence = issue.evidence ? `\n    - _Evidence: ${formatEvidence(issue.evidence)}_` : "";
+  const metaParts: string[] = [];
+  if (issue.category) metaParts.push(`\`${issue.category}\``);
+  if (issue.confidence) metaParts.push(`confidence: ${issue.confidence}`);
+  const meta = metaParts.length > 0 ? ` · ${metaParts.join(" · ")}` : "";
 
-  return [
+  const lines: string[] = [
     `<!-- ${COMMENT_MARKER} fingerprint=${fingerprint} -->`,
-    "**MP Sentinel Audit Issue**",
+    `**MP Sentinel · ${issue.severity}** — line ${line}${meta}`,
     "",
-    `${finding}${evidence}`,
+    `**Why this matters**`,
+    issue.message,
+  ];
+
+  if (issue.suggestion) {
+    lines.push("", `**Suggested fix**`, issue.suggestion);
+  }
+
+  if (issue.evidence) {
+    lines.push("", `**Evidence**`, `\`${formatEvidence(issue.evidence)}\``);
+  }
+
+  const safeSuggestion = sanitizeCodeSuggestion(issue.codeSuggestion);
+  if (safeSuggestion) {
+    lines.push("", "```suggestion", safeSuggestion, "```");
+  }
+
+  lines.push(
     "",
     "_Managed by mp-sentinel. Reruns update the same finding instead of posting duplicates._",
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 };
 
 const extractFingerprint = (body: string): string | null => {
@@ -153,8 +253,10 @@ class GitHubProvider implements GitProvider {
   private isIssueComment: boolean;
   private fetchedCommitId: string | undefined;
   private existingComments: Map<string, GitHubReviewComment> | null = null;
+  private clog: CommentLog;
 
-  constructor() {
+  constructor(clog: CommentLog = stdoutCommentLog) {
+    this.clog = clog;
     this.token = process.env.GITHUB_TOKEN || "";
 
     // GitHub Actions environment variables
@@ -211,7 +313,7 @@ class GitHubProvider implements GitProvider {
         );
 
         if (!response.ok) {
-          log.warning(`Could not list existing GitHub comments: ${await response.text()}`);
+          this.clog.warning(`Could not list existing GitHub comments: ${await response.text()}`);
           break;
         }
 
@@ -231,7 +333,7 @@ class GitHubProvider implements GitProvider {
         if (payload.length < perPage) break;
       }
     } catch (error) {
-      log.warning(
+      this.clog.warning(
         `Could not list existing GitHub comments: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -281,22 +383,22 @@ class GitHubProvider implements GitProvider {
     });
 
     if (!response.ok) {
-      log.error(`GitHub API Error: ${await response.text()}`);
+      this.clog.error(`GitHub API Error: ${await response.text()}`);
       return;
     }
 
-    log.success(`Updated existing GitHub comment ${commentId}`);
+    this.clog.success(`Updated existing GitHub comment ${commentId}`);
   }
 
   async postComment(filePath: string, line: number, issue: AuditIssue): Promise<void> {
     if (!this.token || !this.owner || !this.repo || !this.prNumber) {
-      log.warning("Skipping GitHub comment: Invalid context (Token/Repo/PR missing).");
+      this.clog.warning("Skipping GitHub comment: Invalid context (Token/Repo/PR missing).");
       return;
     }
 
     const commitId = await this.resolveCommitId();
     if (!commitId) {
-      log.warning("Skipping GitHub comment: PR head SHA not found.");
+      this.clog.warning("Skipping GitHub comment: PR head SHA not found.");
       return;
     }
 
@@ -326,19 +428,37 @@ class GitHubProvider implements GitProvider {
 
       if (!response.ok) {
         const err = await response.text();
-        log.error(`GitHub API Error: ${err}`);
+        this.clog.error(`GitHub API Error: ${err}`);
       } else {
         const payload: unknown = await response.json();
         const postedComment = parseGitHubReviewComment(payload);
         if (postedComment) {
           this.existingComments?.set(fingerprint, postedComment);
         }
-        log.success(`Posted comment on ${filePath}:${line}`);
+        this.clog.success(`Posted comment on ${filePath}:${line}`);
       }
     } catch (e) {
-      log.error(`Failed to post to GitHub: ${e}`);
+      this.clog.error(`Failed to post to GitHub: ${e}`);
     }
   }
+}
+
+interface GitLabDiffRefs {
+  baseSha: string;
+  headSha: string;
+  startSha: string;
+}
+
+interface GitLabExistingNote {
+  /**
+   * Whether the note belongs to an inline diff discussion (updated via the
+   * Discussions API) or is a plain MR-level note (updated via the Notes API).
+   */
+  kind: "discussion" | "note";
+  /** Present only for `kind: "discussion"`. */
+  discussionId?: string;
+  noteId: number;
+  body: string;
 }
 
 class GitLabProvider implements GitProvider {
@@ -346,14 +466,18 @@ class GitLabProvider implements GitProvider {
   private projectId: string;
   private mrIid: number;
   private serverUrl: string;
-  private useJobToken: boolean = false;
+  private useJobToken: boolean;
+  private diffRefs: GitLabDiffRefs | null = null;
+  private existingNotes: Map<string, GitLabExistingNote> | null = null;
+  private clog: CommentLog;
 
-  constructor() {
+  constructor(clog: CommentLog = stdoutCommentLog) {
+    this.clog = clog;
     this.projectId = process.env.CI_PROJECT_ID || "";
     this.mrIid = parseInt(process.env.CI_MERGE_REQUEST_IID || "0");
     this.serverUrl = process.env.CI_SERVER_URL || "https://gitlab.com";
 
-    // Prioritize GITLAB_TOKEN (PAT) if available, otherwise fall back to CI_JOB_TOKEN
+    // Prioritize GITLAB_TOKEN (PAT) if available, otherwise fall back to CI_JOB_TOKEN.
     if (process.env.GITLAB_TOKEN) {
       this.token = process.env.GITLAB_TOKEN;
       this.useJobToken = false;
@@ -363,61 +487,254 @@ class GitLabProvider implements GitProvider {
     }
   }
 
+  private mrUrl(path: string): string {
+    return `${this.serverUrl}/api/v4/projects/${encodeURIComponent(this.projectId)}/merge_requests/${this.mrIid}${path}`;
+  }
+
+  private headers(): Record<string, string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.useJobToken) headers["JOB-TOKEN"] = this.token;
+    else headers["PRIVATE-TOKEN"] = this.token;
+    return headers;
+  }
+
+  /**
+   * Resolve the diff version SHAs needed for an inline discussion position.
+   * The GitLab MR Versions API (https://docs.gitlab.com/api/merge_requests/#get-mr-diff-versions)
+   * is authoritative — its latest version (index 0) carries the base/head/start
+   * SHAs that the Discussions API `position` requires. CI env vars are the
+   * fallback. Only the first version is needed, so the request uses per_page=1.
+   */
+  private async resolveDiffRefs(): Promise<GitLabDiffRefs> {
+    if (this.diffRefs) return this.diffRefs;
+
+    try {
+      const response = await fetch(this.mrUrl(`/versions?per_page=1`), {
+        method: "GET",
+        headers: this.headers(),
+      });
+      if (response.ok) {
+        const payload: unknown = await response.json();
+        if (Array.isArray(payload) && payload.length > 0 && isRecord(payload[0])) {
+          const v = payload[0];
+          const headSha = getString(v, "head_commit_sha");
+          const baseSha = getString(v, "base_commit_sha");
+          const startSha = getString(v, "start_commit_sha");
+          if (headSha && baseSha && startSha) {
+            this.diffRefs = { headSha, baseSha, startSha };
+            return this.diffRefs;
+          }
+        }
+      }
+    } catch {
+      // Fall through to CI env vars.
+    }
+
+    const headSha = process.env.CI_COMMIT_SHA || "";
+    const baseSha = process.env.CI_MERGE_REQUEST_DIFF_BASE_SHA || headSha;
+    const startSha = process.env.CI_MERGE_REQUEST_DIFF_START_SHA || baseSha;
+    this.diffRefs = { headSha, baseSha, startSha };
+    return this.diffRefs;
+  }
+
+  /**
+   * Load existing mp-sentinel notes keyed by fingerprint, covering BOTH
+   * inline diff discussions (Discussions API) and MR-level notes (Notes API).
+   * Reruns then update the matching note in place — whether the finding was
+   * originally posted inline or via the MR-level fallback — instead of
+   * creating duplicates. Inline discussions win when both exist.
+   */
+  private async loadExistingNotes(): Promise<Map<string, GitLabExistingNote>> {
+    if (this.existingNotes) return this.existingNotes;
+
+    const byFingerprint = new Map<string, GitLabExistingNote>();
+    const perPage = 100;
+
+    // 1) Inline diff discussions.
+    try {
+      for (let page = 1; page <= 10; page++) {
+        const response = await fetch(this.mrUrl(`/discussions?per_page=${perPage}&page=${page}`), {
+          method: "GET",
+          headers: this.headers(),
+        });
+        if (!response.ok) {
+          this.clog.warning(`Could not list existing GitLab discussions: ${await response.text()}`);
+          break;
+        }
+        const payload: unknown = await response.json();
+        if (!Array.isArray(payload)) break;
+
+        for (const discussion of payload) {
+          if (!isRecord(discussion)) continue;
+          const discussionId = getString(discussion, "id");
+          const notes = discussion["notes"];
+          if (!discussionId || !Array.isArray(notes)) continue;
+          for (const note of notes) {
+            if (!isRecord(note)) continue;
+            const noteId = getNumber(note, "id");
+            const noteBody = getString(note, "body");
+            if (!noteId || !noteBody) continue;
+            const fingerprint = extractFingerprint(noteBody);
+            if (fingerprint && !byFingerprint.has(fingerprint)) {
+              byFingerprint.set(fingerprint, {
+                kind: "discussion",
+                discussionId,
+                noteId,
+                body: noteBody,
+              });
+            }
+          }
+        }
+        if (payload.length < perPage) break;
+      }
+    } catch (error) {
+      this.clog.warning(
+        `Could not list existing GitLab discussions: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    // 2) MR-level notes (fallback notes from prior runs). Skip system notes.
+    try {
+      for (let page = 1; page <= 10; page++) {
+        const response = await fetch(this.mrUrl(`/notes?per_page=${perPage}&page=${page}`), {
+          method: "GET",
+          headers: this.headers(),
+        });
+        if (!response.ok) {
+          this.clog.warning(`Could not list existing GitLab notes: ${await response.text()}`);
+          break;
+        }
+        const payload: unknown = await response.json();
+        if (!Array.isArray(payload)) break;
+
+        for (const note of payload) {
+          if (!isRecord(note)) continue;
+          if (note["system"] === true) continue;
+          const noteId = getNumber(note, "id");
+          const noteBody = getString(note, "body");
+          if (!noteId || !noteBody) continue;
+          const fingerprint = extractFingerprint(noteBody);
+          if (fingerprint && !byFingerprint.has(fingerprint)) {
+            byFingerprint.set(fingerprint, { kind: "note", noteId, body: noteBody });
+          }
+        }
+        if (payload.length < perPage) break;
+      }
+    } catch (error) {
+      this.clog.warning(
+        `Could not list existing GitLab notes: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    this.existingNotes = byFingerprint;
+    return byFingerprint;
+  }
+
+  /** Update an existing note via the endpoint matching its kind. */
+  private async updateExisting(existing: GitLabExistingNote, body: string): Promise<void> {
+    const url =
+      existing.kind === "discussion"
+        ? this.mrUrl(`/discussions/${existing.discussionId}/notes/${existing.noteId}`)
+        : this.mrUrl(`/notes/${existing.noteId}`);
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: this.headers(),
+      body: JSON.stringify({ body }),
+    });
+    if (!response.ok) {
+      this.clog.error(`GitLab API Error: ${await response.text()}`);
+      return;
+    }
+    this.clog.success(`Updated existing GitLab ${existing.kind} note ${existing.noteId}`);
+  }
+
+  /** Body for an MR-level fallback note (inline body + explicit file:line). */
+  private fallbackBody(filePath: string, line: number, body: string): string {
+    return `${body}\n\n> Inline position unavailable — finding at \`${filePath}:${line}\`.`;
+  }
+
+  /** Post an MR-level fallback note when an inline position is rejected. */
+  private async postFallbackNote(filePath: string, line: number, body: string): Promise<void> {
+    const response = await fetch(this.mrUrl(`/notes`), {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ body: this.fallbackBody(filePath, line, body) }),
+    });
+    if (!response.ok) {
+      this.clog.error(`GitLab API Error (fallback note): ${await response.text()}`);
+    } else {
+      this.clog.success(`Posted MR-level fallback note for ${filePath}:${line}`);
+    }
+  }
+
   async postComment(filePath: string, line: number, issue: AuditIssue): Promise<void> {
     if (!this.token || !this.projectId || !this.mrIid) {
-      log.warning("Skipping GitLab comment: Invalid context (Token/Project/MR missing).");
+      this.clog.warning("Skipping GitLab comment: Invalid context (Token/Project/MR missing).");
       return;
     }
 
     const body = buildCommentBody(filePath, line, issue);
+    const fingerprint = buildReviewCommentFingerprint(filePath, line, issue);
 
     try {
-      const url = `${this.serverUrl}/api/v4/projects/${this.projectId}/merge_requests/${this.mrIid}/discussions`;
-
-      const headSha = process.env.CI_COMMIT_SHA;
-      const baseSha = process.env.CI_MERGE_REQUEST_DIFF_BASE_SHA || headSha;
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      if (this.useJobToken) {
-        headers["JOB-TOKEN"] = this.token;
-      } else {
-        headers["PRIVATE-TOKEN"] = this.token;
+      const existing = (await this.loadExistingNotes()).get(fingerprint);
+      if (existing) {
+        // Update in place using the same shape the note already has, so a
+        // prior fallback note keeps its file:line footer on rerun.
+        const desired = existing.kind === "note" ? this.fallbackBody(filePath, line, body) : body;
+        if (existing.body !== desired) await this.updateExisting(existing, desired);
+        return;
       }
 
-      const response = await fetch(url, {
+      const refs = await this.resolveDiffRefs();
+      if (!refs.headSha) {
+        this.clog.warning("Skipping GitLab comment: MR diff head SHA not found.");
+        return;
+      }
+
+      // GitLab renders ```suggestion``` blocks as one-click "Suggest changes"
+      // in the MR diff thread when posted as an inline text-position discussion.
+      const response = await fetch(this.mrUrl(`/discussions`), {
         method: "POST",
-        headers,
+        headers: this.headers(),
         body: JSON.stringify({
           body,
           position: {
             position_type: "text",
-            base_sha: baseSha,
-            head_sha: headSha,
-            start_sha: baseSha,
+            base_sha: refs.baseSha,
+            head_sha: refs.headSha,
+            start_sha: refs.startSha,
             new_path: filePath,
             new_line: line,
           },
         }),
       });
 
-      if (!response.ok) {
-        const err = await response.text();
-        log.error(`GitLab API Error: ${err}`);
-      } else {
-        log.success(`Posted discussion on ${filePath}:${line}`);
+      if (response.ok) {
+        this.clog.success(`Posted discussion on ${filePath}:${line}`);
+        return;
       }
+
+      // Inline position rejected (e.g. line not part of the diff): fall back
+      // to an MR-level note so the finding is never silently dropped.
+      this.clog.warning(
+        `GitLab inline position rejected for ${filePath}:${line}; posting MR-level note. ${await response.text()}`,
+      );
+      await this.postFallbackNote(filePath, line, body);
     } catch (e) {
-      log.error(`Failed to post to GitLab: ${e}`);
+      this.clog.error(`Failed to post to GitLab: ${e}`);
     }
   }
 }
 
-export const postGitProviderComments = async (auditResults: FileAuditResult[]): Promise<void> => {
+export const postGitProviderComments = async (
+  auditResults: FileAuditResult[],
+  options: PostCommentsOptions = {},
+): Promise<void> => {
+  const logToStderr = options.logToStderr ?? false;
+  const clog = selectCommentLog(logToStderr);
   try {
-    const gitProvider = getGitProvider();
+    const gitProvider = getGitProvider({ logToStderr });
     if (!gitProvider) return;
 
     const failedAudits = auditResults.filter(
@@ -434,27 +751,44 @@ export const postGitProviderComments = async (auditResults: FileAuditResult[]): 
 
     if (issueCount === 0) return;
 
-    log.info(`Git Provider detected. Posting ${issueCount} inline comment(s)...`);
+    // Volume guard: never spam a PR/MR. Post the first MAX_COMMENTS_PER_RUN
+    // actionable findings in report order; summarize the rest on stderr.
+    const planned = Math.min(issueCount, MAX_COMMENTS_PER_RUN);
+    clog.info(
+      `Git Provider detected. Posting ${planned} inline comment(s)` +
+        (issueCount > planned ? ` (of ${issueCount} actionable)` : "") +
+        "...",
+    );
 
-    for (const audit of failedAudits) {
+    let posted = 0;
+    outer: for (const audit of failedAudits) {
       for (const issue of audit.result.issues ?? []) {
-        if (isActionableIssue(issue)) {
-          await gitProvider.postComment(audit.filePath, issue.line, issue);
-        }
+        if (!isActionableIssue(issue)) continue;
+        if (posted >= MAX_COMMENTS_PER_RUN) break outer;
+        await gitProvider.postComment(audit.filePath, issue.line, issue);
+        posted++;
       }
     }
+
+    const skipped = issueCount - posted;
+    if (skipped > 0) {
+      clog.warning(
+        `Comment cap reached: posted ${posted} comment(s); ${skipped} more skipped this run.`,
+      );
+    }
   } catch (error) {
-    log.warning(
+    clog.warning(
       `Git provider comments skipped: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 };
 
-export const getGitProvider = (): GitProvider | null => {
+export const getGitProvider = (options: PostCommentsOptions = {}): GitProvider | null => {
+  const clog = selectCommentLog(options.logToStderr ?? false);
   if (process.env.GITHUB_ACTIONS && process.env.GITHUB_TOKEN) {
-    return new GitHubProvider();
+    return new GitHubProvider(clog);
   } else if (process.env.GITLAB_CI && (process.env.GITLAB_TOKEN || process.env.CI_JOB_TOKEN)) {
-    return new GitLabProvider();
+    return new GitLabProvider(clog);
   }
   return null;
 };

@@ -146,6 +146,11 @@ describe("ALL_PACKS includes new packs", () => {
     expect(packIds).toContain("laravel");
     expect(packIds).toContain("ruby");
     expect(packIds).toContain("rails");
-    expect(ALL_PACKS.length).toBe(19);
+    expect(packIds).toContain("vite");
+    expect(packIds).toContain("react-router");
+    expect(packIds).toContain("tanstack-query");
+    expect(packIds).toContain("antd");
+    expect(packIds).toContain("supabase");
+    expect(ALL_PACKS.length).toBe(24);
   });
 });

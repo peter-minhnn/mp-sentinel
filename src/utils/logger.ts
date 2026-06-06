@@ -22,6 +22,15 @@ const write = (fn: (...args: Array<string>) => void, value: string): void => {
 export const log = {
   info: (msg: string) => write(console.log, `${paint("ℹ", "blue")} ${msg}`),
   success: (msg: string) => write(console.log, `${paint("✅", "green")} ${msg}`),
+  // stderr-routed info/success/warning/error — used when stdout is reserved
+  // for machine output (e.g. `--format json|sarif`). Intentionally BYPASS
+  // quiet mode: those formats enable quiet to clean stdout, but diagnostics
+  // posted to stderr must stay visible to CI operators (a silenced GitLab
+  // API error would hide real failures). Never writes to stdout.
+  infoStderr: (msg: string) => console.error(`${paint("ℹ", "blue")} ${msg}`),
+  successStderr: (msg: string) => console.error(`${paint("✅", "green")} ${msg}`),
+  warningStderr: (msg: string) => console.error(`${paint("⚠️", "yellow")}  ${msg}`),
+  errorStderr: (msg: string) => console.error(`${paint("❌", "red")} ${msg}`),
   warning: (msg: string) => write(console.warn, `${paint("⚠️", "yellow")}  ${msg}`),
   error: (msg: string) => write(console.error, `${paint("❌", "red")} ${msg}`),
   critical: (msg: string) => write(console.error, `${paint("🚨", "red", "bold")} ${msg}`),

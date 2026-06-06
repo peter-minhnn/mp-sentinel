@@ -1,0 +1,8 @@
+allowBuilds:
+  '@google/genai': false
+  esbuild: false
+  protobufjs: false
+  tree-sitter: false
+  tree-sitter-javascript: false
+  tree-sitter-typescript: false
+  unrs-resolver: false

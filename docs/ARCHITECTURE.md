@@ -30,7 +30,7 @@ CLI (src/index.ts)
   -> Load source index context (if indexing.enabled)
      -> buildIndexContext() reads cache
      -> context-builder service: priority ranking (changed → imports → dependents → hubs)
-     -> profile-aware pitfalls (cli-tooling/node-service/react-next/library)
+     -> profile-aware pitfalls (cli-tooling/node-service/react-next/react-spa/library)
   -> AI service (optional by policy) with concurrency + cache
   -> formatters render console/json/markdown report
   -> exit code (0 pass / 1 findings / 2 runtime error)
@@ -113,10 +113,11 @@ The context includes a concise **Profile Review Pitfalls** section (3–5 bullet
 - **`cli-tooling`**: exit codes contract, diff-first review, CLI parsing separation, no business logic in entry files.
 - **`node-service`**: handler purity, error middleware, env validation, async boundaries, health checks.
 - **`react-next`**: server/client boundary, data fetching colocation, `next/image` optimization, bundle vigilance.
+- **`react-spa`**: route-level code splitting, server state in a data library, hooks discipline, bundle vigilance.
 - **`library`**: public API surface, type definitions, peer dependencies, tree-shakeability.
 - **fallback** (no index or unknown): generic best practices.
 
-Profile detection uses manifest signals (`bin`, `scripts`, `dependencies`, `detectedFrameworks`).
+Profile detection uses manifest signals (`bin`, `scripts`, `dependencies`, `detectedFrameworks`). `react-next` requires an explicit `next` dependency; React without Next.js (Vite, CRA, React Router) maps to `react-spa`.
 
 ### Graceful Degradation
 

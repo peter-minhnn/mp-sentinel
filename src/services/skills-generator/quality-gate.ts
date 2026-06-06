@@ -15,6 +15,7 @@ import type {
   SourceIndex,
 } from "../../types/index.js";
 import { resolveSafeMajor } from "./rule-packs/version-gate.js";
+import { PROJECT_RULES_END_MARKER, PROJECT_RULES_START_MARKER } from "./constants.js";
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
@@ -85,6 +86,14 @@ const KNOWN_NON_SOURCE_PATHS = new Set([
   ".sentinel",
   ".sentinel/",
   ".sentinel/skills/",
+  ".storybook",
+  ".storybook/",
+  ".github",
+  ".github/",
+  ".vscode",
+  ".vscode/",
+  "public",
+  "public/",
   ".js",
   ".ts",
   ".tsx",
@@ -597,8 +606,15 @@ function checkUnknownPaths(
 
   // Build set of known paths from index + generated references
   const known = new Set<string>();
+  const knownDirs = new Set<string>();
   for (const f of index.files) {
     known.add(f.path);
+    // Record every ancestor directory so directory tokens (with or without a
+    // trailing slash) can be recognized as real, e.g. "src/shared/gems-ui".
+    const parts = f.path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      knownDirs.add(parts.slice(0, i).join("/"));
+    }
   }
   for (const ref of knownRefPaths) {
     known.add(ref);
@@ -612,6 +628,11 @@ function checkUnknownPaths(
     // Skip directory-only references (e.g. `src/`, `(root)/`)
     const normalized = normalizePathToken(token);
     if (token.endsWith("/") && !token.includes(".")) continue;
+    // Skip real directories regardless of trailing slash (e.g.
+    // "src/shared/gems-ui", ".storybook") — these are valid navigation
+    // targets, not files. A directory is "real" when it is an ancestor of
+    // some indexed file.
+    if (knownDirs.has(normalized)) continue;
     // Skip if found in known paths (try both raw and normalized)
     if (known.has(token) || known.has(normalized)) continue;
     // Also try matching as a suffix (e.g. "src/index.ts" might match "src/index.ts" in index)
@@ -715,7 +736,7 @@ function checkRealSignals(file: GeneratedSkillFile, index: SourceIndex | null): 
       if (content.includes(`\`${key}\``)) return true;
       if (
         new RegExp(
-          `(?:npm|pnpm|yarn)\\s+(?:run\\s+)?${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+          `(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
         ).test(content)
       )
         return true;
@@ -977,15 +998,17 @@ function checkReferenceRouting(file: GeneratedSkillFile): QualityCheck[] {
     // Skip fallback row for reference name validation
     if (dirCell.includes("Other files")) continue;
 
-    // Validate reference names
+    // Validate reference names. Module deep-dive references use the
+    // "modules/<safe-name>" form (generated per bounded context).
     const refNames = refCell.split(",").map((r) => r.trim());
     for (const name of refNames) {
-      if (!KNOWN_REFERENCE_NAMES.has(name)) {
+      const isModuleRef = /^modules\/[a-z0-9-]+$/.test(name);
+      if (!KNOWN_REFERENCE_NAMES.has(name) && !isModuleRef) {
         checks.push({
           type: "reference-routing",
           severity: "error",
           file: file.outputPath,
-          message: `Unknown reference name "${name}" in routing row — must be one of: ${[...KNOWN_REFERENCE_NAMES].join(", ")}`,
+          message: `Unknown reference name "${name}" in routing row — must be one of: ${[...KNOWN_REFERENCE_NAMES].join(", ")}, or modules/<safe-name>`,
         });
       }
     }
@@ -1053,6 +1076,271 @@ function checkVersionGatedLeakage(
     }
   }
 
+  return checks;
+}
+
+// ── Stack consistency (known false-positive guidance) ──────────────────────
+
+/**
+ * Guard against stack-mismatched guidance regressing into generated output:
+ * - React-without-Next projects must not carry Next.js-only advice.
+ * - `moduleResolution: "bundler"` projects must not require `.js` import
+ *   extensions.
+ * (Package-manager command mismatches live in checkPackageManagerCommands.)
+ */
+/**
+ * Strip the project-authored "Project Rules (authoritative)" section from
+ * content so that quoted project guidance (which may legitimately mention
+ * `next/image`, `'use server'`, etc.) does not trip stack-consistency
+ * checks meant for GENERATED guidance only.
+ *
+ * Prefers the stable HTML-comment boundary markers (robust against nested
+ * Markdown H2 headings inside project rules / ruleFiles). Falls back to the
+ * legacy H2-boundary heuristic for older generated files that predate the
+ * markers.
+ */
+function stripProjectRulesSection(content: string): string {
+  // Marker-based stripping (current generator). Strip every marked region.
+  const startIdx = content.indexOf(PROJECT_RULES_START_MARKER);
+  if (startIdx !== -1) {
+    let out = content;
+    for (;;) {
+      const s = out.indexOf(PROJECT_RULES_START_MARKER);
+      if (s === -1) break;
+      const eMarker = out.indexOf(PROJECT_RULES_END_MARKER, s);
+      const end = eMarker === -1 ? out.length : eMarker + PROJECT_RULES_END_MARKER.length;
+      out = out.slice(0, s) + out.slice(end);
+    }
+    return out;
+  }
+
+  // Legacy fallback: H2-boundary heuristic (pre-marker generated files).
+  const startRe = /^## Project Rules \(authoritative\)\s*$/m;
+  const match = startRe.exec(content);
+  if (!match) return content;
+  const start = match.index;
+  const rest = content.slice(start + match[0].length);
+  const nextH2 = rest.search(/^## /m);
+  const end = nextH2 === -1 ? content.length : start + match[0].length + nextH2;
+  return content.slice(0, start) + content.slice(end);
+}
+
+function checkStackConsistency(
+  file: GeneratedSkillFile,
+  index: SourceIndex | null,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  if (!index) return checks;
+  // Exclude project-authored rules: quoted guidance there is not active
+  // generated advice and must not trip framework stack checks.
+  const content = stripProjectRulesSection(file.content);
+
+  const deps: Record<string, string> = {
+    ...index.project.dependencies,
+    ...index.project.devDependencies,
+  };
+  const hasNext = deps["next"] !== undefined;
+  const hasReact = deps["react"] !== undefined || deps["react-dom"] !== undefined;
+
+  // 1) Next.js-only advice in a React project without Next
+  if (hasReact && !hasNext) {
+    for (const marker of ["Next.js Rules", "next/image", "'use server'"]) {
+      if (content.includes(marker)) {
+        checks.push({
+          type: "stack-consistency",
+          severity: "error",
+          file: file.outputPath,
+          message: `Next.js-only advice "${marker}" rendered for a React project without a next dependency`,
+        });
+      }
+    }
+  }
+
+  // 2) NodeNext `.js` extension rule under bundler resolution
+  const moduleResolution = String(
+    index.project.tsConfig?.compilerOptions?.["moduleResolution"] ?? "",
+  ).toLowerCase();
+  if (moduleResolution === "bundler" && content.includes("must include the `.js` extension")) {
+    checks.push({
+      type: "stack-consistency",
+      severity: "error",
+      file: file.outputPath,
+      message:
+        'NodeNext `.js` import-extension rule rendered for a project using `moduleResolution: "bundler"`',
+    });
+  }
+
+  return checks;
+}
+
+// ── Framework heading guards ────────────────────────────────────────────────
+
+/**
+ * Dependency-activated rule packs whose `### <Label> Rules` heading must not
+ * appear unless the activating dependency exists in the manifest.
+ */
+const PACK_HEADING_GUARDS: ReadonlyArray<readonly [heading: string, deps: readonly string[]]> = [
+  ["Next.js Rules", ["next"]],
+  ["Vite Rules", ["vite"]],
+  ["React Router Rules", ["react-router", "react-router-dom"]],
+  ["TanStack Query Rules", ["@tanstack/react-query", "react-query"]],
+  ["Ant Design Rules", ["antd"]],
+  ["Supabase Rules", ["@supabase/supabase-js", "@supabase/ssr"]],
+  ["React Rules", ["react", "react-dom"]],
+  ["Vue Rules", ["vue", "@vue/core", "nuxt"]],
+  ["Nuxt Rules", ["nuxt"]],
+  ["Angular Rules", ["@angular/core", "@angular/common"]],
+  ["Solid Rules", ["solid-js"]],
+];
+
+/**
+ * Flag `### <Framework> Rules` sections whose activating dependency is
+ * absent — wrong-framework advice for this codebase.
+ */
+function checkFrameworkHeadingGuards(
+  file: GeneratedSkillFile,
+  index: SourceIndex | null,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  if (!index || index.project.ecosystem !== "node") return checks;
+
+  const deps: Record<string, string> = {
+    ...index.project.dependencies,
+    ...index.project.devDependencies,
+  };
+
+  // Project-authored rules may quote framework headings; only GENERATED
+  // pack headings should be guarded.
+  const content = stripProjectRulesSection(file.content);
+  for (const [heading, activators] of PACK_HEADING_GUARDS) {
+    if (!content.includes(`### ${heading}`)) continue;
+    if (activators.some((dep) => deps[dep] !== undefined)) continue;
+    checks.push({
+      type: "framework-guard",
+      severity: "error",
+      file: file.outputPath,
+      message: `"${heading}" rendered but none of its activating dependencies (${activators.join(", ")}) exist in the manifest`,
+    });
+  }
+
+  return checks;
+}
+
+// ── Package-manager command consistency ─────────────────────────────────────
+
+const EXEC_PREFIXES: ReadonlyArray<readonly [pm: string, prefix: string]> = [
+  ["npm", "npx mp-sentinel"],
+  ["pnpm", "pnpm exec mp-sentinel"],
+  ["pnpm", "pnpm dlx mp-sentinel"],
+  ["yarn", "yarn dlx mp-sentinel"],
+  ["bun", "bunx --bun mp-sentinel"],
+];
+
+/** Line-start command matcher: optional list markers/quotes + backtick. */
+const COMMAND_LINE_PREFIX = "^[\\s>*-]*(?:\\d+\\.\\s*)?`?";
+
+/**
+ * Generated workflow commands must match the project's package manager:
+ * no `npx mp-sentinel` in a pnpm/bun project, no `npm run` in a bun
+ * project, etc. Line-start matching keeps raw script bodies (echoed after
+ * `#`) and prose from tripping the check.
+ */
+function checkPackageManagerCommands(
+  file: GeneratedSkillFile,
+  index: SourceIndex | null,
+): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const pm = index?.project.packageManager;
+  if (!pm || !["npm", "pnpm", "yarn", "bun"].includes(pm)) return checks;
+
+  const lines = file.content.split("\n");
+
+  // 1) mp-sentinel exec invocations must use this pm's prefix
+  for (const [prefixPm, prefix] of EXEC_PREFIXES) {
+    if (prefixPm === pm) continue;
+    const re = new RegExp(`${COMMAND_LINE_PREFIX}${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    if (lines.some((line) => re.test(line))) {
+      checks.push({
+        type: "pm-command",
+        severity: "error",
+        file: file.outputPath,
+        message: `\`${prefix}\` rendered for a ${pm} project - expected the ${pm} exec prefix`,
+      });
+    }
+  }
+
+  // 2) run-script lines must use this pm
+  const runRe = new RegExp(`${COMMAND_LINE_PREFIX}(npm|pnpm|yarn|bun) (run |test\\b)`);
+  for (const line of lines) {
+    const match = runRe.exec(line);
+    if (match && match[1] !== pm) {
+      checks.push({
+        type: "pm-command",
+        severity: "error",
+        file: file.outputPath,
+        message: `\`${match[1]} ${match[2]!.trim()}\` command rendered for a ${pm} project`,
+      });
+      break; // One finding per file is enough signal
+    }
+  }
+
+  return checks;
+}
+
+// ── Test guidance presence ──────────────────────────────────────────────────
+
+/**
+ * When the index contains test files, any output that renders the Project
+ * Profile section must include Test Expectations so agents know how to run
+ * and respect the test suite.
+ */
+function checkTestGuidance(file: GeneratedSkillFile, index: SourceIndex | null): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  if (!index) return checks;
+  if (!file.content.includes("## Project Profile:")) return checks;
+
+  const hasTests = index.files.some(
+    (f) => f.path.includes(".test.") || f.path.includes(".spec.") || f.path.includes("__tests__"),
+  );
+  if (hasTests && !file.content.includes("### Test Expectations")) {
+    checks.push({
+      type: "missing-test-guidance",
+      severity: "error",
+      file: file.outputPath,
+      message:
+        "Index contains test files but the Project Profile section lacks '### Test Expectations'",
+    });
+  }
+
+  return checks;
+}
+
+// ── Repetitive output ───────────────────────────────────────────────────────
+
+const MAX_BULLET_REPEATS = 2;
+
+/**
+ * Flag identical bullet lines repeated more than twice — repetitive
+ * guidance dilutes rule files that load eagerly into agent context.
+ */
+function checkRepetitiveOutput(file: GeneratedSkillFile): QualityCheck[] {
+  const checks: QualityCheck[] = [];
+  const counts = new Map<string, number>();
+  for (const raw of file.content.split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith("- ") || line.length < 20) continue;
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  for (const [line, count] of counts) {
+    if (count > MAX_BULLET_REPEATS) {
+      checks.push({
+        type: "repetitive-output",
+        severity: "warning",
+        file: file.outputPath,
+        message: `Bullet repeated ${count}x: "${line.slice(0, 60)}..." - deduplicate the guidance`,
+      });
+    }
+  }
   return checks;
 }
 
@@ -1335,6 +1623,11 @@ export function validateSkillQuality(
     allChecks.push(...checkReferenceRouting(file));
     allChecks.push(...checkRiskyUnicode(file));
     allChecks.push(...checkVersionGatedLeakage(file, index));
+    allChecks.push(...checkStackConsistency(file, index));
+    allChecks.push(...checkFrameworkHeadingGuards(file, index));
+    allChecks.push(...checkPackageManagerCommands(file, index));
+    allChecks.push(...checkTestGuidance(file, index));
+    allChecks.push(...checkRepetitiveOutput(file));
   }
 
   const errors = allChecks.filter((c) => c.severity === "error");

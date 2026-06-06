@@ -549,6 +549,13 @@ export interface AuditIssue {
   confidence?: "low" | "medium" | "high";
   /** Supporting evidence for the issue (v1.34.0+) */
   evidence?: string;
+  /**
+   * Structured, ready-to-apply code replacement for the single flagged line.
+   * Pure code (no prose), small, and matching the file's style. Rendered as a
+   * provider code-suggestion block ONLY when it passes safety checks. Distinct
+   * from `suggestion`, which is a free-text recommendation.
+   */
+  codeSuggestion?: string;
 }
 
 export interface AuditResult {
@@ -977,12 +984,26 @@ export type Ecosystem =
 /**
  * Project manifest information
  */
+/** A package-level manifest inside a workspace monorepo */
+export interface WorkspacePackageInfo {
+  /** Directory relative to the workspace root, e.g. "packages/core" */
+  directory: string;
+  /** Package name from its package.json */
+  name: string;
+  /** Script names defined in the package's own package.json */
+  scriptNames: string[];
+}
+
 export interface ProjectManifest {
   packageName?: string | undefined;
   packageVersion?: string | undefined;
   nodeEngine?: string | undefined;
   ecosystem: Ecosystem;
   packageManager?: string | undefined;
+  /** Workspace globs from package.json `workspaces` or pnpm-workspace.yaml (monorepo root) */
+  workspaces?: string[] | undefined;
+  /** Package-level manifests discovered under the workspace globs (monorepo root) */
+  workspacePackages?: WorkspacePackageInfo[] | undefined;
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
   detectedFrameworks: string[];
@@ -1185,7 +1206,7 @@ export interface CacheValidity {
 /**
  * Skill profile for review context (same as in skills-generator)
  */
-export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "library";
+export type SkillProfile = "cli-tooling" | "node-service" | "react-next" | "react-spa" | "library";
 
 /**
  * Unified tech profile carrying both the high-level SkillProfile
@@ -1543,7 +1564,7 @@ export interface ModuleInfo {
 
 /** Entrypoint classification */
 export interface EntrypointInfo {
-  type: "cli" | "public-api" | "config" | "command";
+  type: "cli" | "public-api" | "config" | "command" | "app" | "route";
   path: string;
   /** Description: for commands the script string, for CLI the bin target */
   label: string;
@@ -1611,6 +1632,10 @@ export interface SkillKnowledgeBase {
   risks: RiskEntry[];
   /** Detected agent instruction files (v1.0.16+) */
   instructionFiles?: string[];
+  /** Project-authored review rules from `.mp-sentinelrc.json` `rules` (deterministic pass-through) */
+  projectRules?: string[];
+  /** Project-authored rule file paths from `.mp-sentinelrc.json` `ruleFiles` */
+  projectRuleFiles?: string[];
 }
 
 /**

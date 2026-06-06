@@ -284,6 +284,67 @@ function detectFormatterConfigs(projectRoot: string): string[] {
   return found.sort();
 }
 
+// ── Formatter config as source of truth ────────────────────────────────────
+
+interface FormatterStyleOverrides {
+  indent?: CodeStyleProfile["indent"];
+  singleQuoteRatio?: number;
+  semicolonRatio?: number;
+}
+
+const PRETTIER_JSON_FILES = [".prettierrc", ".prettierrc.json"];
+
+/**
+ * Read explicit style settings from `.prettierrc`(.json) and `.editorconfig`.
+ * These project-authored configs win over sampled heuristics — sampling is
+ * only a fallback for projects without formatter configs.
+ */
+async function readFormatterStyleOverrides(projectRoot: string): Promise<FormatterStyleOverrides> {
+  const overrides: FormatterStyleOverrides = {};
+
+  // .editorconfig: indent_style / indent_size (lowest priority)
+  try {
+    const ecPath = join(projectRoot, ".editorconfig");
+    if (existsSync(ecPath)) {
+      const content = await readFile(ecPath, "utf-8");
+      const styleMatch = content.match(/^\s*indent_style\s*=\s*(tab|space)\s*$/im);
+      const sizeMatch = content.match(/^\s*indent_size\s*=\s*(\d+)\s*$/im);
+      if (styleMatch?.[1]?.toLowerCase() === "tab") {
+        overrides.indent = "tab";
+      } else if (styleMatch?.[1]?.toLowerCase() === "space") {
+        overrides.indent = sizeMatch?.[1] === "4" ? "4-spaces" : "2-spaces";
+      }
+    }
+  } catch {
+    // Unreadable .editorconfig — ignore
+  }
+
+  // Prettier JSON configs (higher priority than .editorconfig)
+  for (const fileName of PRETTIER_JSON_FILES) {
+    const path = join(projectRoot, fileName);
+    if (!existsSync(path)) continue;
+    try {
+      const parsed = JSON.parse(await readFile(path, "utf-8")) as Record<string, unknown>;
+      if (parsed.useTabs === true) {
+        overrides.indent = "tab";
+      } else if (parsed.useTabs === false || typeof parsed.tabWidth === "number") {
+        overrides.indent = parsed.tabWidth === 4 ? "4-spaces" : "2-spaces";
+      }
+      if (typeof parsed.singleQuote === "boolean") {
+        overrides.singleQuoteRatio = parsed.singleQuote ? 1 : 0;
+      }
+      if (typeof parsed.semi === "boolean") {
+        overrides.semicolonRatio = parsed.semi ? 1 : 0;
+      }
+      break;
+    } catch {
+      // Non-JSON prettier config — fall back to sampling
+    }
+  }
+
+  return overrides;
+}
+
 // ── File line counting ─────────────────────────────────────────────────────
 
 /**
@@ -337,10 +398,12 @@ export async function detectCodeStyleProfile(
   const allLineCounts = index.files.map((f) => countFileLines(index, f.path));
   allLineCounts.sort((a, b) => a - b);
 
-  // Detect style attributes
-  const indent = detectIndent(allLines);
-  const singleQuoteRatio = detectQuoteRatio(allContents.join("\n"));
-  const semicolonRatio = detectSemicolonRatio(allLines);
+  // Detect style attributes — project formatter configs (.prettierrc,
+  // .editorconfig) are the source of truth; sampling is the fallback.
+  const overrides = await readFormatterStyleOverrides(projectRoot);
+  const indent = overrides.indent ?? detectIndent(allLines);
+  const singleQuoteRatio = overrides.singleQuoteRatio ?? detectQuoteRatio(allContents.join("\n"));
+  const semicolonRatio = overrides.semicolonRatio ?? detectSemicolonRatio(allLines);
   const formatterConfigs = detectFormatterConfigs(projectRoot);
 
   // Trailing newline: average across all sampled files

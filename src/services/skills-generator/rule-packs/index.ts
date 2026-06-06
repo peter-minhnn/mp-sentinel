@@ -20,6 +20,12 @@ export interface RulePackContext {
   langProfile: LanguageProfile;
   frameworks: string[];
   deps: Record<string, string>;
+  /**
+   * Project tsconfig compiler options (when available). Lets packs gate
+   * rules on real config — e.g. no NodeNext `.js`-extension rule under
+   * `moduleResolution: "bundler"`.
+   */
+  tsConfig?: { compilerOptions: Record<string, unknown>; extends?: string } | undefined;
 }
 
 export type RuleKind = "must" | "should" | "avoid";
@@ -40,6 +46,11 @@ export interface RulePackRule {
    * drop the rule — see version-gate.ts.
    */
   requires?: VersionRequirement[];
+  /**
+   * Optional config-aware predicate. When present, the rule is emitted
+   * only if it returns true for the current context (e.g. tsconfig flags).
+   */
+  enabled?: (ctx: RulePackContext) => boolean;
 }
 
 /**
@@ -126,6 +137,11 @@ import { laravelRules } from "./laravel.js";
 import { rubyRules } from "./ruby.js";
 import { railsRules } from "./rails.js";
 import { builtinRules } from "./builtin.js";
+import { viteRules } from "./vite.js";
+import { reactRouterRules } from "./react-router.js";
+import { tanstackQueryRules } from "./tanstack-query.js";
+import { antdRules } from "./antd.js";
+import { supabaseRules } from "./supabase.js";
 
 export const ALL_PACKS: RulePack[] = [
   builtinRules,
@@ -133,6 +149,11 @@ export const ALL_PACKS: RulePack[] = [
   vueRules,
   reactRules,
   nextRules,
+  viteRules,
+  reactRouterRules,
+  tanstackQueryRules,
+  antdRules,
+  supabaseRules,
   typescriptStrictRules,
   pythonRules,
   goRules,
@@ -170,9 +191,12 @@ export function selectActiveRulePacks(
   const activePacks = ALL_PACKS.filter((p) => p.when(ctx));
   // Version gating: drop rules whose dependency-major constraints are not
   // safely satisfied by the manifest (conservative — unknown drops the rule).
+  // Config gating: drop rules whose `enabled` predicate rejects the context
+  // (e.g. tsconfig-dependent rules).
   const rawRules = activePacks
     .flatMap((p) => p.rules)
-    .filter((r) => requirementsSatisfied(r.requires, ctx.deps));
+    .filter((r) => requirementsSatisfied(r.requires, ctx.deps))
+    .filter((r) => (r.enabled ? r.enabled(ctx) : true));
   const allRules = applyDisabledRules(rawRules, disableRules);
   const allowed = new Set(allRules);
   // Return shallow pack copies whose rule lists honor version gating and

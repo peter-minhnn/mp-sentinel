@@ -6,6 +6,7 @@
  */
 
 import { detectInstructionFiles } from "./instruction-files.js";
+import { isAppEntryFile, isNextRouteFile, moduleKeyForPath } from "./module-grouping.js";
 import type {
   SourceIndex,
   SourceIndexFile,
@@ -60,7 +61,7 @@ function buildModuleOwnership(
 ): ModuleInfo[] {
   const dirMap = new Map<string, SourceIndexFile[]>();
   for (const file of index.files) {
-    const dir = topDir(file.path);
+    const dir = moduleKeyForPath(file.path);
     const bucket = dirMap.get(dir) ?? [];
     bucket.push(file);
     dirMap.set(dir, bucket);
@@ -99,11 +100,11 @@ function buildModuleOwnership(
     const exportedDirs = new Set<string>();
     for (const file of sourceFiles) {
       for (const imp of file.importsFrom ?? []) {
-        const dir = topDir(imp);
+        const dir = moduleKeyForPath(imp);
         if (dir !== directory) importDirs.add(dir);
       }
       for (const dep of file.importedBy ?? []) {
-        const dir = topDir(dep);
+        const dir = moduleKeyForPath(dep);
         if (dir !== directory) exportedDirs.add(dir);
       }
     }
@@ -163,6 +164,27 @@ function buildEntrypoints(
     if (role === "config") {
       result.push({ type: "config", path, label: "configuration" });
     }
+  }
+
+  // Application entries (SPA main/App/router) and Next.js App Router files
+  const seenPaths = new Set(result.map((r) => r.path));
+  const appEntries = index.files
+    .filter((f) => isAppEntryFile(f.path) && !seenPaths.has(f.path))
+    .map((f) => f.path)
+    .sort();
+  for (const path of appEntries) {
+    result.push({ type: "app", path, label: "application entry" });
+    seenPaths.add(path);
+  }
+
+  const MAX_ROUTE_ENTRYPOINTS = 20;
+  const routeFiles = index.files
+    .filter((f) => isNextRouteFile(f.path) && !seenPaths.has(f.path))
+    .map((f) => f.path)
+    .sort()
+    .slice(0, MAX_ROUTE_ENTRYPOINTS);
+  for (const path of routeFiles) {
+    result.push({ type: "route", path, label: "App Router route file" });
   }
 
   return result.sort((a, b) => a.type.localeCompare(b.type) || a.path.localeCompare(b.path));
@@ -336,12 +358,22 @@ function buildRiskMap(
 // Legacy generated locations (.windsurf/rules, .roo/rules, .clinerules)
 // are included only when they hold user-authored (non-generated) content.
 
+export interface SkillKnowledgeBaseOptions {
+  /** Project-authored review rules from config (`rules`) */
+  projectRules?: string[] | undefined;
+  /** Project-authored rule file paths from config (`ruleFiles`) */
+  projectRuleFiles?: string[] | undefined;
+}
+
 export function buildSkillKnowledgeBase(
   index: SourceIndex,
   projectRoot?: string,
+  options?: SkillKnowledgeBaseOptions,
 ): SkillKnowledgeBase {
   const insights = index.insights;
   const project = index.project;
+  const projectRules = options?.projectRules ?? [];
+  const projectRuleFiles = options?.projectRuleFiles ?? [];
 
   const fileRoles: Record<string, FileRole> = insights?.fileRoles ?? {};
   const publicApiFiles: string[] = insights?.publicApiFiles ?? [];
@@ -365,6 +397,8 @@ export function buildSkillKnowledgeBase(
       dependencies: [],
       risks: [],
       instructionFiles,
+      projectRules,
+      projectRuleFiles,
     };
   }
 
@@ -390,5 +424,7 @@ export function buildSkillKnowledgeBase(
     dependencies,
     risks,
     instructionFiles,
+    projectRules,
+    projectRuleFiles,
   };
 }

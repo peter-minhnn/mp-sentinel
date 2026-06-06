@@ -16,6 +16,30 @@ const VALID_CATEGORIES: ReadonlySet<string> = new Set([
   "maintainability",
 ]);
 
+// ── Code suggestion sanitization ───────────────────────────────────────
+
+/** Max length of a structured code suggestion accepted from the model. */
+const CODE_SUGGESTION_MAX_LENGTH = 400;
+
+/**
+ * Accept a model-provided `codeSuggestion` only when it is a plausible
+ * single-line code replacement (v1 scope): non-empty, single line, bounded in
+ * size, and free of nested code fences (which would break a rendered
+ * ```suggestion``` block). Returns the trimmed suggestion or undefined when it
+ * should be dropped. Multi-line / range suggestions are out of scope for now.
+ */
+const sanitizeParsedCodeSuggestion = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.replace(/\s+$/, "");
+  if (trimmed.trim().length === 0) return undefined;
+  // v1: single-line replacements only.
+  if (trimmed.includes("\n")) return undefined;
+  if (trimmed.length > CODE_SUGGESTION_MAX_LENGTH) return undefined;
+  // Nested triple-backtick fences cannot be embedded in a suggestion block.
+  if (trimmed.includes("```")) return undefined;
+  return trimmed;
+};
+
 // ── Normalization ──────────────────────────────────────────────────────
 
 const normalizeAuditResult = (value: AuditResult): AuditResult => {
@@ -61,6 +85,10 @@ const normalizeAuditResult = (value: AuditResult): AuditResult => {
       }
       if (typeof issue.suggestion === "string" && issue.suggestion.length > 0) {
         normalized.suggestion = issue.suggestion;
+      }
+      const codeSuggestion = sanitizeParsedCodeSuggestion(issue.codeSuggestion);
+      if (codeSuggestion !== undefined) {
+        normalized.codeSuggestion = codeSuggestion;
       }
 
       return normalized;

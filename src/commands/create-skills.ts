@@ -62,6 +62,7 @@ import {
   GENERATOR_VERSION,
   parseGeneratorMajor,
 } from "../services/skills-generator/metadata.js";
+import { METADATA_MARKER } from "../services/skills-generator/constants.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,19 @@ async function ensureDir(filePath: string): Promise<void> {
   const dir = dirname(filePath);
   if (!existsSync(dir)) {
     await mkdir(dir, { recursive: true });
+  }
+}
+
+/**
+ * True when the file exists but lacks the generated-metadata marker,
+ * meaning the user authored it by hand (local override). Unreadable files
+ * are treated as user-authored to err on the side of preservation.
+ */
+function isUserAuthoredFile(path: string): boolean {
+  try {
+    return !readFileSync(path, "utf-8").includes(METADATA_MARKER);
+  } catch {
+    return true;
   }
 }
 
@@ -256,9 +270,18 @@ async function runAdapter(
   const files = raw.map((f) => ({ ...f, content: applyMetadataHeader(f.content, metadataHeader) }));
 
   const conflictPaths: string[] = [];
+  const userAuthoredPaths: string[] = [];
   for (const file of files) {
-    if (existsSync(file.outputPath) && !force) {
+    if (!existsSync(file.outputPath)) continue;
+    if (!force) {
       conflictPaths.push(file.outputPath);
+      continue;
+    }
+    // --force never overwrites user-authored files: every file this command
+    // writes carries the metadata marker, so a markerless file at the output
+    // path is a local override the user wrote by hand.
+    if (isUserAuthoredFile(file.outputPath)) {
+      userAuthoredPaths.push(file.outputPath);
     }
   }
 
@@ -269,6 +292,19 @@ async function runAdapter(
       outputPaths: conflictPaths,
       skipped: true,
       skipReason: `${conflictPaths.length} file(s) already exist. Re-run with --force to overwrite.`,
+      quality,
+    };
+  }
+
+  if (userAuthoredPaths.length > 0) {
+    return {
+      agent: adapter.id,
+      label: adapter.label,
+      outputPaths: userAuthoredPaths,
+      skipped: true,
+      skipReason:
+        `${userAuthoredPaths.length} file(s) at the output path are user-authored (no ` +
+        `@mp-sentinel-generated marker). Refusing to overwrite local overrides - move or delete them manually.`,
       quality,
     };
   }
@@ -360,7 +396,10 @@ async function checkAdapter(
   codeStyleProfile?: CodeStyleProfile | undefined,
   createSkills?: CreateSkillsConfig | undefined,
 ): Promise<SkillsCheckResult> {
-  const currentGenerationConfigHash = computeGenerationConfigHash(createSkills);
+  const currentGenerationConfigHash = computeGenerationConfigHash(createSkills, {
+    rules: knowledgeBase?.projectRules,
+    ruleFiles: knowledgeBase?.projectRuleFiles,
+  });
   const context: SkillsGenerationContext = {
     projectRoot,
     projectName,
@@ -888,7 +927,10 @@ async function runDoctor(
 
   if (index && (indexInfo.status === "ok" || indexInfo.status === "stale")) {
     const currentHash = computeIndexHash(index, projectRoot);
-    const knowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
+    const knowledgeBase = buildSkillKnowledgeBase(index, projectRoot, {
+      projectRules: config.rules,
+      projectRuleFiles: config.ruleFiles,
+    });
     const context: SkillsGenerationContext = {
       projectRoot,
       projectName,
@@ -1298,8 +1340,14 @@ export async function runCreateSkillsCommand(
       }
     }
 
+    // ── Load project config early: knowledge base carries project rules ─────
+    const config = await loadProjectConfig(projectRoot);
+
     // ── Build shared SkillKnowledgeBase (once, reused across adapters) ──────
-    const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot);
+    const knowledgeBase: SkillKnowledgeBase = buildSkillKnowledgeBase(index, projectRoot, {
+      projectRules: config.rules,
+      projectRuleFiles: config.ruleFiles,
+    });
 
     // ── Code style profile (deterministic, no AI needed) ────────────────────
     // Read source files from disk to detect indent style, quotes, semicolons, etc.
@@ -1319,7 +1367,6 @@ export async function runCreateSkillsCommand(
     let enrichment: AIEnrichmentOutput | undefined = undefined;
     let enrichmentMetadata: EnrichmentMetadata = { mode: "none" };
 
-    const config = await loadProjectConfig(projectRoot);
     const aiConfig = config.createSkills?.ai;
     const aiEnabled = Boolean(aiConfig?.enabled) && !values["create-skills-no-ai-enrich"];
     const emitFallbackNotice = (message: string): void => {
@@ -1498,7 +1545,10 @@ export async function runCreateSkillsCommand(
     // was built) so content, hash, and the next --check agree on disk state.
 
     const indexHash = computeIndexHash(index, projectRoot);
-    const generationConfigHash = computeGenerationConfigHash(config.createSkills);
+    const generationConfigHash = computeGenerationConfigHash(config.createSkills, {
+      rules: config.rules,
+      ruleFiles: config.ruleFiles,
+    });
     const results: SkillsGenerationResult[] = [];
 
     for (const adapter of adapters) {

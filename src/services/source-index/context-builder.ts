@@ -139,6 +139,13 @@ export function getProfileReviewPitfalls(profile: SkillProfile): string[] {
         "next/image optimization - always use next/image for external images with proper domains",
         "Bundle vigilance - avoid large dependencies in client bundles, use dynamic imports",
       ];
+    case "react-spa":
+      return [
+        "Route-level code splitting - lazy-load route components to keep the initial bundle small",
+        "Server state belongs in a data library (React Query/SWR), not duplicated in component state",
+        "Hooks discipline - complete dependency arrays, stable keys in render loops",
+        "Bundle vigilance - avoid large dependencies in the client bundle, use dynamic imports",
+      ];
     case "library":
       return [
         "Public API surface - consider semver impact of every exported symbol",

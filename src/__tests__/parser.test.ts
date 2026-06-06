@@ -130,4 +130,51 @@ describe("parseAuditResponse", () => {
     expect(result.status).toBe("FAIL");
     expect(result.issues?.[0]?.severity).toBe("WARNING");
   });
+
+  // ── codeSuggestion preservation + sanitization ──
+
+  it("preserves a valid codeSuggestion", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [
+        {
+          line: 3,
+          severity: "CRITICAL",
+          message: "use parameterized query",
+          codeSuggestion: "db.query('SELECT * FROM t WHERE id = $1', [id]);",
+        },
+      ],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.issues?.[0]?.codeSuggestion).toBe(
+      "db.query('SELECT * FROM t WHERE id = $1', [id]);",
+    );
+  });
+
+  it("drops an oversized codeSuggestion", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [{ line: 1, severity: "WARNING", message: "m", codeSuggestion: "x;\n".repeat(40) }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.issues?.[0]?.codeSuggestion).toBeUndefined();
+  });
+
+  it("drops a codeSuggestion that exceeds the length cap", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [{ line: 1, severity: "WARNING", message: "m", codeSuggestion: "a".repeat(2000) }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.issues?.[0]?.codeSuggestion).toBeUndefined();
+  });
+
+  it("drops an empty codeSuggestion", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [{ line: 1, severity: "WARNING", message: "m", codeSuggestion: "   " }],
+    });
+    const result = parseAuditResponse(raw);
+    expect(result.issues?.[0]?.codeSuggestion).toBeUndefined();
+  });
 });

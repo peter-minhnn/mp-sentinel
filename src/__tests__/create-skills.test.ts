@@ -337,7 +337,8 @@ describe("generateContent", () => {
     const content = generateContent(index, "fixture");
     expect(content.sections.agentWorkflow).toContain("Auto-generated");
     expect(content.sections.agentWorkflow).toContain("Do not edit");
-    expect(content.sections.agentWorkflow).toContain("agent:skills:refresh");
+    // No refresh script in the fixture -> falls back to the raw CLI command
+    expect(content.sections.agentWorkflow).toContain("create-skills --all-agents --force");
   });
 
   it("profile rules Import Conventions includes Node/ESM rules when TypeScript index", async () => {
@@ -1868,7 +1869,7 @@ describe("profileRules content", () => {
     });
     const content = generateContent(idx, "test");
     expect(content.profile).toBe("cli-tooling");
-    expect(content.sections.profileRules).toContain("npm run test");
+    expect(content.sections.profileRules).toContain("npm test");
     expect(content.sections.profileRules).toContain("npm run build");
     expect(content.sections.profileRules).toContain("npm run lint");
   });
@@ -1897,11 +1898,21 @@ describe("profileRules content", () => {
   });
 
   it("includes review pitfalls for react-next profile", () => {
-    const idx = makeMinimalIndex({ dependencies: { react: "18.0.0", "react-dom": "18.0.0" } });
+    const idx = makeMinimalIndex({
+      dependencies: { next: "15.0.0", react: "18.0.0", "react-dom": "18.0.0" },
+    });
     const content = generateContent(idx, "test");
     expect(content.profile).toBe("react-next");
     expect(content.sections.profileRules).toContain("Server/Client boundary");
     expect(content.sections.profileRules).toContain("next/image");
+  });
+
+  it("includes review pitfalls for react-spa profile (react without next)", () => {
+    const idx = makeMinimalIndex({ dependencies: { react: "18.0.0", "react-dom": "18.0.0" } });
+    const content = generateContent(idx, "test");
+    expect(content.profile).toBe("react-spa");
+    expect(content.sections.profileRules).toContain("Route-level code splitting");
+    expect(content.sections.profileRules).not.toContain("next/image");
   });
 
   it("includes module ownership when files are present", () => {

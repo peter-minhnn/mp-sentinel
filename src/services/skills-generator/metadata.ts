@@ -80,17 +80,29 @@ function isDefaultPolicies(policies: CreateSkillsPolicies): boolean {
   );
 }
 
+/** Project-authored rule inputs that flow into generated content. */
+export interface GenerationProjectRules {
+  rules?: string[] | undefined;
+  ruleFiles?: string[] | undefined;
+}
+
 /**
- * Deterministic hash of the `createSkills` config fields that change
- * generated output: `policies` and `disableRules`. AI enrichment config is
- * excluded -- enrichment staleness is tracked by the enrichment metadata.
+ * Deterministic hash of the config fields that change generated output:
+ * `createSkills.policies`, `createSkills.disableRules`, and the
+ * project-authored `rules` / `ruleFiles` (rendered into the Project Rules
+ * section). AI enrichment config is excluded -- enrichment staleness is
+ * tracked by the enrichment metadata.
  *
- * Default-equivalent config (default policies, empty disableRules) is
- * normalized to the same hash as "no config" so that files generated
- * before this field existed -- or with no `.mp-sentinelrc.json` at all --
- * stay up-to-date until the user actually changes something.
+ * Default-equivalent config (default policies, empty disableRules, no
+ * project rules) is normalized to the same hash as "no config" so that
+ * files generated before this field existed -- or with no
+ * `.mp-sentinelrc.json` at all -- stay up-to-date until the user actually
+ * changes something.
  */
-export function computeGenerationConfigHash(createSkills?: CreateSkillsConfig): string {
+export function computeGenerationConfigHash(
+  createSkills?: CreateSkillsConfig,
+  projectRules?: GenerationProjectRules,
+): string {
   const policies =
     createSkills?.policies && !isDefaultPolicies(createSkills.policies)
       ? createSkills.policies
@@ -99,11 +111,19 @@ export function computeGenerationConfigHash(createSkills?: CreateSkillsConfig): 
     createSkills?.disableRules && createSkills.disableRules.length > 0
       ? [...createSkills.disableRules].sort()
       : undefined;
+  const rules =
+    projectRules?.rules && projectRules.rules.length > 0 ? [...projectRules.rules] : undefined;
+  const ruleFiles =
+    projectRules?.ruleFiles && projectRules.ruleFiles.length > 0
+      ? [...projectRules.ruleFiles]
+      : undefined;
   const stable = {
     policies: policies
       ? sortRecord(Object.fromEntries(Object.entries(policies).map(([k, v]) => [k, String(v)])))
       : undefined,
     disableRules,
+    rules,
+    ruleFiles,
   };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }
@@ -145,6 +165,14 @@ export function computeIndexHash(index: SourceIndex, projectRoot?: string): stri
       devDependencies: sortRecord(index.project.devDependencies),
       scripts: index.project.scripts ? sortRecord(index.project.scripts) : undefined,
       bin: normalizeBin(index.project.bin),
+      workspaces: index.project.workspaces ? [...index.project.workspaces].sort() : undefined,
+      workspacePackages: index.project.workspacePackages
+        ? index.project.workspacePackages.map((p) => ({
+            directory: p.directory,
+            name: p.name,
+            scriptNames: [...p.scriptNames].sort(),
+          }))
+        : undefined,
     },
     files: index.files
       .map((f) => ({

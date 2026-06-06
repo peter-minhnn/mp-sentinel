@@ -251,6 +251,7 @@ const renderReport = (report: ReviewReport, format: ReviewFormat): void => {
 const postGitProviderComments = async (
   results: FileAuditResult[],
   dryRun: boolean,
+  format: ReviewFormat,
 ): Promise<void> => {
   if (dryRun) return;
 
@@ -264,7 +265,9 @@ const postGitProviderComments = async (
   if (!hasActionableFindings) return;
 
   const { postGitProviderComments: postComments } = await import("../services/git-provider.js");
-  await postComments(results);
+  // For machine-readable formats, stdout is reserved for the report — route
+  // comment-posting progress/success logs to stderr.
+  await postComments(results, { logToStderr: format !== "console" });
 };
 
 /**
@@ -667,7 +670,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     { threshold },
   );
 
-  await postGitProviderComments(report.results, dryRun);
+  await postGitProviderComments(report.results, dryRun, format);
 
   renderReport(report, format);
 

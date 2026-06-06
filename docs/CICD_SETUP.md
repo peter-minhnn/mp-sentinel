@@ -440,6 +440,44 @@ The fields `gitProvider`, `repoUrl`, and `projectId` in `.mp-sentinelrc.json` ar
 
 ---
 
+## GitLab Inline MR Comments
+
+When a review runs inside GitLab CI on a merge request, mp-sentinel posts each `CRITICAL` and `WARNING` finding as an **inline discussion** on the exact changed line (`INFO` findings are never posted inline). Each comment includes:
+
+- **Why this matters** — the finding explanation.
+- **Suggested fix** — the free-text recommendation (when present).
+- **Evidence** — supporting detail (when present).
+- A GitLab **code suggestion block** — rendered only when the model returns a structured `codeSuggestion` that passes safety checks (small, pure code, no nested code fences, not prose). Reviewers can apply it with one click:
+
+  ````md
+  ```suggestion
+  replacement code
+  ```
+  ````
+
+### How it posts
+
+- The diff version SHAs (`base`/`head`/`start`) are fetched from the MR **versions API** first, falling back to CI env vars (`CI_COMMIT_SHA`, `CI_MERGE_REQUEST_DIFF_BASE_SHA`, `CI_MERGE_REQUEST_DIFF_START_SHA`).
+- Inline positions use `position_type: "text"` with `new_path` + `new_line`.
+- Existing **discussions and MR-level notes** are both read first; a finding with the same fingerprint **updates its note** (via the matching Discussions or Notes endpoint) instead of creating a duplicate, so reruns on the same commit are safe — including reruns where the prior post was a fallback note.
+- If GitLab rejects an inline position (e.g. the line is not part of the MR diff), mp-sentinel posts an **MR-level fallback note** with an explicit `file:line` reference so the finding is never silently dropped.
+- With `--format json|sarif|markdown`, stdout is reserved for the report — comment-posting progress and success messages are written to **stderr**, so piping the report stays clean.
+
+### Token permissions
+
+| Token | Header | Notes |
+|-------|--------|-------|
+| `GITLAB_TOKEN` (PAT/project token) | `PRIVATE-TOKEN` | Preferred. Needs `api` scope to read versions/discussions and post notes. |
+| `CI_JOB_TOKEN` (default CI token) | `JOB-TOKEN` | Used when `GITLAB_TOKEN` is unset. Posting discussions may require enabling job-token MR permissions on the project. |
+
+`GITLAB_TOKEN` takes precedence over `CI_JOB_TOKEN` when both are present.
+
+### Code suggestion behavior
+
+Code suggestion blocks come **only** from the structured `codeSuggestion` field — free-text `suggestion` recommendations are never coerced into a patch. v1 supports **single-line replacements only**: the model is instructed to emit `codeSuggestion` only for a high-confidence, single-line fix that matches the file's style. The suggestion is dropped (the textual guidance remains) when it is empty, multi-line, oversized, fenced, or reads like prose. Multi-line / range suggestions are out of scope for now.
+
+---
+
 ## Manual Rerun via Slash Command (GitHub)
 
 You can re-trigger a review by commenting `/mp-sentinel review` on a pull request. The bot updates its existing inline comments instead of posting duplicates, so repeated reruns on the same commit are safe and non-spammy.

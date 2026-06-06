@@ -38,12 +38,17 @@ export function detectProfile(index: SourceIndex | null): SkillProfile {
   const { dependencies, devDependencies, detectedFrameworks, scripts, bin } = index.project;
   const allDeps = { ...dependencies, ...devDependencies };
 
-  // react-next: highest specificity first
-  if (detectedFrameworks.includes("react") || detectedFrameworks.includes("next.js")) {
+  // react-next: only when Next.js is explicitly present
+  if (detectedFrameworks.includes("next.js") || allDeps["next"]) {
     return "react-next";
   }
-  if (allDeps["next"] || allDeps["react"] || allDeps["react-dom"]) {
-    return "react-next";
+  // react-spa: React without Next.js (Vite, CRA, React Router, etc.)
+  if (
+    detectedFrameworks.includes("react") ||
+    allDeps["react"] !== undefined ||
+    allDeps["react-dom"] !== undefined
+  ) {
+    return "react-spa";
   }
 
   // node-service

@@ -33,6 +33,7 @@ export const AUDIT_RESPONSE_SCHEMA: AIResponseSchema = {
             severity: { type: "string", enum: ["CRITICAL", "WARNING", "INFO"] },
             message: { type: "string" },
             suggestion: { type: "string" },
+            codeSuggestion: { type: "string" },
             category: {
               type: "string",
               enum: [

@@ -19,12 +19,34 @@ import { detectLanguageProfile } from "./language-profile.js";
 import { detectProfile, type SkillProfile } from "./profile.js";
 import { selectActiveRulePacks } from "./rule-packs/index.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
+import { PROJECT_RULES_END_MARKER, PROJECT_RULES_START_MARKER } from "./constants.js";
+import {
+  buildDetectedConventionsSection,
+  detectProjectConventions,
+} from "./convention-detectors.js";
+import { moduleKeyForPath } from "./module-grouping.js";
+import { safeModuleName, selectModuleReferenceTargets } from "./module-references.js";
+import { buildCommonChangePathsSection, buildFirstFilesSection } from "./usability-sections.js";
+import {
+  renderRegenerateCommand,
+  renderRunScript,
+  renderScriptAwareToolCommand,
+  renderToolCommand,
+} from "./package-manager.js";
+import {
+  enabledStrictFlags,
+  recommendsImportType,
+  requiresJsImportExtensions,
+} from "./ts-project-flags.js";
 
 const MAX_HUB_FILES = 10;
 const MAX_SYMBOLS_INLINE = 12;
 const MAX_SYMBOLS_SHORT = 8;
-const MAX_MODULE_DIRS = 15;
-const MAX_FILES_PER_DIR = 5;
+const MAX_MODULE_DIRS = 10;
+const MAX_FILES_PER_DIR = 4;
+const MAX_KB_MODULES = 10;
+const MAX_KB_KEY_FILES = 4;
+const MAX_KB_KEY_SYMBOLS = 6;
 const MAX_HUB_FILE_DETAIL_LINES = 15;
 const MAX_RISK_DETAIL_LINES = 3;
 const MAX_TEST_ASSOC_ENTRIES = 20;
@@ -57,6 +79,12 @@ export interface ReferenceFileContent {
 export interface SkillSections {
   agentWorkflow: string;
   /**
+   * Project-authored rules from `.mp-sentinelrc.json` (`rules` / `ruleFiles`).
+   * Rendered ABOVE generated references — these override generated guidance.
+   * Empty string when the project defines no local rules.
+   */
+  projectRules: string;
+  /**
    * Compact agent workflow for single-file rule adapters: same contract
    * (read rules first, index diagnostics) but without the reference-file
    * list, since rule outputs ship no references/ directory.
@@ -64,6 +92,16 @@ export interface SkillSections {
   agentWorkflowCompact: string;
   referenceRouting: string;
   overview: string;
+  /**
+   * Conventions observed deterministically from config and the import graph
+   * (path aliases, feature-folder layout, central HTTP client, query keys,
+   * UI system roots). Empty string when none detected.
+   */
+  detectedConventions: string;
+  /** Orientation list grounded by entrypoints + hub files ("" when no data) */
+  firstFilesToRead: string;
+  /** Task -> directories table for feature/API/UI/test work ("" when no data) */
+  commonChangePaths: string;
   architecture: string;
   hubFiles: string;
   modules: string;
@@ -132,15 +170,25 @@ export function generateContent(
       langProfile: languageProfile,
       frameworks,
       deps: allDeps,
+      tsConfig: index?.project.tsConfig,
     },
     disableRules,
   );
 
+  const projectScripts = index?.project.scripts;
+  const projectConventions = detectProjectConventions(index);
   const sections: SkillSections = {
-    agentWorkflow: buildAgentWorkflow(name, kb),
-    agentWorkflowCompact: buildAgentWorkflow(name, kb, { includeReferences: false }),
+    agentWorkflow: buildAgentWorkflow(name, kb, { scripts: projectScripts }),
+    projectRules: buildProjectRulesSection(kb),
+    agentWorkflowCompact: buildAgentWorkflow(name, kb, {
+      includeReferences: false,
+      scripts: projectScripts,
+    }),
     referenceRouting: buildReferenceRouting(index, kb),
     overview: buildOverview(name, version, frameworks, index, profile, languageProfile),
+    detectedConventions: buildDetectedConventionsSection(projectConventions),
+    firstFilesToRead: buildFirstFilesSection(kb, index),
+    commonChangePaths: buildCommonChangePathsSection(kb, index, projectConventions),
     architecture: buildArchitecture(index),
     hubFiles: buildHubFiles(index),
     modules: buildModules(index),
@@ -179,15 +227,17 @@ export function generateContent(
 function buildAgentWorkflow(
   projectName: string,
   kb: SkillKnowledgeBase | null,
-  options: { includeReferences?: boolean } = {},
+  options: { includeReferences?: boolean; scripts?: Record<string, string> | undefined } = {},
 ): string {
   const includeReferences = options.includeReferences !== false;
+  const tool = (args: string): string =>
+    renderScriptAwareToolCommand(kb?.packageManager, options.scripts, args);
   // Build instruction-files list from detected files or fallback to generic pattern
   let instructionFilesLine: string;
   const instructionFiles = kb?.instructionFiles;
   if (instructionFiles && instructionFiles.length > 0) {
     const fileList = instructionFiles.map((f) => `\`${f}\``).join(", ");
-    instructionFilesLine = `2. **Read local agent instructions**: ${fileList}.`;
+    instructionFilesLine = `2. **Read local agent instructions**: ${fileList}. Project-authored instructions and rules OVERRIDE generated references when they conflict.`;
   } else {
     instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`.`;
   }
@@ -214,7 +264,7 @@ function buildAgentWorkflow(
       ];
 
   // Build quick-start examples from real index data
-  const examples = buildSearchExamples(kb);
+  const examples = buildSearchExamples(kb, options.scripts);
 
   const lines = [
     `## Required Agent Workflow`,
@@ -226,18 +276,18 @@ function buildAgentWorkflow(
       : `1. **Read these rules first** - project profile, conventions, pitfalls.`,
     instructionFilesLine,
     `3. **Check parser health first**:`,
-    `   - \`npx mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown`,
+    `   - \`${tool("indexing --health --index-format json")}\` - health overview, parser breakdown`,
     `4. **Drilldown when health suggests issues**:`,
-    `   - \`npx mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries`,
-    `   - \`npx mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors`,
+    `   - \`${tool("indexing --recovered --index-format json")}\` - list files parsed via fallback recoveries`,
+    `   - \`${tool("indexing --parse-errors --index-format json")}\` - list files with hard parse errors`,
     `5. **Before editing**, use source index diagnostics:`,
-    `   - \`npx mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands`,
-    `   - \`npx mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols`,
-    `   - \`npx mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols`,
-    `   - \`npx mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage`,
-    `   - \`npx mp-sentinel indexing --find-code <query> --index-format json\` - search indexed code snippets`,
-    `   - \`npx mp-sentinel indexing --stats --index-format json\` - index statistics`,
-    `   - \`npx mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview`,
+    `   - \`${tool("indexing --agent-context <file> --index-format json")}\` - symbols, imports, dependents, next commands`,
+    `   - \`${tool("indexing --explain-index <file> --index-format json")}\` - imports, dependents, symbols`,
+    `   - \`${tool("indexing --find-symbol <name> --index-format json")}\` - search index for symbols`,
+    `   - \`${tool("indexing --find-import <package-or-path> --index-format json")}\` - search index for import usage`,
+    `   - \`${tool("indexing --find-code <query> --index-format json")}\` - search indexed code snippets`,
+    `   - \`${tool("indexing --stats --index-format json")}\` - index statistics`,
+    `   - \`${tool("--explain-context --format json --files <file>")}\` - context enrichment preview`,
     ...(includeReferences ? [`6. **Load only the relevant references**:`, ...refFiles] : []),
     `${includeReferences ? "7" : "6"}. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
   ];
@@ -249,8 +299,74 @@ function buildAgentWorkflow(
   // Generated artifact note — development guardrails
   lines.push(
     ``,
-    `> **Auto-generated.** Regenerate via \`npm run agent:skills:refresh\`. Do not edit.`,
+    `> **Auto-generated.** Regenerate via \`${renderRegenerateCommand(kb?.packageManager, options.scripts)}\`. Do not edit.`,
   );
+
+  return lines.join("\n");
+}
+
+// ── Project Rules (authoritative, project-authored) ───────────────────────
+
+const MAX_PROJECT_RULES = 30;
+
+/**
+ * Render project-authored rules (`rules` / `ruleFiles` from
+ * `.mp-sentinelrc.json`) as a deterministic section. These are placed ABOVE
+ * generated references and explicitly override generated guidance on
+ * conflict. Returns an empty string when the project defines none.
+ */
+/**
+ * Replace risky Unicode (smart quotes, dashes, arrows, ellipsis) with ASCII
+ * in project-authored text. Project rules come from `.mp-sentinelrc.json`
+ * and may carry typographic characters the quality gate flags; normalizing
+ * them keeps authored guidance verbatim in meaning but terminal-safe.
+ */
+function sanitizeProjectText(text: string): string {
+  return text
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/—/g, "--")
+    .replace(/–/g, "-")
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/…/g, "...")
+    .replace(/✓/g, "[x]")
+    .replace(/✗/g, "[ ]");
+}
+
+function buildProjectRulesSection(kb: SkillKnowledgeBase | null): string {
+  const rules = (kb?.projectRules ?? []).map(sanitizeProjectText);
+  const ruleFiles = kb?.projectRuleFiles ?? [];
+  if (rules.length === 0 && ruleFiles.length === 0) return "";
+
+  // Stable boundary markers wrap the section so quality checks can strip
+  // project-authored content reliably even when a rule (or ruleFile content)
+  // embeds its own Markdown H2 headings.
+  const lines = [
+    PROJECT_RULES_START_MARKER,
+    `## Project Rules (authoritative)`,
+    ``,
+    `These rules are authored by the project (\`.mp-sentinelrc.json\`). When they conflict with any generated guidance in this skill, the project rules win.`,
+    ``,
+  ];
+
+  for (const rule of rules.slice(0, MAX_PROJECT_RULES)) {
+    lines.push(`- ${rule}`);
+  }
+  if (rules.length > MAX_PROJECT_RULES) {
+    lines.push(`- ... and ${rules.length - MAX_PROJECT_RULES} more rules in config`);
+  }
+
+  if (ruleFiles.length > 0) {
+    lines.push(
+      ``,
+      `Additional project rule files (read before coding):`,
+      ``,
+      ...ruleFiles.map((f) => `- \`${f}\``),
+    );
+  }
+
+  lines.push(PROJECT_RULES_END_MARKER);
 
   return lines.join("\n");
 }
@@ -323,6 +439,22 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
   const publicApiFiles = index.insights?.publicApiFiles ?? [];
   const depUsage = index.insights?.dependencyUsage ?? {};
 
+  // Module deep-dive references: map a routing dir to its module reference
+  // name (e.g. "modules/src-features-approval-inbox") when one is generated.
+  const moduleTargets = selectModuleReferenceTargets(kb);
+  const moduleRefFor = (dir: string): string | undefined => {
+    const stripped = dir.endsWith("/") ? dir.slice(0, -1) : dir;
+    const target = moduleTargets.find(
+      (m) => m.directory === stripped || stripped.startsWith(m.directory + "/"),
+    );
+    return target ? `modules/${safeModuleName(target.directory)}` : undefined;
+  };
+
+  const pushRow = (dir: string, baseRefs: string): void => {
+    const modRef = moduleRefFor(dir);
+    rows.push({ dirs: [dir], refs: modRef ? `${modRef}, ${baseRefs}` : baseRefs });
+  };
+
   for (const dir of allCandidates) {
     const prefix = dir.endsWith("/") ? dir.slice(0, -1) : dir;
     const filesInDir = index.files.filter(
@@ -338,7 +470,7 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
         (ep.path.startsWith(prefix + "/") || ep.path === prefix),
     );
     if (hasCliOrCmd) {
-      rows.push({ dirs: [dir], refs: "commands, testing-map" });
+      pushRow(dir, "commands, testing-map");
       continue;
     }
 
@@ -350,7 +482,7 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
       (p) => p.startsWith(prefix + "/") || p === prefix,
     );
     if (hasPublicApi || dirHasPublicApiFile) {
-      rows.push({ dirs: [dir], refs: "public-api, codebase-map" });
+      pushRow(dir, "public-api, codebase-map");
       continue;
     }
 
@@ -362,7 +494,7 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
         (r.file.startsWith(prefix + "/") || r.file === prefix),
     );
     if (hasHub) {
-      rows.push({ dirs: [dir], refs: "architecture, codebase-map" });
+      pushRow(dir, "architecture, codebase-map");
       continue;
     }
 
@@ -379,18 +511,18 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
       }
     }
     if (depPkgs.size >= 2 && crossDirs.size >= 2) {
-      rows.push({ dirs: [dir], refs: "architecture, dependencies" });
+      pushRow(dir, "architecture, dependencies");
       continue;
     }
 
     // Priority 5: scripts/ directory
     if (dir === "scripts/") {
-      rows.push({ dirs: [dir], refs: "commands, testing-map" });
+      pushRow(dir, "commands, testing-map");
       continue;
     }
 
     // Fallback
-    rows.push({ dirs: [dir], refs: "architecture, codebase-map" });
+    pushRow(dir, "architecture, codebase-map");
   }
 
   // ── Merge rows with the same reference set ──────────────────────────────
@@ -439,9 +571,14 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
  * Build codebase-specific search examples from real index data.
  * Returns an empty string if KB is unavailable or no examples can be derived.
  */
-function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
+function buildSearchExamples(
+  kb: SkillKnowledgeBase | null,
+  scripts?: Record<string, string> | undefined,
+): string {
   if (!kb) return "";
 
+  const tool = (args: string): string =>
+    renderScriptAwareToolCommand(kb.packageManager, scripts, args);
   const exampleLines: string[] = [];
   exampleLines.push(`**Quick-start search examples (from this codebase):**`);
 
@@ -451,7 +588,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     .sort((a, b) => (b.importCount ?? 0) - (a.importCount ?? 0))[0];
   if (topHub) {
     exampleLines.push(
-      `   - \`npx mp-sentinel indexing --agent-context ${topHub.file} --index-format json\` - top hub file (imported by ${topHub.importCount} files)`,
+      `   - \`${tool(`indexing --agent-context ${topHub.file} --index-format json`)}\` - top hub file (imported by ${topHub.importCount} files)`,
     );
   }
 
@@ -459,7 +596,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
   const topDep = kb.dependencies[0];
   if (topDep) {
     exampleLines.push(
-      `   - \`npx mp-sentinel indexing --find-import ${topDep.packageName} --index-format json\` - top dependency (used by ${topDep.fileCount} files)`,
+      `   - \`${tool(`indexing --find-import ${topDep.packageName} --index-format json`)}\` - top dependency (used by ${topDep.fileCount} files)`,
     );
   }
 
@@ -480,7 +617,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = mod?.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`npx mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`${tool(`indexing --find-symbol ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
       break;
     }
@@ -492,7 +629,7 @@ function buildSearchExamples(kb: SkillKnowledgeBase | null): string {
     const keySym = largestModule.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`npx mp-sentinel indexing --find-symbol ${keySym.name} --index-format json\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`${tool(`indexing --find-symbol ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
     }
   }
@@ -576,7 +713,7 @@ function buildOverview(
       );
       if (keyScripts.length > 0) {
         lines.push(
-          `**Key Scripts:** ${keyScripts.map((s) => `\`${pm} ${s === "test" ? s : `run ${s}`}\``).join(", ")}`,
+          `**Key Scripts:** ${keyScripts.map((s) => `\`${renderRunScript(pm, s)}\``).join(", ")}`,
         );
       }
     }
@@ -716,11 +853,10 @@ function buildModules(index: SourceIndex | null): string {
 
   const moduleMap = new Map<string, SourceIndexFile[]>();
   for (const file of index.files) {
-    const slash = file.path.indexOf("/");
-    const topDir = slash === -1 ? "(root)" : file.path.slice(0, slash);
-    const bucket = moduleMap.get(topDir) ?? [];
+    const groupKey = moduleKeyForPath(file.path);
+    const bucket = moduleMap.get(groupKey) ?? [];
     bucket.push(file);
-    moduleMap.set(topDir, bucket);
+    moduleMap.set(groupKey, bucket);
   }
 
   const lines = [`## Module Map`];
@@ -768,7 +904,7 @@ function buildCommands(index: SourceIndex | null): string {
     const scriptKeys = Object.keys(scripts).slice(0, MAX_SCRIPT_ENTRIES);
     for (const key of scriptKeys) {
       const cmd = scripts[key] ?? key;
-      lines.push(`${pm}${key === "test" ? " " : " run "}${key}  # ${cmd}`);
+      lines.push(`${renderRunScript(pm, key)}  # ${cmd}`);
     }
     if (Object.keys(scripts).length > MAX_SCRIPT_ENTRIES) {
       lines.push(`# ... and ${Object.keys(scripts).length - MAX_SCRIPT_ENTRIES} more scripts`);
@@ -777,8 +913,8 @@ function buildCommands(index: SourceIndex | null): string {
   } else {
     lines.push(
       "```sh",
-      `${pm} test           # Run tests`,
-      `${pm} run build      # Build project`,
+      `${renderRunScript(pm, "test")}           # Run tests`,
+      `${renderRunScript(pm, "build")}      # Build project`,
       "```",
     );
   }
@@ -791,20 +927,13 @@ function buildConventions(index: SourceIndex | null): string {
 
   const lines = [`## Code Conventions`];
 
-  const hasEsm = index.files.some((f) => f.imports.some((i) => i.source.endsWith(".js")));
   const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
-  const hasNodePrefix = index.files.some((f) =>
-    f.imports.some((i) => i.source.startsWith("node:")),
-  );
   const tsConfig = index.project.tsConfig;
-  const hasStrictFlags = Boolean(
-    tsConfig?.compilerOptions?.exactOptionalPropertyTypes ||
-    tsConfig?.compilerOptions?.noUncheckedIndexedAccess ||
-    tsConfig?.compilerOptions?.noImplicitReturns ||
-    tsConfig?.compilerOptions?.noFallthroughCasesInSwitch ||
-    tsConfig?.compilerOptions?.verbatimModuleSyntax ||
-    tsConfig?.compilerOptions?.strict,
-  );
+  const needsJsExtensions = requiresJsImportExtensions(tsConfig);
+  const moduleResolution =
+    typeof tsConfig?.compilerOptions?.moduleResolution === "string"
+      ? tsConfig.compilerOptions.moduleResolution
+      : undefined;
 
   // Node engine baseline — only show when actually read from package.json
   const nodeEngine = index.project.nodeEngine;
@@ -812,36 +941,36 @@ function buildConventions(index: SourceIndex | null): string {
     lines.push(``, `- **Node Engine:** ${nodeEngine} - use \`node:\` prefix for built-in modules`);
   }
 
-  // ESM
-  if (hasEsm || hasTs) {
+  // Module resolution: only require `.js` extensions under NodeNext/Node16.
+  if (hasTs && needsJsExtensions) {
     lines.push(
       `- **Module System:** ESM - internal imports must include \`.js\` extension (NodeNext resolution)`,
+    );
+  } else if (hasTs && moduleResolution) {
+    lines.push(
+      `- **Module Resolution:** \`${moduleResolution}\` - do NOT add \`.js\` extensions to internal imports`,
     );
   }
 
   // TypeScript
   if (hasTs) {
+    if (recommendsImportType(tsConfig)) {
+      lines.push(
+        `- **Language:** TypeScript - use \`import type\` for type-only imports (\`verbatimModuleSyntax\`)`,
+      );
+    } else {
+      lines.push(`- **Language:** TypeScript`);
+    }
     lines.push(
-      `- **Language:** TypeScript - use \`import type\` for type-only imports (\`verbatimModuleSyntax\`)`,
+      `- **Avoid \`any\`** - if unavoidable (e.g., untyped third-party APIs), isolate in one place with a comment`,
     );
-    lines.push(
-      `- **Avoid \`any\`** - if unavoidable (e.g., untyped tree-sitter nodes), isolate in one place with a comment`,
-    );
-    if (hasStrictFlags) {
-      const flagNames: string[] = [];
-      if (tsConfig?.compilerOptions?.exactOptionalPropertyTypes)
-        flagNames.push("exactOptionalPropertyTypes");
-      if (tsConfig?.compilerOptions?.noUncheckedIndexedAccess)
-        flagNames.push("noUncheckedIndexedAccess");
-      if (tsConfig?.compilerOptions?.noImplicitReturns) flagNames.push("noImplicitReturns");
-      if (tsConfig?.compilerOptions?.noFallthroughCasesInSwitch)
-        flagNames.push("noFallthroughCasesInSwitch");
-      if (tsConfig?.compilerOptions?.verbatimModuleSyntax) flagNames.push("verbatimModuleSyntax");
-      if (flagNames.length > 0) {
-        lines.push(
-          `- **Strict flags:** \`${flagNames.join("`, `")}\` are enforced - respect all strict tsconfig flags`,
-        );
-      }
+    const flagNames = enabledStrictFlags(tsConfig).filter((f) => f !== "strict");
+    if (flagNames.length > 0) {
+      lines.push(
+        `- **Strict flags:** \`${flagNames.join("`, `")}\` are enforced - respect all strict tsconfig flags`,
+      );
+    } else if (tsConfig?.compilerOptions?.strict === true) {
+      lines.push(`- **Strict mode:** \`strict: true\` is enforced in \`tsconfig.json\``);
     }
   }
 
@@ -868,7 +997,7 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   if (scriptKeys.length > 0) {
     lines.push("```sh");
     for (const key of scriptKeys.slice(0, MAX_SCRIPT_ENTRIES)) {
-      lines.push(`${pm} run ${key}  # ${scripts[key]}`);
+      lines.push(`${renderRunScript(pm, key)}  # ${scripts[key]}`);
     }
     if (scriptKeys.length > MAX_SCRIPT_ENTRIES) {
       lines.push(`# ... and ${scriptKeys.length - MAX_SCRIPT_ENTRIES} more scripts`);
@@ -882,24 +1011,17 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   if (index && index.files.length > 0) {
     const moduleMap = new Map<string, SourceIndexFile[]>();
     for (const file of index.files) {
-      const slash = file.path.indexOf("/");
-      const topDir = slash === -1 ? "(root)" : file.path.slice(0, slash);
-      const bucket = moduleMap.get(topDir) ?? [];
+      const groupKey = moduleKeyForPath(file.path);
+      const bucket = moduleMap.get(groupKey) ?? [];
       bucket.push(file);
-      moduleMap.set(topDir, bucket);
+      moduleMap.set(groupKey, bucket);
     }
 
     const sorted = [...moduleMap.entries()].sort(
       (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
     );
     if (sorted.length > 0) {
-      lines.push(
-        ``,
-        `### Module Ownership`,
-        ``,
-        `Top-level directories and their responsibilities:`,
-        ``,
-      );
+      lines.push(``, `### Module Ownership`, ``, `Modules and their responsibilities:`, ``);
       for (const [dir, files] of sorted.slice(0, MAX_MODULE_DIRS)) {
         const testCount = files.filter(
           (f) =>
@@ -914,32 +1036,43 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
   // ── Import Conventions ──
   lines.push(``, `### Import Conventions`, ``);
   if (index) {
-    const hasEsm = index.files.some((f) => f.imports.some((i) => i.source.endsWith(".js")));
     const hasTs = index.files.some((f) => f.language === "typescript" || f.language === "tsx");
     const hasNodePrefix = index.files.some((f) =>
       f.imports.some((i) => i.source.startsWith("node:")),
     );
+    const tsConfig = index.project.tsConfig;
+    const needsJsExtensions = requiresJsImportExtensions(tsConfig);
+    const moduleResolution =
+      typeof tsConfig?.compilerOptions?.moduleResolution === "string"
+        ? tsConfig.compilerOptions.moduleResolution
+        : undefined;
 
-    // Always include strict TypeScript/ESM rules when TypeScript is used
-    if (hasTs) {
-      lines.push(`- **Runtime:** Node >= 20, ESM (\`"type": "module"\` in package.json).`);
+    if (hasTs && index.project.nodeEngine) {
+      lines.push(`- **Runtime:** Node ${index.project.nodeEngine}.`);
     }
-    if (hasEsm || hasTs) {
+    if (hasTs && needsJsExtensions) {
       lines.push(`- Internal imports **must** include the \`.js\` extension (NodeNext / ESM).`);
+    } else if (hasTs && moduleResolution) {
+      lines.push(
+        `- Module resolution is \`${moduleResolution}\` - do **not** add \`.js\` extensions to internal imports.`,
+      );
     }
-    if (hasTs) {
+    if (hasTs && recommendsImportType(tsConfig)) {
       lines.push(`- Use \`import type\` for type-only imports (\`verbatimModuleSyntax\`).`);
     }
-    if (hasNodePrefix || hasTs) {
+    if (hasNodePrefix || (hasTs && needsJsExtensions)) {
       lines.push(
         `- Built-in modules must use the \`node:\` prefix (e.g., \`node:fs\`, \`node:path\`).`,
       );
     }
     if (hasTs) {
       lines.push(`- **Avoid \`any\`** - if unavoidable, isolate with a comment explaining why.`);
-      lines.push(
-        `- Respect all strict \`tsconfig.json\` flags (\`noUncheckedIndexedAccess\`, \`noImplicitReturns\`, etc.).`,
-      );
+      const flagNames = enabledStrictFlags(tsConfig);
+      if (flagNames.length > 0) {
+        lines.push(
+          `- Respect the strict \`tsconfig.json\` flags enabled here: \`${flagNames.join("`, `")}\`.`,
+        );
+      }
     }
     const tsConfigPaths = index.project.tsConfig?.compilerOptions?.paths;
     if (tsConfigPaths && Object.keys(tsConfigPaths as Record<string, unknown>).length > 0) {
@@ -962,7 +1095,7 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
         `### Test Expectations`,
         ``,
         `- ${testFiles.length} test file(s) indexed.`,
-        `- Run \`${pm} test\` before committing changes that touch logic.`,
+        `- Run \`${renderRunScript(pm, "test")}\` before committing changes that touch logic.`,
         `- Do not skip failing tests without a \`TODO\` comment linking to an issue.`,
       );
     }
@@ -998,6 +1131,15 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
         `- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.`,
       );
       break;
+    case "react-spa":
+      lines.push(
+        `- **Route-level code splitting** - lazy-load route components (\`React.lazy\` / router lazy routes) to keep the initial bundle small.`,
+        `- **Server state separation** - keep server data in a data library (React Query/SWR); do not mirror it into local component state.`,
+        `- **Hooks discipline** - complete dependency arrays; stable keys (not array indices) in render loops.`,
+        `- **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.`,
+        `- **Bundle size vigilance** - audit new dependencies' impact on the client bundle; prefer dynamic imports for heavy libraries.`,
+      );
+      break;
     case "library":
     default:
       lines.push(
@@ -1024,15 +1166,25 @@ function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
   // Module Ownership
   if (kb.modules.length > 0) {
     lines.push(``, `### Module Ownership`, ``);
-    for (const mod of kb.modules) {
-      lines.push(`#### \`${mod.directory}/\` - ${mod.dominantRole}`);
-      lines.push(`- ${mod.sourceFileCount} source file(s), ${mod.testFileCount} test file(s)`);
+    for (const mod of kb.modules.slice(0, MAX_KB_MODULES)) {
+      // Counts live on the heading line: identical "- N source file(s)"
+      // bullets across same-sized modules would trip the repetitive-output
+      // quality check and add no guidance value.
+      lines.push(
+        `#### \`${mod.directory}/\` - ${mod.dominantRole} (${mod.sourceFileCount} source / ${mod.testFileCount} test files)`,
+      );
       if (mod.keyFiles.length > 0) {
-        lines.push(`- Key files: ${mod.keyFiles.map((f) => `\`${f}\``).join(", ")}`);
+        const keyFiles = mod.keyFiles.slice(0, MAX_KB_KEY_FILES);
+        const overflow =
+          mod.keyFiles.length > MAX_KB_KEY_FILES
+            ? ` (+${mod.keyFiles.length - MAX_KB_KEY_FILES} more)`
+            : "";
+        lines.push(`- Key files: ${keyFiles.map((f) => `\`${f}\``).join(", ")}${overflow}`);
       }
       if (mod.keySymbols.length > 0) {
+        const keySymbols = mod.keySymbols.slice(0, MAX_KB_KEY_SYMBOLS);
         lines.push(
-          `- Key symbols: ${mod.keySymbols.map((s) => `\`${s.name}\` (${s.type})`).join(", ")}`,
+          `- Key symbols: ${keySymbols.map((s) => `\`${s.name}\` (${s.type})`).join(", ")}`,
         );
       }
       if (mod.importsFromDirs.length > 0) {
@@ -1043,20 +1195,24 @@ function buildCodebaseMap(kb: SkillKnowledgeBase | null): string {
       }
       lines.push(``);
     }
+    if (kb.modules.length > MAX_KB_MODULES) {
+      lines.push(`... and ${kb.modules.length - MAX_KB_MODULES} more module(s)`, ``);
+    }
   }
 
   // Entrypoints
   if (kb.entrypoints.length > 0) {
     lines.push(`### Entrypoints`, ``);
+    const entrypointIcon: Record<string, string> = {
+      cli: "CLI",
+      "public-api": "API",
+      command: "CMD",
+      app: "APP",
+      route: "ROUTE",
+      config: "CFG",
+    };
     for (const ep of kb.entrypoints) {
-      const icon =
-        ep.type === "cli"
-          ? "CLI"
-          : ep.type === "public-api"
-            ? "API"
-            : ep.type === "command"
-              ? "CMD"
-              : "CFG";
+      const icon = entrypointIcon[ep.type] ?? "CFG";
       lines.push(`- **[${icon}]** \`${ep.path}\` - ${ep.label}`);
     }
   }
@@ -1076,6 +1232,17 @@ function buildTestingMapSection(kb: SkillKnowledgeBase | null): string {
   const assocEntries = Object.entries(kb.testing.testAssociations).sort(([a], [b]) =>
     a.localeCompare(b),
   );
+
+  if (
+    assocEntries.length === 0 &&
+    kb.testing.testGaps.length === 0 &&
+    kb.testing.mostTestedModules.length === 0
+  ) {
+    lines.push(
+      ``,
+      `_No test files indexed for this project. New test files establish the project's test convention - place them consistently (dedicated \`__tests__/\`/\`tests/\` or colocated \`*.test.*\`)._`,
+    );
+  }
   if (assocEntries.length > 0) {
     lines.push(``, `### Test Associations`, ``);
     lines.push(`| Source File | Test File(s) |`);
@@ -1125,6 +1292,10 @@ function buildDependenciesSection(
     return "## Dependencies\n\nNo source index available. Run `npx mp-sentinel indexing` first.";
 
   const lines = [`## Dependencies`];
+
+  if (kb.dependencies.length === 0) {
+    lines.push(``, `_No external dependency usage indexed for this project._`);
+  }
 
   if (kb.dependencies.length > 0) {
     const runtimeDeps = kb.dependencies.filter(
@@ -1203,6 +1374,10 @@ function buildPublicApiSection(kb: SkillKnowledgeBase | null): string {
 
   // Entry points
   const apiEntries = kb.entrypoints.filter((ep) => ep.type === "public-api" || ep.type === "cli");
+
+  if (apiEntries.length === 0 && kb.risks.length === 0) {
+    lines.push(``, `_No public API entrypoints or risk signals indexed for this project._`);
+  }
   if (apiEntries.length > 0) {
     lines.push(``, `### Entry Points`, ``);
     for (const ep of apiEntries) {

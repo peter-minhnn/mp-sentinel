@@ -173,4 +173,11 @@ describe("AUDIT_RESPONSE_SCHEMA shape", () => {
     expect(schema.properties.status.enum).toEqual(["PASS", "FAIL"]);
     expect(schema.properties.issues).toBeDefined();
   });
+
+  it("declares the optional codeSuggestion field", () => {
+    const schema = AUDIT_RESPONSE_SCHEMA.schema as {
+      properties: { issues: { items: { properties: Record<string, { type: string }> } } };
+    };
+    expect(schema.properties.issues.items.properties.codeSuggestion).toEqual({ type: "string" });
+  });
 });

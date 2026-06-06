@@ -117,7 +117,16 @@ export const buildSystemPrompt = async (
   }
 
   parts.push(
-    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion"?: "string", "category"?: "security" | "runtime-crash" | "architecture" | "dependency-version" | "test-gap" | "performance" | "maintainability", "confidence"?: "low" | "medium" | "high", "evidence"?: "string" }] }`,
+    `\n### CODE SUGGESTION RULES\nInclude the optional "codeSuggestion" field ONLY when ALL of these hold:\n` +
+      `- the fix is a high-confidence, SINGLE-LINE replacement for the flagged line (no multi-line or range edits);\n` +
+      `- it is a pure code replacement with NO prose, comments-as-explanation, or markdown;\n` +
+      `- it matches the existing file's style (indentation, quotes, semicolons);\n` +
+      `- it does not contain newlines or triple-backtick fences.\n` +
+      `Omit "codeSuggestion" entirely when unsure or when the fix spans multiple lines — never force a free-text recommendation into it. Use "suggestion" for free-text guidance.`,
+  );
+
+  parts.push(
+    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion"?: "string", "codeSuggestion"?: "string", "category"?: "security" | "runtime-crash" | "architecture" | "dependency-version" | "test-gap" | "performance" | "maintainability", "confidence"?: "low" | "medium" | "high", "evidence"?: "string" }] }`,
   );
 
   return parts.join("");

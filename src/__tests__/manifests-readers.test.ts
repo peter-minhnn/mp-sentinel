@@ -3,7 +3,9 @@
  * Each fixture is a real directory with the ecosystem's manifest file.
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { afterEach, describe, it, expect } from "@jest/globals";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -150,5 +152,78 @@ describe("node reader (regression)", () => {
     const manifest = await readManifest(REPO_ROOT);
     expect(manifest.packageName).toBe("mp-sentinel");
     expect(manifest.ecosystem).toBe("node");
+  });
+});
+
+// ── Workspace detection ─────────────────────────────────────────────────────
+
+describe("node reader workspace detection", () => {
+  const tempDirs: string[] = [];
+  const makeRepo = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "mp-ws-"));
+    tempDirs.push(dir);
+    return dir;
+  };
+  afterEach(() => {
+    for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("reads package.json workspaces as an explicit signal (no package needed)", async () => {
+    const dir = makeRepo();
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
+    );
+    const manifest = await readManifest(dir);
+    expect(manifest.workspaces).toEqual(["packages/*"]);
+  });
+
+  it("parses ONLY the packages: list from pnpm-workspace.yaml", async () => {
+    const dir = makeRepo();
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "root" }));
+    // Non-package YAML lists must be ignored
+    writeFileSync(
+      join(dir, "pnpm-workspace.yaml"),
+      [
+        "packages:",
+        "  - packages/*",
+        "  - apps/web",
+        "onlyBuiltDependencies:",
+        "  - esbuild",
+        "  - '@scope/native'",
+        "catalog:",
+        "  - some-pkg",
+      ].join("\n"),
+    );
+    mkdirSync(join(dir, "packages", "core"), { recursive: true });
+    writeFileSync(
+      join(dir, "packages", "core", "package.json"),
+      JSON.stringify({ name: "@mono/core", scripts: { build: "tsc" } }),
+    );
+    const manifest = await readManifest(dir);
+    expect(manifest.workspaces).toEqual(["packages/*", "apps/web"]);
+    expect(manifest.workspaces).not.toContain("esbuild");
+    expect(manifest.workspaces).not.toContain("some-pkg");
+    expect(manifest.workspacePackages?.map((p) => p.name)).toContain("@mono/core");
+  });
+
+  it("does not claim a monorepo from pnpm-workspace.yaml with no real package", async () => {
+    const dir = makeRepo();
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "root" }));
+    writeFileSync(join(dir, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+    // No package.json under packages/*
+    const manifest = await readManifest(dir);
+    expect(manifest.workspaces).toBeUndefined();
+    expect(manifest.workspacePackages).toBeUndefined();
+  });
+
+  it("never emits '.' as a workspace token", async () => {
+    const dir = makeRepo();
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "root", workspaces: [".", "packages/*"] }),
+    );
+    const manifest = await readManifest(dir);
+    expect(manifest.workspaces).toEqual(["packages/*"]);
   });
 });

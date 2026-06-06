@@ -58,7 +58,7 @@ describe("detectTechProfile", () => {
     const result = await detectTechProfile({
       techStack: "TypeScript, React, Node.js",
     });
-    expect(result.profile).toBe("react-next");
+    expect(result.profile).toBe("react-spa");
     expect(result.source).toBe("config");
     expect(result.technologies.map((t) => t.toLowerCase())).toEqual(
       expect.arrayContaining(["typescript", "react", "node.js"]),
@@ -139,7 +139,7 @@ describe("detectTechProfile", () => {
     expect(result.source).toBe("package-json");
   });
 
-  it("detects react-next from package.json with react dependency", async () => {
+  it("detects react-spa from package.json with react dependency (no next)", async () => {
     const cwd = await makeTempDir();
     await writeFile(
       join(cwd, "package.json"),
@@ -147,6 +147,22 @@ describe("detectTechProfile", () => {
         name: "test-ui",
         version: "1.0.0",
         dependencies: { react: "18.2.0", "react-dom": "18.2.0" },
+      }),
+    );
+
+    const result = await detectTechProfile({}, cwd);
+    expect(result.profile).toBe("react-spa");
+    expect(result.source).toBe("package-json");
+  });
+
+  it("detects react-next from package.json with next dependency", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        name: "test-next",
+        version: "1.0.0",
+        dependencies: { next: "15.0.0", react: "19.0.0", "react-dom": "19.0.0" },
       }),
     );
 
