@@ -470,7 +470,14 @@ When a review runs inside GitLab CI on a merge request, mp-sentinel posts each `
 | `GITLAB_TOKEN` (PAT/project token) | `PRIVATE-TOKEN` | Preferred. Needs `api` scope to read versions/discussions and post notes. |
 | `CI_JOB_TOKEN` (default CI token) | `JOB-TOKEN` | Used when `GITLAB_TOKEN` is unset. Posting discussions may require enabling job-token MR permissions on the project. |
 
-`GITLAB_TOKEN` takes precedence over `CI_JOB_TOKEN` when both are present.
+`GITLAB_TOKEN` takes precedence over `CI_JOB_TOKEN` when both are present. Add it under **Settings → CI/CD → Variables** — the UI variable is injected automatically, so don't hardcode the value in `.gitlab-ci.yml` (`GITLAB_TOKEN: $GITLAB_TOKEN` is redundant but harmless).
+
+**Protected-variable caveat (common cause of `401 Unauthorized`).** A GitLab variable marked **Protected** is only exposed to pipelines running on *protected* branches/tags. Merge-request pipelines on regular (unprotected) branches will NOT receive it. When a protected `GITLAB_TOKEN` is absent from the pipeline, mp-sentinel falls back to `CI_JOB_TOKEN` — which often lacks permission to read/create/update MR discussions and notes — and the GitLab API returns `401 Unauthorized` (the same exposure rule also hides a protected AI API key). To review normal MR branches, either:
+
+1. leave `GITLAB_TOKEN` **unprotected** (still mask it) so MR-branch pipelines receive it; or
+2. restrict reviews to protected branches and enable *Settings → CI/CD → Variables → Allow merge request pipelines to access protected variables and runners*.
+
+Either way, confirm the token carries the `api` scope so discussions/notes calls are authorized.
 
 ### Code suggestion behavior
 

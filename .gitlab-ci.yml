@@ -42,5 +42,16 @@ code_audit:
     # AI_TEMPERATURE: "0.2"
     # AI_MAX_TOKENS: "8192"
 
-    # GitLab integration (CI_JOB_TOKEN is auto-available for MR comments)
-    # GITLAB_TOKEN: $GITLAB_TOKEN
+    # GitLab MR inline comments:
+    #   - GITLAB_TOKEN (PAT/project token with `api` scope) is preferred and
+    #     enables one-click "Suggest changes". Add it in Settings -> CI/CD ->
+    #     Variables; the UI variable is injected automatically — do not hardcode
+    #     the value here.
+    #   - CI_JOB_TOKEN is the fallback when GITLAB_TOKEN is unset; it often
+    #     lacks permission for the Discussions/Notes API, causing 401.
+    #   - Caveat: a "Protected" variable is NOT exposed to pipelines on regular
+    #     (unprotected) MR branches. A protected GITLAB_TOKEN therefore falls
+    #     back to CI_JOB_TOKEN and commonly yields "401 Unauthorized". To
+    #     comment on normal MR branches, leave GITLAB_TOKEN unprotected (masked),
+    #     or restrict reviews to protected branches.
+    # GITLAB_TOKEN: $GITLAB_TOKEN  # optional; UI variable injects automatically

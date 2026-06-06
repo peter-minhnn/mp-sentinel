@@ -34,14 +34,25 @@ code_audit:
     AI_TEMPERATURE: "0.2"
     AI_MAX_TOKENS: "8192"
 
-    # GitLab integration (CI_JOB_TOKEN is auto-available for MR comments)
-    # GITLAB_TOKEN: $GITLAB_TOKEN  # Optional PAT
+    # GitLab MR inline comments:
+    #   - GITLAB_TOKEN (PAT/project token with `api` scope) is preferred and
+    #     enables one-click "Suggest changes". The UI variable is injected
+    #     automatically — do not hardcode it.
+    #   - CI_JOB_TOKEN is the fallback when GITLAB_TOKEN is unset; it often
+    #     lacks Discussions/Notes API permission, causing 401.
+    #   - Caveat: a "Protected" GITLAB_TOKEN is NOT exposed to pipelines on
+    #     regular (unprotected) MR branches, so it falls back to CI_JOB_TOKEN
+    #     and commonly yields "401 Unauthorized". Leave GITLAB_TOKEN unprotected
+    #     (masked) or restrict reviews to protected branches.
+    # GITLAB_TOKEN: $GITLAB_TOKEN  # optional PAT; UI variable injects automatically
 
 # Setup Instructions:
 # 1. Get Anthropic API key: https://console.anthropic.com/
 # 2. Add to GitLab CI/CD Variables: Settings → CI/CD → Variables → Add variable
 #    Key: ANTHROPIC_API_KEY
 #    Value: sk-ant-...
-#    Flags: [x] Protect variable, [x] Mask variable
+#    Flags: [x] Mask variable. Only [x] Protect variable if your MR pipelines
+#           run on protected branches (protected vars are hidden from regular
+#           MR branch pipelines — that hides ANTHROPIC_API_KEY and GITLAB_TOKEN).
 # 3. Rename this file to: .gitlab-ci.yml
 # 4. Commit and push
