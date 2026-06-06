@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.5] — 2026-06-06
+
+### Added
+- **Module grouping, references, and usability sections in `create-skills`.** Generated skill files now include module groupings (by directory/layer), cross-module references with dependency links, and usability sections (quick-start patterns, common tasks) for a more structured progressive-disclosure layout.
+- **Adoption preview script.** New `scripts/adoption-preview.mjs` for previewing generated skill output before adoption.
+- **New rule packs.** Added built-in rule packs for Ant Design, React Router, Supabase, TanStack Query, and Vite.
+- **Package manager detection.** `create-skills` now auto-detects the project's package manager (npm, pnpm, yarn) for more accurate stack profiling.
+
+### Changed
+- **GitLab CI/CD variable instructions updated.** Documentation now clarifies `GITLAB_TOKEN` and `CI_JOB_TOKEN` usage across CI workflow examples.
+
 ## [Unreleased]
 
 ### Added
