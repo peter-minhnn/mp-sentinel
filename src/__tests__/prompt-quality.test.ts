@@ -62,6 +62,43 @@ describe("Base audit prompt — mandatory rubric", () => {
   });
 });
 
+// ── False-positive guardrail tests ─────────────────────────────────────────
+
+describe("Base audit prompt — false-positive guardrails", () => {
+  it("contains the EVIDENCE & FALSE-POSITIVE GUARDRAILS section", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/EVIDENCE & FALSE-POSITIVE GUARDRAILS/);
+  });
+
+  it("forbids claiming an imported module does not exist from a diff", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/NEVER raise a finding claiming that an imported module/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/does not exist/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/cause a build failure/);
+  });
+
+  it("declares path aliases valid and resolved via tsconfig/bundler config", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/Path aliases are valid/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/@\//);
+    expect(BASE_AUDIT_PROMPT).toMatch(/tsconfig\/jsconfig/);
+  });
+
+  it("treats the alias prefix as arbitrary/user-defined, not a fixed set", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/prefix is arbitrary and user-defined/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/do NOT assume a fixed set/);
+    // Includes a non-"@" example so the guidance is not @-specific
+    expect(BASE_AUDIT_PROMPT).toMatch(/~\//);
+  });
+
+  it("requires diff-sourced evidence before flagging an import", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/the diff ITSELF supplies the evidence/);
+  });
+
+  it("forbids unverified dependency-version 'removed/no longer exists' claims", () => {
+    expect(BASE_AUDIT_PROMPT).toMatch(/was removed.*no longer exists/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/DEPENDENCY VERSION CONTEXT/);
+    expect(BASE_AUDIT_PROMPT).toMatch(/training data lags real releases/);
+  });
+});
+
 // ── Prompt version tests ──────────────────────────────────────────────────
 
 describe("Prompt version", () => {

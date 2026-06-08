@@ -177,4 +177,51 @@ describe("parseAuditResponse", () => {
     const result = parseAuditResponse(raw);
     expect(result.issues?.[0]?.codeSuggestion).toBeUndefined();
   });
+
+  // ── Tolerant recovery (truncated / malformed responses) ──
+
+  it("repairs trailing commas", () => {
+    const raw = '{"status":"FAIL","issues":[{"line":1,"severity":"WARNING","message":"m"},]}';
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("FAIL");
+    expect(result.issues).toHaveLength(1);
+  });
+
+  it("extracts a JSON object surrounded by prose on both sides", () => {
+    const raw = 'Sure, here you go:\n{"status":"PASS","issues":[]}\nLet me know if you need more.';
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("PASS");
+  });
+
+  it("salvages complete issues from a truncated response", () => {
+    // Response cut off mid-way through the third issue object.
+    const raw =
+      '{"status":"FAIL","issues":[' +
+      '{"line":10,"severity":"CRITICAL","message":"XSS risk","category":"security"},' +
+      '{"line":20,"severity":"WARNING","message":"missing null check"},' +
+      '{"line":30,"severity":"WARNING","mess';
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("FAIL"); // CRITICAL present
+    expect(result.issues).toHaveLength(2); // the two complete objects
+    expect(result.issues?.[0]?.severity).toBe("CRITICAL");
+    expect(result.issues?.[1]?.message).toBe("missing null check");
+  });
+
+  it("salvages issues even when the leading status is truncated away", () => {
+    const raw =
+      '{"issues":[{"line":1,"severity":"WARNING","message":"unvalidated input"},{"line":2,"sev';
+    const result = parseAuditResponse(raw);
+    expect(result.issues).toHaveLength(1);
+    expect(result.status).toBe("FAIL"); // WARNING upgrades PASS→FAIL
+  });
+
+  it("returns ERROR when truncated before any complete issue", () => {
+    const raw = '{"status":"FAIL","issues":[{"line":1,"severity":"CRIT';
+    const result = parseAuditResponse(raw);
+    expect(result.status).toBe("ERROR");
+  });
+
+  it("still returns ERROR for non-JSON prose", () => {
+    expect(parseAuditResponse("I cannot review this code.").status).toBe("ERROR");
+  });
 });

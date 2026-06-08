@@ -116,33 +116,137 @@ export const cleanJSON = (text: string): string => {
     .trim();
 };
 
+// ── Tolerant JSON recovery ─────────────────────────────────────────────────
+//
+// Real models occasionally emit JSON that `JSON.parse` rejects: trailing
+// commas, prose around the object, or — most damagingly — a response truncated
+// by the output-token limit (common for large files with many findings). The
+// old parser returned status "ERROR" for all of these, which DROPS the file
+// from the review entirely. The recovery layers below salvage as much as
+// possible so a file still gets the findings the model did produce.
+
+/** Attempt a strict parse, returning null instead of throwing. */
+const tryParse = (text: string): AuditResult | null => {
+  try {
+    return JSON.parse(text) as AuditResult;
+  } catch {
+    return null;
+  }
+};
+
+/** Remove trailing commas before a closing `}` or `]` (a frequent LLM slip). */
+const stripTrailingCommas = (text: string): string => text.replace(/,(\s*[}\]])/g, "$1");
+
 /**
- * Parse AI response to AuditResult with error handling
+ * Index of the structural character that closes the JSON value starting at
+ * `start` (`{` or `[`), honoring string literals and escapes. Returns -1 when
+ * the value is never closed (e.g. a truncated response).
+ */
+const matchBalanced = (text: string, start: number): number => {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+};
+
+/** Extract the first complete balanced `{…}` object substring, or null. */
+const extractFirstBalancedObject = (text: string): string | null => {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  const end = matchBalanced(text, start);
+  return end < 0 ? null : text.slice(start, end + 1);
+};
+
+/** Recover a `PASS`/`FAIL` status hint from a partial response. */
+const extractStatusHint = (text: string): "PASS" | "FAIL" | undefined => {
+  const match = text.match(/"status"\s*:\s*"(PASS|FAIL)"/);
+  return match ? (match[1] as "PASS" | "FAIL") : undefined;
+};
+
+/**
+ * Salvage complete issue objects from the `"issues"` array of a partial or
+ * truncated response. Walks the array element-by-element and stops at the first
+ * incomplete object, keeping everything parsed so far.
+ */
+const salvageIssues = (text: string): AuditIssue[] => {
+  const keyIdx = text.indexOf('"issues"');
+  if (keyIdx < 0) return [];
+  const arrayStart = text.indexOf("[", keyIdx);
+  if (arrayStart < 0) return [];
+
+  const issues: AuditIssue[] = [];
+  let i = arrayStart + 1;
+  while (i < text.length) {
+    while (i < text.length && /[\s,]/.test(text[i]!)) i++;
+    if (i >= text.length || text[i] === "]") break;
+    if (text[i] !== "{") break;
+
+    const end = matchBalanced(text, i);
+    if (end < 0) break; // truncated trailing object — keep what we have
+    const objStr = text.slice(i, end + 1);
+    const parsed = tryParse(objStr) ?? tryParse(stripTrailingCommas(objStr));
+    if (!parsed || typeof (parsed as unknown as AuditIssue).message !== "string") break;
+    issues.push(parsed as unknown as AuditIssue);
+    i = end + 1;
+  }
+  return issues;
+};
+
+/**
+ * Parse AI response to AuditResult with layered, tolerant error recovery.
+ *
+ * Order: strict parse → trailing-comma repair → first balanced object →
+ * salvage `issues[]` from a truncated response → ERROR. Genuine non-JSON
+ * (no object, no salvageable issues) still resolves to status "ERROR".
  */
 export const parseAuditResponse = (responseText: string): AuditResult => {
   const cleaned = cleanJSON(responseText);
 
-  try {
-    const parsed = JSON.parse(cleaned) as AuditResult;
-    return normalizeAuditResult(parsed);
-  } catch {
-    // Try to extract JSON from the response
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]) as AuditResult;
-        return normalizeAuditResult(parsed);
-      } catch {
-        // Fall through to error response
-      }
-    }
+  // 1. Strict parse (fast path for well-formed responses).
+  const strict = tryParse(cleaned);
+  if (strict) return normalizeAuditResult(strict);
 
-    return {
-      status: "ERROR",
-      message: "Failed to parse AI response",
-      issues: [],
-    };
+  // 2. Repair trailing commas, then parse.
+  const repaired = tryParse(stripTrailingCommas(cleaned));
+  if (repaired) return normalizeAuditResult(repaired);
+
+  // 3. Extract the first balanced { … } object (handles surrounding prose).
+  const objStr = extractFirstBalancedObject(cleaned);
+  if (objStr) {
+    const obj = tryParse(objStr) ?? tryParse(stripTrailingCommas(objStr));
+    if (obj) return normalizeAuditResult(obj);
   }
+
+  // 4. Salvage individual issues from a truncated / partial response.
+  const salvaged = salvageIssues(cleaned);
+  if (salvaged.length > 0) {
+    // Default to PASS and let normalizeAuditResult upgrade to FAIL when the
+    // salvaged issues warrant it (any CRITICAL/WARNING).
+    const status = extractStatusHint(cleaned) ?? "PASS";
+    return normalizeAuditResult({ status, issues: salvaged });
+  }
+
+  // 5. Unrecoverable.
+  return {
+    status: "ERROR",
+    message: "Failed to parse AI response",
+    issues: [],
+  };
 };
 
 /**

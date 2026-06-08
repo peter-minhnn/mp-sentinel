@@ -39,6 +39,8 @@ export interface CLIValues {
   "token-limit"?: string;
   "explain-context"?: boolean;
   "severity-threshold"?: string;
+  baseline?: string | boolean;
+  "update-baseline"?: boolean;
   "index-format"?: string;
   force?: boolean;
   stats?: boolean;
@@ -118,6 +120,15 @@ export const buildProgram = (): Command => {
       "FAIL threshold: CRITICAL | WARNING | INFO (default: CRITICAL)",
     )
     .option("--files [files...]", "Review explicit file paths", [])
+    .option(
+      "--baseline [path]",
+      "Suppress findings recorded in a baseline file so only NEW findings fail (default path: .mp-sentinel-baseline.json)",
+    )
+    .option(
+      "--update-baseline",
+      "Record the current findings into the baseline file and exit 0 (accept current state)",
+      false,
+    )
     .action(() => {
       // Intentionally empty: signals to Commander that the root command is valid
       // without a subcommand (review mode). Without this, Commander 14 auto-shows
@@ -366,6 +377,10 @@ export const parseCliArgs = (): {
       ...(typeof opts["severityThreshold"] === "string" && {
         "severity-threshold": opts["severityThreshold"],
       }),
+      ...((typeof opts["baseline"] === "string" || typeof opts["baseline"] === "boolean") && {
+        baseline: opts["baseline"] as string | boolean,
+      }),
+      "update-baseline": Boolean(opts["updateBaseline"] ?? false),
       ...(typeof indexingOptions["indexFormat"] === "string" && {
         "index-format": indexingOptions["indexFormat"],
       }),

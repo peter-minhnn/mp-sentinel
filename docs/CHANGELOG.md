@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.6] — 2026-06-08
+
+### Fixed
+- **Review false positives: "imported module does not exist → build failure".** The AI review prompt could raise CRITICAL findings claiming an imported module/file was missing based on an import statement alone, even though the reviewer only sees diff hunks and cannot see the file tree. In particular, tsconfig/bundler path aliases were misread as literal missing paths. Added an `EVIDENCE & FALSE-POSITIVE GUARDRAILS` section to `BASE_AUDIT_PROMPT` that forbids "module does not exist / not found / build failure" claims unless the diff itself supplies the evidence, declares path aliases valid with an **arbitrary, user-defined prefix** (not just `@/` — also `~/`, `#`, `$lib/`, or any custom token configured in tsconfig/jsconfig `paths`, bundler config, or package `imports`), and requires a low-confidence/INFO downgrade for unverifiable claims. The guardrail also forbids unverified **dependency-version** factual claims — asserting that a package file/export/API "was removed / no longer exists / moved" in a specific version (e.g. "antd v5 removed `dist/reset.css`") unless the installed version appears in the dependency context and the claim matches it — since training data lags real releases and such removals are a frequent hallucination. The source-index resolver already matched arbitrary alias prefixes generically; a regression test now locks that in for non-`@` prefixes (`~/*`, `#components/*`). `DEFAULT_PROMPT_VERSION` bumped to `2026-06-08`, which (together with the system-prompt hash) invalidates stale cached findings.
+
 ## [3.0.5] — 2026-06-06
 
 ### Added

@@ -4,7 +4,7 @@
  */
 
 import type { RulePack } from "./index.js";
-import { fileTooLong, functionTooLong } from "./evaluators/clean-code-evaluators.js";
+import { emptyCatch, fileTooLong, functionTooLong } from "./evaluators/clean-code-evaluators.js";
 
 export const builtinRules: RulePack = {
   id: "builtin",
@@ -12,5 +12,5 @@ export const builtinRules: RulePack = {
   when: () => true, // Always active
   rules: [],
   fileGlobs: [],
-  evaluators: [fileTooLong, functionTooLong],
+  evaluators: [fileTooLong, functionTooLong, emptyCatch],
 };

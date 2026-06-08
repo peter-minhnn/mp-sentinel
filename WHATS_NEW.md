@@ -1,3 +1,21 @@
+# What's New in v3.0.6
+
+## Fewer false positives in AI review — alias-aware import checks
+
+The review prompt no longer invents "this imported module does not exist → build failure" findings. The reviewer only sees diff hunks, so it cannot verify the file tree — yet it was flagging valid imports (especially tsconfig/bundler path aliases like `@/utils/sanitize`) as missing and escalating them to CRITICAL.
+
+A new `EVIDENCE & FALSE-POSITIVE GUARDRAILS` section in the audit prompt now:
+
+- forbids "module/file/symbol does not exist", "not found", or "build failure" claims based on an import statement alone;
+- declares path aliases valid with an **arbitrary, user-defined prefix** — not just `@/`; the prefix can be `~/`, `#`, `$lib/`, `@app/`, or any custom token configured in `tsconfig`/`jsconfig` `paths`/`baseUrl`, bundler config, or package `imports`;
+- only allows flagging an import when the diff itself deletes/renames the target or changes the imported export, cited as evidence;
+- forbids unverified **dependency-version** claims — e.g. "antd v5 removed `dist/reset.css` → build failure" — unless the installed version is in the dependency context and matches; training data lags real releases, so these "the package dropped X in version Y" claims are a frequent hallucination;
+- downgrades unverifiable claims to INFO / low confidence instead of asserting certainty about unseen repository structure or installed package internals.
+
+The prompt version is bumped to `2026-06-08`; combined with the system-prompt hash in the cache key, this invalidates any stale cached findings from the old prompt.
+
+---
+
 # What's New in v3.0.4
 
 ## Schema 1.5 — Light Cache Layout & Sidecar Support

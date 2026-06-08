@@ -3,6 +3,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { noInlineStyle, exhaustiveDepsSuppressed } from "./evaluators/react-evaluators.js";
 
 export const reactRules: RulePack = {
   id: "react",
@@ -42,4 +43,5 @@ export const reactRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.tsx", "**/*.jsx"],
+  evaluators: [noInlineStyle, exhaustiveDepsSuppressed],
 };

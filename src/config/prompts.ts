@@ -6,8 +6,12 @@ import type { ProjectConfig, TechProfile } from "../types/index.js";
 import { fetchSkillsForTechStack, buildSkillsPromptSection } from "../services/skills-fetcher.js";
 import { detectTechProfile, getReviewCues } from "../services/tech-profile.js";
 import { buildDependencyContext } from "../services/dependency-context.js";
+import {
+  buildProjectRulePackContext,
+  renderRulePackRulesSection,
+} from "../services/rule-pack-prompt.js";
 
-export const DEFAULT_PROMPT_VERSION = "2026-05-04";
+export const DEFAULT_PROMPT_VERSION = "2026-06-08";
 
 export const DEFAULT_COMMIT_PROMPT = `
 ### ROLE
@@ -41,6 +45,14 @@ Each issue MUST include the matching category label in its JSON output:
 1. CRITICAL security issues and crash-causing bugs always cause FAIL.
 2. Flag version-specific risks as WARNING with evidence only — do not claim unsupported certainty.
 3. Style-only issues and subjective preferences are noise — skip them unless they impact correctness.
+
+### EVIDENCE & FALSE-POSITIVE GUARDRAILS
+You see only diff hunks plus any context explicitly provided above. You CANNOT see the full file tree, so the absence of a file from your context is NOT evidence that it is missing from the repository.
+- NEVER raise a finding claiming that an imported module, file, or symbol "does not exist", is "missing", "is not found", or will "cause a build failure" based on an import statement alone. You cannot verify the target's existence from a diff.
+- Path aliases are valid, and their prefix is arbitrary and user-defined — do NOT assume a fixed set. Any non-relative import that is not a published package may be a project alias configured in tsconfig/jsconfig \`paths\`/\`baseUrl\`, bundler config (Vite/webpack/rollup/tsup/esbuild), or package.json \`imports\`. The prefix can be ANY token the author chose: \`@/\`, \`~/\`, \`~\`, \`#\`, \`$lib/\`, \`@app/\`, \`@/components\`, or any custom string. Never infer that a file is missing from the alias prefix or its character alone; treat such specifiers as resolving inside the project (commonly \`src/\`).
+- Only flag an import when the diff ITSELF supplies the evidence — e.g. the same diff deletes or renames the target, or changes the very export being imported. Cite that specific hunk in "evidence".
+- Do NOT assert that a third-party package's file, export, or API "was removed", "no longer exists", "moved", or "changed" in a specific version (e.g. "antd v5 removed dist/reset.css", "this prop was dropped in vX") unless the installed version appears in the provided DEPENDENCY VERSION CONTEXT and you are certain the claim matches it. Your training data lags real releases, so version-specific removals are a frequent hallucination — a file/export you believe was deleted often still ships. When unsure, omit the claim or downgrade to WARNING/INFO with "confidence": "low" and tell the author to verify against the installed version, rather than asserting a build failure.
+- When you cannot verify a claim from the provided material, omit it or downgrade to INFO with "confidence": "low". Do not manufacture certainty about repository structure, the file tree, or installed package internals you cannot see.
 `;
 
 /**
@@ -107,6 +119,18 @@ export const buildSystemPrompt = async (
     for (const cue of cues) {
       parts.push(`- ${cue}\n`);
     }
+  }
+
+  // Curated framework/language rule packs — the same version-aware rules that
+  // drive skill generation and deterministic evaluators, now shared with the
+  // AI so it gets stack-specific guidance across many languages, not just the
+  // JS-centric STACK-AWARE cues above.
+  try {
+    const rulePackCtx = await buildProjectRulePackContext(profile);
+    const rulePackSection = renderRulePackRulesSection(rulePackCtx);
+    if (rulePackSection) parts.push(rulePackSection);
+  } catch {
+    // Non-fatal: continue without the curated rule-pack section.
   }
 
   if (config.rules && config.rules.length > 0) {

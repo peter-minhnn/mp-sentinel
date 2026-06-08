@@ -54,6 +54,42 @@ describe("indexing JSONC regressions", () => {
     });
   });
 
+  it("resolves user-defined alias prefixes other than '@' (e.g. '~', '#')", async () => {
+    const cwd = await makeTempDir();
+    await mkdir(join(cwd, "src", "lib"), { recursive: true });
+    await mkdir(join(cwd, "src", "components"), { recursive: true });
+    await writeFile(join(cwd, "src", "lib", "foo.ts"), "export const foo = 1;");
+    await writeFile(join(cwd, "src", "components", "Button.ts"), "export const Button = 1;");
+    await writeFile(
+      join(cwd, "tsconfig.json"),
+      [
+        "{",
+        '  "compilerOptions": {',
+        '    "baseUrl": ".",',
+        '    "paths": {',
+        '      "~/*": ["./src/*"],',
+        '      "#components/*": ["./src/components/*"],',
+        "    },",
+        "  },",
+        "}",
+      ].join("\n"),
+    );
+
+    const resolver = new ImportResolver(cwd);
+    await resolver.initialize();
+
+    // Tilde-prefixed alias resolves inside the project, not flagged as external/missing.
+    expect(resolver.resolve("~/lib/foo", "src/index.ts")).toEqual({
+      external: false,
+      path: "src/lib/foo.ts",
+    });
+    // Hash-prefixed custom alias also resolves.
+    expect(resolver.resolve("#components/Button", "src/index.ts")).toEqual({
+      external: false,
+      path: "src/components/Button.ts",
+    });
+  });
+
   it("does not hard-fail valid TypeScript import() type queries", async () => {
     const parsed = await parseFile(
       "src/app/api/route.ts",

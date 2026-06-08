@@ -72,6 +72,7 @@ export const createSecurityOnlyResults = (
 export function runRulePackEvaluators(
   sanitizedFiles: Array<{ path: string; content: string }>,
   severityOverrides?: Record<string, "CRITICAL" | "WARNING" | "INFO">,
+  deps?: Record<string, string>,
 ): FileAuditResult[] {
   // Build a broad RulePackContext — include all languages detected in the files
   // so language-specific evaluators activate. Individual evaluators check file
@@ -106,7 +107,11 @@ export function runRulePackEvaluators(
       nonIndexableHotspots: [],
     },
     frameworks: [],
-    deps: {},
+    // Real project dependencies (from package.json) so dependency-gated packs
+    // — react, antd, tanstack-query, vite, … — activate during the
+    // deterministic review. Defaults to an empty map for callers that don't
+    // supply one (e.g. unit tests), keeping only language-gated packs active.
+    deps: deps ?? {},
   };
 
   const files = new Map(sanitizedFiles.map((f) => [f.path, f.content]));

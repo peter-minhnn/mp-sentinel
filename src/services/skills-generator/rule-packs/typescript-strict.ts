@@ -14,6 +14,7 @@ import {
   recommendsImportType,
   requiresJsImportExtensions,
 } from "../ts-project-flags.js";
+import { noAny, noDoubleCast } from "./evaluators/typescript-evaluators.js";
 
 const hasAnyStrictFlag = (ctx: RulePackContext): boolean =>
   !ctx.tsConfig || enabledStrictFlags(ctx.tsConfig).length > 0;
@@ -76,4 +77,5 @@ export const typescriptStrictRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+  evaluators: [noAny, noDoubleCast],
 };

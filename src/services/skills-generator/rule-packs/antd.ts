@@ -3,6 +3,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { noHardcodedHexColor } from "./evaluators/antd-evaluators.js";
 
 export const antdRules: RulePack = {
   id: "antd",
@@ -31,4 +32,5 @@ export const antdRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.tsx", "**/*.jsx"],
+  evaluators: [noHardcodedHexColor],
 };

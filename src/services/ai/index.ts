@@ -196,7 +196,22 @@ export const auditFile = async (
       callGenerate(provider, systemPrompt, userPrompt, AUDIT_RESPONSE_SCHEMA),
     );
     breaker.onSuccess(primaryKey);
-    return withUsage(parseAuditResponse(response.text), response);
+    const parsed = parseAuditResponse(response.text);
+    if (parsed.status !== "ERROR") return withUsage(parsed, response);
+
+    // The network call succeeded but the response could not be parsed (commonly
+    // a truncated or garbled JSON body). One fresh generation usually returns
+    // valid JSON, so retry once before giving up and dropping the file.
+    try {
+      const retryResponse = await withRetry(() =>
+        callGenerate(provider, systemPrompt, userPrompt, AUDIT_RESPONSE_SCHEMA),
+      );
+      const retryParsed = parseAuditResponse(retryResponse.text);
+      if (retryParsed.status !== "ERROR") return withUsage(retryParsed, retryResponse);
+    } catch {
+      // Keep the original parse-ERROR result below.
+    }
+    return withUsage(parsed, response);
   } catch (primaryError) {
     const primaryMsg = primaryError instanceof Error ? primaryError.message : "Unknown error";
     breaker.onFailure(primaryKey);
@@ -391,18 +406,26 @@ export const auditFilesWithConcurrency = async (
           await 0;
         }
         const chunkResults = await Promise.all(chunkPromises);
-        // Merge: FAIL if any chunk fails, collect all issues with line offset
+        // Merge: collect all issues with line offset. A single failed chunk must
+        // NOT discard the findings from chunks that succeeded — only mark the
+        // whole file ERROR when EVERY chunk failed. Otherwise keep the partial
+        // results and note that some chunks could not be analyzed.
         const allIssues = chunkResults.flatMap((r, idx) =>
           offsetChunkIssues(r.issues ?? [], chunkMetas[idx]!.startLine),
         );
-        const hasError = chunkResults.some((r) => r.status === "ERROR");
+        const allChunksErrored = chunkResults.every((r) => r.status === "ERROR");
+        const someChunksErrored = chunkResults.some((r) => r.status === "ERROR");
         const hasFail = chunkResults.some((r) => r.status === "FAIL");
         // Sum per-chunk usage so multi-chunk files don't drop tokens
         const mergedUsage = sumUsages(chunkResults.map((r) => r.usage));
         result = {
-          status: hasError ? "ERROR" : hasFail ? "FAIL" : "PASS",
+          status: allChunksErrored ? "ERROR" : hasFail ? "FAIL" : "PASS",
           issues: allIssues,
-          ...(hasError && { message: "One or more chunks failed to audit" }),
+          ...(allChunksErrored
+            ? { message: "All chunks failed to audit" }
+            : someChunksErrored
+              ? { message: "Some chunks failed to audit; showing partial results" }
+              : {}),
           ...(mergedUsage && { usage: mergedUsage }),
         };
       } else {

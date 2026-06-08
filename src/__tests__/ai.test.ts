@@ -950,4 +950,42 @@ describe("ANTHROPIC_BASE_URL provider cache invalidation", () => {
       spy.mockRestore();
     }
   });
+
+  it("retries once and recovers when the first response is unparseable", async () => {
+    let calls = 0;
+    const provider: IAIProvider = {
+      generateContent: jest.fn(async () => {
+        calls++;
+        // First response is garbage (parse → ERROR); second is valid JSON.
+        return calls === 1
+          ? "sorry, here is some prose, not json"
+          : JSON.stringify({
+              status: "FAIL",
+              issues: [{ line: 1, severity: "WARNING", message: "x" }],
+            });
+      }),
+      isAvailable: () => true,
+    };
+
+    const spy = jest
+      .spyOn(AIProviderFactory, "createProvider")
+      .mockReturnValue(
+        provider as Parameters<typeof AIProviderFactory.createProvider>[0] extends never
+          ? never
+          : IAIProvider,
+      );
+
+    try {
+      const results = await auditFilesWithConcurrency(
+        [{ path: "src/a.ts", content: "const a = 1;" }],
+        { cacheEnabled: false },
+        1,
+      );
+      // The file must NOT be dropped as a parse error — the retry recovered it.
+      expect(results[0]!.result.status).not.toBe("ERROR");
+      expect((provider.generateContent as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

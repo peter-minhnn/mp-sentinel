@@ -541,6 +541,55 @@ export const listFilesForTarget = async (target: ReviewTarget, cwd?: string): Pr
   }
 };
 
+/**
+ * Per-file changed-line counts for a target, via a single `--numstat` call.
+ * Used to prioritize the most-changed files before the maxFiles / maxDiffLines
+ * guardrails trim the set, so high-impact files aren't dropped by alphabetical
+ * ordering. Returns an empty map for `files` mode or on any error (callers then
+ * fall back to the default ordering).
+ */
+export const getChangeStatsForTarget = async (
+  target: ReviewTarget,
+  cwd?: string,
+): Promise<Map<string, number>> => {
+  const stats = new Map<string, number>();
+  if (target.mode === "files") return stats;
+
+  try {
+    let command = "";
+    switch (target.mode) {
+      case "staged":
+        command = "git diff --cached --numstat --diff-filter=ACMR";
+        break;
+      case "commit":
+        command = `git show --pretty=format: --numstat --diff-filter=ACMR ${shellEscape(target.value ?? "")}`;
+        break;
+      case "range":
+        command = `git diff --numstat --diff-filter=ACMR ${shellEscape(target.value ?? "")}`;
+        break;
+      default:
+        return stats;
+    }
+
+    const opts: { cwd: string } | undefined = cwd ? { cwd } : undefined;
+    const { stdout } = await execAsync(command, opts);
+    for (const line of String(stdout).split("\n")) {
+      const parts = line.trim().split("\t");
+      if (parts.length < 3) continue;
+      const additions = parts[0] === "-" ? 0 : Number.parseInt(parts[0]!, 10) || 0;
+      const deletions = parts[1] === "-" ? 0 : Number.parseInt(parts[1]!, 10) || 0;
+      const path = parts.slice(2).join("\t");
+      // Rename entries (`old => new`) don't match candidate paths exactly; skip.
+      if (path.includes(" => ")) continue;
+      stats.set(path, additions + deletions);
+    }
+  } catch {
+    return stats;
+  }
+
+  return stats;
+};
+
 const getPatchForFile = async (
   target: ReviewTarget,
   filePath: string,
@@ -617,10 +666,22 @@ export const collectReviewInput = async (
   const fileCandidates = filePaths ?? (await listFilesForTarget(target, cwd));
   const uniqueFiles = Array.from(new Set(fileCandidates)).sort((a, b) => a.localeCompare(b));
 
+  // Prioritize the most-changed files so the maxFiles / maxDiffLines guardrails
+  // trim the LEAST impactful files rather than whatever falls last alphabetically.
+  // Falls back to alphabetical order when stats are unavailable (e.g. files mode).
+  const changeStats = await getChangeStatsForTarget(target, cwd);
+  const prioritizedFiles =
+    changeStats.size > 0
+      ? [...uniqueFiles].sort((a, b) => {
+          const diff = (changeStats.get(b) ?? 0) - (changeStats.get(a) ?? 0);
+          return diff !== 0 ? diff : a.localeCompare(b);
+        })
+      : uniqueFiles;
+
   let totalChangedLines = 0;
 
-  if (uniqueFiles.length > maxFiles) {
-    for (const filePath of uniqueFiles.slice(maxFiles)) {
+  if (prioritizedFiles.length > maxFiles) {
+    for (const filePath of prioritizedFiles.slice(maxFiles)) {
       skipped.push({
         path: filePath,
         reason: `Skipped by maxFiles guardrail (${maxFiles})`,
@@ -628,7 +689,7 @@ export const collectReviewInput = async (
     }
   }
 
-  for (const filePath of uniqueFiles.slice(0, maxFiles)) {
+  for (const filePath of prioritizedFiles.slice(0, maxFiles)) {
     const patch = await getPatchForFile(target, filePath, contextLines, cwd);
     if (!patch.trim()) {
       skipped.push({ path: filePath, reason: "No textual diff content" });

@@ -3,6 +3,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { noFrameworkDirectives } from "./evaluators/vite-evaluators.js";
 
 export const viteRules: RulePack = {
   id: "vite",
@@ -31,4 +32,5 @@ export const viteRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "vite.config.*"],
+  evaluators: [noFrameworkDirectives],
 };

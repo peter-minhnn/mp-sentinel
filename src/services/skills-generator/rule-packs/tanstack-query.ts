@@ -4,6 +4,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { noInlineQueryKeys } from "./evaluators/tanstack-query-evaluators.js";
 
 export const tanstackQueryRules: RulePack = {
   id: "tanstack-query",
@@ -33,4 +34,5 @@ export const tanstackQueryRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.ts", "**/*.tsx"],
+  evaluators: [noInlineQueryKeys],
 };

@@ -77,6 +77,47 @@ const TECHNOLOGY_CUES: Record<string, string[]> = {
     "Check that input types have proper validation",
   ],
   docker: ["Verify multi-stage builds and layer caching optimization"],
+  // ── Non-JS backend frameworks ──────────────────────────────────────────────
+  django: [
+    "Avoid N+1 ORM queries — use `select_related` / `prefetch_related` for related lookups",
+    "Never disable CSRF or use `mark_safe` on user-controlled data (XSS)",
+    "Run schema-affecting changes through migrations; don't edit the DB out of band",
+  ],
+  flask: [
+    "Validate and sanitize all request input; never build SQL or shell commands by string concatenation",
+    "Keep secrets and `SECRET_KEY` in environment/config, not in source",
+    "Register error handlers — unhandled exceptions must not leak stack traces in production",
+  ],
+  fastapi: [
+    "Declare Pydantic models for request/response bodies — don't accept untyped dicts",
+    "Use `async def` handlers only with non-blocking I/O; offload blocking calls to a threadpool",
+    "Enforce auth dependencies on protected routes via `Depends`",
+  ],
+  spring: [
+    "Use parameterized queries / JPA bindings — never concatenate user input into JPQL or SQL",
+    "Validate request DTOs with `@Valid` and Bean Validation annotations",
+    "Scope beans correctly — avoid mutable shared state in singleton beans",
+  ],
+  laravel: [
+    "Use Eloquent bindings or the query builder — never interpolate input into raw SQL",
+    "Guard mass assignment with `$fillable` / `$guarded`",
+    "Avoid N+1 — eager-load relations with `with()`",
+  ],
+  rails: [
+    'Use parameterized ActiveRecord queries; never interpolate params into `where("...")`',
+    "Enforce strong parameters in controllers; avoid `permit!`",
+    "Avoid N+1 — use `includes` for associations",
+  ],
+  gin: [
+    "Always check and handle returned `error` values — never discard them with `_`",
+    "Bind and validate request payloads with struct tags; reject unexpected fields",
+    "Propagate `context.Context` for cancellation and timeouts on I/O",
+  ],
+  dotnet: [
+    "Use parameterized queries / EF Core — never build SQL from string concatenation",
+    "Dispose `IDisposable` resources with `using`; avoid leaking connections",
+    "Validate model state (`ModelState.IsValid`) before processing requests",
+  ],
 };
 
 // ── Profile-level fallback cues ─────────────────────────────────────────────

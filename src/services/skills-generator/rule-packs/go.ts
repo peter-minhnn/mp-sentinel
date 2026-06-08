@@ -3,6 +3,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { goEvaluators } from "./evaluators/go-evaluators.js";
 
 export const goRules: RulePack = {
   id: "go",
@@ -39,4 +40,5 @@ export const goRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.go"],
+  evaluators: goEvaluators,
 };

@@ -33,6 +33,7 @@ import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
 import { detectTechProfile } from "../services/tech-profile.js";
+import { readPackageManifest } from "../services/source-index/manifest.js";
 import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
@@ -42,6 +43,13 @@ import { gatherMCPContextDetails } from "../services/mcp/index.js";
 import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
+import { dedupeFindings } from "../utils/dedupe-findings.js";
+import {
+  DEFAULT_BASELINE_PATH,
+  filterAgainstBaseline,
+  loadBaseline,
+  writeBaseline,
+} from "../services/baseline.js";
 import {
   DEFAULT_SEVERITY_THRESHOLD,
   issuesFailThreshold,
@@ -480,6 +488,17 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   // Detect tech profile for stack-aware review cues (works without source index)
   const techProfile = await detectTechProfile(config);
 
+  // Read package.json dependencies so dependency-gated rule packs (react,
+  // antd, tanstack-query, …) activate in the deterministic rule-pack pass.
+  // A read failure is non-fatal — packs simply fall back to language gating.
+  let rulePackDeps: Record<string, string> = {};
+  try {
+    const manifest = await readPackageManifest(process.cwd());
+    rulePackDeps = { ...manifest.dependencies, ...manifest.devDependencies };
+  } catch {
+    rulePackDeps = {};
+  }
+
   // Gather MCP external context if enabled (only when AI will use it)
   let mcpContext: string | null = null;
   let mcpSummary: MCPContextSummary | undefined;
@@ -579,7 +598,11 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   );
 
   // Run rule-pack evaluators (deterministic, language-specific checks)
-  const rulePackResults = runRulePackEvaluators(sanitizedFiles, config.ai?.rulePackSeverity);
+  const rulePackResults = runRulePackEvaluators(
+    sanitizedFiles,
+    config.ai?.rulePackSeverity,
+    rulePackDeps,
+  );
 
   // Extract AuditIssue[] from rule-pack FileAuditResult[] for mergeFindings
   const rulePackFileAnalyses: Array<{
@@ -615,7 +638,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   );
 
   // Merge rule-pack findings into final results
-  const finalResults = mergeFindings(
+  const mergedResults = mergeFindings(
     {
       totalCritical: rulePackCritical,
       totalWarning: rulePackWarning,
@@ -626,6 +649,45 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     deterministicResults,
     new Set(),
   );
+
+  // Collapse exact-duplicate findings (e.g. the model repeating itself) so the
+  // report's signal-to-noise stays high. Distinct issues are never merged.
+  const { results: finalResults, removed: duplicatesRemoved } = dedupeFindings(mergedResults);
+  if (duplicatesRemoved > 0) {
+    log.info(`Removed ${duplicatesRemoved} duplicate finding(s).`);
+  }
+
+  // Baseline / ratchet handling. `--update-baseline` records the current
+  // findings and exits 0 (accept current state). Otherwise, when a baseline is
+  // requested, suppress already-accepted findings so only NEW ones can fail.
+  const baselineRequested = values.baseline !== undefined || values["update-baseline"] === true;
+  const baselinePath =
+    typeof values.baseline === "string" && values.baseline.length > 0
+      ? values.baseline
+      : DEFAULT_BASELINE_PATH;
+
+  if (values["update-baseline"]) {
+    const written = writeBaseline(baselinePath, finalResults);
+    const recorded = Object.values(written.fingerprints).reduce((a, b) => a + b, 0);
+    log.info(`Baseline written to ${baselinePath} (${recorded} finding(s) recorded).`);
+    return 0;
+  }
+
+  let effectiveResults = finalResults;
+  if (baselineRequested) {
+    const baseline = loadBaseline(baselinePath);
+    if (baseline) {
+      const { results: filtered, suppressed } = filterAgainstBaseline(finalResults, baseline);
+      effectiveResults = filtered;
+      if (suppressed > 0) {
+        log.info(`Baseline: suppressed ${suppressed} known finding(s) from ${baselinePath}.`);
+      }
+    } else {
+      log.warning(
+        `Baseline file ${baselinePath} not found or invalid — reviewing without suppression. Run with --update-baseline to create it.`,
+      );
+    }
+  }
 
   // Aggregate token usage from raw AI audit results. Provider/model lookup
   // is wrapped in try/catch so a missing API key after the run started
@@ -660,7 +722,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     target,
     aiEnabled,
     promptVersion,
-    finalResults,
+    effectiveResults,
     skipped,
     runtimeErrors,
     diffResult.totalChangedLines,

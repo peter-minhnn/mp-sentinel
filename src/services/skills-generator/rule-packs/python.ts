@@ -3,6 +3,7 @@
  */
 
 import type { RulePack } from "./index.js";
+import { pythonEvaluators } from "./evaluators/python-evaluators.js";
 
 export const pythonRules: RulePack = {
   id: "python",
@@ -40,4 +41,5 @@ export const pythonRules: RulePack = {
     },
   ],
   fileGlobs: ["**/*.py", "**/*.pyi"],
+  evaluators: pythonEvaluators,
 };
