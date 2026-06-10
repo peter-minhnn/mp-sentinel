@@ -29,7 +29,20 @@ export const tanstackQueryRules: RulePack = {
     },
     {
       kind: "should",
-      id: "tanstack-query/error-loading-states",
+      id: "tanstack-query/error-loading-states-v4",
+      requires: [{ dep: "@tanstack/react-query", maxMajor: 4 }],
+      text: "Handle `isLoading` / `isError` states explicitly in the UI rather than assuming data is always available.",
+    },
+    {
+      kind: "should",
+      id: "tanstack-query/error-loading-states-legacy",
+      requires: [{ dep: "react-query" }],
+      text: "Handle `isLoading` / `isError` states explicitly in the UI rather than assuming data is always available.",
+    },
+    {
+      kind: "should",
+      id: "tanstack-query/error-loading-states-v5",
+      requires: [{ dep: "@tanstack/react-query", minMajor: 5 }],
       text: "Handle `isPending` / `isError` states explicitly in the UI rather than assuming data is always available.",
     },
   ],

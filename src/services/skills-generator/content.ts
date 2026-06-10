@@ -17,7 +17,7 @@ import type {
 import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
 import { detectLanguageProfile } from "./language-profile.js";
 import { detectProfile, type SkillProfile } from "./profile.js";
-import { selectActiveRulePacks } from "./rule-packs/index.js";
+import { selectActiveRulePacks, resolveSafeMajor } from "./rule-packs/index.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
 import { PROJECT_RULES_END_MARKER, PROJECT_RULES_START_MARKER } from "./constants.js";
 import {
@@ -1090,14 +1090,18 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
       (f) => f.path.includes(".test.") || f.path.includes(".spec.") || f.path.includes("__tests__"),
     );
     if (testFiles.length > 0) {
-      lines.push(
-        ``,
-        `### Test Expectations`,
-        ``,
-        `- ${testFiles.length} test file(s) indexed.`,
-        `- Run \`${renderRunScript(pm, "test")}\` before committing changes that touch logic.`,
-        `- Do not skip failing tests without a \`TODO\` comment linking to an issue.`,
-      );
+      const hasTestScript = "test" in scripts;
+      lines.push(``, `### Test Expectations`, ``, `- ${testFiles.length} test file(s) indexed.`);
+      if (hasTestScript) {
+        lines.push(
+          `- Run \`${renderRunScript(pm, "test")}\` before committing changes that touch logic.`,
+        );
+      } else {
+        lines.push(
+          `- No \`test\` script in \`package.json\` -- check the project README for the correct test command before committing logic changes.`,
+        );
+      }
+      lines.push(`- Do not skip failing tests without a \`TODO\` comment linking to an issue.`);
     }
   }
 
@@ -1122,15 +1126,32 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
         `- **Health checks** - new dependencies (DB, cache, queue) need health-check probes.`,
       );
       break;
-    case "react-next":
-      lines.push(
-        `- **Server/Client boundary** - avoid server-only imports in client components; use \`'use server'\` / \`'use client'\` split.`,
-        `- **Data fetching colocation** - keep data fetching close to consuming component; avoid prop-drill across >2 layers.`,
-        `- **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.`,
-        `- **Image optimization** - prefer \`next/image\` over \`<img>\`.`,
-        `- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.`,
-      );
+    case "react-next": {
+      const allDeps = index
+        ? { ...index.project.dependencies, ...index.project.devDependencies }
+        : {};
+      const nextMajor = resolveSafeMajor(allDeps["next"]);
+      const isAppRouter = nextMajor !== null && nextMajor >= 13;
+      if (isAppRouter) {
+        lines.push(
+          `- **Server/Client boundary** - avoid server-only imports in client components; use \`'use server'\` / \`'use client'\` split.`,
+          `- **Data fetching colocation** - keep data fetching close to consuming component; avoid prop-drill across >2 layers.`,
+          `- **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.`,
+          `- **Image optimization** - prefer \`next/image\` over \`<img>\`.`,
+          `- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.`,
+        );
+      } else {
+        // Pages Router (Next.js <= 12) or unknown version — conservative
+        lines.push(
+          `- **Pages Router only** - do NOT add App Router patterns (\`'use client'\`/\`'use server'\`, \`app/\` directory, Server Components, route handlers); use \`pages/\`, \`_app\`, \`_document\`, \`getServerSideProps\`, \`getStaticProps\` only.`,
+          `- **Data fetching at page level** - use \`getServerSideProps\`/\`getStaticProps\` for SSR/SSG; colocate client fetches in components via hooks (React Query/SWR).`,
+          `- **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.`,
+          `- **Image optimization** - prefer \`next/image\` (or \`next/legacy/image\`) over \`<img>\`.`,
+          `- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.`,
+        );
+      }
       break;
+    }
     case "react-spa":
       lines.push(
         `- **Route-level code splitting** - lazy-load route components (\`React.lazy\` / router lazy routes) to keep the initial bundle small.`,

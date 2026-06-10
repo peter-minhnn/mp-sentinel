@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.7] — 2026-06-10
+
+### Added
+- **Pages Router rules for Next.js <= 12 projects.** The `Next.js` rule pack now emits three version-gated rules (`requires: [{ dep: "next", maxMajor: 12 }]`): `next/pages-router-only` (MUST -- forbids `app/` directory, `'use client'`/`'use server'`, Server Components), `next/ssr-ssg-patterns` (SHOULD -- data fetching via `getServerSideProps`/`getStaticProps`/`getStaticPaths`), and `next/api-routes` (SHOULD -- API endpoints in `pages/api/`). App Router rules continue to require `minMajor: 13`. Existing generic rules gained stable `id` fields (`next/image-optimization`, `next/data-fetching-colocation`).
+
+### Fixed
+- **TanStack Query loading-state rule: version-aware wording.** `tanstack-query/error-loading-states` is split into three variants: `error-loading-states-v4` (`isLoading`/`isError`, `maxMajor: 4`), `error-loading-states-legacy` (`isLoading`/`isError`, legacy `react-query` package), and `error-loading-states-v5` (`isPending`/`isError`, `minMajor: 5`). Previously v5 wording was emitted for all versions, producing misleading guidance on v4 projects.
+- **TypeScript strict rules: `enabled` predicate now filtered by `selectActiveRulePacks`.** The NodeNext-specific rules (`.js` import extensions, `node:` prefix, `import type` for `verbatimModuleSyntax`) were emitted for all TypeScript projects because `enabled` predicates were not applied during rule selection. Projects with `moduleResolution: node` or without `verbatimModuleSyntax` no longer receive these rules.
+- **Test Expectations: no `npm test` when script is absent.** When `package.json` defines no `test` script, the generated skill now emits a message directing agents to check the project README, instead of suggesting a command that does not exist.
+- **Em dash in generated Test Expectations text.** The `--` separator in the "no test script" guidance was written as a Unicode em dash (U+2014), triggering the quality gate. Replaced with ASCII `--`.
+
 ## [3.0.6] — 2026-06-08
 
 ### Fixed

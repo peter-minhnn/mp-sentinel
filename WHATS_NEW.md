@@ -1,3 +1,62 @@
+# What's New in v3.0.7
+
+## Smarter `create-skills` for Next.js 12 + TanStack Query v4 projects
+
+Three targeted fixes and one enhancement to the skill generator make generated
+skills accurate for the most common Pages Router / TanStack Query v4 stack --
+and for any Next.js project, regardless of version.
+
+### Pages Router-specific rules (Next.js <= 12)
+
+The `Next.js` rule pack now emits three Pages Router-only rules when the
+installed `next` major is 12 or lower:
+
+- **MUST** `next/pages-router-only` -- forbids `app/` directory,
+  `'use client'`/`'use server'` directives, Server Components, and route
+  handlers in Pages Router projects.
+- **SHOULD** `next/ssr-ssg-patterns` -- guides data fetching to
+  `getServerSideProps` / `getStaticProps` / `getStaticPaths` at the page
+  level, with React Query / SWR for client-side component fetches.
+- **SHOULD** `next/api-routes` -- enforces `pages/api/` as the home for
+  API endpoints with the `(req: NextApiRequest, res: NextApiResponse)` handler
+  signature.
+
+App Router rules (`'use client'`/`'use server'`, Server Components, route
+segment config, server-component bundle bloat) continue to be emitted only for
+`next >= 13`.
+
+### Version-aware TanStack Query loading-state rule
+
+`tanstack-query/error-loading-states` is now split into three version-gated
+variants:
+
+| Package | Emitted rule |
+|---|---|
+| `@tanstack/react-query` <= 4 | Use `isLoading` / `isError` |
+| `react-query` (legacy) | Use `isLoading` / `isError` |
+| `@tanstack/react-query` >= 5 | Use `isPending` / `isError` |
+
+Previously the v5 wording (`isPending`) was emitted for all versions, causing
+misleading guidance on v4 projects.
+
+### `enabled`-predicate filtering for TypeScript strict rules
+
+TypeScript strict rules that depend on `tsconfig.json` compiler options
+(`verbatimModuleSyntax`, `moduleResolution: NodeNext`) now correctly apply
+their `enabled` predicates. Projects using `moduleResolution: node` (bundler
+or classic resolution) no longer receive NodeNext-specific rules about `.js`
+import extensions or the `node:` built-in prefix.
+
+### Test-script guard in Test Expectations
+
+When no `test` script is present in `package.json`, the generated skill no
+longer emits `npm test` as a pre-commit command. Instead it shows:
+
+> No `test` script in `package.json` -- check the project README for the
+> correct test command before committing logic changes.
+
+---
+
 # What's New in v3.0.6
 
 ## Fewer false positives in AI review — alias-aware import checks
