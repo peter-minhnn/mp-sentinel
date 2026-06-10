@@ -292,7 +292,19 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     currentBranch,
   });
   const auditDuration = performance.now() - startTime;
-  const allPassed = printResultsSummary(auditResults, auditDuration, threshold);
+
+  // Build human-readable target string (mirrors AI review's "Target" row)
+  const targetLabel = commitSha
+    ? `commit (${commitSha.slice(0, 7)})`
+    : isBranchDiffMode
+      ? `branch-diff (${compareBranch})`
+      : `local (${commitsToReview.length} commit${commitsToReview.length === 1 ? "" : "s"})`;
+
+  const allPassed = printResultsSummary(auditResults, auditDuration, threshold, {
+    target: targetLabel,
+    aiEnabled,
+    skipped: filterResult.rejected.map(({ path, reason }) => ({ path, reason })),
+  });
 
   if (!allPassed) {
     hasErrors = true;

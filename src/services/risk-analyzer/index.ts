@@ -143,11 +143,13 @@ const SECURITY_PATTERNS: RiskPattern[] = [
 const CRASH_PATTERNS: RiskPattern[] = [
   // Non-null assertion on potentially null values
   // Uses (?!\s*=) negative lookahead to avoid matching != / !==
+  // Uses [a-zA-Z_$]\w* instead of \w+ to avoid matching Tailwind numeric suffixes (e.g. text-red-500!)
+  // Uses positive lookahead to ensure ! is in a TS post-expression position, not sentence/string punctuation
   {
     category: "runtime-crash",
     confidence: "medium",
     label: "Non-null assertion",
-    regex: /(?:\w+(?:\.\w+)*(?:\[\d+\])?)\s*!(?!\s*=)/g,
+    regex: /(?:[a-zA-Z_$]\w*(?:\.\w+)*(?:\[\d+\])?)\s*!(?!\s*=)(?=[.,;:)\]}\s]|$)/g,
     message:
       "Non-null assertion (!) bypasses TypeScript strict null checks and can cause runtime crashes if the value is nullish.",
     suggestion: "Add explicit null checks or optional chaining (?.) instead of non-null assertion.",
@@ -414,14 +416,34 @@ export interface RiskAnalysisResult {
  * Check if file path matches test or example patterns.
  */
 const isTestOrExamplePath = (filePath: string): boolean =>
-  /(?:\/|^)(?:__tests__|test|spec|examples?)\/|\.(?:test|spec)\.(?:ts|js|tsx|jsx)$/.test(filePath);
+  /(?:\/|^)(?:__tests__|test|spec|examples?)\/|\.(?:test|spec|stories)\.(?:ts|js|tsx|jsx)$/.test(
+    filePath,
+  );
 
 /**
  * Per-pattern match filters to reduce false positives.
  * Return false to suppress a match. Keyed by pattern label.
  */
 const MATCH_FILTERS: Record<string, (line: string, filePath: string) => boolean> = {
-  "SQL string concatenation": (line) => {
+  // Skip lines where ! is inside a className/class attribute value (Tailwind important modifier)
+  "Non-null assertion": (line) => {
+    if (/\bclass(?:Name)?\s*=/.test(line)) return false;
+    // Skip pure comment lines (// or JSDoc * lines)
+    if (/^\s*(?:\/\/|\*)/.test(line)) return false;
+    // Skip bare JSX text content — lines with no TS constructs (no operators, no keywords).
+    // Real non-null assertions always appear in an expression/statement context.
+    if (
+      !/[=;{}()[\]]/.test(line) &&
+      !/\b(?:const|let|var|return|throw|await|yield|export|import|type|interface)\b/.test(line)
+    )
+      return false;
+    return true;
+  },
+  "SQL string concatenation": (line, filePath) => {
+    // Skip test, spec, and stories files — they use component/library names that may coincidentally match SQL keywords
+    if (isTestOrExamplePath(filePath)) return false;
+    // Skip comment lines (JSDoc or inline)
+    if (/^\s*(?:\/\/|\*)/.test(line)) return false;
     // Skip tagged template literals: sql`...`, Prisma.sql`...`, prisma.$queryRaw`...`
     if (/(?:sql|Prisma\.sql|prisma\.\$queryRaw|prisma\.\$executeRaw)\s*`/.test(line)) return false;
     // Skip logger/console template strings

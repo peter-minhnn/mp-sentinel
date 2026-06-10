@@ -5,18 +5,32 @@
  */
 
 import type { FileAuditResult, SeverityThreshold } from "../types/index.js";
-import { formatDuration } from "../utils/logger.js";
+import { formatDuration, log } from "../utils/logger.js";
 import { getToolVersion } from "../utils/version.js";
 import { printConsoleFindings } from "../formatters/report.js";
 import { DEFAULT_SEVERITY_THRESHOLD, issuesFailThreshold } from "../utils/severity.js";
 import {
   appHeader,
+  bold,
   countToken,
+  dim,
   dot,
   keyValueRow,
+  paint,
   sectionHeader,
   statusBadge,
 } from "../utils/terminal-ui.js";
+
+export interface ResultsSummaryContext {
+  /** Human-readable target description, e.g. "local (3 commits)" or "branch-diff (origin/main)". */
+  target?: string;
+  /** Whether AI review was enabled for this run. */
+  aiEnabled?: boolean;
+  /** Files skipped due to ignore rules. */
+  skipped?: Array<{ path: string; reason: string }>;
+  /** Runtime error messages to display at the bottom. */
+  errors?: string[];
+}
 
 const countIssues = (results: FileAuditResult[], severity: string): number =>
   results.reduce(
@@ -25,17 +39,19 @@ const countIssues = (results: FileAuditResult[], severity: string): number =>
   );
 
 /**
- * Print audit results summary and return whether all checks passed
+ * Print audit results summary and return whether all checks passed.
  *
- * @param threshold — Issues below this severity are not counted as failures.
+ * @param threshold - Issues below this severity are not counted as failures.
  *                    Defaults to WARNING (the historical behavior).
- * @returns `true` if no issues meet-or-exceed the threshold and no runtime
- *          errors occurred.
+ * @param ctx       - Optional extra context (target, AI status, skipped, errors)
+ *                    rendered to match the AI review console report layout.
+ * @returns true if no issues meet-or-exceed the threshold and no runtime errors occurred.
  */
 export const printResultsSummary = (
   results: FileAuditResult[],
   totalDuration: number,
   threshold: SeverityThreshold = DEFAULT_SEVERITY_THRESHOLD,
+  ctx: ResultsSummaryContext = {},
 ): boolean => {
   const passed = results.filter((r) => r.result.status === "PASS");
   const failed = results.filter((r) => r.result.status === "FAIL");
@@ -44,9 +60,6 @@ export const printResultsSummary = (
   const warningIssues = countIssues(results, "WARNING");
   const infoIssues = countIssues(results, "INFO");
 
-  // Fail if any result reports an error, an issue at-or-above the threshold,
-  // OR a status === "FAIL" with no issues (edge case where AI explicitly
-  // marks FAIL without listing findings).
   const hasThresholdViolations = results.some((r) =>
     issuesFailThreshold(r.result.issues, threshold),
   );
@@ -54,12 +67,10 @@ export const printResultsSummary = (
   const allPassed = errored.length === 0 && !hasThresholdViolations && !hasFailWithoutIssues;
   const status = errored.length > 0 ? "ERROR" : allPassed ? "PASS" : "FAIL";
 
-  const subtitle = [
-    statusBadge(status),
-    `${results.length} file${results.length === 1 ? "" : "s"}`,
-    formatDuration(totalDuration),
-  ].join(dot());
-  for (const line of appHeader(getToolVersion(), subtitle)) {
+  const subtitleParts = [statusBadge(status)];
+  if (ctx.target) subtitleParts.push(ctx.target);
+  subtitleParts.push(formatDuration(totalDuration));
+  for (const line of appHeader(getToolVersion(), subtitleParts.join(dot()))) {
     console.log(line);
   }
 
@@ -67,15 +78,23 @@ export const printResultsSummary = (
     console.log(line);
   }
   console.log(keyValueRow("Status", statusBadge(status)));
+  if (ctx.target) {
+    console.log(keyValueRow("Target", ctx.target));
+  }
+  if (ctx.aiEnabled !== undefined) {
+    console.log(
+      keyValueRow("AI review", ctx.aiEnabled ? paint("enabled", "green") : dim("disabled")),
+    );
+  }
   console.log(
     keyValueRow(
       "Files",
-      `${results.length} total` +
+      `${results.length} audited` +
         dot() +
         [
           countToken(passed.length, "passed", "green"),
           countToken(failed.length, "failed", "red"),
-          countToken(errored.length, "errors", "magenta"),
+          ...(errored.length > 0 ? [countToken(errored.length, "errors", "magenta")] : []),
         ].join(dot()),
     ),
   );
@@ -91,8 +110,26 @@ export const printResultsSummary = (
   );
   console.log(keyValueRow("Duration", formatDuration(totalDuration)));
 
-  // Detailed findings — same layout as the review console report
   printConsoleFindings(results);
+
+  const skipped = ctx.skipped ?? [];
+  if (skipped.length > 0) {
+    for (const line of sectionHeader(`Skipped (${skipped.length})`)) {
+      console.log(line);
+    }
+    for (const item of skipped) {
+      log.plain(`  ${item.path} ${dim(`— ${item.reason}`)}`);
+    }
+  }
+
+  const errors = ctx.errors ?? [];
+  if (errors.length > 0) {
+    console.log();
+    log.critical(bold(`Runtime errors (${errors.length})`));
+    for (const error of errors) {
+      log.file(error);
+    }
+  }
 
   return allPassed;
 };

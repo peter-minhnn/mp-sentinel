@@ -45,7 +45,6 @@ export const nextRules: RulePack = {
     // ── App Router (Next.js 13+) ─────────────────────────────────────────────
     {
       kind: "avoid",
-      id: "next/server-component-bundle-bloat",
       requires: [{ dep: "next", minMajor: 13 }],
       text: "Do NOT import large client-side libraries in Server Components that re-export them -- this can bloat the client bundle.",
     },

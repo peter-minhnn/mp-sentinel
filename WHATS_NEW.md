@@ -1,3 +1,54 @@
+# What's New in v3.1.0
+
+## Deterministic scanner false-positive fixes & local review UI parity
+
+### Non-null assertion — significantly fewer false positives
+
+The `Non-null assertion` risk pattern now avoids a wide class of content that
+is not TypeScript non-null assertion syntax:
+
+- **Tailwind numeric suffix** (`text-red-500!`) — the regex now requires the
+  matched word to start with a letter or `$`/`_` (valid JS identifier start),
+  so numeric class-name fragments like `500!` are never matched.
+- **String and JSX content** (`"Hello!"`, `<p>Done!</p>`) — a positive
+  lookahead `(?=[.,;:)\]}\ ]|$)` now requires `!` to be followed by a
+  character that is valid in a TypeScript post-expression position.
+- **JSDoc / comment lines** (`// note!`, `* description!`) — lines starting
+  with `//` or `*` are skipped entirely.
+- **Bare JSX text** (`No comments yet!` on its own line) — lines with no
+  TypeScript constructs (no operators, keywords, or brackets) are skipped.
+- **Tailwind `className=` attribute lines** (`className="block! flex!"`) — the
+  whole line is skipped when a class attribute is detected.
+
+### SQL string concatenation — no longer fires on Storybook & JSDoc
+
+The `SQL string concatenation` pattern now skips:
+
+- **Test, spec, and Storybook files** (`.stories.tsx`, `.test.ts`, etc.) —
+  component/library names like `Select` or `MultiSelect` coincidentally match
+  `\bSELECT\b` (case-insensitive) and were producing CRITICAL false positives
+  in Storybook description strings.
+- **Comment lines** (`//` and JSDoc `*` lines) — these can never contain real
+  SQL concatenation.
+
+### Local review console UI now matches AI review layout
+
+`printResultsSummary` (used by `--local` mode) now renders the same Overview
+section as the full AI review console report:
+
+| Row / Section | Before | After |
+|---|---|---|
+| Target | — | `local (N commits)` / `commit (sha)` / `branch-diff (branch)` |
+| AI review | — | `enabled` / `disabled` |
+| Skipped files | — | Dedicated section at bottom |
+| Runtime errors | — | Dedicated section at bottom |
+| Header subtitle | `N files · duration` | `status · target · duration` |
+
+The new `ResultsSummaryContext` interface is exported from `cli/summary.ts` for
+callers that need to pass context.
+
+---
+
 # What's New in v3.0.7
 
 ## Smarter `create-skills` for Next.js 12 + TanStack Query v4 projects
@@ -696,30 +747,4 @@ v1.27.0 propagates parser telemetry consistently across all output surfaces, add
 
 v1.26.1 is a small cleanup patch removing duplicate chunk telemetry spreads and fixing stale comments.
 
-- **Dedup chunk fields** (`src/commands/indexing.ts`): Removed duplicate `chunkCount`/`chunkSize`/`chunkWarningCount` spreads in `handleDrilldown()` that were emitted twice per entry.
-- **Comment fixes** (`src/commands/indexing.ts`, `src/types/index.ts`): `getParserModeBreakdown()` no longer references pre-1.3 caches. `DoctorIndexInfo.recoveredFiles` JSDoc now includes `chunked-tree-sitter`.
-
----
-
-# What's New in v1.26.0
-
-## Chunked Parser Observability & Lexical Fallback Guard
-
-v1.26.0 adds chunk telemetry fields, deduplicates drilldown output, and tightens dogfood validation for chunked and lexical-fallback modes.
-
-- **Chunk telemetry fields** (`src/types/index.ts`, `src/services/source-index/parser.ts`, `src/commands/indexing.ts`): `chunkCount`, `chunkSize`, `chunkWarningCount` added to `SourceIndexFile`. Surfaced in `--recovered` drilldown entries for `chunked-tree-sitter` files.
-- **Dogfood lexical-fallback guard** (`scripts/dogfood.mjs`): Health check asserts `parserModeBreakdown["lexical-fallback"] === 0` after fresh index build. Non-zero = silent parser regression.
-- **Dogfood chunk validation** (`scripts/dogfood.mjs`): Parser drilldown validates `chunkCount` >= 2, `chunkSize` > 0, `chunkWarningCount` is numeric, `parseWarnings` includes chunked indicator, and non-zero content counts for every `chunked-tree-sitter` recovered file.
-
----
-
-# What's New in v1.25.0
-
-## Chunked Tree-sitter Parser Recovery
-
-v1.25.0 introduces a new fallback parser that splits large files on line boundaries and merges results, significantly improving parse success rates for oversized files.
-
-- **Chunked Tree-sitter parser recovery** (`src/services/source-index/parser.ts`): New `chunkedParse()` fallback that splits large content on line boundaries (MAX_CHUNK_SIZE=30000), parses each chunk independently via Tree-sitter, and merges results with correct line offsets. Positioned between full-file Tree-sitter and ASCII normalization in the recovery chain. Imports/exports are deduplicated across chunks.
-- **New parser mode** (`src/types/index.ts`): `chunked-tree-sitter` added to the `ParserMode` union.
-- **Recovery chain order**: `Invalid argument` → chunked Tree-sitter → ASCII normalization → lexical fallback (was: ASCII normalization → lexical fallback).
-- **Telemetry** (`src/commands/indexing.ts`, `src/commands/create-skills.ts`): `getRecoveredFileCount`, `getParserModeBreakdown`, drilldown recovered filter, and doctor recovered count all include `chunked-tree-sitter`. Console breakdown displays include `chunked-tree-sitter`.
+- **Dedup chunk fields** (`src/commands/indexing.ts`): Removed duplicate `chunkCount`/`chunkSize`/`chunkWarningCount` spreads in `hand

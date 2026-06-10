@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-06-10
+
+### Fixed
+- **Non-null assertion false positives:** Regex now requires an identifier-start character before `!` and a post-expression character after, preventing matches inside Tailwind utility classes (`text-red-500!`), `className` attribute values, comment lines, and bare JSX text content.
+- **SQL string concatenation false positives:** Pattern now skips test/stories files and comment lines, eliminating false matches on AntD `<Select>` imports and JSDoc comments.
+
+### Changed
+- **Local review console UI:** `printResultsSummary` now renders Target, AI review, Skipped, and Runtime errors rows, matching the AI review console report layout.
+
 ## [3.0.7] — 2026-06-10
 
 ### Added
@@ -409,27 +418,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Dedup chunk fields** (`src/commands/indexing.ts`): Removed duplicate `chunkCount`/`chunkSize`/`chunkWarningCount` spreads in `handleDrilldown()` output construction.
-- **Stale comments** (`src/commands/indexing.ts`, `src/types/index.ts`): `getParserModeBreakdown()` no longer references pre-1.3 caches. `DoctorIndexInfo.recoveredFiles` JSDoc now includes `chunked-tree-sitter`.
-
----
-
-## [1.26.0] - 2026-04-30
-
-### Added
-- **Chunk telemetry fields** (`src/types/index.ts`, `src/services/source-index/parser.ts`, `src/commands/indexing.ts`): `chunkCount`, `chunkSize`, `chunkWarningCount` added to `SourceIndexFile`. Surfaced in `--recovered` drilldown entries for `chunked-tree-sitter` files.
-
-### Changed
-- **Dogfood lexical-fallback guard** (`scripts/dogfood.mjs`): Health check asserts `parserModeBreakdown["lexical-fallback"] === 0` after fresh index build. Non-zero = silent parser regression.
-- **Dogfood chunk validation** (`scripts/dogfood.mjs`): Parser drilldown validates `chunkCount` >= 2, `chunkSize` > 0, `chunkWarningCount` is numeric, `parseWarnings` includes chunked indicator, and non-zero content counts for every `chunked-tree-sitter` recovered file.
-
----
-
-## [1.25.0] - 2026-04-30
-
-### Added
-- **Chunked Tree-sitter parser recovery** (`src/services/source-index/parser.ts`): New `chunkedParse()` fallback that splits large content on line boundaries (MAX_CHUNK_SIZE=30000), parses each chunk independently via Tree-sitter, and merges results with correct line offsets. Positioned between full-file Tree-sitter and ASCII normalization in the recovery chain. Imports/exports are deduplicated across chunks.
-- **New parser mode** (`src/types/index.ts`): `chunked-tree-sitter` added to the `ParserMode` union.
-
-### Changed
-- **Recovery chain order**: `Invalid argument` → chunked Tree-sitter → ASCII normalization → lexical fallback (was: ASCII normalization → lexical fallback).
-- **Telemetry** (`src/commands/indexing.ts`, `src/commands/create-skills.ts`): `getRecoveredFileCount`, `getParserModeBreakdown`, drilldown recovered filter, and doctor recovered count all include `chunked-tree-sitter`. Console breakdown displays include `chunked-tree-sitter`.
+- **Stale comments** (`src/commands/indexing.ts`, `s

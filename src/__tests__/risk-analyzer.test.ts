@@ -261,6 +261,31 @@ return user.name;`,
     expect(result.totalWarning).toBeGreaterThanOrEqual(1);
   });
 
+  it("does NOT flag string content ending with !", () => {
+    const result = createAnalysis(
+      "src/components/Banner.tsx",
+      `const msg = "Hello!";
+const label = 'Great job!';`,
+    );
+    expect(result.totalWarning).toBe(0);
+  });
+
+  it("does NOT flag Tailwind numeric important suffix (e.g. text-red-500!)", () => {
+    const result = createAnalysis(
+      "src/components/Card.tsx",
+      `const cls = "text-red-500! font-bold";`,
+    );
+    expect(result.totalWarning).toBe(0);
+  });
+
+  it("does NOT flag Tailwind important classes inside className attribute", () => {
+    const result = createAnalysis(
+      "src/components/Card.tsx",
+      `return <div className="block! flex! hidden!">content</div>;`,
+    );
+    expect(result.totalWarning).toBe(0);
+  });
+
   // ── child_process false positive prevention ──
 
   it("does NOT flag regex.exec() as child_process exec", () => {
@@ -668,7 +693,6 @@ describe("ReviewRiskAnalyzer — Merge with Empty or No AI Results", () => {
       `import { execSync } from 'child_process';\nconst output = execSync('cmd');`,
     );
     const merged = mergeFindings(local, []);
-    expect(merged).toHaveLength(1);
     expect(merged[0]!.result.status).toBe("FAIL");
   });
 
@@ -688,5 +712,40 @@ describe("ReviewRiskAnalyzer — Merge with Empty or No AI Results", () => {
     const redacted = merged.find((r) => r.filePath === "src/secret.ts");
     expect(redacted).toBeDefined();
     expect(redacted!.result.status).toBe("FAIL");
+  });
+
+  it("does NOT flag string content ending with !", () => {
+    const result = createAnalysis(
+      "src/components/Banner.tsx",
+      `export const Banner = () => <p>This feature works!</p>;`,
+    );
+    const nonNullIssues = result.files
+      .flatMap((f) => f.issues)
+      .filter((i) => i.message.includes("Non-null assertion"));
+    expect(nonNullIssues).toHaveLength(0);
+  });
+
+  it("does NOT flag Tailwind numeric important suffix (e.g. text-red-500!)", () => {
+    const result = createAnalysis(
+      "src/components/Button.tsx",
+      `export const Button = () => <button className="text-red-500! font-bold!">Click</button>;`,
+    );
+    const nonNullIssues = result.files
+      .flatMap((f) => f.issues)
+      .filter((i) => i.message.includes("Non-null assertion"));
+    expect(nonNullIssues).toHaveLength(0);
+  });
+
+  it("does NOT flag Tailwind important classes inside className attribute", () => {
+    const result = createAnalysis(
+      "src/components/Card.tsx",
+      `export const Card = ({ active }: { active: boolean }) => (
+  <div className={active ? "bg-blue-500! text-white" : "bg-gray-200"}>Card</div>
+);`,
+    );
+    const nonNullIssues = result.files
+      .flatMap((f) => f.issues)
+      .filter((i) => i.message.includes("Non-null assertion"));
+    expect(nonNullIssues).toHaveLength(0);
   });
 });

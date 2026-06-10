@@ -1809,7 +1809,6 @@ export function buildLanguagePatternsReference(
       lines.push(``);
     }
   }
-
   return lines.join("\n");
 }
 
