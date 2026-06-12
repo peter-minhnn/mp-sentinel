@@ -27,6 +27,8 @@ const TECHNOLOGY_CUES: Record<string, string[]> = {
     "Audit hooks dependency arrays (useEffect, useMemo, useCallback) for completeness",
     "Verify hooks are called unconditionally (no conditional or loop calls)",
     "Check that `.map()` keys are stable identifiers, not array indices",
+    "Flag setState during render or in effects without a stop condition — infinite re-render loops",
+    "Flag inline object/array/function props on memoized children and context values recreated every render — they defeat memoization",
   ],
   nextjs: [
     "Respect server/client component boundaries — avoid client logic in server components",

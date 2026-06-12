@@ -23,6 +23,10 @@ import { log } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
 import { gatherMCPContext } from "../services/mcp/index.js";
 import { runDeterministicReview } from "./deterministic-review.js";
+import { buildIndexContext } from "./review.js";
+import { runESLintAdapter } from "../services/eslint-adapter.js";
+import { mergeFindings } from "../services/risk-analyzer/index.js";
+import { dedupeFindings } from "../utils/dedupe-findings.js";
 import type { CLIValues } from "./args.js";
 import { resolveSeverityThreshold } from "../utils/severity.js";
 
@@ -215,6 +219,18 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
         )
       : null;
 
+  // 3b. SOURCE INDEX CONTEXT — gives the AI cross-file awareness (dependents,
+  // related symbols) so duplicate-logic and architecture findings are possible
+  // in local mode, mirroring the CI/CD review path.
+  const indexContext =
+    aiEnabled && !dryRun
+      ? await buildIndexContext(
+          config,
+          sanitizedFiles.map((f) => ({ path: f.path })),
+          process.cwd(),
+        )
+      : null;
+
   // 4. DRY RUN / TOKEN ESTIMATION
   if (dryRun) {
     // Attempt token estimation
@@ -278,12 +294,23 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
         sanitizedFiles,
         config,
         maxConcurrency,
-        undefined,
+        indexContext ?? undefined,
         mcpContext ?? undefined,
       )
     : undefined;
 
-  const auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
+  let auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
+
+  // ESLint adapter (opt-in, fail-open) — merge the project's own ESLint
+  // findings, then collapse exact duplicates across all finding sources.
+  const eslintFindings = await runESLintAdapter(
+    sanitizedFiles.map((f) => f.path),
+    config,
+  );
+  if (eslintFindings) {
+    auditResults = mergeFindings(eslintFindings, auditResults, new Set());
+  }
+  auditResults = dedupeFindings(auditResults).results;
 
   // Print summary — honor severity threshold (CLI flag > branch override > config baseline)
   const threshold = resolveSeverityThreshold({

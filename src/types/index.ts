@@ -167,6 +167,27 @@ export interface ProjectConfig {
   security?: SecuritySettings;
   /** Cache backend selection (Phase 3.3) — fs (default) or http */
   cache?: CacheSettings;
+  /** ESLint adapter — merge the reviewed project's own ESLint findings (opt-in) */
+  eslint?: ESLintAdapterConfig;
+}
+
+/**
+ * ESLint adapter settings. The adapter runs the reviewed project's own
+ * ESLint installation and merges its findings into the review report.
+ * Fail-open: if ESLint or its config is missing, the review proceeds
+ * without ESLint findings (a warning is logged).
+ */
+export interface ESLintAdapterConfig {
+  /** Run the project's ESLint and merge findings (default: false). */
+  enabled?: boolean;
+  /**
+   * Per-ruleId severity overrides, e.g. { "no-console": "INFO" }.
+   * Overrides win over the built-in CRITICAL whitelist and the default
+   * ESLint level mapping (2 → WARNING, 1 → INFO).
+   */
+  severityOverrides?: Record<string, "CRITICAL" | "WARNING" | "INFO">;
+  /** Timeout for each spawned ESLint process in ms (default: 60000). */
+  timeoutMs?: number;
 }
 
 /**
@@ -641,6 +662,7 @@ export const DEFAULT_CONFIG: Required<
     | "review"
     | "security"
     | "cache"
+    | "eslint"
   >
 > & {
   localReview: LocalReviewConfig;
