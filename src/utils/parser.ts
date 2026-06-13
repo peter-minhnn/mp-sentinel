@@ -14,7 +14,18 @@ const VALID_CATEGORIES: ReadonlySet<string> = new Set([
   "test-gap",
   "performance",
   "maintainability",
+  "refactor",
 ]);
+
+/**
+ * Collapse a model-authored prose field to a single line. Models routinely
+ * emit multi-line messages/suggestions (markdown bullets, code blocks, blank
+ * lines); printed raw they shred the console report — stray blank regions,
+ * orphaned detail lines. Newlines and runs of whitespace become single
+ * spaces. Code formatting belongs in `codeSuggestion`, which has its own
+ * stricter sanitizer.
+ */
+const collapseProse = (value: string): string => value.replace(/\s+/g, " ").trim();
 
 // ── Code suggestion sanitization ───────────────────────────────────────
 
@@ -65,7 +76,7 @@ const normalizeAuditResult = (value: AuditResult): AuditResult => {
           issue.severity === "CRITICAL" || issue.severity === "WARNING" || issue.severity === "INFO"
             ? issue.severity
             : "WARNING",
-        message: issue.message,
+        message: collapseProse(issue.message),
       };
 
       // Preserve optional metadata fields when present
@@ -83,8 +94,8 @@ const normalizeAuditResult = (value: AuditResult): AuditResult => {
       if (typeof issue.evidence === "string" && issue.evidence.length > 0) {
         normalized.evidence = issue.evidence;
       }
-      if (typeof issue.suggestion === "string" && issue.suggestion.length > 0) {
-        normalized.suggestion = issue.suggestion;
+      if (typeof issue.suggestion === "string" && collapseProse(issue.suggestion).length > 0) {
+        normalized.suggestion = collapseProse(issue.suggestion);
       }
       const codeSuggestion = sanitizeParsedCodeSuggestion(issue.codeSuggestion);
       if (codeSuggestion !== undefined) {

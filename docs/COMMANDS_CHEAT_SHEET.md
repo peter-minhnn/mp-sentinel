@@ -51,6 +51,8 @@
 | `--format <fmt>` | Output: `console`, `json`, `markdown`, `sarif` | console |
 | `--bypass-keyword <kw>` | Staging bypass keyword | skip: |
 | `--severity-threshold <lvl>` | FAIL threshold: `CRITICAL`, `WARNING`, `INFO` | WARNING |
+| `--no-cache` | Bypass the AI response cache for this run | cache on |
+| `--output <path>` | Also write a clean markdown report to a file | off |
 
 ## Root CLI
 

@@ -11,7 +11,7 @@ import {
   renderRulePackRulesSection,
 } from "../services/rule-pack-prompt.js";
 
-export const DEFAULT_PROMPT_VERSION = "2026-06-08";
+export const DEFAULT_PROMPT_VERSION = "2026-06-13";
 
 export const DEFAULT_COMMIT_PROMPT = `
 ### ROLE
@@ -40,11 +40,33 @@ Each issue MUST include the matching category label in its JSON output:
 5. **test-gap** — changed code paths with no test coverage, especially error/edge-case handlers.
 6. **performance** — N+1 queries, O(n²) algorithms, unnecessary allocations, large bundles, blocking I/O.
 7. **maintainability** — duplicated logic, excessive complexity, unclear control flow, missing boundary validation.
+8. **refactor** — code that works but should be restructured. ALWAYS scan changed components/functions for these and propose a CONCRETE refactor (what to extract/memoize/move, not just "consider refactoring"):
+   - Functions/components over ~80 lines, deeply nested control flow, or god-components mixing data fetching + transformation + rendering — propose the extraction split (custom hook, child component, pure helper).
+   - React re-render pitfalls: object/array/function literals created in render and passed as props to child components (defeats memoization), context Provider \`value={{...}}\` rebuilt every render (re-renders every consumer), components/hooks declared INSIDE another component body (remounts on every render), state lifted higher than needed so one keystroke re-renders an entire page/list, expensive derived data computed in render without \`useMemo\` while large lists re-render.
+   - Note: \`React.memo\`/\`useMemo\`/\`useCallback\` recommendations must name the actual re-render path they break (which parent state change re-renders which expensive child); do not recommend blanket memoization.
+
+### DETERMINISTIC CHECKS ALREADY COVER THESE — DO NOT REPORT THEM
+A separate deterministic pass already flags the following with precise line numbers. Reporting them again only duplicates noise — SKIP them entirely:
+- Hardcoded hex colors in styling contexts (e.g. \`#e5002c\`, \`color: '#fff'\`).
+- Inline \`style={{ ... }}\` object literals.
+- Inline React Query / TanStack \`queryKey\` array literals (key arrays that should live in a constants file).
+- \`parseInt(...)\` without a radix.
+- Double type casts (\`as unknown as\`, \`as any as\`).
+- Tailwind arbitrary values that have a canonical bare form (\`z-[9999]\`).
+- Suppressed \`react-hooks/exhaustive-deps\` directives.
+Focus your attention on logic, correctness, security, and architecture findings the deterministic pass cannot catch.
 
 ### PRIORITIES
 1. CRITICAL security issues and crash-causing bugs always cause FAIL.
 2. Flag version-specific risks as WARNING with evidence only — do not claim unsupported certainty.
 3. Style-only issues and subjective preferences are noise — skip them unless they impact correctness.
+
+### SEVERITY RUBRIC (STRICT)
+Severity is determined by IMPACT, not by how strongly a rule is worded:
+- CRITICAL is reserved for "security" and "runtime-crash" findings that are demonstrably reachable, plus "dependency-version" findings with verified exploitable impact.
+- "architecture", "performance", "maintainability", "test-gap", and "refactor" findings are at most WARNING — even when they violate a PROJECT SPECIFIC RULE marked critical/mandatory. A rule violation that cannot crash, corrupt data, or be exploited is not CRITICAL.
+- Every CRITICAL issue MUST include an "evidence" field quoting the exact offending line(s) VERBATIM from the provided diff/context (copy the code text exactly — it is verified mechanically; paraphrased evidence is rejected and the finding downgraded).
+- Before claiming a null/undefined dereference, check the surrounding context for guard clauses (early return, optional chaining, if-checks). Before claiming an undefined identifier (ReferenceError), check the file's imports and parameters. Before claiming an API misuse dependent on configuration (e.g. a prop or option changing a callback's shape), confirm the enabling prop/option is actually present. If the context provided is insufficient to confirm, emit WARNING with "confidence": "low" instead of CRITICAL.
 
 ### EVIDENCE & FALSE-POSITIVE GUARDRAILS
 You see only diff hunks plus any context explicitly provided above. You CANNOT see the full file tree, so the absence of a file from your context is NOT evidence that it is missing from the repository.
@@ -53,6 +75,8 @@ You see only diff hunks plus any context explicitly provided above. You CANNOT s
 - Only flag an import when the diff ITSELF supplies the evidence — e.g. the same diff deletes or renames the target, or changes the very export being imported. Cite that specific hunk in "evidence".
 - Do NOT assert that a third-party package's file, export, or API "was removed", "no longer exists", "moved", or "changed" in a specific version (e.g. "antd v5 removed dist/reset.css", "this prop was dropped in vX") unless the installed version appears in the provided DEPENDENCY VERSION CONTEXT and you are certain the claim matches it. Your training data lags real releases, so version-specific removals are a frequent hallucination — a file/export you believe was deleted often still ships. When unsure, omit the claim or downgrade to WARNING/INFO with "confidence": "low" and tell the author to verify against the installed version, rather than asserting a build failure.
 - When you cannot verify a claim from the provided material, omit it or downgrade to INFO with "confidence": "low". Do not manufacture certainty about repository structure, the file tree, or installed package internals you cannot see.
+- React/JSX XSS claims: JSX text interpolation (\`<div>{value}</div>\`, table column renderers returning \`{record.title}\`) auto-escapes content — it is NOT an XSS vector and "no sanitization" is NOT a finding there. Only claim XSS when you can quote the actual sink: \`dangerouslySetInnerHTML\`, manual DOM insertion (\`innerHTML =\`, \`insertAdjacentHTML\`, \`document.write\`), DOM-from-string conversion passed to element creation, or unvalidated \`href\`/\`src\` receiving user input. The quoted sink goes in "evidence".
+- Never emit a finding whose own message or suggestion concedes the code is probably fine ("this may be acceptable", "if they are, this is compliant", "likely intentional"). Verify first; if you cannot, omit the finding entirely.
 `;
 
 /**
@@ -150,7 +174,7 @@ export const buildSystemPrompt = async (
   );
 
   parts.push(
-    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion"?: "string", "codeSuggestion"?: "string", "category"?: "security" | "runtime-crash" | "architecture" | "dependency-version" | "test-gap" | "performance" | "maintainability", "confidence"?: "low" | "medium" | "high", "evidence"?: "string" }] }`,
+    `\n### OUTPUT FORMAT (JSON ONLY)\n{ "status": "PASS" | "FAIL", "issues": [{ "line": number, "severity": "CRITICAL" | "WARNING" | "INFO", "message": "string", "suggestion"?: "string", "codeSuggestion"?: "string", "category"?: "security" | "runtime-crash" | "architecture" | "dependency-version" | "test-gap" | "performance" | "maintainability" | "refactor", "confidence"?: "low" | "medium" | "high", "evidence"?: "string" }] }`,
   );
 
   return parts.join("");

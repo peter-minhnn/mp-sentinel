@@ -95,7 +95,7 @@ Conventions observed in this codebase (from config and the import graph). Follow
 
 Active packs: \`React\`, \`Vite\`, \`React Router\`, \`TanStack Query\`, \`Ant Design\`, \`Supabase\`, \`TypeScript (Strict)\`
 
-Summary: 10 must, 14 should, 8 avoid rules across 7 pack(s).
+Summary: 10 must, 15 should, 9 avoid rules across 7 pack(s).
 
 
 ### React Rules
@@ -107,6 +107,8 @@ Summary: 10 must, 14 should, 8 avoid rules across 7 pack(s).
 - **SHOULD**: Extract reusable logic into custom hooks rather than duplicating \`useEffect\` / \`useState\` patterns.
 - **AVOID**: Do NOT mutate state directly -- always use the setter from \`useState\` or produce new objects/arrays.
 - **SHOULD**: Use \`React.memo\` sparingly and only after profiling. Premature memoization can increase memory pressure.
+- **AVOID**: Do NOT declare components inside another component body -- they remount (state reset + full subtree re-render) on every parent render. Move them to module scope.
+- **SHOULD**: Memoize context Provider values (\`useMemo\`) and keep state as close to where it is used as possible, so one state change does not re-render an entire page.
 
 ### Vite Rules
 
@@ -384,7 +386,7 @@ Conventions observed in this codebase (from config and the import graph). Follow
 
 Active packs: \`React\`, \`Next.js\`, \`Supabase\`, \`TypeScript (Strict)\`
 
-Summary: 8 must, 9 should, 5 avoid rules across 4 pack(s).
+Summary: 8 must, 10 should, 6 avoid rules across 4 pack(s).
 
 
 ### React Rules
@@ -396,6 +398,8 @@ Summary: 8 must, 9 should, 5 avoid rules across 4 pack(s).
 - **SHOULD**: Extract reusable logic into custom hooks rather than duplicating \`useEffect\` / \`useState\` patterns.
 - **AVOID**: Do NOT mutate state directly -- always use the setter from \`useState\` or produce new objects/arrays.
 - **SHOULD**: Use \`React.memo\` sparingly and only after profiling. Premature memoization can increase memory pressure.
+- **AVOID**: Do NOT declare components inside another component body -- they remount (state reset + full subtree re-render) on every parent render. Move them to module scope.
+- **SHOULD**: Memoize context Provider values (\`useMemo\`) and keep state as close to where it is used as possible, so one state change does not re-render an entire page.
 
 ### Next.js Rules
 

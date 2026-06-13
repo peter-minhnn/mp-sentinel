@@ -17,6 +17,7 @@ import {
   isDiffMetaOrRemovedLine,
   isEslintSuppressed,
   isPatchContent,
+  stripDiffMarker,
   stripStringsAndComments,
 } from "./text-scan.js";
 
@@ -62,6 +63,150 @@ export const noInlineStyle: FileEvaluator = {
       });
     }
 
+    return results;
+  },
+};
+
+// ── Refactor / re-render evaluators ─────────────────────────────────────────
+
+/**
+ * Matches a component declared inside another block: an INDENTED
+ * `const Foo = (…) =>` / `function Foo(` with a PascalCase name. A component
+ * created during render gets a new identity every render — React unmounts and
+ * remounts its entire subtree (state loss + full re-render) on every parent
+ * render.
+ */
+const NESTED_COMPONENT_RE =
+  /^[ \t]+(?:export\s+)?(?:const|function)\s+[A-Z][A-Za-z0-9]*\s*(?:=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|\()/;
+
+function isTestLikeFile(filePath: string): boolean {
+  return /\.(test|spec|stories)\.[jt]sx?$/.test(filePath);
+}
+
+/**
+ * Flag components/render-functions declared inside another component body.
+ */
+export const componentInsideComponent: FileEvaluator = {
+  ruleId: "component-inside-component",
+  evaluate: ({ filePath, content, lines }): FileEvaluatorResult[] => {
+    if (!isJsxFile(filePath) || isTestLikeFile(filePath)) return [];
+
+    const patch = isPatchContent(content);
+    const results: FileEvaluatorResult[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (patch && isDiffMetaOrRemovedLine(lines[i]!)) continue;
+      if (isEslintSuppressed(lines, i)) continue;
+
+      const code = stripStringsAndComments(stripDiffMarker(lines[i]!, patch));
+      if (!NESTED_COMPONENT_RE.test(code)) continue;
+
+      results.push({
+        ruleId: "component-inside-component",
+        passed: false,
+        message:
+          "Component declared inside another component body — it gets a new identity on every parent render, so React remounts its whole subtree (state reset + full re-render) each time.",
+        line: i + 1,
+        severity: "WARNING",
+        suggestion:
+          "Move the component to module scope and pass the values it closes over as props. If it must stay local for closure reasons, render its JSX inline or wrap the extraction point in `useCallback`-free module-level code.",
+      });
+    }
+    return results;
+  },
+};
+
+/** Matches `<Something.Provider value={{ … }}` / `<SomethingProvider value={{`. */
+const UNSTABLE_PROVIDER_VALUE_RE = /Provider[^>]*\bvalue\s*=\s*\{\s*\{/;
+
+/**
+ * Flag context Provider `value={{ ... }}` object literals — a fresh object
+ * identity every render re-renders EVERY consumer of the context.
+ */
+export const unstableContextValue: FileEvaluator = {
+  ruleId: "unstable-context-value",
+  evaluate: ({ filePath, content, lines }): FileEvaluatorResult[] => {
+    if (!isJsxFile(filePath)) return [];
+
+    const patch = isPatchContent(content);
+    const results: FileEvaluatorResult[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (patch && isDiffMetaOrRemovedLine(lines[i]!)) continue;
+      if (isEslintSuppressed(lines, i)) continue;
+
+      const code = stripStringsAndComments(stripDiffMarker(lines[i]!, patch));
+      const col = code.search(UNSTABLE_PROVIDER_VALUE_RE);
+      if (col < 0) continue;
+
+      results.push({
+        ruleId: "unstable-context-value",
+        passed: false,
+        message:
+          "Context Provider `value={{ ... }}` creates a new object every render — every consumer of this context re-renders on each parent render, even when the data is unchanged.",
+        line: i + 1,
+        column: col + 1,
+        severity: "WARNING",
+        suggestion:
+          "Memoize the value: `const ctxValue = useMemo(() => ({ ... }), [deps]);` and pass `value={ctxValue}` — or split the context into separate state/dispatch contexts.",
+      });
+    }
+    return results;
+  },
+};
+
+const MAX_FUNCTION_LINES = 80;
+
+/** Matches the start of a named function/component declaration. */
+const FUNCTION_START_RE =
+  /(?:^|\s)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+[\w$]+\s*\(|(?:^|\s)(?:export\s+)?const\s+[\w$]+(?:\s*:\s*[^=]+)?\s*=\s*(?:async\s*)?\([^)]*\)\s*(?::\s*[^=]+)?=>\s*\{/;
+
+const countBraces = (code: string): number => {
+  let depth = 0;
+  for (const ch of code) {
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+  }
+  return depth;
+};
+
+/**
+ * Flag functions/components longer than MAX_FUNCTION_LINES (clean-code limit).
+ * Full-file contents only — brace tracking over partial diff hunks would lie.
+ * Line-based brace counting is approximate (multi-line template literals can
+ * skew it), so the threshold errs high to stay low-noise.
+ */
+export const longFunction: FileEvaluator = {
+  ruleId: "long-function",
+  evaluate: ({ filePath, content, lines }): FileEvaluatorResult[] => {
+    if (!isReactSourceFile(filePath) || isTestLikeFile(filePath)) return [];
+    if (isPatchContent(content)) return [];
+
+    const results: FileEvaluatorResult[] = [];
+    const stack: Array<{ startLine: number; entryDepth: number }> = [];
+    let depth = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const code = stripStringsAndComments(lines[i]!);
+      if (FUNCTION_START_RE.test(code) && code.includes("{")) {
+        stack.push({ startLine: i, entryDepth: depth });
+      }
+      depth += countBraces(code);
+
+      while (stack.length > 0 && depth <= stack[stack.length - 1]!.entryDepth) {
+        const fn = stack.pop()!;
+        const length = i - fn.startLine + 1;
+        if (length > MAX_FUNCTION_LINES) {
+          results.push({
+            ruleId: "long-function",
+            passed: false,
+            message: `Function/component spans ${length} lines (limit ${MAX_FUNCTION_LINES}) — long bodies mix concerns, hide re-render cost, and resist testing.`,
+            line: fn.startLine + 1,
+            severity: "WARNING",
+            suggestion:
+              "Split by concern: extract data fetching/derivation into a custom hook, repeated JSX blocks into child components, and pure logic into helpers. Each extracted child also creates a memoization boundary that limits re-renders.",
+          });
+        }
+      }
+    }
     return results;
   },
 };

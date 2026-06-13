@@ -31,6 +31,10 @@ function isCommentLine(line: string): boolean {
 
 /**
  * Flag hardcoded hex colors used in styling contexts.
+ *
+ * Emits one finding per occurrence; the deterministic-review engine
+ * aggregates 3+ same-rule hits in one file into a single finding, so this
+ * evaluator stays simple and consistent with every other rule.
  */
 export const noHardcodedHexColor: FileEvaluator = {
   ruleId: "no-hardcoded-hex-color",

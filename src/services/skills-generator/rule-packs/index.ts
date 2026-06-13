@@ -142,6 +142,7 @@ import { reactRouterRules } from "./react-router.js";
 import { tanstackQueryRules } from "./tanstack-query.js";
 import { antdRules } from "./antd.js";
 import { supabaseRules } from "./supabase.js";
+import { tailwindRules } from "./tailwind.js";
 
 export const ALL_PACKS: RulePack[] = [
   builtinRules,
@@ -154,6 +155,7 @@ export const ALL_PACKS: RulePack[] = [
   tanstackQueryRules,
   antdRules,
   supabaseRules,
+  tailwindRules,
   typescriptStrictRules,
   pythonRules,
   goRules,

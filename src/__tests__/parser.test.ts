@@ -225,3 +225,34 @@ describe("parseAuditResponse", () => {
     expect(parseAuditResponse("I cannot review this code.").status).toBe("ERROR");
   });
 });
+
+describe("prose collapsing (multi-line model output)", () => {
+  it("collapses multi-line messages and suggestions to single lines", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [
+        {
+          line: 5,
+          severity: "WARNING",
+          message: "Unstable callback.\n\nThis re-renders:\n- the list\n- the modal\n",
+          suggestion: "Wrap in useCallback:\n\n```ts\nconst f = useCallback(() => {}, []);\n```",
+        },
+      ],
+    });
+    const result = parseAuditResponse(raw);
+    const issue = result.issues?.[0];
+    expect(issue?.message).toBe("Unstable callback. This re-renders: - the list - the modal");
+    expect(issue?.message).not.toContain("\n");
+    expect(issue?.suggestion).not.toContain("\n");
+  });
+
+  it("accepts the refactor category", () => {
+    const raw = JSON.stringify({
+      status: "FAIL",
+      issues: [
+        { line: 1, severity: "WARNING", message: "split this component", category: "refactor" },
+      ],
+    });
+    expect(parseAuditResponse(raw).issues?.[0]?.category).toBe("refactor");
+  });
+});

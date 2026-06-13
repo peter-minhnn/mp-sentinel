@@ -160,6 +160,17 @@ describe("antd/no-hardcoded-hex-color evaluator", () => {
   it("requires the antd dependency to activate", () => {
     expect(findings({ "src/C.tsx": "const s = { color: '#fff' };\n" }, rule)).toHaveLength(0);
   });
+
+  it("emits one finding per occurrence (engine aggregates 3+ per file separately)", () => {
+    const code = [
+      "const a = { color: '#111111' };",
+      "const b = { background: '#222222' };",
+      "const c = { borderColor: '#333333' };",
+    ].join("\n");
+    // The evaluator itself is per-line; aggregation happens in
+    // runRulePackEvaluators (covered in rule-pack-review-integration.test.ts).
+    expect(findings({ "src/C.tsx": code }, rule, ANTD)).toHaveLength(3);
+  });
 });
 
 // ── diff-awareness (patch content) ────────────────────────────────────────────

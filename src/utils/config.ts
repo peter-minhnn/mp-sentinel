@@ -76,6 +76,10 @@ const AIReviewConfigSchema = z.object({
     .positive("ai.maxCharsPerFile must be a positive integer")
     .optional(),
   promptVersion: z.string().optional(),
+  severityCeilings: z
+    .record(z.string(), z.enum(["CRITICAL", "WARNING", "INFO"]))
+    .optional()
+    .describe("Per-category severity ceilings applied to AI findings after parsing"),
   fallbackProvider: z.string().optional(),
   tokenLimit: z.number().int().positive("ai.tokenLimit must be a positive integer").optional(),
   modelTier: z.enum(["premium", "balanced", "budget"]).optional(),
@@ -308,6 +312,11 @@ const SeverityThresholdSchema = z.enum(["CRITICAL", "WARNING", "INFO"]);
 const ReviewSettingsSchema = z.object({
   severityThreshold: SeverityThresholdSchema.optional(),
   protectedBranches: z.record(z.string().min(1), SeverityThresholdSchema).optional(),
+  maxFindingsPerFile: z
+    .number()
+    .int()
+    .nonnegative("review.maxFindingsPerFile must be a non-negative integer")
+    .optional(),
 });
 
 /**

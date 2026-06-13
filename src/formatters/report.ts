@@ -3,6 +3,7 @@
  */
 
 import type { AuditIssue, FileAuditResult, ReviewReport } from "../types/index.js";
+import { activeIssues } from "../utils/severity.js";
 import { formatDuration, log } from "../utils/logger.js";
 import { sortIssues, sortFileResults } from "../utils/display.js";
 import { getToolVersion } from "../utils/version.js";
@@ -161,6 +162,113 @@ const printOverviewSection = (report: ReviewReport): void => {
   }
 };
 
+// ── Recurring-issue grouping ──────────────────────────────────────────────
+
+export interface RecurringIssueGroup {
+  /** Representative message (shortest variant in the group). */
+  label: string;
+  severity: AuditIssue["severity"];
+  category: string;
+  count: number;
+  fileCount: number;
+}
+
+const RECURRING_MIN_COUNT = 3;
+const RECURRING_TOP_N = 5;
+const RECURRING_PREFIX_WORDS = 7;
+
+/** The noise-budget cap notice is a synthetic summary, not a real issue —
+ * it must not pollute the recurring-issues table. */
+const isSyntheticSummary = (issue: AuditIssue): boolean =>
+  /hidden by review\.maxFindingsPerFile/.test(issue.message);
+
+const recurringKey = (issue: AuditIssue): string | null => {
+  if (!issue.category) return null;
+  if (isSyntheticSummary(issue)) return null;
+  const prefix = issue.message
+    .toLowerCase()
+    .replace(/\[[^\]]*\]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, RECURRING_PREFIX_WORDS)
+    .join(" ");
+  if (prefix.length === 0) return null;
+  return `${issue.category}|${issue.severity}|${prefix}`;
+};
+
+/**
+ * Group repeated findings (same category/severity/message-prefix) across
+ * files so a 400-warning report opens with "what to fix first" instead of a
+ * wall of repetition. Only ACTIVE groups seen >= 3 times qualify; top 5 by
+ * count are returned.
+ */
+export const computeRecurringIssues = (results: FileAuditResult[]): RecurringIssueGroup[] => {
+  const groups = new Map<
+    string,
+    {
+      label: string;
+      severity: AuditIssue["severity"];
+      category: string;
+      count: number;
+      files: Set<string>;
+    }
+  >();
+
+  for (const entry of results) {
+    for (const issue of activeIssues(entry.result.issues)) {
+      const key = recurringKey(issue);
+      if (!key) continue;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count += 1;
+        existing.files.add(entry.filePath);
+        if (issue.message.length < existing.label.length) existing.label = issue.message;
+      } else {
+        groups.set(key, {
+          label: issue.message,
+          severity: issue.severity,
+          category: issue.category ?? "",
+          count: 1,
+          files: new Set([entry.filePath]),
+        });
+      }
+    }
+  }
+
+  return [...groups.values()]
+    .filter((g) => g.count >= RECURRING_MIN_COUNT)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, RECURRING_TOP_N)
+    .map((g) => ({
+      label: g.label,
+      severity: g.severity,
+      category: g.category,
+      count: g.count,
+      fileCount: g.files.size,
+    }));
+};
+
+const RECURRING_LABEL_MAX = 110;
+
+/** Console renderer for the recurring-issues section (no-op when empty). */
+export const printRecurringIssues = (results: FileAuditResult[]): void => {
+  const groups = computeRecurringIssues(results);
+  if (groups.length === 0) return;
+  for (const line of sectionHeader("Top recurring issues")) {
+    console.log(line);
+  }
+  for (const group of groups) {
+    const label =
+      group.label.length > RECURRING_LABEL_MAX
+        ? group.label.slice(0, RECURRING_LABEL_MAX - 3) + "..."
+        : group.label;
+    log.plain(
+      `  ${bold(`${group.count}×`)} ${dim(`(${group.fileCount} file${group.fileCount === 1 ? "" : "s"})`)} ${severityBadge(group.severity)} ${dim(`[${group.category}]`)} ${label}`,
+    );
+  }
+  console.log();
+};
+
 /** Findings filter shared by console renderers: actionable results only. */
 const filterActionableResults = (results: FileAuditResult[]): FileAuditResult[] =>
   results.filter(
@@ -232,6 +340,7 @@ const printRuntimeErrorsSection = (errors: string[]): void => {
 export const printConsoleReport = (report: ReviewReport): void => {
   printReportHeader(report);
   printOverviewSection(report);
+  printRecurringIssues(report.results);
   printConsoleFindings(report.results);
   printSkippedSection(report.skipped);
   printRuntimeErrorsSection(report.errors);
@@ -278,6 +387,33 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     lines.push(`| ${icon} | ${row.label} | ${row.value} |`);
   }
 
+  const recurring = computeRecurringIssues(report.results);
+  if (recurring.length > 0) {
+    lines.push("");
+    lines.push(`## Top Recurring Issues`);
+    lines.push("");
+    lines.push(`| Count | Files | Severity | Category | Issue |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const group of recurring) {
+      lines.push(
+        `| ${group.count} | ${group.fileCount} | ${group.severity} | ${group.category} | ${group.label} |`,
+      );
+    }
+  }
+
+  if (report.commits && report.commits.length > 0) {
+    lines.push("");
+    lines.push(`## Commits Reviewed (${report.commits.length}, oldest → newest)`);
+    lines.push("");
+    lines.push(`| # | SHA | Date | Author | Message |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    report.commits.forEach((commit, index) => {
+      lines.push(
+        `| ${index + 1} | \`${commit.hash.slice(0, 7)}\` | ${commit.date} | ${commit.author} | ${commit.message} |`,
+      );
+    });
+  }
+
   if (report.skipped.length > 0) {
     lines.push("");
     lines.push(`## Skipped Files`);
@@ -287,14 +423,33 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     }
   }
 
-  // Filter findings: ERROR, FAIL, or results with CRITICAL/WARNING issues
+  // Filter findings: ERROR, FAIL, or results with ACTIVE CRITICAL/WARNING issues
   const findingResults = report.results.filter(
     (entry) =>
       entry.result.status === "FAIL" ||
       entry.result.status === "ERROR" ||
-      (entry.result.issues?.some((i) => i.severity === "CRITICAL" || i.severity === "WARNING") ??
-        false),
+      activeIssues(entry.result.issues).some(
+        (i) => i.severity === "CRITICAL" || i.severity === "WARNING",
+      ),
   );
+
+  const renderIssueLine = (issue: AuditIssue): string => {
+    const meta = metadataTag(issue.category, issue.confidence);
+    let evidenceLine = "";
+    if (issue.evidence) {
+      evidenceLine = `\n    - _Evidence: ${formatEvidence(issue.evidence)}_`;
+    }
+    return `- **${issue.severity}** (line ${issue.line}): ${meta}${issue.message}${issue.suggestion ? ` — _${issue.suggestion}_` : ""}${evidenceLine}`;
+  };
+
+  const resolvedFindings: Array<{ filePath: string; issue: AuditIssue }> = [];
+  for (const entry of report.results) {
+    for (const issue of entry.result.issues ?? []) {
+      if (issue.resolution === "resolved-at-head") {
+        resolvedFindings.push({ filePath: entry.filePath, issue });
+      }
+    }
+  }
 
   if (findingResults.length > 0) {
     const sorted = sortFileResults(findingResults);
@@ -303,23 +458,30 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     lines.push("");
     for (const result of sorted) {
       lines.push(`### \`${result.filePath}\``);
-      if (result.result.issues && result.result.issues.length > 0) {
-        const sortedIssues = sortIssues(result.result.issues);
-        for (const issue of sortedIssues) {
-          const meta = metadataTag(issue.category, issue.confidence);
-          let evidenceLine = "";
-          if (issue.evidence) {
-            evidenceLine = `\n    - _Evidence: ${formatEvidence(issue.evidence)}_`;
-          }
-          lines.push(
-            `- **${issue.severity}** (line ${issue.line}): ${meta}${issue.message}${issue.suggestion ? ` — _${issue.suggestion}_` : ""}${evidenceLine}`,
-          );
+      const active = activeIssues(result.result.issues);
+      if (active.length > 0) {
+        for (const issue of sortIssues(active)) {
+          lines.push(renderIssueLine(issue));
         }
-      } else {
+      } else if (!result.result.issues || result.result.issues.length === 0) {
         lines.push(`- **ERROR**: ${result.result.message || "Unknown runtime error"}`);
       }
       lines.push("");
     }
+  }
+
+  if (resolvedFindings.length > 0) {
+    lines.push("");
+    lines.push(`## Resolved During Branch (informational — not actionable)`);
+    lines.push("");
+    lines.push(
+      `_These findings were detected at the reviewed commit but their evidence no longer exists at HEAD; git history attributes the fix to the listed commit. They do not affect pass/fail._`,
+    );
+    lines.push("");
+    for (const { filePath, issue } of resolvedFindings) {
+      lines.push(`- \`${filePath}\` (line ${issue.line}, ${issue.severity}): ${issue.message}`);
+    }
+    lines.push("");
   }
 
   if (report.errors.length > 0) {

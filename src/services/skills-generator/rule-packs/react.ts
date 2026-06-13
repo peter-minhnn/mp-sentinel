@@ -3,7 +3,13 @@
  */
 
 import type { RulePack } from "./index.js";
-import { noInlineStyle, exhaustiveDepsSuppressed } from "./evaluators/react-evaluators.js";
+import {
+  noInlineStyle,
+  exhaustiveDepsSuppressed,
+  componentInsideComponent,
+  unstableContextValue,
+  longFunction,
+} from "./evaluators/react-evaluators.js";
 
 export const reactRules: RulePack = {
   id: "react",
@@ -41,7 +47,21 @@ export const reactRules: RulePack = {
       kind: "should",
       text: "Use `React.memo` sparingly and only after profiling. Premature memoization can increase memory pressure.",
     },
+    {
+      kind: "avoid",
+      text: "Do NOT declare components inside another component body -- they remount (state reset + full subtree re-render) on every parent render. Move them to module scope.",
+    },
+    {
+      kind: "should",
+      text: "Memoize context Provider values (`useMemo`) and keep state as close to where it is used as possible, so one state change does not re-render an entire page.",
+    },
   ],
   fileGlobs: ["**/*.tsx", "**/*.jsx"],
-  evaluators: [noInlineStyle, exhaustiveDepsSuppressed],
+  evaluators: [
+    noInlineStyle,
+    exhaustiveDepsSuppressed,
+    componentInsideComponent,
+    unstableContextValue,
+    longFunction,
+  ],
 };

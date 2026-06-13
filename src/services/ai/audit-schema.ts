@@ -44,6 +44,7 @@ export const AUDIT_RESPONSE_SCHEMA: AIResponseSchema = {
                 "test-gap",
                 "performance",
                 "maintainability",
+                "refactor",
               ],
             },
             confidence: { type: "string", enum: ["low", "medium", "high"] },

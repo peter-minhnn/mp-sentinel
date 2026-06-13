@@ -34,6 +34,8 @@ export interface CLIValues {
   format?: string;
   ai?: boolean;
   "no-skills-fetch": boolean;
+  "no-cache"?: boolean;
+  output?: string;
   "dry-run": boolean;
   "verbose-dry-run": boolean;
   "token-limit"?: string;
@@ -100,6 +102,11 @@ export const buildProgram = (): Command => {
     .option("--ai", "Force-enable AI review")
     .option("--no-ai", "Force-disable AI review")
     .option("--no-skills-fetch", "Disable local skills fetch (air-gapped mode)", false)
+    .option("--no-cache", "Bypass the AI response cache for this run (every file re-audited fresh)")
+    .option(
+      "--output <path>",
+      "Also write a clean markdown report (no ANSI codes) to this file path",
+    )
     .option(
       "--dry-run",
       "Deterministic non-AI review (secret redaction + risk analyzer) with token preview",
@@ -353,6 +360,8 @@ export const parseCliArgs = (): {
       staged: Boolean(opts["staged"] ?? false),
       files: Array.isArray(opts["files"]) ? (opts["files"] as string[]) : [],
       "no-skills-fetch": opts["skillsFetch"] === false,
+      "no-cache": opts["cache"] === false,
+      ...(typeof opts["output"] === "string" && { output: opts["output"] }),
       "dry-run": Boolean(opts["dryRun"] ?? false),
       "verbose-dry-run": Boolean(opts["verboseDryRun"] ?? false),
       ...(typeof opts["targetBranch"] === "string" && {

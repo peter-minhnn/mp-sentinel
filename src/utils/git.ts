@@ -205,6 +205,41 @@ export const getRecentCommits = async (
 };
 
 /**
+ * List commits in a git range (e.g. "origin/main...HEAD") in CHRONOLOGICAL
+ * order (oldest first, via `git log --reverse`). Metadata-only — `files` is
+ * left empty to avoid one subprocess per commit; callers that need per-commit
+ * files should use `getRecentCommits`. Fail-open: returns [] on git errors so
+ * report metadata never blocks a review.
+ */
+export const getCommitsForRange = async (
+  range: string,
+  includeMergeCommits: boolean = false,
+): Promise<CommitInfo[]> => {
+  try {
+    const noMergesFlag = includeMergeCommits ? "" : "--no-merges";
+    const command = `git log ${noMergesFlag} --reverse --pretty=format:"%H|%s|%an|%ai" ${shellEscape(range)}`;
+    const { stdout } = await execAsync(command);
+    if (!stdout.trim()) return [];
+
+    const commits: CommitInfo[] = [];
+    for (const line of stdout.trim().split("\n")) {
+      const [hash, message, author, date] = line.split("|");
+      if (!hash) continue;
+      commits.push({
+        hash: hash.trim(),
+        message: message?.trim() || "",
+        author: author?.trim() || "",
+        date: date?.trim() || "",
+        files: [],
+      });
+    }
+    return commits;
+  } catch {
+    return [];
+  }
+};
+
+/**
  * Get list of files changed in a specific commit
  */
 export const getFilesInCommit = async (
@@ -656,7 +691,11 @@ export const collectReviewInput = async (
     maxFiles,
     maxDiffLines,
     maxCharsPerFile,
-    contextLines = 2,
+    // 8 context lines (was 2): benchmarks showed the dominant AI false-positive
+    // class is context blindness — a guard clause or import just outside a
+    // narrow hunk. Wider context lets the model (and the evidence verifier)
+    // see the surrounding scope. Token cost is bounded by maxCharsPerFile.
+    contextLines = 8,
     filePaths,
     cwd,
   } = options;

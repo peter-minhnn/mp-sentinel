@@ -1,3 +1,48 @@
+# What's New in v3.2.0
+
+## Report noise & output
+
+- **Self-negated findings filtered** — "…this is compliant. No issue." no longer ships as a finding.
+- **Near-duplicates collapsed** — same line/category/severity with overlapping wording becomes one finding `(+N similar)`.
+- **`--output report.md`** — clean markdown report file (no ANSI) from both CI and local mode.
+- **Top recurring issues** — reports open with a top-5 frequency table so 400 warnings are triageable in one screen.
+
+---
+
+# What's New in v3.2.0
+
+## Review accuracy hardening — severity clamp, evidence verification, chronological commits
+
+Driven by a benchmark of real-world reports (critical precision 75%, severity
+calibration ~42%), this release adds three deterministic accuracy passes:
+
+- **Severity ceilings per category** — architecture/performance/maintainability/
+  test-gap findings are capped at WARNING (configurable via
+  `ai.severityCeilings`). CRITICAL is reserved for security and runtime-crash.
+- **Evidence verification** — every AI CRITICAL must quote its offending line
+  verbatim; the quote is mechanically checked against the file and downgraded
+  to WARNING `[unverified]` when not found. This eliminates the dominant
+  false-positive class (guard clause above the hunk, import at top of file,
+  stale finding from an earlier commit).
+- **Chronological commit metadata** — commits are always displayed and emitted
+  oldest → newest with explicit labels, and JSON/markdown reports include a
+  `commits` array, so downstream report writers can no longer invert
+  "fixed by a later commit" reasoning.
+- **`--no-cache`** — one-flag cache bypass for pre-merge gate runs.
+- **Refactor review** — new `refactor` AI rubric category plus three
+  deterministic React evaluators (`component-inside-component`,
+  `unstable-context-value`, `long-function`) so complex components and
+  full-component re-render pitfalls get concrete refactor suggestions
+  instead of passing review silently.
+- **HEAD reconciliation (`--commit` mode)** — findings from a historical
+  commit are re-verified against the current working tree; issues already
+  fixed by a later commit are tagged `resolved-at-head` (with the fixing
+  SHA via `git log -S`), shown under "Resolved During Branch", and excluded
+  from pass/fail. No more "must fix before merge" lists full of bugs the
+  branch already fixed.
+
+---
+
 # What's New in v3.1.0
 
 ## Deterministic scanner false-positive fixes & local review UI parity

@@ -4,11 +4,15 @@
  * terminal UI theme (same look as the review console report).
  */
 
-import type { FileAuditResult, SeverityThreshold } from "../types/index.js";
+import type { CommitInfo, FileAuditResult, SeverityThreshold } from "../types/index.js";
 import { formatDuration, log } from "../utils/logger.js";
 import { getToolVersion } from "../utils/version.js";
-import { printConsoleFindings } from "../formatters/report.js";
-import { DEFAULT_SEVERITY_THRESHOLD, issuesFailThreshold } from "../utils/severity.js";
+import { printConsoleFindings, printRecurringIssues } from "../formatters/report.js";
+import {
+  DEFAULT_SEVERITY_THRESHOLD,
+  activeIssues,
+  issuesFailThreshold,
+} from "../utils/severity.js";
 import {
   appHeader,
   bold,
@@ -30,11 +34,29 @@ export interface ResultsSummaryContext {
   skipped?: Array<{ path: string; reason: string }>;
   /** Runtime error messages to display at the bottom. */
   errors?: string[];
+  /**
+   * Commits covered by this run, in CHRONOLOGICAL order (index 0 = oldest).
+   * Rendered with explicit ordering labels so downstream report writers can
+   * never misread which commit supersedes which.
+   */
+  commits?: CommitInfo[];
 }
 
+/** Render the reviewed-commits section (oldest → newest, explicitly labeled). */
+const printCommitsSection = (commits: CommitInfo[]): void => {
+  for (const line of sectionHeader(`Commits reviewed (${commits.length}, oldest → newest)`)) {
+    console.log(line);
+  }
+  commits.forEach((commit, index) => {
+    const date = commit.date ? ` ${dim(commit.date)}` : "";
+    log.plain(`  #${index + 1} ${bold(commit.hash.slice(0, 7))}${date} ${commit.message}`);
+  });
+};
+
+/** Count ACTIVE issues only — resolved-at-head findings are informational. */
 const countIssues = (results: FileAuditResult[], severity: string): number =>
   results.reduce(
-    (acc, r) => acc + (r.result.issues?.filter((i) => i.severity === severity).length ?? 0),
+    (acc, r) => acc + activeIssues(r.result.issues).filter((i) => i.severity === severity).length,
     0,
   );
 
@@ -110,6 +132,11 @@ export const printResultsSummary = (
   );
   console.log(keyValueRow("Duration", formatDuration(totalDuration)));
 
+  if (ctx.commits && ctx.commits.length > 0) {
+    printCommitsSection(ctx.commits);
+  }
+
+  printRecurringIssues(results);
   printConsoleFindings(results);
 
   const skipped = ctx.skipped ?? [];

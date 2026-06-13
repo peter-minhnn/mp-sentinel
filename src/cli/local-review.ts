@@ -4,7 +4,12 @@
  * without requiring CI/CD pipelines
  */
 
-import type { ProjectConfig, CommitInfo } from "../types/index.js";
+import type {
+  ProjectConfig,
+  CommitInfo,
+  FileAuditResult,
+  SeverityThreshold,
+} from "../types/index.js";
 import {
   getRecentCommits,
   getFilesFromCommits,
@@ -19,14 +24,25 @@ import { FileHandler } from "../services/file-handler/index.js";
 import { auditCommit, auditFilesWithConcurrency, AIConfig } from "../services/ai/index.js";
 import { generatePayloadSummary, resolveTokenLimit } from "../utils/tokens.js";
 import { buildSystemPrompt } from "../config/prompts.js";
-import { log } from "../utils/logger.js";
+import { log, setLogQuietMode } from "../utils/logger.js";
 import { printResultsSummary } from "./summary.js";
 import { gatherMCPContext } from "../services/mcp/index.js";
-import { runDeterministicReview } from "./deterministic-review.js";
-import { buildIndexContext } from "./review.js";
+import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
+import { readPackageManifest } from "../services/source-index/manifest.js";
+import { buildIndexContext, buildReport } from "./review.js";
+import { formatMarkdownReport } from "../formatters/report.js";
+import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { runESLintAdapter } from "../services/eslint-adapter.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
 import { dedupeFindings } from "../utils/dedupe-findings.js";
+import { capFindingsPerFile } from "../utils/cap-findings.js";
+import { clampSeverities } from "../utils/severity-clamp.js";
+import { verifyEvidence } from "../utils/verify-evidence.js";
+import { verifyImportClaims } from "../utils/verify-import-claims.js";
+import { relocateFindingLines } from "../utils/relocate-lines.js";
+import { downgradeUnsinkedXssClaims, filterSelfNegatedFindings } from "../utils/finding-hygiene.js";
 import type { CLIValues } from "./args.js";
 import { resolveSeverityThreshold } from "../utils/severity.js";
 
@@ -53,6 +69,25 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     values["compare-branch"] || config.localReview?.compareBranch || "origin/main";
   const verbosePatternMatching = config.localReview?.verbosePatternMatching || values.verbose;
   const commitSha = values.commit;
+
+  // Structured formats (json/markdown/sarif) globally silence the logger so
+  // CI stdout stays parseable — but local mode has no structured renderer:
+  // its findings print through log.plain while headers/file names bypass the
+  // logger. Left quiet, the summary would show file names with NO finding
+  // details. Re-enable logs here unless the user explicitly asked for -q.
+  if (!values.quiet && values.format && values.format !== "console") {
+    setLogQuietMode(false);
+    log.warning(
+      `--format ${values.format} is not supported in local mode — rendering the console report.`,
+    );
+  }
+
+  // --no-cache: bypass the AI response cache for this run (pre-merge gates
+  // should never serve findings from a previous prompt/file state).
+  if (values["no-cache"]) {
+    config.cacheEnabled = false;
+    log.info("AI response cache bypassed for this run (--no-cache).");
+  }
 
   log.header("🔍 Local Review Mode");
 
@@ -127,6 +162,10 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
     commitsToReview = commitsToReview.filter((c) => selectedHashes.includes(c.hash));
   }
+
+  // Chronological order (oldest first) — single source of truth for every
+  // place commits are displayed, so "later commit" can never be misread.
+  commitsToReview = sortCommitsChronologically(commitsToReview);
 
   // Print commits being reviewed
   printCommitList(commitsToReview);
@@ -289,7 +328,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     return 0; // End early for dry-run
   }
 
-  const aiResults = aiEnabled
+  let aiResults = aiEnabled
     ? await auditFilesWithConcurrency(
         sanitizedFiles,
         config,
@@ -299,7 +338,90 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
       )
     : undefined;
 
+  // Deterministic accuracy passes on AI findings ONLY (before merging, so
+  // deterministic/rule-pack findings keep their configured severities):
+  // category severity ceilings first, then evidence verification.
+  if (aiResults && aiResults.length > 0) {
+    const hygiene = filterSelfNegatedFindings(aiResults);
+    if (hygiene.dropped > 0 || hygiene.downgraded > 0) {
+      log.info(
+        `Hygiene: ${hygiene.dropped} self-negated finding(s) dropped, ${hygiene.downgraded} downgraded.`,
+      );
+    }
+    const xssCheck = downgradeUnsinkedXssClaims(hygiene.results);
+    if (xssCheck.downgraded > 0) {
+      log.info(`Hygiene: ${xssCheck.downgraded} XSS claim(s) without a sink downgraded.`);
+    }
+    aiResults = xssCheck.results;
+
+    const clampOutcome = clampSeverities(aiResults, config.ai?.severityCeilings);
+    if (clampOutcome.clamped > 0) {
+      log.info(`Severity clamp: ${clampOutcome.clamped} finding(s) capped by category ceiling.`);
+    }
+    const evidenceOutcome = await verifyEvidence(clampOutcome.results);
+    if (evidenceOutcome.downgraded > 0) {
+      log.info(
+        `Evidence check: ${evidenceOutcome.downgraded} CRITICAL finding(s) downgraded (evidence not found).`,
+      );
+    }
+    const importCheck = verifyImportClaims(evidenceOutcome.results);
+    if (importCheck.downgraded > 0) {
+      log.info(
+        `Import check: ${importCheck.downgraded} CRITICAL finding(s) downgraded (import target exists).`,
+      );
+    }
+    const relocation = await relocateFindingLines(importCheck.results);
+    if (relocation.relocated > 0) {
+      log.info(`Line relocation: corrected ${relocation.relocated} finding line number(s).`);
+    }
+    aiResults = relocation.results;
+  }
+
   let auditResults = runDeterministicReview(sanitizedFiles, redactionReport, aiResults);
+
+  // Rule-pack evaluators (deterministic, dependency-gated) — previously CI
+  // review only, leaving local mode without react/tailwind/typescript-strict
+  // evaluator findings (field-tested gap). Mirrors the CI path: read
+  // package.json deps so dependency/version-gated packs activate; a read
+  // failure is non-fatal (packs fall back to language gating).
+  let rulePackDeps: Record<string, string> = {};
+  try {
+    const manifest = await readPackageManifest(process.cwd());
+    rulePackDeps = { ...manifest.dependencies, ...manifest.devDependencies };
+  } catch {
+    rulePackDeps = {};
+  }
+  const rulePackResults = runRulePackEvaluators(
+    sanitizedFiles,
+    config.ai?.rulePackSeverity,
+    rulePackDeps,
+  );
+  if (rulePackResults.length > 0) {
+    const rulePackFiles = rulePackResults.map((r) => {
+      const issues = r.result.issues ?? [];
+      return {
+        path: r.filePath,
+        issues,
+        localSeverityCounts: {
+          critical: issues.filter((i) => i.severity === "CRITICAL").length,
+          warning: issues.filter((i) => i.severity === "WARNING").length,
+          info: issues.filter((i) => i.severity === "INFO").length,
+        },
+      };
+    });
+    const rulePackCritical = rulePackFiles.reduce((s, f) => s + f.localSeverityCounts.critical, 0);
+    auditResults = mergeFindings(
+      {
+        totalCritical: rulePackCritical,
+        totalWarning: rulePackFiles.reduce((s, f) => s + f.localSeverityCounts.warning, 0),
+        totalInfo: rulePackFiles.reduce((s, f) => s + f.localSeverityCounts.info, 0),
+        hasCriticalFindings: rulePackCritical > 0,
+        files: rulePackFiles,
+      },
+      auditResults,
+      new Set(),
+    );
+  }
 
   // ESLint adapter (opt-in, fail-open) — merge the project's own ESLint
   // findings, then collapse exact duplicates across all finding sources.
@@ -311,6 +433,16 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     auditResults = mergeFindings(eslintFindings, auditResults, new Set());
   }
   auditResults = dedupeFindings(auditResults).results;
+
+  // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs
+  // always kept). Off by default; opt in via review.maxFindingsPerFile.
+  const capOutcome = capFindingsPerFile(auditResults, config.review?.maxFindingsPerFile ?? 0);
+  if (capOutcome.hidden > 0) {
+    log.info(
+      `Noise budget: ${capOutcome.hidden} lower-severity finding(s) hidden by per-file cap.`,
+    );
+  }
+  auditResults = capOutcome.results;
 
   // Print summary — honor severity threshold (CLI flag > branch override > config baseline)
   const threshold = resolveSeverityThreshold({
@@ -331,7 +463,22 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     target: targetLabel,
     aiEnabled,
     skipped: filterResult.rejected.map(({ path, reason }) => ({ path, reason })),
+    commits: commitsToReview,
   });
+
+  // --output: write a clean markdown report (no ANSI codes) for MR attachment.
+  if (values.output) {
+    await writeLocalMarkdownReport({
+      outputPath: values.output,
+      auditResults,
+      skipped: filterResult.rejected,
+      aiEnabled,
+      threshold,
+      startTime,
+      commits: commitsToReview,
+      compareBranch: commitSha ?? (isBranchDiffMode ? compareBranch : "HEAD"),
+    });
+  }
 
   if (!allPassed) {
     hasErrors = true;
@@ -350,6 +497,48 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 // ──────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ──────────────────────────────────────────────────────────────────────────────
+
+interface LocalMarkdownReportOptions {
+  outputPath: string;
+  auditResults: FileAuditResult[];
+  skipped: Array<{ path: string; reason: string }>;
+  aiEnabled: boolean;
+  threshold: SeverityThreshold;
+  startTime: number;
+  commits: CommitInfo[];
+  compareBranch: string;
+}
+
+/**
+ * Build a ReviewReport from local-mode results (reusing the CI report
+ * builder) and write it as clean markdown — no ANSI codes, MR-attachable.
+ * Fail-open: an unwritable path logs a warning, never fails the review.
+ */
+const writeLocalMarkdownReport = async (options: LocalMarkdownReportOptions): Promise<void> => {
+  const { outputPath, auditResults, skipped, aiEnabled, threshold, startTime, commits } = options;
+  try {
+    const report = buildReport(
+      { mode: "range", value: options.compareBranch },
+      aiEnabled,
+      DEFAULT_PROMPT_VERSION,
+      auditResults,
+      skipped,
+      [],
+      0,
+      startTime,
+      undefined,
+      undefined,
+      { threshold },
+    );
+    if (commits.length > 0) report.commits = commits;
+    await writeFile(resolve(process.cwd(), outputPath), formatMarkdownReport(report));
+    log.info(`Markdown report written to ${outputPath}`);
+  } catch (error) {
+    log.warning(
+      `Failed to write report to ${outputPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
 
 /**
  * Check if a commit message matches any of the given exclude regex patterns.
@@ -450,14 +639,30 @@ const filterCommits = (
 };
 
 /**
- * Print formatted list of commits to be reviewed
+ * Sort commits chronologically (oldest first). `git log` emits newest-first;
+ * report consumers misread that order as oldest-first, inverting "fixed by a
+ * later commit" reasoning. Sorting by commit date (hash order as tiebreaker)
+ * makes ordering explicit everywhere commits are displayed or emitted.
+ */
+export const sortCommitsChronologically = (commits: readonly CommitInfo[]): CommitInfo[] =>
+  [...commits].sort((a, b) => {
+    const timeA = Date.parse(a.date);
+    const timeB = Date.parse(b.date);
+    if (Number.isNaN(timeA) || Number.isNaN(timeB)) return a.hash.localeCompare(b.hash);
+    return timeA - timeB;
+  });
+
+/**
+ * Print formatted list of commits to be reviewed (oldest → newest)
  */
 const printCommitList = (commits: CommitInfo[]): void => {
   console.log();
-  log.info(`📋 Commits to review (${commits.length}):`);
-  for (const commit of commits) {
-    console.log(`   ${commit.hash.slice(0, 7)} | ${commit.author} | ${commit.message}`);
-  }
+  log.info(`📋 Commits to review (${commits.length}, oldest → newest):`);
+  commits.forEach((commit, index) => {
+    console.log(
+      `   #${index + 1} ${commit.hash.slice(0, 7)} | ${commit.date} | ${commit.author} | ${commit.message}`,
+    );
+  });
   console.log();
 };
 

@@ -151,6 +151,7 @@ describe("ALL_PACKS includes new packs", () => {
     expect(packIds).toContain("tanstack-query");
     expect(packIds).toContain("antd");
     expect(packIds).toContain("supabase");
-    expect(ALL_PACKS.length).toBe(24);
+    expect(packIds).toContain("tailwind");
+    expect(ALL_PACKS.length).toBe(25);
   });
 });

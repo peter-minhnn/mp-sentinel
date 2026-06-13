@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-06-13
+
+### Added (field test round 6)
+- **Evidence-based line relocation:** ~50% of findings were anchored at `line 1` (the parser's fallback when the model omits a line). Findings that carry an `evidence` snippet are now relocated to the line where that snippet actually appears in the file (whitespace-insensitive, first match, multi-line aware). Fail-open: no evidence, no match, or unreadable file leaves the finding untouched. Runs after the import backstop in both CI and local pipelines. Ellipsis-abstracted evidence (`const getColumns = () => { ... }`) is relocated via its longest literal segment. Markdown formatting the model leaks into evidence (surrounding/inline backticks, code fences) is stripped before matching.
+
+### Added (field test round 5)
+- **Generic per-file-per-rule aggregation:** the deterministic-review engine now collapses any rule that fires 3+ times in one file into a single finding listing the affected lines (`... (4× in this file: lines 1, 2, 3, 4)`). Covers every evaluator uniformly (inline style, inline query keys, hex colors, double casts, …); the hex evaluator's bespoke aggregation was removed in favor of this.
+- **Confidence floor for crash/security CRITICALs:** a `runtime-crash` or `security` CRITICAL the model marks `confidence: "medium"` is downgraded to WARNING `[needs-human-review]` — speculative crashes ("apiItems[0] on empty array", "navigator.clipboard without support check") no longer block a merge. High-confidence and unspecified-confidence CRITICALs are unaffected.
+
+### Fixed (field test round 4)
+- **AI no longer duplicates deterministic checks:** the prompt now lists the categories already covered deterministically (hardcoded hex, inline style literals, inline query keys, parseInt-without-radix, double casts, Tailwind canonical values, suppressed exhaustive-deps) and instructs the model to skip them. Cuts the dominant maintainability-noise overlap. `DEFAULT_PROMPT_VERSION` → `2026-06-13`.
+- **Import-existence backstop:** a CRITICAL claiming an import path is missing / will cause a build failure is downgraded to WARNING when the imported file actually resolves on disk (alias `@/`, `~`, `$lib/` and relative specifiers, with extension/index resolution). Closes the recurring `RichTextEditor`-style false positive.
+- **Recurring-issues table excludes synthetic summaries:** the per-file noise-budget cap notice no longer appears as a "recurring issue".
+
+### Added (noise budget)
+- **Per-file hex aggregation:** `antd/no-hardcoded-hex-color` now collapses 3+ hex literals in one file into a single finding listing the affected lines (was one finding per line — 137 across 29 files in a real run).
+- **`review.maxFindingsPerFile`:** optional per-file cap on non-CRITICAL findings (CRITICALs never capped). Over-budget files keep the most severe / most informative findings and gain one INFO summary recording how many were hidden. Off by default.
+
+### Fixed (local mode parity)
+- **Rule-pack evaluators now run in local mode:** `--local` previously skipped the entire rule-pack evaluator pass (react re-render/refactor checks, typescript-strict, antd, tailwind canonical-classes only fired in CI review). Local review now reads package.json deps and runs the same dependency/version-gated evaluator pass, merged identically to the CI path.
+
+### Added (Tailwind v4)
+- **`tailwind` rule pack** (dependency-gated on `tailwindcss`): two prompt rules (canonical classes over arbitrary values; no hardcoded design tokens) plus deterministic evaluator `tailwind/canonical-classes` (version-gated `tailwindcss >= 4`) — flags `z-[9999]`-style bracketed integers on bare-value utilities (`z`, `order`, `opacity`, `columns`, `line-clamp`, grid/col/row utilities) and suggests the canonical `z-9999` form, mirroring Tailwind IntelliSense `suggestCanonicalClasses`. Values that genuinely need brackets (units, fractions, CSS vars, colors) are never flagged.
+
+### Fixed (field test round 2)
+- **`parseInt without radix` false positive:** the same-line suppression could not see past nested parens in the first argument — `parseInt(String(x ?? ''), 10)` was flagged despite the explicit radix. The check now accepts nested calls and identifier radixes.
+- **Hedged self-negation:** patterns now also catch "this may be acceptable", "if they are, this is compliant", "likely intentional" — and the suggestion field is checked in addition to the message.
+- **Unsinked XSS claims downgraded:** CRITICAL security findings claiming XSS whose evidence quotes no actual sink (`dangerouslySetInnerHTML`, `innerHTML =`, `parseFromString`, `createElement`, etc.) are downgraded to WARNING — JSX interpolation auto-escapes, so "renders user content without sanitization" alone is not a vulnerability. Matching guardrail added to the prompt.
+
+### Added (Phase 4 — noise & output)
+- **Self-negation filter:** AI findings whose message negates itself ("No issue", "this is compliant", "false positive", "works as intended") are dropped (WARNING/INFO) or downgraded to INFO with `[self-negated]` (CRITICAL). New `src/utils/finding-hygiene.ts`, applied to AI findings before the severity clamp.
+- **Near-duplicate collapse:** `dedupeFindings` now also collapses findings at the same file/line/severity/category whose wording overlaps (overlap coefficient ≥ 0.35), keeping the variant with the richest evidence and annotating `(+N similar)`. Issues without a category are exempt.
+- **`--output <path>`:** review (CI and local mode) additionally writes a clean, ANSI-free markdown report to the given path — local mode reuses the CI report builder, including Commits and Resolved sections.
+- **Top recurring issues:** console and markdown reports open the findings with a top-5 table of repeated issues (same category/severity/message-prefix, ≥3 occurrences) with counts and file spread, so large reports are triageable at a glance.
+
+## [3.1.1] — 2026-06-12
+
+### Added
+- **Category severity ceilings (`ai.severityCeilings`):** Deterministic post-parse clamp caps AI finding severity per rubric category. Defaults: `architecture`, `performance`, `maintainability`, `test-gap` → max WARNING; `security`, `runtime-crash`, `dependency-version` uncapped. User config merges over defaults; mapping a category to `CRITICAL` disables its default cap. Fixes severity inflation where style/architecture rule violations shipped as CRITICAL.
+- **Evidence verification for CRITICAL findings:** The prompt now requires a verbatim `evidence` quote for every CRITICAL issue, and a deterministic pass re-checks that evidence against the current file content (whitespace-insensitive). Evidence not found → downgraded to WARNING with `confidence: "low"` and an `[unverified]` tag. Fail-open for unreadable files and findings without evidence (deterministic/rule-pack findings unaffected).
+- **Chronological commit metadata:** Local review sorts and prints commits oldest → newest with explicit ordering labels; `printResultsSummary` renders a "Commits reviewed" section. The JSON/markdown `ReviewReport` gains an optional additive `commits` field (chronological) populated for `range`/`commit` targets via new `getCommitsForRange()`. Prevents report consumers from misreading `git log`'s newest-first order when reasoning about "fixed in a later commit".
+- **`--no-cache` flag:** Bypasses the AI response cache for a single run — recommended for pre-merge gate runs.
+- **HEAD reconciliation for `--commit <sha>` reviews:** Findings from a historical commit are re-checked against the current working tree. Evidence still present → active; evidence gone but `git log -S` attributes the change to a commit → tagged `resolution: "resolved-at-head"` + `resolvedBy: <sha>` (kept in the report, excluded from pass/fail, severity counts, and the Findings section — rendered under "Resolved During Branch"); evidence in neither file nor history → `resolution: "unverified"`, downgraded to WARNING/low-confidence. `issuesFailThreshold` and all severity counts now operate on active issues only (new `activeIssues` helper).
+
+### Added (refactor review)
+- **`refactor` rubric category:** the AI review now explicitly scans changed components/functions for refactor-worthy structures — >80-line bodies, god-components, and React re-render pitfalls (unstable props/context value identity, components declared inside components, state lifted too high, unmemoized expensive derivations) — and must propose a concrete extraction/memoization, not generic advice. Added to the output schema and capped at WARNING by the severity clamp.
+- **React re-render evaluators (deterministic):** `react/component-inside-component` (remounts whole subtree every parent render), `react/unstable-context-value` (Provider `value={{...}}` re-renders every consumer), `react/long-function` (>80-line function/component bodies, full-file scans only). Two matching rules added to the React rule pack.
+
+### Changed
+- **Diff context width:** `collectReviewInput` default `contextLines` raised 2 → 8 — the dominant AI false-positive class was guard clauses/imports just outside a narrow hunk. Token cost remains bounded by `maxCharsPerFile`.
+- **Confidence gating:** a CRITICAL the model marks `confidence: "low"` is downgraded to WARNING `[downgraded: low-confidence CRITICAL]` during the clamp pass.
+- **Prompt severity rubric:** `BASE_AUDIT_PROMPT` now states that CRITICAL is reserved for reachable security/runtime-crash impact, requires guard-clause/import/prop checks before crash claims, and demands verbatim evidence. `DEFAULT_PROMPT_VERSION` bumped to `2026-06-12` (invalidates stale AI cache entries).
+
 ## [3.1.0] — 2026-06-10
 
 ### Fixed
@@ -40,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **GitLab CI/CD variable instructions updated.** Documentation now clarifies `GITLAB_TOKEN` and `CI_JOB_TOKEN` usage across CI workflow examples.
+
 
 ## [Unreleased]
 

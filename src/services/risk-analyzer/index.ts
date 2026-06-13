@@ -466,10 +466,14 @@ const MATCH_FILTERS: Record<string, (line: string, filePath: string) => boolean>
   "parseInt without radix": (line, filePath) => {
     // Phase 2.4: noise reducer.
     if (isTestOrExamplePath(filePath)) return false;
-    // Skip cases where the second argument is provided on the SAME line —
-    // the regex is conservative because of `[^,)]+` so it can fire even
-    // when `parseInt(x, 10)` appears further in the line. Re-check here.
-    if (/\bparseInt\s*\([^,)]+,\s*\d+\s*\)/.test(line)) return false;
+    // Skip when a second argument is present on the SAME line. The previous
+    // check (`[^,)]+,`) could not see past nested parens in the first
+    // argument — `parseInt(String(x ?? ''), 10)` was flagged even though the
+    // radix is right there (field-tested false positive). Greedy `.*` accepts
+    // nested calls; a numeric literal or identifier radix both count.
+    // Conservative by design: one radix-bearing call on the line suppresses
+    // the hint for that line — missing a hint is fine, a wrong hint is not.
+    if (/\bparseInt\s*\(.*,\s*[\w$]+\s*\)/.test(line)) return false;
     return true;
   },
   // Phase 2.3 — Rust pack filters

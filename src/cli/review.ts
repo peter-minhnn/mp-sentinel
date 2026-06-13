@@ -22,7 +22,7 @@ import type { CLIValues } from "./args.js";
 import { log } from "../utils/logger.js";
 import { bold, dim, paint } from "../utils/terminal-ui.js";
 import { UserError } from "../utils/errors.js";
-import { collectReviewInput, listFilesForTarget } from "../utils/git.js";
+import { collectReviewInput, getCommitsForRange, listFilesForTarget } from "../utils/git.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import { configureSecurityService, getSecurityService } from "../services/security/index.js";
 import { auditFilesWithConcurrency, summarizeUsage } from "../services/ai/index.js";
@@ -38,12 +38,19 @@ import { AIConfig } from "../services/ai/index.js";
 import { buildReviewContext } from "../services/source-index/context-builder.js";
 import { readIndex } from "../services/source-index/storage.js";
 import { resolve as resolvePath } from "node:path";
-import { readFile as readFileAsync } from "node:fs/promises";
+import { readFile as readFileAsync, writeFile as writeFileAsync } from "node:fs/promises";
 import { gatherMCPContextDetails } from "../services/mcp/index.js";
 import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
 import { dedupeFindings } from "../utils/dedupe-findings.js";
+import { capFindingsPerFile } from "../utils/cap-findings.js";
+import { clampSeverities } from "../utils/severity-clamp.js";
+import { verifyEvidence } from "../utils/verify-evidence.js";
+import { reconcileFindings } from "../utils/reconcile-findings.js";
+import { verifyImportClaims } from "../utils/verify-import-claims.js";
+import { relocateFindingLines } from "../utils/relocate-lines.js";
+import { downgradeUnsinkedXssClaims, filterSelfNegatedFindings } from "../utils/finding-hygiene.js";
 import {
   DEFAULT_BASELINE_PATH,
   filterAgainstBaseline,
@@ -52,6 +59,7 @@ import {
 } from "../services/baseline.js";
 import {
   DEFAULT_SEVERITY_THRESHOLD,
+  activeIssues,
   issuesFailThreshold,
   resolveSeverityThreshold,
 } from "../utils/severity.js";
@@ -150,7 +158,7 @@ interface BuildReportContext {
   threshold: SeverityThreshold;
 }
 
-const buildReport = (
+export const buildReport = (
   target: ReviewTarget,
   aiEnabled: boolean,
   promptVersion: string,
@@ -163,19 +171,21 @@ const buildReport = (
   tokenUsage?: ReviewReport["summary"]["tokenUsage"],
   context: BuildReportContext = { threshold: DEFAULT_SEVERITY_THRESHOLD },
 ): ReviewReport => {
+  // Severity counts cover ACTIVE issues only — findings reconciled as
+  // resolved-at-head stay in the report body but no longer count or fail.
   const criticalIssues = results.reduce(
     (acc, result) =>
-      acc + (result.result.issues?.filter((issue) => issue.severity === "CRITICAL").length ?? 0),
+      acc + activeIssues(result.result.issues).filter((i) => i.severity === "CRITICAL").length,
     0,
   );
   const warningIssues = results.reduce(
     (acc, result) =>
-      acc + (result.result.issues?.filter((issue) => issue.severity === "WARNING").length ?? 0),
+      acc + activeIssues(result.result.issues).filter((i) => i.severity === "WARNING").length,
     0,
   );
   const infoIssues = results.reduce(
     (acc, result) =>
-      acc + (result.result.issues?.filter((issue) => issue.severity === "INFO").length ?? 0),
+      acc + activeIssues(result.result.issues).filter((i) => i.severity === "INFO").length,
     0,
   );
 
@@ -339,6 +349,13 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     tokenLimitOverride,
   } = options;
   const dryRun = dryRunStr || verboseDryRun;
+
+  // --no-cache: bypass the AI response cache for this run (pre-merge gates
+  // should never serve findings from a previous prompt/file state).
+  if (values["no-cache"]) {
+    config.cacheEnabled = false;
+    log.info("AI response cache bypassed for this run (--no-cache).");
+  }
 
   const formatRaw = values.format ?? process.env.MP_SENTINEL_FORMAT ?? "console";
   const format = resolveFormat(formatRaw);
@@ -591,6 +608,76 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     }
   }
 
+  // Deterministic accuracy passes on AI findings ONLY (before merging, so
+  // deterministic/rule-pack findings keep their configured severities).
+  if (auditResults.length > 0) {
+    const hygiene = filterSelfNegatedFindings(auditResults);
+    if (hygiene.dropped > 0 || hygiene.downgraded > 0) {
+      log.info(
+        `Hygiene: ${hygiene.dropped} self-negated finding(s) dropped, ${hygiene.downgraded} downgraded.`,
+      );
+    }
+    const xssCheck = downgradeUnsinkedXssClaims(hygiene.results);
+    if (xssCheck.downgraded > 0) {
+      log.info(`Hygiene: ${xssCheck.downgraded} XSS claim(s) without a sink downgraded.`);
+    }
+    auditResults = xssCheck.results;
+
+    const clampOutcome = clampSeverities(auditResults, config.ai?.severityCeilings);
+    if (clampOutcome.clamped > 0) {
+      log.info(`Severity clamp: ${clampOutcome.clamped} finding(s) capped by category ceiling.`);
+    }
+    auditResults = clampOutcome.results;
+
+    if (target.mode === "commit") {
+      // Historical-commit review: the diff reflects an OLD file state, so a
+      // missing evidence quote may mean "fixed by a later commit" rather than
+      // "hallucinated". Reconcile against HEAD + git history instead of the
+      // plain evidence check.
+      const reconcileOutcome = await reconcileFindings(auditResults);
+      if (reconcileOutcome.resolved > 0) {
+        log.info(
+          `Reconciliation: ${reconcileOutcome.resolved} finding(s) already resolved at HEAD (excluded from pass/fail).`,
+        );
+      }
+      if (reconcileOutcome.unverified > 0) {
+        log.info(
+          `Reconciliation: ${reconcileOutcome.unverified} finding(s) downgraded (evidence not found in file or history).`,
+        );
+      }
+      auditResults = reconcileOutcome.results;
+    } else {
+      // Diff endpoints at HEAD (range/staged/files/branch): evidence must
+      // exist in the current file — a CRITICAL whose quoted evidence cannot
+      // be found is downgraded instead of shipping as a false positive.
+      const evidenceOutcome = await verifyEvidence(auditResults);
+      if (evidenceOutcome.downgraded > 0) {
+        log.info(
+          `Evidence check: ${evidenceOutcome.downgraded} CRITICAL finding(s) downgraded (evidence not found).`,
+        );
+      }
+      auditResults = evidenceOutcome.results;
+    }
+
+    // Import-existence backstop: a CRITICAL claiming an import target is
+    // missing is downgraded when the file actually resolves on disk.
+    const importCheck = verifyImportClaims(auditResults);
+    if (importCheck.downgraded > 0) {
+      log.info(
+        `Import check: ${importCheck.downgraded} CRITICAL finding(s) downgraded (import target exists).`,
+      );
+    }
+    auditResults = importCheck.results;
+
+    // Evidence-based line relocation: recover the real line for findings the
+    // model anchored at line 1 (or a stale line) using their evidence snippet.
+    const relocation = await relocateFindingLines(auditResults);
+    if (relocation.relocated > 0) {
+      log.info(`Line relocation: corrected ${relocation.relocated} finding line number(s).`);
+    }
+    auditResults = relocation.results;
+  }
+
   const deterministicResults = runDeterministicReview(
     sanitizedFiles,
     redactionReport,
@@ -652,9 +739,19 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
 
   // Collapse exact-duplicate findings (e.g. the model repeating itself) so the
   // report's signal-to-noise stays high. Distinct issues are never merged.
-  const { results: finalResults, removed: duplicatesRemoved } = dedupeFindings(mergedResults);
+  const { results: dedupedFinal, removed: duplicatesRemoved } = dedupeFindings(mergedResults);
   if (duplicatesRemoved > 0) {
     log.info(`Removed ${duplicatesRemoved} duplicate finding(s).`);
+  }
+
+  // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs
+  // always kept). Off by default; opt in via review.maxFindingsPerFile.
+  const { results: finalResults, hidden: cappedFindings } = capFindingsPerFile(
+    dedupedFinal,
+    config.review?.maxFindingsPerFile ?? 0,
+  );
+  if (cappedFindings > 0) {
+    log.info(`Noise budget: ${cappedFindings} lower-severity finding(s) hidden by per-file cap.`);
   }
 
   // Baseline / ratchet handling. `--update-baseline` records the current
@@ -732,9 +829,33 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     { threshold },
   );
 
+  // Attach reviewed-commit metadata (chronological, oldest first) so report
+  // consumers can reason about commit order without re-deriving it.
+  if ((target.mode === "range" || target.mode === "commit") && target.value) {
+    const rangeCommits = await getCommitsForRange(
+      target.mode === "commit" ? `${target.value}~1..${target.value}` : target.value,
+    );
+    if (rangeCommits.length > 0) {
+      report.commits = rangeCommits;
+    }
+  }
+
   await postGitProviderComments(report.results, dryRun, format);
 
   renderReport(report, format);
+
+  // --output: always write a clean markdown report file alongside whatever
+  // console format was requested (ANSI-free, attachable to an MR).
+  if (values.output) {
+    try {
+      await writeFileAsync(resolvePath(process.cwd(), values.output), formatMarkdownReport(report));
+      log.info(`Markdown report written to ${values.output}`);
+    } catch (error) {
+      log.warning(
+        `Failed to write report to ${values.output}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   // Verbose MCP summary (console only — JSON already includes it in the report)
   if ((values.verbose || verboseDryRun) && format !== "json" && report.mcp) {

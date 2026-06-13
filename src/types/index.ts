@@ -62,6 +62,14 @@ export interface ReviewReport {
   generatedAt: string;
   /** MCP runtime observability (only when MCP is enabled) */
   mcp?: MCPContextSummary;
+  /**
+   * Commits covered by the reviewed range, in CHRONOLOGICAL order
+   * (index 0 = oldest). Optional and additive (schema-compatible). Lets
+   * report consumers reason about "fixed in a later commit" without
+   * re-deriving — and without misreading `git log`'s newest-first order.
+   * (v3.1.1+)
+   */
+  commits?: CommitInfo[];
 }
 
 /**
@@ -265,6 +273,14 @@ export interface ReviewSettings {
    * supersedes `severityThreshold`.
    */
   protectedBranches?: Record<string, SeverityThreshold>;
+  /**
+   * Noise budget: cap the number of non-CRITICAL findings reported per file.
+   * CRITICAL findings are never capped. When a file exceeds the cap, the
+   * lowest-severity / least-informative WARNING and INFO findings are dropped
+   * and a single summary finding records how many were hidden. 0 / unset =
+   * no cap. (v3.2.0+)
+   */
+  maxFindingsPerFile?: number;
 }
 
 // ====================================================================================
@@ -571,6 +587,19 @@ export interface AuditIssue {
   /** Supporting evidence for the issue (v1.34.0+) */
   evidence?: string;
   /**
+   * Reconciliation status against the current working tree (v3.1.1+).
+   * Only set in historical-commit review mode (`--commit <sha>`):
+   * - "resolved-at-head": the quoted evidence no longer exists at HEAD and
+   *   git history shows a commit that changed it — the issue was fixed by a
+   *   later commit. Excluded from pass/fail and severity counts.
+   * - "unverified": the evidence appears in neither the working tree nor
+   *   git history — likely paraphrased or hallucinated.
+   * Absent = active finding (or reconciliation not applicable).
+   */
+  resolution?: "resolved-at-head" | "unverified";
+  /** Short SHA of the commit that resolved this issue (when resolution = "resolved-at-head"). */
+  resolvedBy?: string;
+  /**
    * Structured, ready-to-apply code replacement for the single flagged line.
    * Pure code (no prose), small, and matching the file's style. Rendered as a
    * provider code-suggestion block ONLY when it passes safety checks. Distinct
@@ -623,6 +652,14 @@ export interface AIReviewConfig {
    * Value is the severity to assign when the evaluator finds a violation.
    */
   rulePackSeverity?: Record<string, "CRITICAL" | "WARNING" | "INFO">;
+  /**
+   * Per-category severity ceilings applied to AI findings AFTER parsing.
+   * Key is a rubric category (e.g. "architecture"), value is the maximum
+   * severity findings of that category may carry. Merged over the defaults
+   * (architecture/performance/maintainability/test-gap → WARNING); map a
+   * category to "CRITICAL" to disable its default clamp. (v3.1.1+)
+   */
+  severityCeilings?: Record<string, "CRITICAL" | "WARNING" | "INFO">;
   /**
    * Comma-separated list of provider names to try in order when the primary fails.
    * Example: "gemini,openai" — tries Gemini first, falls back to OpenAI.

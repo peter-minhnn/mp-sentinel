@@ -93,6 +93,43 @@ describe("runRulePackEvaluators", () => {
   });
 });
 
+describe("per-file-per-rule aggregation (noise budget)", () => {
+  it("collapses 3+ same-rule hits in one file into a single finding with a line list", () => {
+    // 4 hardcoded hex colors in styling contexts → one aggregated finding.
+    const content = [
+      "const a = { color: '#111111' };",
+      "const b = { background: '#222222' };",
+      "const c = { borderColor: '#333333' };",
+      "const d = { fill: '#444444' };",
+    ].join("\n");
+    const results = runRulePackEvaluators([{ path: "src/Colors.tsx", content }], undefined, {
+      antd: "5.0.0",
+      react: "18.3.1",
+    });
+    const hexIssues = results
+      .flatMap((r) => r.result.issues ?? [])
+      .filter((i) => i.message.includes("Hardcoded hex color"));
+    expect(hexIssues).toHaveLength(1);
+    expect(hexIssues[0]!.message).toContain("4× in this file");
+    expect(hexIssues[0]!.message).toContain("lines 1, 2, 3, 4");
+  });
+
+  it("keeps individual findings when a rule fires only twice in a file", () => {
+    const content = [
+      "const a = { color: '#111111' };",
+      "const b = { background: '#222222' };",
+    ].join("\n");
+    const results = runRulePackEvaluators([{ path: "src/Colors.tsx", content }], undefined, {
+      antd: "5.0.0",
+      react: "18.3.1",
+    });
+    const hexIssues = results
+      .flatMap((r) => r.result.issues ?? [])
+      .filter((i) => i.message.includes("Hardcoded hex color"));
+    expect(hexIssues).toHaveLength(2);
+  });
+});
+
 describe("Rule ID traceability", () => {
   it("evaluator rule IDs match the SKILL.md rule IDs", () => {
     const sveltePack = ALL_PACKS.find((p) => p.id === "svelte")!;

@@ -62,14 +62,24 @@ export const resolveSeverityThreshold = (opts: ResolveOptions): SeverityThreshol
 };
 
 /**
- * Returns true when at least one issue meets-or-exceeds the threshold.
- * Issues whose severity is below the threshold are ignored.
+ * Issues that are still actionable: excludes findings reconciled as
+ * "resolved-at-head" (fixed by a later commit — kept in the report for the
+ * record, but they must not fail a review or count toward severity totals).
+ */
+export const activeIssues = (issues: AuditIssue[] | undefined): AuditIssue[] =>
+  (issues ?? []).filter((issue) => issue.resolution !== "resolved-at-head");
+
+/**
+ * Returns true when at least one ACTIVE issue meets-or-exceeds the threshold.
+ * Issues whose severity is below the threshold — or that were reconciled as
+ * resolved-at-head — are ignored.
  */
 export const issuesFailThreshold = (
   issues: AuditIssue[] | undefined,
   threshold: SeverityThreshold,
 ): boolean => {
-  if (!issues || issues.length === 0) return false;
+  const active = activeIssues(issues);
+  if (active.length === 0) return false;
   const minRank = SEVERITY_RANK[threshold];
-  return issues.some((issue) => SEVERITY_RANK[issue.severity] >= minRank);
+  return active.some((issue) => SEVERITY_RANK[issue.severity] >= minRank);
 };

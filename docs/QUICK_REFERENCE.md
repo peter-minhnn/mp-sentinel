@@ -82,12 +82,15 @@ Invalid `AI_PROVIDER`, unsupported `AI_MODEL`, or missing key disables AI for th
     "maxFiles": 15,
     "maxDiffLines": 1200,
     "maxCharsPerFile": 12000,
-    "promptVersion": "2026-05-04"
+    "promptVersion": "2026-05-04",
+    "severityCeilings": { "architecture": "WARNING" }
   }
 }
 ```
 
-`ruleFiles` loads additional rules from project-root files. Max 10 files, 12,000 chars each. Paths must be relative and inside the project root.
+`review.maxFindingsPerFile` caps non-CRITICAL findings per file (CRITICALs never capped); over-budget files get a one-line summary of how many were hidden. `ruleFiles` loads additional rules from project-root files. Max 10 files, 12,000 chars each. Paths must be relative and inside the project root.
+
+`ai.severityCeilings` caps AI finding severity per rubric category (defaults: `architecture`, `performance`, `maintainability`, `test-gap` → max `WARNING`). Map a category to `CRITICAL` to disable its default cap. CRITICAL findings also require verbatim `evidence`; evidence that cannot be found in the file is downgraded automatically. Use `--no-cache` to bypass the AI response cache for pre-merge gate runs.
 
 ## Exit Codes
 
