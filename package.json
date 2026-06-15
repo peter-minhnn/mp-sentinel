@@ -106,6 +106,9 @@
     "tsx": "4.22.4",
     "typescript": "^6.0.3"
   },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "jest": {
     "preset": "ts-jest/presets/default-esm",
     "testEnvironment": "node",
