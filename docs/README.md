@@ -3,7 +3,7 @@
 > **Your 24/7 Virtual Technical Lead.**  
 > High-performance CLI tool to automate code reviews, enforce architectural patterns, and maintain clean code at scale using Generative AI.
 
-[![NPM Version](https://img.shields.io/badge/npm-v2.0.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v3.2.2-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![Build Status](https://img.shields.io/badge/build-passing-green?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![Powered By](https://img.shields.io/badge/AI-Multi--Provider-purple?style=flat-square)](https://github.com/peter-minhnn/mp-sentinel)
 [![License](https://img.shields.io/badge/license-MIT-gray?style=flat-square)]()
@@ -104,6 +104,12 @@ mp-sentinel
 | `--commits`        | `-n`      | Legacy: number of commits in local mode                | `1`             |
 | `--branch-diff`    | `-d`      | Legacy: review all commits since branching             | `false`         |
 | `--compare-branch` | -         | Legacy: comparison branch for local mode               | `origin/main`   |
+| `--ai`             | -         | Force-enable AI review                                 | target-dependent |
+| `--no-ai`          | -         | Force-disable AI review                                | `false`         |
+| `--severity-threshold`| -      | Set FAIL boundary: `CRITICAL`, `WARNING`, or `INFO`    | `WARNING`       |
+| `--no-cache`       | -         | Bypass the AI response cache for this run              | cache on        |
+| `--output <path>`  | -         | Write clean markdown report to file                    | off             |
+| `--bypass-keyword <kw>`| -     | Staging bypass keyword                                 | `skip:`         |
 
 ### Exit Codes
 

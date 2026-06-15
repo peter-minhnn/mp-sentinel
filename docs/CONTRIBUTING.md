@@ -3,9 +3,9 @@
 > **Welcome, Contributor!**  
 > Thank you for your interest in making MP Sentinel even better. This guide provides comprehensive best practices, clean code standards, and network efficiency guidelines for contributors.
 
-[![NPM Version](https://img.shields.io/badge/npm-v2.0.0-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
+[![NPM Version](https://img.shields.io/badge/npm-v3.2.2-blue?style=flat-square)](https://www.npmjs.com/package/mp-sentinel)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue?style=flat-square)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-24+-green?style=flat-square)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20.11+-green?style=flat-square)](https://nodejs.org/)
 
 ---
 
@@ -100,7 +100,7 @@ mp-sentinel/
 
 ### Prerequisites
 
-- Node.js 24.0.0 or higher
+- Node.js 20.11.0 or higher
 - npm 9.0.0 or higher
 - Git
 

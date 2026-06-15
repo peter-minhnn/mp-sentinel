@@ -46,13 +46,32 @@
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--files <paths>` | Explicit file paths to review | auto |
-| `--local` | Review local changes | false |
-| `--interactive` | Interactive review | false |
+| `--staged` | Review staged changes (`git diff --cached`) | false |
+| `--commit <sha>` | Review a specific commit | - |
+| `--range <range>` | Review a commit range (e.g., `main..HEAD`) | - |
+| `--local` | Review local commits (branch-based) | false |
+| `--interactive` | Interactive commit picker UI | false |
+| `--branch-diff` | Legacy: review all commits since branching | false |
+| `--include-uncommitted` | Mixed mode: include WIP changes | false |
 | `--format <fmt>` | Output: `console`, `json`, `markdown`, `sarif` | console |
+| `--ai` | Force-enable AI review | auto |
+| `--no-ai` | Force-disable AI review | false |
+| `--target-branch <br>` | Target branch for diff (default: `origin/main`) | origin/main |
+| `--concurrency <n>` | Max concurrent AI provider calls | 5 |
 | `--bypass-keyword <kw>` | Staging bypass keyword | skip: |
 | `--severity-threshold <lvl>` | FAIL threshold: `CRITICAL`, `WARNING`, `INFO` | WARNING |
 | `--no-cache` | Bypass the AI response cache for this run | cache on |
 | `--output <path>` | Also write a clean markdown report to a file | off |
+| `--verbose` | Enable verbose output and detailed skip reasons | false |
+| `--dry-run` | Security scan & token estimation (no AI calls) | false |
+| `--verbose-dry-run` | Dry-run with per-file token breakdown | false |
+| `--token-limit <n>` | Override provider context-window token limit | — |
+| `--explain-context` | Review context diagnostics (no AI calls) | false |
+| `--no-skills-fetch` | Disable local skills loading (air-gapped mode) | false |
+| `--fetch` | Auto-fetch tracking branch before detecting base | false |
+| `--compare-branch <br>` | Legacy: comparison branch for local mode | origin/main |
+| `--commits <n>` | Legacy: number of commits in local mode | 1 |
+| `--quiet` | Suppress non-error output | false |
 
 ## Root CLI
 
