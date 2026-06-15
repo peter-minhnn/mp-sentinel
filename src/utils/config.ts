@@ -350,6 +350,12 @@ const CacheSettingsSchema = z.object({
     .optional(),
 });
 
+const ESLintAdapterConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  severityOverrides: z.record(z.string(), z.enum(["CRITICAL", "WARNING", "INFO"])).optional(),
+  timeoutMs: z.number().int().positive("eslint.timeoutMs must be a positive integer").optional(),
+});
+
 const SecuritySettingsSchema = z.object({
   entropyEnabled: z.boolean().optional(),
   entropyMinLength: z
@@ -396,6 +402,7 @@ export const ProjectConfigSchema = z.object({
   review: ReviewSettingsSchema.optional(),
   security: SecuritySettingsSchema.optional(),
   cache: CacheSettingsSchema.optional(),
+  eslint: ESLintAdapterConfigSchema.optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────

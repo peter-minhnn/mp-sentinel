@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.2] — 2026-06-15
+
+### Fixed
+- **ESLint adapter config was unreachable:** the `eslint` block in `.mp-sentinelrc.json` was stripped during config validation (the Zod `ProjectConfigSchema` had no `eslint` field, and Zod strips unknown keys by default), so `eslint.enabled: true` never reached the adapter and `runESLintAdapter` always returned `null`. Added `ESLintAdapterConfigSchema` (`enabled`, `severityOverrides`, `timeoutMs`) to the schema. As a result, the unused-import backstop now actually drops AI "unused import" false positives (ESLint authority) instead of only downgrading them to INFO.
+
+### Added
+- **Branch-diff rename following:** multi-commit / branch-diff reviews collected changed files under their historical (pre-rename) names, so a file renamed or deleted later in the range was read from the working tree as "File not found" and reported as a skip. `resolveRenamedPaths` (in `utils/git.ts`) now builds an old-to-new rename map for the review range (`git diff -M --diff-filter=R <base>..HEAD`), remaps old paths to their current location (following rename chains, de-duplicating), and drops genuinely deleted paths. Fail-open: a git failure simply drops missing paths, whose current content is already reviewed under the new path.
+
 ## [3.2.1] — 2026-06-15
 
 ### Added

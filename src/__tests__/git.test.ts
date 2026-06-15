@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
-import { matchCommitPattern, shouldSkipCommit, getFilesFromCommits } from "../utils/git.js";
+import {
+  matchCommitPattern,
+  shouldSkipCommit,
+  getFilesFromCommits,
+  resolveRenamedPathsPure,
+} from "../utils/git.js";
 import type { CommitInfo, CommitPattern } from "../types/index.js";
 
 // -- matchCommitPattern --------------------------------------------------------
@@ -124,6 +129,65 @@ describe("getFilesFromCommits", () => {
 
   it("returns empty array for empty commits", () => {
     expect(getFilesFromCommits([])).toEqual([]);
+  });
+});
+
+// -- resolveRenamedPathsPure ---------------------------------------------------
+
+describe("resolveRenamedPathsPure", () => {
+  it("keeps existing paths untouched", () => {
+    const exists = (p: string): boolean => ["src/a.ts", "src/b.ts"].includes(p);
+    const res = resolveRenamedPathsPure(["src/a.ts", "src/b.ts"], new Map(), exists);
+    expect(res.paths).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(res.renamed).toHaveLength(0);
+    expect(res.dropped).toHaveLength(0);
+  });
+
+  it("remaps a renamed path to its current location", () => {
+    const exists = (p: string): boolean => p === "src/modals/Book.tsx";
+    const renameMap = new Map([["src/Book.tsx", "src/modals/Book.tsx"]]);
+    const res = resolveRenamedPathsPure(["src/Book.tsx"], renameMap, exists);
+    expect(res.paths).toEqual(["src/modals/Book.tsx"]);
+    expect(res.renamed).toEqual([{ from: "src/Book.tsx", to: "src/modals/Book.tsx" }]);
+    expect(res.dropped).toHaveLength(0);
+  });
+
+  it("follows a rename chain to the final name", () => {
+    const exists = (p: string): boolean => p === "src/c.ts";
+    const renameMap = new Map([
+      ["src/a.ts", "src/b.ts"],
+      ["src/b.ts", "src/c.ts"],
+    ]);
+    const res = resolveRenamedPathsPure(["src/a.ts"], renameMap, exists);
+    expect(res.paths).toEqual(["src/c.ts"]);
+    expect(res.renamed).toEqual([{ from: "src/a.ts", to: "src/c.ts" }]);
+  });
+
+  it("drops a deleted path with no rename target", () => {
+    const exists = (): boolean => false;
+    const res = resolveRenamedPathsPure(["src/gone.ts"], new Map(), exists);
+    expect(res.paths).toEqual([]);
+    expect(res.dropped).toEqual(["src/gone.ts"]);
+  });
+
+  it("de-duplicates when a rename target is already in the list", () => {
+    const exists = (p: string): boolean => p === "src/modals/Book.tsx";
+    const renameMap = new Map([["src/Book.tsx", "src/modals/Book.tsx"]]);
+    // Both the old (deleted) and the new (added) path are present — diff-tree
+    // lists both sides of a rename within one commit.
+    const res = resolveRenamedPathsPure(["src/Book.tsx", "src/modals/Book.tsx"], renameMap, exists);
+    expect(res.paths).toEqual(["src/modals/Book.tsx"]);
+    expect(res.renamed).toEqual([{ from: "src/Book.tsx", to: "src/modals/Book.tsx" }]);
+  });
+
+  it("does not loop on a cyclic rename map", () => {
+    const exists = (): boolean => false;
+    const renameMap = new Map([
+      ["src/a.ts", "src/b.ts"],
+      ["src/b.ts", "src/a.ts"],
+    ]);
+    const res = resolveRenamedPathsPure(["src/a.ts"], renameMap, exists);
+    expect(res.dropped).toEqual(["src/a.ts"]);
   });
 });
 

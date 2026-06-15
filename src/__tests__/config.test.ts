@@ -62,6 +62,18 @@ describe("validateConfig", () => {
     ).toBe(true);
   });
 
+  it("accepts an eslint adapter block", () => {
+    expect(
+      validateConfig({
+        eslint: {
+          enabled: true,
+          timeoutMs: 30000,
+          severityOverrides: { "no-console": "INFO" },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("rejects non-object values", () => {
     expect(validateConfig(null)).toBe(false);
     expect(validateConfig("string")).toBe(false);
@@ -160,6 +172,20 @@ describe("loadProjectConfig with ruleFiles", () => {
     expect(config.rules).toHaveLength(2);
     expect(config.rules![0]).toBe("CRITICAL: No console.log");
     expect(config.rules![1]).toBe("From docs/FLOW.md:\n# Flow\nUse consistent patterns.");
+  });
+
+  it("preserves the eslint adapter block through parsing (not stripped)", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        eslint: { enabled: true },
+      }),
+    );
+
+    const config = await loadProjectConfig(cwd);
+    expect(config.eslint).toBeDefined();
+    expect(config.eslint!.enabled).toBe(true);
   });
 
   it("reads multiple rule files", async () => {

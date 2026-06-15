@@ -16,6 +16,7 @@ import {
   getUncommittedFiles,
   matchCommitPattern,
   shouldSkipCommit,
+  resolveRenamedPaths,
 } from "../utils/git.js";
 import prompts from "prompts";
 import { getSecurityService } from "../services/security/index.js";
@@ -205,17 +206,35 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     }
   }
 
-  if (filesToAudit.length === 0) {
+  // Follow renames: commits list paths under their historical names, so files
+  // renamed or deleted later in the range no longer exist on disk. Remap them
+  // to their current path and drop deletions to avoid spurious "File not
+  // found" skips. Range base = commit just before the oldest reviewed commit.
+  const oldestCommit = commitsToReview[0];
+  const rangeBase = oldestCommit ? `${oldestCommit.hash}^` : null;
+  const renameResolution = await resolveRenamedPaths(filesToAudit, rangeBase);
+  if (renameResolution.renamed.length > 0 || renameResolution.dropped.length > 0) {
+    log.info(
+      `Rename resolution: ${renameResolution.renamed.length} path(s) remapped to current names, ${renameResolution.dropped.length} deleted path(s) dropped.`,
+    );
+    if (values.verbose) {
+      for (const { from, to } of renameResolution.renamed) log.file(`   ↪ ${from} → ${to}`);
+      for (const path of renameResolution.dropped) log.file(`   ✗ ${path} (deleted in range)`);
+    }
+  }
+  const resolvedFiles = renameResolution.paths;
+
+  if (resolvedFiles.length === 0) {
     log.success("No code files changed in the reviewed scope.");
     return hasErrors ? 1 : 0;
   }
 
   log.info(
-    `Found ${filesToAudit.length} unique file(s) across ${commitsToReview.length} commit(s)`,
+    `Found ${resolvedFiles.length} unique file(s) across ${commitsToReview.length} commit(s)`,
   );
 
   // Read and audit files
-  const fileReadResult = await readFilesForAudit(filesToAudit);
+  const fileReadResult = await readFilesForAudit(resolvedFiles);
 
   if (fileReadResult.success.length === 0) {
     log.warning("No files could be read for auditing.");

@@ -1,3 +1,13 @@
+# What's New in v3.2.2
+
+## Unused-import accuracy & branch-diff hygiene
+
+- **ESLint adapter is now configurable** — the `eslint` block in `.mp-sentinelrc.json` was being silently dropped by config validation, so the adapter could never actually turn on. The config schema now accepts `eslint` (`enabled`, `severityOverrides`, `timeoutMs`), so `{"eslint": {"enabled": true}}` truly enables whole-file lint analysis.
+- **Unused-import false positives eliminated** — with the adapter reachable, the unused-import backstop now drops AI "unused import" claims on files ESLint actually linted (ESLint is the authority; silence means the symbol is used). On files ESLint didn't cover, the claim is downgraded to INFO instead of failing the review.
+- **Branch-diff follows renames** — multi-commit reviews listed files under their historical names, so a file renamed or deleted later in the range showed up as "File not found". The file collector now remaps old paths to their current location (following rename chains) and drops genuinely deleted files, so the report stays clean.
+
+---
+
 # What's New in v3.2.0
 
 ## Report noise & output

@@ -5,6 +5,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
   CommitInfo,
@@ -421,6 +422,137 @@ export const getFilesFromCommits = (commits: CommitInfo[]): string[] => {
     }
   }
   return Array.from(fileSet);
+};
+
+// ── Rename resolution (branch-/multi-commit reviews) ──────────────────────────
+//
+// A multi-commit review lists each commit's changed paths under the names they
+// had in that commit. When a later commit renames or deletes a file, the old
+// path no longer exists in the working tree, so reading it yields a spurious
+// "File not found" skip. These helpers remap old paths to their current name
+// (following renames over the review range) and drop genuinely deleted ones.
+
+export interface RenameResolution {
+  /** De-duplicated paths resolved to their current working-tree location. */
+  paths: string[];
+  /** Old → new remaps that were applied. */
+  renamed: Array<{ from: string; to: string }>;
+  /** Paths with no current location (deleted, or untrackable). */
+  dropped: string[];
+}
+
+/** Follow a rename chain (old → … → current) with a cycle guard. */
+const followRename = (start: string, renameMap: Map<string, string>): string => {
+  let current = start;
+  const seen = new Set<string>([current]);
+  let next = renameMap.get(current);
+  while (next !== undefined && !seen.has(next)) {
+    current = next;
+    seen.add(current);
+    next = renameMap.get(current);
+  }
+  return current;
+};
+
+/**
+ * Pure remap: resolve each candidate path to its current location.
+ * - exists in working tree    → kept as-is
+ * - found in the rename map    → followed to its final target; kept if that
+ *   target exists (otherwise dropped)
+ * - neither                    → dropped (deleted or untrackable)
+ *
+ * Order is preserved and the result is de-duplicated (a rename target already
+ * present in the list is not added twice).
+ */
+export const resolveRenamedPathsPure = (
+  paths: string[],
+  renameMap: Map<string, string>,
+  existsFn: (path: string) => boolean,
+): RenameResolution => {
+  const out: string[] = [];
+  const outSet = new Set<string>();
+  const renamed: Array<{ from: string; to: string }> = [];
+  const dropped: string[] = [];
+
+  const add = (p: string): void => {
+    if (!outSet.has(p)) {
+      outSet.add(p);
+      out.push(p);
+    }
+  };
+
+  for (const path of paths) {
+    if (existsFn(path)) {
+      add(path);
+      continue;
+    }
+    const target = renameMap.has(path) ? followRename(path, renameMap) : null;
+    if (target !== null && target !== path && existsFn(target)) {
+      renamed.push({ from: path, to: target });
+      add(target);
+      continue;
+    }
+    dropped.push(path);
+  }
+
+  return { paths: out, renamed, dropped };
+};
+
+/**
+ * Build an old → new rename map for the review range using git's rename
+ * detection. `rangeBase` is the commit just before the reviewed range (e.g.
+ * `<oldestCommit>^`). Fail-open: any git error yields an empty map.
+ */
+export const buildRangeRenameMap = async (
+  rangeBase: string,
+  cwd: string = process.cwd(),
+  execImpl: typeof execAsync = execAsync,
+): Promise<Map<string, string>> => {
+  const map = new Map<string, string>();
+  try {
+    const command = `git diff -M --diff-filter=R --name-status ${shellEscape(rangeBase)}..HEAD`;
+    const { stdout } = await execImpl(command, { cwd });
+    for (const line of stdout.split("\n")) {
+      if (!line.startsWith("R")) continue;
+      // Format: "R096<TAB>old/path<TAB>new/path"
+      const parts = line.split("\t");
+      const from = parts[1]?.trim();
+      const to = parts[2]?.trim();
+      if (from && to) map.set(from, to);
+    }
+  } catch {
+    // Fail-open: without a map, the pure resolver simply drops missing paths.
+  }
+  return map;
+};
+
+export interface ResolveRenamedPathsOptions {
+  cwd?: string;
+  /** Test seam for the rename-map git call. */
+  execImpl?: typeof execAsync;
+  /** Test seam for working-tree existence checks. */
+  existsImpl?: (path: string) => boolean;
+}
+
+/**
+ * Resolve historical (pre-rename) paths to their current working-tree
+ * location and drop deleted ones. Fail-open: with no usable range base or on
+ * git failure, missing paths are simply dropped (their content is reviewed
+ * under the new path, which the diff already includes).
+ */
+export const resolveRenamedPaths = async (
+  paths: string[],
+  rangeBase: string | null,
+  options: ResolveRenamedPathsOptions = {},
+): Promise<RenameResolution> => {
+  const cwd = options.cwd ?? process.cwd();
+  const existsFn = options.existsImpl ?? ((p: string): boolean => existsSync(resolve(cwd, p)));
+  if (paths.length === 0) return { paths, renamed: [], dropped: [] };
+
+  const renameMap = rangeBase
+    ? await buildRangeRenameMap(rangeBase, cwd, options.execImpl ?? execAsync)
+    : new Map<string, string>();
+  return resolveRenamedPathsPure(paths, renameMap, existsFn);
 };
 
 /**
