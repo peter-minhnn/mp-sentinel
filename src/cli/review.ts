@@ -48,7 +48,9 @@ import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
 import { reconcileFindings } from "../utils/reconcile-findings.js";
+import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-findings.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
+import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
 import { downgradeUnsinkedXssClaims, filterSelfNegatedFindings } from "../utils/finding-hygiene.js";
 import {
@@ -737,9 +739,34 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     new Set(),
   );
 
+  // ESLint adapter (opt-in, fail-open) — merge the project's own ESLint
+  // findings so unused-symbol verdicts come from a whole-file analysis.
+  let eslintMerged = mergedResults;
+  const eslintFindings = await runESLintAdapter(
+    sanitizedFiles.map((f) => f.path),
+    config,
+  );
+  if (eslintFindings) {
+    eslintMerged = mergeFindings(eslintFindings, mergedResults, new Set());
+  }
+
+  // Unused-import backstop — where ESLint ran it overrides the AI's diff-only
+  // "unused import" guesses (dropped); elsewhere they are demoted to INFO.
+  const unusedReconcile = reconcileUnusedImportFindings(eslintMerged, {
+    eslintRan: eslintFindings !== null,
+    isFileLinted: isLintableFile,
+  });
+  if (unusedReconcile.suppressed > 0 || unusedReconcile.downgraded > 0) {
+    log.info(
+      `Unused-import check: ${unusedReconcile.suppressed} AI finding(s) dropped (ESLint authority), ${unusedReconcile.downgraded} downgraded to INFO (unverifiable).`,
+    );
+  }
+
   // Collapse exact-duplicate findings (e.g. the model repeating itself) so the
   // report's signal-to-noise stays high. Distinct issues are never merged.
-  const { results: dedupedFinal, removed: duplicatesRemoved } = dedupeFindings(mergedResults);
+  const { results: dedupedFinal, removed: duplicatesRemoved } = dedupeFindings(
+    unusedReconcile.results,
+  );
   if (duplicatesRemoved > 0) {
     log.info(`Removed ${duplicatesRemoved} duplicate finding(s).`);
   }

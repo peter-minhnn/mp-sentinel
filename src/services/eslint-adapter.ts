@@ -53,6 +53,13 @@ export type ESLintExec = (
 /** File extensions ESLint is asked to lint. */
 const LINTABLE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/i;
 
+/**
+ * True when ESLint is asked to lint a path (by extension). Exported so the
+ * unused-import reconciler can tell which files ESLint actually covered and
+ * therefore where ESLint may be treated as the authority on unused symbols.
+ */
+export const isLintableFile = (path: string): boolean => LINTABLE_FILE_RE.test(path);
+
 /** Rules whose violations are crash-prone enough to warrant CRITICAL. */
 const CRITICAL_RULE_IDS = new Set<string>([
   "react-hooks/rules-of-hooks",

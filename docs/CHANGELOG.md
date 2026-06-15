@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] — 2026-06-15
+
+### Added
+- **ESLint adapter in CI review:** the ESLint adapter (`eslint.findings`) now runs in CI reviews too, not just local mode. Project-specific lint rules (e.g. `unused-imports/no-unused-imports`) are merged into the report alongside AI findings, giving the same whole-file analysis coverage in both pipelines.
+- **Unused-import backstop (`reconcileUnusedImportFindings`):** AI reviewers often flag imports as "unused" when they only see a diff hunk but not the rest of the file. The new reconciler runs after the ESLint adapter: for files ESLint actually linted, every AI unused-import finding is dropped (ESLint is the authority; if the import were truly unused, ESLint would have already reported it). For files ESLint didn't cover (adapter disabled, non-lintable extension), the AI claim is downgraded to INFO/low-confidence. This eliminates the recurring false-positive class where `React`, `Avatar`, `dayjs`, `clsx`, etc. were flagged unused despite being used elsewhere in the file.
+
+### Changed
+- **`isLintableFile` exported from ESLint adapter:** so the unused-import reconciler can determine which files ESLint actually covered.
+
 ## [3.2.0] — 2026-06-13
 
 ### Added (field test round 6)

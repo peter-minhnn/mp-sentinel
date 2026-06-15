@@ -34,9 +34,10 @@ import { formatMarkdownReport } from "../formatters/report.js";
 import { DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { runESLintAdapter } from "../services/eslint-adapter.js";
+import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
 import { dedupeFindings } from "../utils/dedupe-findings.js";
+import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-findings.js";
 import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
@@ -432,6 +433,20 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   if (eslintFindings) {
     auditResults = mergeFindings(eslintFindings, auditResults, new Set());
   }
+
+  // Unused-import backstop — ESLint verifies usage across the whole file, so
+  // where it ran it overrides the AI's diff-only "unused import" guesses
+  // (dropped); elsewhere those claims are demoted to INFO (unverifiable).
+  const unusedReconcile = reconcileUnusedImportFindings(auditResults, {
+    eslintRan: eslintFindings !== null,
+    isFileLinted: isLintableFile,
+  });
+  if (unusedReconcile.suppressed > 0 || unusedReconcile.downgraded > 0) {
+    log.info(
+      `Unused-import check: ${unusedReconcile.suppressed} AI finding(s) dropped (ESLint authority), ${unusedReconcile.downgraded} downgraded to INFO (unverifiable).`,
+    );
+  }
+  auditResults = unusedReconcile.results;
   auditResults = dedupeFindings(auditResults).results;
 
   // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs
