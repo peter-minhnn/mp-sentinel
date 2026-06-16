@@ -1329,6 +1329,10 @@ function checkRepetitiveOutput(file: GeneratedSkillFile): QualityCheck[] {
   for (const raw of file.content.split("\n")) {
     const line = raw.trim();
     if (!line.startsWith("- ") || line.length < 20) continue;
+    // Structural truncation/overflow markers ("- ... and N more files",
+    // "- ... and N more rules in config") legitimately repeat once per
+    // module/section -- they are list elisions, not duplicated guidance.
+    if (/^- \.\.\. and \d+ more\b/.test(line)) continue;
     counts.set(line, (counts.get(line) ?? 0) + 1);
   }
   for (const [line, count] of counts) {

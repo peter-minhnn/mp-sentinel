@@ -1735,3 +1735,43 @@ describe("validateSkillQuality", () => {
     });
   });
 });
+describe("validateSkillQuality — repetitive output", () => {
+  it("does NOT flag structural '... and N more files' truncation markers that repeat per module", () => {
+    const modules = [
+      "## Module Map",
+      "",
+      "### `src/features/booking` (53 files)",
+      "- Key files: `booking.tsx`",
+      "- ... and 3 more files",
+      "",
+      "### `src/features/dashboard` (40 files)",
+      "- Key files: `dashboard.tsx`",
+      "- ... and 3 more files",
+      "",
+      "### `src/features/templates` (12 files)",
+      "- Key files: `templates.tsx`",
+      "- ... and 3 more files",
+      "",
+      "### `src/routes/approval` (9 files)",
+      "- Key files: `route.tsx`",
+      "- ... and 3 more files",
+    ].join("\n");
+    const report = validateSkillQuality(
+      [makeFile(".claude/skills/test/references/modules.md", modules)],
+      "claude",
+      null,
+    );
+    expect(report.checks.some((c) => c.type === "repetitive-output")).toBe(false);
+  });
+
+  it("still flags genuinely duplicated guidance bullets", () => {
+    const dup = "- Always validate request input before processing it in the handler.";
+    const content = ["## Rules", "", dup, dup, dup].join("\n");
+    const report = validateSkillQuality(
+      [makeFile(".claude/skills/test/references/code-style.md", content)],
+      "claude",
+      null,
+    );
+    expect(report.checks.some((c) => c.type === "repetitive-output")).toBe(true);
+  });
+});

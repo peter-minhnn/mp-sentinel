@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Hook-placement false positives.** The model claims a hook "is not placed in a feature's `hooks/` directory" when the file already lives under a `hooks/` folder (it only sees the diff, not the path). The backstop drops the finding when the file path already contains a `hooks/` segment.
 
   Both are conservative: only AI-sourced findings (no `eslint:` evidence) whose message matches the specific shape are touched, and per-file status is only ever relaxed FAIL -> PASS when no actionable finding remains.
+- **Skill quality gate no longer flags structural list truncations as repeated bullets.** The `repetitive-output` check counted identical `- ... and N more files` elisions across module sections (e.g. four `references/modules.md` sections each truncating "3 more files") as duplicated guidance, emitting spurious `[quality:*] Bullet repeated Nx ... deduplicate the guidance` warnings during `create-skills`. These structural truncation/overflow markers (`- ... and N more`) are now excluded from the check.
 
 ## [3.2.3] — 2026-06-16
 

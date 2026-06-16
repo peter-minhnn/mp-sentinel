@@ -4,6 +4,7 @@
 
 - **Lodash subpath imports are no longer flagged for bundle size** — `import x from 'lodash/x'` and `lodash-es` imports are already tree-shakeable, so the review no longer claims they "import the entire package". It checks the file's actual imports first and only keeps the warning for a genuine whole-package `import _ from 'lodash'`.
 - **Correctly-placed hooks are no longer nagged** — a hook already under `features/<feature>/hooks/` is no longer flagged as "not in a hooks/ directory"; the backstop checks the real file path.
+- **No more spurious "Bullet repeated" warnings** -- generated `modules.md` truncation markers ("... and N more files") that naturally repeat once per module are no longer flagged by the skill quality gate.
 
 ---
 
