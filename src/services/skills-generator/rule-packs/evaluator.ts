@@ -23,6 +23,11 @@ export interface EvaluateChangedFilesOptions {
   severityOverrides?: Record<string, "CRITICAL" | "WARNING" | "INFO"> | undefined;
   /** File content mapping: filePath -> content */
   files: Map<string, string>;
+  /**
+   * Evaluator config (e.g. clean-code limits like `maxFunctionLines`,
+   * `maxComponentLines`). Forwarded verbatim to each evaluator's `evaluate`.
+   */
+  config?: Record<string, unknown>;
 }
 
 export interface EvaluatorFinding {
@@ -58,7 +63,7 @@ export function evaluateChangedFiles(
   options: EvaluateChangedFilesOptions,
 ): EvaluatorFinding[] {
   const findings: EvaluatorFinding[] = [];
-  const { files, severityOverrides } = options;
+  const { files, severityOverrides, config } = options;
 
   // Select active packs
   const activePackIds = new Set(
@@ -77,7 +82,12 @@ export function evaluateChangedFiles(
       // For each file that matches the evaluator, run it
       for (const [filePath, content] of files) {
         const lines = content.split("\n");
-        const results = evaluator.evaluate({ filePath, content, lines });
+        const results = evaluator.evaluate({
+          filePath,
+          content,
+          lines,
+          ...(config ? { config } : {}),
+        });
 
         for (const result of results) {
           if (result.passed) continue;

@@ -36,8 +36,15 @@ export { METADATA_MARKER };
  *         shared between workflow text and the fidelity hash (legacy
  *         generated rule paths excluded); output dirs pre-created so a
  *         fresh project's first generation matches its first --check.
+ *
+ * v3.1.0 -- NestJS support: `detectFrameworks` now recognizes the scoped
+ *         `@nestjs/core`/`@nestjs/common` packages (previously only a bare
+ *         `nestjs` dep, which never matched), and a dedicated NestJS rule
+ *         pack codifies the standard architecture (thin controllers, DTO
+ *         validation, constructor DI, module boundaries, guards/filters)
+ *         with version-gated rules and controller-layering evaluators.
  */
-export const GENERATOR_VERSION = "3.0.0";
+export const GENERATOR_VERSION = "3.1.0";
 
 /**
  * Parse the major version from a generator version string.

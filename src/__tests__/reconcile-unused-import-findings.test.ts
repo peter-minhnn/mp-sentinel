@@ -134,4 +134,45 @@ describe("reconcileUnusedImportFindings", () => {
     expect(downgraded).toBe(0);
     expect(results[0]!.result.issues![0]!.severity).toBe("INFO");
   });
+  // Real-world phrasings observed in gems-e-approval-web/SearchRoomForm.tsx,
+  // where every flagged import was actually used (AI diff-blindness). The
+  // earlier matcher missed all of these ("Unused `X` import", "not used in
+  // the component"), so they leaked through as high WARNINGs.
+  const GEMS_PHRASINGS = [
+    "Unused `Button` import — `Button` is imported from `@/shared/gems-ui` but not used in the component's JSX.",
+    "Unused `SearchOutlined` import — `SearchOutlined` is imported from `@ant-design/icons` but not used in the component's JSX.",
+    "Unused React import — React 18 with the automatic JSX runtime does not require importing React in TSX files.",
+    "Unused `useTranslation` import — imported from 'react-i18next' but not used in the component.",
+    "Unused `RoomDatePicker` import — imported from './RoomDatePicker' but not used in the component's JSX.",
+    "Unused `dayjs` import — `dayjs` is imported from 'dayjs' but not used in the component.",
+    "Unused `SearchRoomSearchParams` import — imported from '../types' but not used in the component.",
+  ];
+
+  it("matches current AI phrasings: drops all when linted", () => {
+    const { suppressed, downgraded } = reconcileUnusedImportFindings(
+      [
+        file(
+          "src/SearchRoomForm.tsx",
+          GEMS_PHRASINGS.map((m) => aiUnused(m)),
+        ),
+      ],
+      { eslintRan: true, isFileLinted: lintAll },
+    );
+    expect(suppressed).toBe(GEMS_PHRASINGS.length);
+    expect(downgraded).toBe(0);
+  });
+
+  it("matches current AI phrasings: downgrades all to INFO when not linted", () => {
+    const { results, downgraded } = reconcileUnusedImportFindings(
+      [
+        file(
+          "src/SearchRoomForm.tsx",
+          GEMS_PHRASINGS.map((m) => aiUnused(m)),
+        ),
+      ],
+      { eslintRan: false, isFileLinted: lintAll },
+    );
+    expect(downgraded).toBe(GEMS_PHRASINGS.length);
+    expect(results[0]!.result.issues!.every((i) => i.severity === "INFO")).toBe(true);
+  });
 });

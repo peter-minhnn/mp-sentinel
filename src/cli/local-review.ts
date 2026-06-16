@@ -39,6 +39,10 @@ import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js"
 import { mergeFindings } from "../services/risk-analyzer/index.js";
 import { dedupeFindings } from "../utils/dedupe-findings.js";
 import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-findings.js";
+import {
+  reconcileLodashBundleFindings,
+  reconcileHookPlacementFindings,
+} from "../utils/reconcile-false-positive-findings.js";
 import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
@@ -415,6 +419,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     sanitizedFiles,
     config.ai?.rulePackSeverity,
     rulePackDeps,
+    config.createSkills?.policies as Record<string, unknown> | undefined,
   );
   if (rulePackResults.length > 0) {
     const rulePackFiles = rulePackResults.map((r) => {
@@ -466,6 +471,19 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     );
   }
   auditResults = unusedReconcile.results;
+
+  // Deterministic false-positive backstops (lodash subpath imports wrongly
+  // called whole-package; hooks wrongly flagged as outside a hooks/ directory).
+  const lodashReconcile = reconcileLodashBundleFindings(auditResults, {
+    fileContents: new Map(sanitizedFiles.map((f) => [f.path, f.content])),
+  });
+  const hookReconcile = reconcileHookPlacementFindings(lodashReconcile.results);
+  if (lodashReconcile.suppressed + hookReconcile.suppressed > 0) {
+    log.info(
+      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement AI finding(s).`,
+    );
+  }
+  auditResults = hookReconcile.results;
   auditResults = dedupeFindings(auditResults).results;
 
   // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs

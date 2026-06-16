@@ -29,11 +29,13 @@ import type { AuditIssue, FileAuditResult } from "../types/index.js";
 
 /**
  * Matches the AI's unused-import/variable phrasings, e.g.
- * "Unused import: Avatar ...", "imported but never used",
- * "is defined but never used", "never used in the component".
+ * "Unused import: Avatar ...", "Unused `Avatar` import",
+ * "imported but never used", "is defined but never used",
+ * "never used in the component", "not used in the component's JSX",
+ * "imported from ... but not used in the file".
  */
 const UNUSED_IMPORT_RE =
-  /\bunused (?:import|variable|binding)\b|imported but (?:is )?never used|is (?:defined|declared|imported|assigned)\b[^.]*\bnever used\b|never used in the (?:component|file|module)\b/i;
+  /\bunused\b[^.\n]{0,60}?\b(?:import|variable|binding)\b|\b(?:import(?:ed)?|variable|binding)\b[^.\n]{0,60}?\b(?:never|not)\s+used\b|\bis\s+(?:defined|declared|imported|assigned)\b[^.]*?\b(?:never|not)\s+used\b|\b(?:never|not)\s+used\b\s+in\s+the\s+(?:component|file|module|jsx)\b/i;
 
 /** ESLint-sourced findings carry an `eslint:<ruleId>` evidence string. */
 const isESLintSourced = (issue: AuditIssue): boolean =>

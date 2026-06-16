@@ -11,7 +11,7 @@ export const rubyRules: RulePack = {
   rules: [
     {
       kind: "must",
-      text: "Use frozen string literals — add `# frozen_string_literal: true` at the top of every `.rb` file.",
+      text: "Use frozen string literals -- add `# frozen_string_literal: true` at the top of every `.rb` file.",
     },
     {
       kind: "must",
@@ -24,11 +24,11 @@ export const rubyRules: RulePack = {
     { kind: "should", text: "Use safe navigation operator `&.` to avoid nil-check conditionals." },
     {
       kind: "avoid",
-      text: "Do NOT use `unless` with an `else` — rephrase the condition for readability.",
+      text: "Do NOT use `unless` with an `else` -- rephrase the condition for readability.",
     },
     {
       kind: "avoid",
-      text: "Do NOT rescue `Exception` — rescue specific exception classes instead.",
+      text: "Do NOT rescue `Exception` -- rescue specific exception classes instead.",
     },
   ],
   fileGlobs: ["**/*.rb"],

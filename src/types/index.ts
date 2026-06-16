@@ -299,6 +299,13 @@ export interface CreateSkillsPolicies {
   maxFileLines: number;
   warnFileLines: number;
   maxFunctionLines: number;
+  /**
+   * Max lines for a React component's *logic* body (hooks, handlers, derived
+   * state) — the JSX return is excluded from this count. Components legitimately
+   * concentrate more lines than a plain helper, so this is higher than
+   * `maxFunctionLines`. Used by the React `long-function` evaluator.
+   */
+  maxComponentLines: number;
   maxParams: number;
   maxCyclomaticHint: number;
   forbidDefaultExports: boolean;
@@ -335,6 +342,7 @@ export const DEFAULT_CREATE_SKILLS_POLICIES: CreateSkillsPolicies = {
   maxFileLines: 500,
   warnFileLines: 350,
   maxFunctionLines: 80,
+  maxComponentLines: 150,
   maxParams: 5,
   maxCyclomaticHint: 12,
   forbidDefaultExports: false,
@@ -741,6 +749,7 @@ export const DEFAULT_CONFIG: Required<
       maxFileLines: 500,
       warnFileLines: 350,
       maxFunctionLines: 80,
+      maxComponentLines: 150,
       maxParams: 5,
       maxCyclomaticHint: 12,
       forbidDefaultExports: false,

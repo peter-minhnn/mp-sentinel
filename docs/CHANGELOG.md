@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.4] — 2026-06-16
+
+### Fixed
+- **Two recurring AI false-positive classes now suppressed by deterministic backstops** (`utils/reconcile-false-positive-findings.ts`), run after the unused-import backstop in both the CI and local pipelines:
+  - **Lodash bundle-size false positives.** The model flags a per-method subpath import (`import debounce from 'lodash/debounce'`) or an ESM `lodash-es` import as "imports the entire lodash package" — both are already tree-shakeable. The backstop reads the file's actual imports and drops the AI finding when the file has no whole-package `from 'lodash'` / `require('lodash')` import. Files with a real whole-package import keep the finding; files whose content is unavailable are left untouched (cannot verify).
+  - **Hook-placement false positives.** The model claims a hook "is not placed in a feature's `hooks/` directory" when the file already lives under a `hooks/` folder (it only sees the diff, not the path). The backstop drops the finding when the file path already contains a `hooks/` segment.
+
+  Both are conservative: only AI-sourced findings (no `eslint:` evidence) whose message matches the specific shape are touched, and per-file status is only ever relaxed FAIL -> PASS when no actionable finding remains.
+
+## [3.2.3] — 2026-06-16
+
+### Added
+- **NestJS support.** `detectFrameworks` now recognizes NestJS via its scoped packages (`@nestjs/core` / `@nestjs/common`) — there is no bare `nestjs` package on npm, so the previous `allDeps.nestjs` check never matched. Fixed in **both** detectors: the source-index reader (`manifests/node.reader.ts`, which feeds the SKILL `Frameworks:` line and the profile) and `source-index/manifest.ts` / `tech-profile.ts` (review cues). A dedicated **NestJS rule pack** codifies the framework's standard architecture — thin controllers, DTO + `class-validator` validation enforced by a global `ValidationPipe`, constructor DI, feature-module boundaries, guards/interceptors/pipes/exception-filters, and `ConfigModule` usage — with version-gated rules (Express 5 path syntax only on v11+, a legacy note on v9) and two deterministic evaluators (`no-data-access-in-controller`, `body-must-be-typed-dto`).
+- **`maxComponentLines` clean-code policy (default 150).** React components legitimately bundle hooks + handlers + a JSX return, so they now get a higher limit than plain functions (`maxFunctionLines`, default 80).
+
+### Fixed
+- **Unused-import backstop missed current AI phrasings.** `UNUSED_IMPORT_RE` only matched older wording ("unused import", "imported but never used") and silently skipped what the model now emits — "Unused `X` import", "not used in the component('s JSX)", "imported from ... but not used". These leaked through as high-severity warnings even though the imports were used. Broadened the matcher so the ESLint-authority drop (or INFO downgrade when ESLint did not cover the file) actually applies.
+- **React component length false positives.** The `react/long-function` evaluator hardcoded an 80-line limit, ignored the configurable policy, and counted the JSX return as part of the body — so a well-composed, JSX-heavy component (e.g. ~130 lines of hooks + a large delegating JSX tree) was flagged "spans 198 lines (limit 80)". It is now React-aware: it reads `maxFunctionLines` / `maxComponentLines` from config, measures only the imperative body (excluding the JSX return) for components, and applies the component limit. The always-on `builtin/function-too-long` evaluator now skips `.tsx`/`.jsx` (owned by the React-aware evaluator) to avoid double-reporting.
+- **Evaluator config was never threaded.** Clean-code limits from `createSkills.policies` (`maxFunctionLines`, `maxComponentLines`) are now passed through `runRulePackEvaluators` -> `evaluateChangedFiles` -> each evaluator; previously they always fell back to defaults.
+
+### Changed
+- **ASCII-only rule-pack text.** Removed risky Unicode (em/en dashes, arrows, ellipsis, smart quotes) from every rule pack's rendered text (`builtin`, `dart`, `flutter`, `laravel`, `nuxt`, `php`, `rails`, `ruby`, `solid`, `nestjs`), matching the convention the core JS packs already followed. Eliminates the `[quality:*] Found N occurrence(s) of em dash ... replace with ASCII equivalent` warnings in generated skills.
+
 ## [3.2.2] — 2026-06-15
 
 ### Fixed

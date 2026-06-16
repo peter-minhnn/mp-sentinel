@@ -122,6 +122,7 @@ import { svelteRules } from "./svelte.js";
 import { vueRules } from "./vue.js";
 import { reactRules } from "./react.js";
 import { nextRules } from "./next.js";
+import { nestjsRules } from "./nestjs.js";
 import { typescriptStrictRules } from "./typescript-strict.js";
 import { pythonRules } from "./python.js";
 import { goRules } from "./go.js";
@@ -150,6 +151,7 @@ export const ALL_PACKS: RulePack[] = [
   vueRules,
   reactRules,
   nextRules,
+  nestjsRules,
   viteRules,
   reactRouterRules,
   tanstackQueryRules,

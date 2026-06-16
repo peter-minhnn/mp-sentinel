@@ -120,22 +120,64 @@ describe("react/unstable-context-value", () => {
   });
 });
 
-// ── long-function ───────────────────────────────────────────────────────────
+// ── long-function (React-aware) ─────────────────────────────────────────────
 
-const makeLongComponent = (bodyLines: number): string =>
+const makeLongComponent = (logicLines: number, jsxLines = 1): string =>
   [
     "export const Big = () => {",
-    ...Array.from({ length: bodyLines }, (_, i) => `  const v${i} = ${i};`),
-    "  return <div />;",
+    ...Array.from({ length: logicLines }, (_, i) => `  const v${i} = ${i};`),
+    "  return (",
+    ...Array.from({ length: jsxLines }, () => "    <div />"),
+    "  );",
     "};",
   ].join("\n");
 
+const makeLongFunction = (bodyLines: number): string =>
+  [
+    "export function processData() {",
+    ...Array.from({ length: bodyLines }, (_, i) => `  const v${i} = ${i};`),
+    "  return total;",
+    "}",
+  ].join("\n");
+
+const findingsForWithConfig = (
+  ruleId: string,
+  files: Record<string, string>,
+  config: Record<string, unknown>,
+): ReturnType<typeof evaluateChangedFiles> =>
+  evaluateChangedFiles(makeContext(), {
+    files: new Map(Object.entries(files)),
+    config,
+  }).filter((f) => f.ruleId === `react/${ruleId}`);
+
 describe("react/long-function", () => {
-  it("flags a component body longer than 80 lines", () => {
-    const found = findingsFor("long-function", { "Big.tsx": makeLongComponent(90) });
+  it("flags a component whose LOGIC exceeds the component limit (default 150)", () => {
+    const found = findingsFor("long-function", { "Big.tsx": makeLongComponent(160) });
     expect(found).toHaveLength(1);
     expect(found[0]!.issue.line).toBe(1);
-    expect(found[0]!.issue.message).toContain("93 lines");
+    expect(found[0]!.issue.message).toContain("excluding JSX");
+  });
+
+  it("does NOT flag a small-logic component even with a huge JSX return", () => {
+    // 20 logic lines + 300 JSX lines: total >> 150 but logic is tiny.
+    expect(findingsFor("long-function", { "Ok.tsx": makeLongComponent(20, 300) })).toHaveLength(0);
+  });
+
+  it("honors a configured maxComponentLines and excludes JSX from the count", () => {
+    const found = findingsForWithConfig(
+      "long-function",
+      { "Big.tsx": makeLongComponent(40, 200) },
+      { maxFunctionLines: 80, maxComponentLines: 30 },
+    );
+    expect(found).toHaveLength(1);
+    // 40 logic lines + the declaration line = 41 measured, NOT 240+ with JSX.
+    expect(found[0]!.issue.message).toContain("41 lines excluding JSX");
+  });
+
+  it("flags a plain (non-component) function over maxFunctionLines", () => {
+    const found = findingsFor("long-function", { "util.ts": makeLongFunction(90) });
+    expect(found).toHaveLength(1);
+    expect(found[0]!.issue.message).toMatch(/^Function spans/);
   });
 
   it("does not flag components within the limit", () => {
@@ -148,7 +190,7 @@ describe("react/long-function", () => {
       "  const onClick = () => {",
       "    doThing();",
       "  };",
-      ...Array.from({ length: 85 }, (_, i) => `  const v${i} = ${i};`),
+      ...Array.from({ length: 160 }, (_, i) => `  const v${i} = ${i};`),
       "  return <div />;",
       "};",
     ].join("\n");
@@ -160,9 +202,9 @@ describe("react/long-function", () => {
   it("skips patch content (diff hunks) entirely", () => {
     const patch = [
       "diff --git a/Big.tsx b/Big.tsx",
-      "@@ -1,3 +1,90 @@",
+      "@@ -1,3 +1,200 @@",
       "+export const Big = () => {",
-      ...Array.from({ length: 85 }, (_, i) => `+  const v${i} = ${i};`),
+      ...Array.from({ length: 160 }, (_, i) => `+  const v${i} = ${i};`),
       "+};",
     ].join("\n");
     expect(findingsFor("long-function", { "Big.tsx": patch })).toHaveLength(0);

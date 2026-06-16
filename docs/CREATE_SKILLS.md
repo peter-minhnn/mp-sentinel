@@ -291,6 +291,7 @@ Configure clean-code limits in `.mp-sentinelrc.json`:
       "maxFileLines": 500,
       "warnFileLines": 350,
       "maxFunctionLines": 80,
+      "maxComponentLines": 150,
       "maxParams": 5,
       "maxCyclomaticHint": 12,
       "forbidDefaultExports": false
@@ -304,6 +305,7 @@ Configure clean-code limits in `.mp-sentinelrc.json`:
 | `maxFileLines` | `500` | Hard limit: no file should exceed this line count |
 | `warnFileLines` | `350` | Soft warning threshold for file length |
 | `maxFunctionLines` | `80` | Maximum lines per function/method body |
+| `maxComponentLines` | `150` | Maximum lines for a React component's logic body. The React `long-function` evaluator excludes the JSX return from this count, so it measures hooks/handlers/derived state only |
 | `maxParams` | `5` | Maximum function parameters (use an options object for more) |
 | `maxCyclomaticHint` | `12` | Cyclomatic complexity hint threshold |
 | `forbidDefaultExports` | `false` | When true, the generated skill instructs agents to use named exports only |
@@ -328,6 +330,7 @@ Built-in rule packs activate based on the detected language profile and dependen
 | **Astro** | `.astro` files or `astro` dependency | Frontmatter logic, `client:*` island directives, content collections, image optimization |
 | **Solid** | `solid-js` dependency + `.tsx`/`.jsx` files | `createSignal`/`createEffect`, no destructured props, `For`/`Show` control flow |
 | **Angular** | `@angular/core` or `@angular/common` dependency | `inject()` over constructor DI, standalone components, signals, `OnPush` change detection |
+| **NestJS** | `@nestjs/core` / `@nestjs/common` dependency | Thin controllers, DTO + `class-validator` validation via `ValidationPipe`, constructor DI, feature-module boundaries, guards/interceptors/pipes/filters; version-gated (Express 5 paths on v11+, legacy note on v9) |
 | **TypeScript (Strict)** | `.ts` or `.tsx` files | Config-aware: `.js` extension + `node:` prefix only under NodeNext/Node16 resolution (never `moduleResolution: "bundler"`); `import type` and strict-flag reminders only when the flags are enabled in `tsconfig.json` |
 | **Python** | `.py` files | Type hints, PEP 8, no top-level side effects, `pathlib`, `async`/`await` |
 | **Go** | `.go` files | `gofmt`, error handling, no panics in libraries, `context.Context` |
@@ -349,6 +352,9 @@ In addition to static rules, some rule packs supply **file evaluators** — dete
 | `island-directive-missing` | Astro | Interactive JS (`onclick`, `addEventListener`, etc.) without `client:*` island directive in `.astro` files | WARNING |
 | `no-destructured-props` | Solid | Destructured props in component parameters that break Solid's reactive tracking | WARNING |
 | `prefer-inject` | Angular | Constructor-based DI in `.ts` files (Angular v17+ prefers `inject()`) | INFO |
+| `no-data-access-in-controller` | NestJS | Repository / query-builder access inside a `*.controller.ts` (logic leaking into the transport layer) | WARNING |
+| `body-must-be-typed-dto` | NestJS | `@Body()` parameter typed as `any`/`object`/`unknown` (bypasses `class-validator`) | WARNING |
+| `long-function` | React | Component logic body (JSX return excluded) over `maxComponentLines`, or a plain function over `maxFunctionLines` | WARNING |
 
 Each evaluator is purely deterministic — no AI calls, no network. They run during `mp-sentinel review` as part of the deterministic (non-AI) pipeline and enrich the findings output.
 

@@ -7,11 +7,11 @@ export const flutterRules: RulePack = {
   rules: [
     {
       kind: "must",
-      text: "Use `BuildContext` correctly — never store it beyond the widget's build scope.",
+      text: "Use `BuildContext` correctly -- never store it beyond the widget's build scope.",
     },
     {
       kind: "must",
-      text: "Handle async errors in `initState` and lifecycle methods — use `addPostFrameCallback` or `WidgetsBindingObserver`.",
+      text: "Handle async errors in `initState` and lifecycle methods -- use `addPostFrameCallback` or `WidgetsBindingObserver`.",
     },
     {
       kind: "should",
@@ -23,11 +23,11 @@ export const flutterRules: RulePack = {
     },
     {
       kind: "avoid",
-      text: "Do NOT use `BuildContext` across async gaps — use `mounted` checks or `context.mounted` (Flutter 3.7+).",
+      text: "Do NOT use `BuildContext` across async gaps -- use `mounted` checks or `context.mounted` (Flutter 3.7+).",
     },
     {
       kind: "avoid",
-      text: "Do NOT put business logic directly in widgets — extract to `ChangeNotifier`, `Riverpod`, or `Bloc`.",
+      text: "Do NOT put business logic directly in widgets -- extract to `ChangeNotifier`, `Riverpod`, or `Bloc`.",
     },
   ],
   fileGlobs: ["**/*.dart", "lib/**"],

@@ -1,3 +1,23 @@
+# What's New in v3.2.4
+
+## Fewer AI false positives
+
+- **Lodash subpath imports are no longer flagged for bundle size** — `import x from 'lodash/x'` and `lodash-es` imports are already tree-shakeable, so the review no longer claims they "import the entire package". It checks the file's actual imports first and only keeps the warning for a genuine whole-package `import _ from 'lodash'`.
+- **Correctly-placed hooks are no longer nagged** — a hook already under `features/<feature>/hooks/` is no longer flagged as "not in a hooks/ directory"; the backstop checks the real file path.
+
+---
+
+# What's New in v3.2.3
+
+## NestJS support & fewer false positives
+
+- **NestJS is now detected and supported** — projects using `@nestjs/core` / `@nestjs/common` were previously seen as a generic Node service (the detector looked for a non-existent bare `nestjs` package). NestJS is now recognized by both the source index and review cues, and a dedicated rule pack adds NestJS architecture guidance: thin controllers, DTO + `class-validator` validation, constructor DI, feature-module boundaries, and guards/interceptors/pipes/filters. Rules are version-aware (e.g. Express 5 path syntax only on v11+, a legacy note on v9).
+- **"Unused import" false positives eliminated for current phrasings** — the backstop only recognized older wording and let through the model's newer "Unused `X` import" / "not used in the component" phrasings as high-severity warnings. It now catches them, so used imports are no longer flagged.
+- **React components no longer over-flagged as too long** — the long-function check counted the JSX return as part of the body and ignored configuration, so a well-composed, JSX-heavy component was flagged "spans 198 lines (limit 80)". It is now React-aware: it measures only the imperative body (hooks/handlers), honors the configurable `maxFunctionLines` / new `maxComponentLines` (default 150) limits, and no longer double-reports with the generic function-length check.
+- **ASCII-clean skill output** — generated skills no longer emit em dashes / smart punctuation that triggered `[quality:*] ... replace with ASCII equivalent` warnings.
+
+---
+
 # What's New in v3.2.2
 
 ## Unused-import accuracy & branch-diff hygiene

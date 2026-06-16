@@ -219,7 +219,11 @@ export function detectFrameworks(
   // Node.js frameworks
   if (allDeps.express) frameworks.push("express");
   if (allDeps.fastify) frameworks.push("fastify");
-  if (allDeps.nestjs) frameworks.push("nestjs");
+  // NestJS ships as scoped packages (@nestjs/core, @nestjs/common) -- there is
+  // no bare `nestjs` package, so detect via the scoped core/common deps.
+  if (allDeps["@nestjs/core"] || allDeps["@nestjs/common"] || allDeps.nestjs) {
+    frameworks.push("nestjs");
+  }
 
   // Testing frameworks
   if (allDeps.jest || allDeps["@jest/globals"]) frameworks.push("jest");

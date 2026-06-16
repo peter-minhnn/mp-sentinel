@@ -1,5 +1,5 @@
 /**
- * Built-in rule pack — always-active evaluators that implement project-level
+ * Built-in rule pack -- always-active evaluators that implement project-level
  * clean-code policies. Not tied to any specific language or framework.
  */
 

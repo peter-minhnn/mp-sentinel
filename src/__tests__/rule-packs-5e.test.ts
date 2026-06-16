@@ -152,6 +152,7 @@ describe("ALL_PACKS includes new packs", () => {
     expect(packIds).toContain("antd");
     expect(packIds).toContain("supabase");
     expect(packIds).toContain("tailwind");
-    expect(ALL_PACKS.length).toBe(25);
+    expect(packIds).toContain("nestjs");
+    expect(ALL_PACKS.length).toBe(26);
   });
 });

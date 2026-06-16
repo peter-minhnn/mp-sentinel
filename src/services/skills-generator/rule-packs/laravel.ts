@@ -7,7 +7,7 @@ export const laravelRules: RulePack = {
   rules: [
     {
       kind: "must",
-      text: "Use Eloquent ORM for database queries — avoid raw SQL unless query complexity requires it.",
+      text: "Use Eloquent ORM for database queries -- avoid raw SQL unless query complexity requires it.",
     },
     {
       kind: "must",
@@ -19,7 +19,7 @@ export const laravelRules: RulePack = {
     },
     {
       kind: "should",
-      text: "Keep controllers thin — move business logic to Service classes or Actions.",
+      text: "Keep controllers thin -- move business logic to Service classes or Actions.",
     },
     {
       kind: "should",
@@ -27,11 +27,11 @@ export const laravelRules: RulePack = {
     },
     {
       kind: "avoid",
-      text: "Do NOT use `dd()` or `dump()` in committed code — use Laravel's logging or dedicated debug tooling.",
+      text: "Do NOT use `dd()` or `dump()` in committed code -- use Laravel's logging or dedicated debug tooling.",
     },
     {
       kind: "avoid",
-      text: "Do NOT place queries inside Blade templates — use View Composers or dedicated DTOs.",
+      text: "Do NOT place queries inside Blade templates -- use View Composers or dedicated DTOs.",
     },
   ],
   fileGlobs: ["**/*.php", "app/**", "resources/views/**"],

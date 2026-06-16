@@ -12,12 +12,12 @@ export const dartRules: RulePack = {
   rules: [
     {
       kind: "must",
-      text: "Use `const` constructors where possible — Dart can canonicalize const instances at compile time.",
+      text: "Use `const` constructors where possible -- Dart can canonicalize const instances at compile time.",
     },
     { kind: "must", text: "Prefer `final` over `var` for variables that are never reassigned." },
     {
       kind: "must",
-      text: "Use null safety operators (`??`, `?.`, `!`) consistently — never suppress null safety with `late` unless unavoidable.",
+      text: "Use null safety operators (`??`, `?.`, `!`) consistently -- never suppress null safety with `late` unless unavoidable.",
     },
     {
       kind: "should",
@@ -30,7 +30,7 @@ export const dartRules: RulePack = {
     },
     {
       kind: "avoid",
-      text: "Do NOT use `print()` for logging — use a proper logging package (e.g., `logging`, `logger`).",
+      text: "Do NOT use `print()` for logging -- use a proper logging package (e.g., `logging`, `logger`).",
     },
   ],
   fileGlobs: ["**/*.dart"],

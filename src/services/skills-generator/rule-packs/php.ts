@@ -20,7 +20,7 @@ export const phpRules: RulePack = {
     },
     {
       kind: "should",
-      text: "Prefer `final` classes by default — only open a class for extension when the design explicitly requires it.",
+      text: "Prefer `final` classes by default -- only open a class for extension when the design explicitly requires it.",
     },
     {
       kind: "should",
@@ -28,11 +28,11 @@ export const phpRules: RulePack = {
     },
     {
       kind: "avoid",
-      text: "Do NOT use `mixed` as a type hint — prefer union types or a well-defined interface.",
+      text: "Do NOT use `mixed` as a type hint -- prefer union types or a well-defined interface.",
     },
     {
       kind: "avoid",
-      text: "Do NOT use `var` or dynamic property creation — always declare properties explicitly.",
+      text: "Do NOT use `var` or dynamic property creation -- always declare properties explicitly.",
     },
   ],
   fileGlobs: ["**/*.php"],

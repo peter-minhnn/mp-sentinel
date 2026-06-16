@@ -40,6 +40,12 @@ export const fileTooLong: FileEvaluator = {
 export const functionTooLong: FileEvaluator = {
   ruleId: "function-too-long",
   evaluate: ({ filePath, lines, config }) => {
+    // React component files (.tsx/.jsx) are owned by the React-aware
+    // `long-function` evaluator, which excludes the JSX return and applies a
+    // component-specific limit. Skip them here to avoid double-reporting and
+    // counting JSX markup as logic-body length.
+    if (/\.(tsx|jsx)$/.test(filePath)) return [];
+
     const maxFunctionLines = (config?.maxFunctionLines as number) ?? 80;
     const results: Array<{
       ruleId: string;

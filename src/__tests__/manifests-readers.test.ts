@@ -153,6 +153,24 @@ describe("node reader (regression)", () => {
     expect(manifest.packageName).toBe("mp-sentinel");
     expect(manifest.ecosystem).toBe("node");
   });
+
+  it("detects NestJS from scoped @nestjs/* deps (no bare `nestjs` package exists)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mp-nest-"));
+    try {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({
+          name: "nest-app",
+          dependencies: { "@nestjs/core": "^9.0.0", "@nestjs/common": "^9.0.0" },
+          devDependencies: { typescript: "^5.0.0", jest: "^29.0.0" },
+        }),
+      );
+      const manifest = await readManifest(dir);
+      expect(manifest.detectedFrameworks).toContain("nestjs");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ── Workspace detection ─────────────────────────────────────────────────────

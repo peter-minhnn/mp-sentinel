@@ -23,7 +23,7 @@ export const nuxtRules: RulePack = {
       kind: "must",
       id: "nuxt/use-fetch",
       requires: [{ dep: "nuxt", minMajor: 3 }],
-      text: "Use `useFetch()` or `useAsyncData()` for data fetching in pages and components — never `fetch()` directly for SSR-safe data.",
+      text: "Use `useFetch()` or `useAsyncData()` for data fetching in pages and components -- never `fetch()` directly for SSR-safe data.",
     },
     {
       kind: "must",
@@ -35,7 +35,7 @@ export const nuxtRules: RulePack = {
       kind: "must",
       id: "nuxt/navigate-to",
       requires: [{ dep: "nuxt", minMajor: 3 }],
-      text: "Use `navigateTo()` for programmatic navigation, `<NuxtLink>` for declarative links — never `window.location`.",
+      text: "Use `navigateTo()` for programmatic navigation, `<NuxtLink>` for declarative links -- never `window.location`.",
     },
     {
       kind: "should",
@@ -47,7 +47,7 @@ export const nuxtRules: RulePack = {
       kind: "should",
       id: "nuxt/auto-import-dirs",
       requires: [{ dep: "nuxt", minMajor: 3 }],
-      text: "Keep layouts in `layouts/` and composables in `composables/` — Nuxt auto-imports both directories.",
+      text: "Keep layouts in `layouts/` and composables in `composables/` -- Nuxt auto-imports both directories.",
     },
     {
       kind: "should",
@@ -59,11 +59,11 @@ export const nuxtRules: RulePack = {
       kind: "avoid",
       id: "nuxt/no-manual-auto-imports",
       requires: [{ dep: "nuxt", minMajor: 3 }],
-      text: "Do NOT manually import auto-imported Vue/Nuxt composables (`useState`, `useFetch`, `ref`, `computed`, etc.) — Nuxt handles this automatically.",
+      text: "Do NOT manually import auto-imported Vue/Nuxt composables (`useState`, `useFetch`, `ref`, `computed`, etc.) -- Nuxt handles this automatically.",
     },
     {
       kind: "avoid",
-      text: "Do NOT use Vue Router directly — Nuxt manages routing via the `pages/` directory structure.",
+      text: "Do NOT use Vue Router directly -- Nuxt manages routing via the `pages/` directory structure.",
     },
     {
       kind: "avoid",

@@ -57,7 +57,7 @@ export const solidRules: RulePack = {
   rules: [
     {
       kind: "must",
-      text: "Use `createSignal`, `createMemo`, `createEffect` for reactive state — not plain variables. Solid's reactivity depends on tracking access within tracked scopes.",
+      text: "Use `createSignal`, `createMemo`, `createEffect` for reactive state -- not plain variables. Solid's reactivity depends on tracking access within tracked scopes.",
     },
     {
       kind: "avoid",
@@ -73,11 +73,11 @@ export const solidRules: RulePack = {
     },
     {
       kind: "avoid",
-      text: "Do NOT use hooks-like patterns with conditional calls. Solid's primitives are not hooks — they can be called inside conditionals, but doing so complicates reasoning.",
+      text: "Do NOT use hooks-like patterns with conditional calls. Solid's primitives are not hooks -- they can be called inside conditionals, but doing so complicates reasoning.",
     },
     {
       kind: "must",
-      text: "Wrap side effects in `createEffect` — not raw `setTimeout` or `Promise.then` — to ensure proper cleanup and tracking.",
+      text: "Wrap side effects in `createEffect` -- not raw `setTimeout` or `Promise.then` -- to ensure proper cleanup and tracking.",
     },
   ],
   fileGlobs: ["**/*.tsx", "**/*.jsx"],

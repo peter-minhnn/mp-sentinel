@@ -49,6 +49,10 @@ import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
 import { reconcileFindings } from "../utils/reconcile-findings.js";
 import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-findings.js";
+import {
+  reconcileLodashBundleFindings,
+  reconcileHookPlacementFindings,
+} from "../utils/reconcile-false-positive-findings.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
@@ -691,6 +695,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     sanitizedFiles,
     config.ai?.rulePackSeverity,
     rulePackDeps,
+    config.createSkills?.policies as Record<string, unknown> | undefined,
   );
 
   // Extract AuditIssue[] from rule-pack FileAuditResult[] for mergeFindings
@@ -762,10 +767,24 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     );
   }
 
+  // Deterministic false-positive backstops: lodash subpath/lodash-es imports
+  // wrongly flagged as "imports the entire package", and hooks wrongly flagged
+  // as "not in a hooks/ directory" when the path already says otherwise.
+  const lodashReconcile = reconcileLodashBundleFindings(unusedReconcile.results, {
+    fileContents: new Map(sanitizedFiles.map((f) => [f.path, f.content])),
+  });
+  const hookReconcile = reconcileHookPlacementFindings(lodashReconcile.results);
+  const fpSuppressed = lodashReconcile.suppressed + hookReconcile.suppressed;
+  if (fpSuppressed > 0) {
+    log.info(
+      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement AI finding(s).`,
+    );
+  }
+
   // Collapse exact-duplicate findings (e.g. the model repeating itself) so the
   // report's signal-to-noise stays high. Distinct issues are never merged.
   const { results: dedupedFinal, removed: duplicatesRemoved } = dedupeFindings(
-    unusedReconcile.results,
+    hookReconcile.results,
   );
   if (duplicatesRemoved > 0) {
     log.info(`Removed ${duplicatesRemoved} duplicate finding(s).`);

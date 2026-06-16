@@ -98,8 +98,11 @@ describe("Angular 15/16/17 gating", () => {
 describe("Next.js 12 (pages) vs 13+ (App Router) gating", () => {
   it("Next 12: no App Router directives advice", () => {
     const texts = ruleTexts(ctx({ next: "12.3.4", react: "^18.0.0" }));
-    expect(texts.some((t) => t.includes("'use client'"))).toBe(false);
-    expect(texts.some((t) => t.includes("Server Components"))).toBe(false);
+    // Phrases unique to the 13+ App Router rules. (The Pages Router rule itself
+    // mentions "'use client'"/"Server Components" as things NOT to add, so we
+    // must match the App Router *advice*, not those bare substrings.)
+    expect(texts.some((t) => t.includes("directives correctly"))).toBe(false);
+    expect(texts.some((t) => t.includes("Prefer Server Components by default"))).toBe(false);
     // Stable rule survives
     expect(texts.some((t) => t.includes("next/image"))).toBe(true);
   });

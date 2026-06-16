@@ -153,7 +153,15 @@ export const unstableContextValue: FileEvaluator = {
   },
 };
 
-const MAX_FUNCTION_LINES = 80;
+const DEFAULT_MAX_FUNCTION_LINES = 80;
+const DEFAULT_MAX_COMPONENT_LINES = 150;
+
+/** PascalCase declaration name — strong signal the function is a component. */
+const COMPONENT_NAME_RE = /(?:function\s+[A-Z][\w$]*|const\s+[A-Z][\w$]*\s*[:=])/;
+/** Explicit React function-component type annotation. */
+const REACT_FC_TYPE_RE = /:\s*(?:React\.)?(?:FC|FunctionComponent|VFC)\b/;
+/** A `return (` / `return <` that opens a JSX block. */
+const JSX_RETURN_RE = /\breturn\s*\(\s*$|\breturn\s*</;
 
 /** Matches the start of a named function/component declaration. */
 const FUNCTION_START_RE =
@@ -169,16 +177,34 @@ const countBraces = (code: string): number => {
 };
 
 /**
- * Flag functions/components longer than MAX_FUNCTION_LINES (clean-code limit).
+ * Flag overly long functions and React components (clean-code limit).
+ *
  * Full-file contents only — brace tracking over partial diff hunks would lie.
  * Line-based brace counting is approximate (multi-line template literals can
  * skew it), so the threshold errs high to stay low-noise.
+ *
+ * React-aware: a component body legitimately bundles hooks + handlers + a JSX
+ * return, so applying a plain-function line limit to the whole component is
+ * noisy (a well-composed, JSX-heavy component gets flagged for markup it can't
+ * shrink). We therefore measure only the *logic* portion of a component — the
+ * lines before its JSX return — against a higher `maxComponentLines` limit,
+ * while plain functions keep using `maxFunctionLines`. Both limits come from
+ * the clean-code policy (config) and fall back to the defaults.
  */
 export const longFunction: FileEvaluator = {
   ruleId: "long-function",
-  evaluate: ({ filePath, content, lines }): FileEvaluatorResult[] => {
+  evaluate: ({ filePath, content, lines, config }): FileEvaluatorResult[] => {
     if (!isReactSourceFile(filePath) || isTestLikeFile(filePath)) return [];
     if (isPatchContent(content)) return [];
+
+    const maxFunctionLines =
+      typeof config?.maxFunctionLines === "number"
+        ? config.maxFunctionLines
+        : DEFAULT_MAX_FUNCTION_LINES;
+    const maxComponentLines =
+      typeof config?.maxComponentLines === "number"
+        ? config.maxComponentLines
+        : DEFAULT_MAX_COMPONENT_LINES;
 
     const results: FileEvaluatorResult[] = [];
     const stack: Array<{ startLine: number; entryDepth: number }> = [];
@@ -193,16 +219,47 @@ export const longFunction: FileEvaluator = {
 
       while (stack.length > 0 && depth <= stack[stack.length - 1]!.entryDepth) {
         const fn = stack.pop()!;
-        const length = i - fn.startLine + 1;
-        if (length > MAX_FUNCTION_LINES) {
+        const totalLength = i - fn.startLine + 1;
+        const startCode = stripStringsAndComments(lines[fn.startLine] ?? "");
+
+        // Locate the JSX return (if any) so component markup isn't counted as
+        // logic-body length.
+        let jsxReturnLine = -1;
+        for (let j = fn.startLine + 1; j <= i; j++) {
+          if (JSX_RETURN_RE.test(stripStringsAndComments(lines[j] ?? ""))) {
+            jsxReturnLine = j;
+            break;
+          }
+        }
+
+        const isComponent =
+          COMPONENT_NAME_RE.test(startCode) ||
+          REACT_FC_TYPE_RE.test(startCode) ||
+          jsxReturnLine !== -1;
+
+        if (isComponent) {
+          // Logic body = everything before the JSX return (markup excluded).
+          const logicLength = jsxReturnLine === -1 ? totalLength : jsxReturnLine - fn.startLine;
+          if (logicLength > maxComponentLines) {
+            results.push({
+              ruleId: "long-function",
+              passed: false,
+              message: `Component logic spans ${logicLength} lines excluding JSX (limit ${maxComponentLines}) — heavy hook/handler bodies mix concerns, hide re-render cost, and resist testing.`,
+              line: fn.startLine + 1,
+              severity: "WARNING",
+              suggestion:
+                "Extract data fetching/derivation into a custom hook and pure logic into helpers. The JSX return is not counted — only the imperative body is.",
+            });
+          }
+        } else if (totalLength > maxFunctionLines) {
           results.push({
             ruleId: "long-function",
             passed: false,
-            message: `Function/component spans ${length} lines (limit ${MAX_FUNCTION_LINES}) — long bodies mix concerns, hide re-render cost, and resist testing.`,
+            message: `Function spans ${totalLength} lines (limit ${maxFunctionLines}) — long bodies mix concerns and resist testing.`,
             line: fn.startLine + 1,
             severity: "WARNING",
             suggestion:
-              "Split by concern: extract data fetching/derivation into a custom hook, repeated JSX blocks into child components, and pure logic into helpers. Each extracted child also creates a memoization boundary that limits re-renders.",
+              "Split by concern: extract helpers and reduce the body. Each extraction also creates a clearer testing boundary.",
           });
         }
       }
