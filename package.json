@@ -57,9 +57,10 @@
     "extension:core:test": "npm run test -w mp-sentinel-extension-core",
     "extension:core:build": "npm run build -w mp-sentinel-extension-core",
     "extension:vscode:typecheck": "npm run typecheck -w mp-sentinel-vscode",
+    "extension:vscode:test": "npm run test -w mp-sentinel-vscode",
     "extension:vscode:build": "npm run build -w mp-sentinel-vscode",
     "extension:build": "npm run extension:core:build && npm run extension:vscode:build",
-    "extension:check": "npm run extension:core:typecheck && npm run extension:core:test && npm run extension:vscode:typecheck"
+    "extension:check": "npm run extension:core:typecheck && npm run extension:core:test && npm run extension:core:build && npm run extension:vscode:typecheck && npm run extension:vscode:test && npm run extension:vscode:build"
   },
   "keywords": [
     "code-review",

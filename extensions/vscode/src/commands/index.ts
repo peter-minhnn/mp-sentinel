@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { COMMAND_IDS } from "../pure/commandIds.js";
 import type { CommandDeps } from "./shared.js";
 import { dryRunPreview } from "./dryrun.js";
 import { indexHealth, rebuildIndex } from "./indexing.js";
@@ -19,25 +20,25 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     context.subscriptions.push(vscode.commands.registerCommand(id, handler));
   };
 
-  register("mpSentinel.setupCredentials", () => setupCredentials(deps));
-  register("mpSentinel.clearCredential", () => clearCredential(deps));
-  register("mpSentinel.selectProvider", () => selectProvider());
-  register("mpSentinel.initConfig", () => initConfig(deps));
+  register(COMMAND_IDS.setupCredentials, () => setupCredentials(deps));
+  register(COMMAND_IDS.clearCredential, () => clearCredential(deps));
+  register(COMMAND_IDS.selectProvider, () => selectProvider());
+  register(COMMAND_IDS.initConfig, () => initConfig(deps));
 
-  register("mpSentinel.reviewStaged", () => reviewStaged(deps));
-  register("mpSentinel.reviewCurrentFile", () => reviewCurrentFile(deps));
-  register("mpSentinel.reviewSelectedFiles", (resource, selected) =>
+  register(COMMAND_IDS.reviewStaged, () => reviewStaged(deps));
+  register(COMMAND_IDS.reviewCurrentFile, () => reviewCurrentFile(deps));
+  register(COMMAND_IDS.reviewSelectedFiles, (resource, selected) =>
     reviewSelectedFiles(deps, resource as vscode.Uri | undefined, selected as vscode.Uri[] | undefined),
   );
-  register("mpSentinel.reviewRange", () => reviewRange(deps));
-  register("mpSentinel.dryRunPreview", () => dryRunPreview(deps));
-  register("mpSentinel.explainContext", () => explainContext(deps));
+  register(COMMAND_IDS.reviewRange, () => reviewRange(deps));
+  register(COMMAND_IDS.dryRunPreview, () => dryRunPreview(deps));
+  register(COMMAND_IDS.explainContext, () => explainContext(deps));
 
-  register("mpSentinel.indexHealth", () => indexHealth(deps));
-  register("mpSentinel.rebuildIndex", () => rebuildIndex(deps));
+  register(COMMAND_IDS.indexHealth, () => indexHealth(deps));
+  register(COMMAND_IDS.rebuildIndex, () => rebuildIndex(deps));
 
-  register("mpSentinel.skillsCheck", () => skillsCheck(deps));
-  register("mpSentinel.generateSkills", () => generateSkills(deps));
+  register(COMMAND_IDS.skillsCheck, () => skillsCheck(deps));
+  register(COMMAND_IDS.generateSkills, () => generateSkills(deps));
 
-  register("mpSentinel.clearDiagnostics", () => deps.diagnostics.clear());
+  register(COMMAND_IDS.clearDiagnostics, () => deps.diagnostics.clear());
 }

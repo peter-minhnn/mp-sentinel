@@ -19,7 +19,9 @@ import {
   type ReviewOptions,
 } from "./command-builder.js";
 import { buildEnv, type AiSelection } from "./env.js";
+import { CliExecError, CliRuntimeError } from "./errors.js";
 import {
+  CliJsonParseError,
   parseCreateSkillsCheck,
   parseExplainContext,
   parseIndexHealth,
@@ -47,18 +49,6 @@ export interface ServiceContext {
   signal?: AbortSignal;
   /** Per-run timeout override. */
   timeoutMs?: number;
-}
-
-/** Raised when the CLI exits 2 (runtime/system error). Carries redacted stderr. */
-export class CliRuntimeError extends Error {
-  readonly exitCode: number;
-  readonly stderr: string;
-  constructor(message: string, exitCode: number, stderr: string) {
-    super(message);
-    this.name = "CliRuntimeError";
-    this.exitCode = exitCode;
-    this.stderr = stderr;
-  }
 }
 
 export class MpSentinelService {
@@ -97,26 +87,50 @@ export class MpSentinelService {
     }
   }
 
+  /**
+   * Parses CLI stdout, converting a {@link CliJsonParseError} into a typed
+   * {@link CliExecError} of kind `parse` so the adapter can present a uniform,
+   * secret-free message. The raw (redacted) stderr is attached for the output
+   * channel.
+   */
+  private parse<T>(
+    parser: (stdout: string) => T,
+    result: CliRunResult,
+    ctx: ServiceContext,
+  ): T {
+    try {
+      return parser(result.stdout);
+    } catch (error) {
+      if (error instanceof CliJsonParseError) {
+        throw new CliExecError("parse", error.message, {
+          stderr: redactSecrets(result.stderr, ctx.secrets),
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  }
+
   /** Runs a review. Returns the parsed report for exit 0 (PASS) and 1 (findings). */
   async review(options: ReviewOptions, ctx: ServiceContext): Promise<ReviewReport> {
     const args = buildReviewArgs({ ...options, format: options.format ?? "json" });
     const result = await this.exec(args, ctx);
     this.failOnRuntimeError(result, ctx);
-    return parseReviewReport(result.stdout);
+    return this.parse(parseReviewReport, result, ctx);
   }
 
   /** Context/token preview with no AI call. */
   async explainContext(files: readonly string[], ctx: ServiceContext): Promise<ExplainContextOutput> {
     const result = await this.exec(buildExplainContextArgs(files), ctx);
     this.failOnRuntimeError(result, ctx);
-    return parseExplainContext(result.stdout);
+    return this.parse(parseExplainContext, result, ctx);
   }
 
   /** Read-only source index health. */
   async indexHealth(ctx: ServiceContext): Promise<IndexHealthOutput> {
     const result = await this.exec(buildIndexingArgs({ kind: "health" }), ctx);
     this.failOnRuntimeError(result, ctx);
-    return parseIndexHealth(result.stdout);
+    return this.parse(parseIndexHealth, result, ctx);
   }
 
   /** Rebuilds the source index cache. Returns the raw run result. */
@@ -145,7 +159,7 @@ export class MpSentinelService {
     });
     const result = await this.exec(args, ctx);
     this.failOnRuntimeError(result, ctx);
-    return parseCreateSkillsCheck(result.stdout);
+    return this.parse(parseCreateSkillsCheck, result, ctx);
   }
 
   /** create-skills generate/update. Returns the raw run result. */

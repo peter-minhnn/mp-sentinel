@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { COMMAND_IDS } from "../pure/commandIds.js";
 import { buildContext, buildService } from "../core/serviceFactory.js";
 import { readSettings } from "../config/settings.js";
 import { resolveFolder, withProgress, type CommandDeps } from "./shared.js";
@@ -25,7 +26,7 @@ export async function skillsCheck(deps: CommandDeps): Promise<void> {
     void vscode.window
       .showWarningMessage(`MP Sentinel: ${stale.length} skill file(s) stale or missing.`, "Generate Now")
       .then((choice) => {
-        if (choice) void vscode.commands.executeCommand("mpSentinel.generateSkills");
+        if (choice) void vscode.commands.executeCommand(COMMAND_IDS.generateSkills);
       });
   }
 }

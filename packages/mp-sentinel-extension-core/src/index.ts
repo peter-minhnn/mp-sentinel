@@ -5,6 +5,7 @@
  */
 
 export * from "./types.js";
+export * from "./errors.js";
 export * from "./secrets.js";
 export * from "./env.js";
 export * from "./command-builder.js";

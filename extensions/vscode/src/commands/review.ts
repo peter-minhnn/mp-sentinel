@@ -3,7 +3,14 @@ import { summarizeReport, type ReviewScope } from "mp-sentinel-extension-core";
 
 import { buildContext, buildService } from "../core/serviceFactory.js";
 import { readSettings } from "../config/settings.js";
-import { relativePath, resolveFolder, withProgress, type CommandDeps } from "./shared.js";
+import { resolveWorkspaceFiles } from "../pure/paths.js";
+import {
+  isReviewableFile,
+  relativePath,
+  resolveFolder,
+  withProgress,
+  type CommandDeps,
+} from "./shared.js";
 
 async function runReviewScope(
   deps: CommandDeps,
@@ -58,9 +65,19 @@ export async function reviewCurrentFile(deps: CommandDeps): Promise<void> {
     void vscode.window.showErrorMessage("MP Sentinel: no active file to review.");
     return;
   }
+  if (!isReviewableFile(editor.document)) {
+    void vscode.window.showErrorMessage(
+      "MP Sentinel: save this file to disk before reviewing — untitled and virtual documents can't be reviewed.",
+    );
+    return;
+  }
   const folder = await resolveFolder(editor.document.uri);
   if (!folder) return;
   const file = relativePath(folder, editor.document.uri);
+  if (!file) {
+    void vscode.window.showErrorMessage("MP Sentinel: the active file is outside the workspace folder.");
+    return;
+  }
   await runReviewScope(deps, folder, { kind: "files", files: [file] }, "MP Sentinel: reviewing current file");
 }
 
@@ -70,16 +87,34 @@ export async function reviewSelectedFiles(
   selected?: vscode.Uri[],
 ): Promise<void> {
   const uris = selected && selected.length > 0 ? selected : resource ? [resource] : [];
-  if (uris.length === 0) {
-    void vscode.window.showErrorMessage("MP Sentinel: no files selected.");
+  const fileUris = uris.filter((u) => u.scheme === "file");
+  if (fileUris.length === 0) {
+    void vscode.window.showErrorMessage("MP Sentinel: no reviewable files selected.");
     return;
   }
-  const firstUri = uris[0];
+  const firstUri = fileUris[0];
   if (!firstUri) return;
   const folder = await resolveFolder(firstUri);
   if (!folder) return;
-  const files = uris.map((u) => relativePath(folder, u));
-  await runReviewScope(deps, folder, { kind: "files", files }, "MP Sentinel: reviewing selected files");
+
+  // Refuse a selection that spans more than one workspace folder: the CLI runs
+  // with a single cwd, so mixed paths would be silently wrong.
+  const resolved = resolveWorkspaceFiles(
+    folder.uri.fsPath,
+    fileUris.map((u) => u.fsPath),
+  );
+  if (!resolved.ok) {
+    void vscode.window.showErrorMessage(
+      `MP Sentinel: select files from a single workspace folder (${resolved.outside.length} file(s) are outside "${folder.name}").`,
+    );
+    return;
+  }
+  await runReviewScope(
+    deps,
+    folder,
+    { kind: "files", files: resolved.files },
+    "MP Sentinel: reviewing selected files",
+  );
 }
 
 export async function reviewRange(deps: CommandDeps): Promise<void> {
@@ -100,9 +135,19 @@ export async function explainContext(deps: CommandDeps): Promise<void> {
     void vscode.window.showErrorMessage("MP Sentinel: open a file to explain its review context.");
     return;
   }
+  if (!isReviewableFile(editor.document)) {
+    void vscode.window.showErrorMessage(
+      "MP Sentinel: save this file to disk before explaining its context.",
+    );
+    return;
+  }
   const folder = await resolveFolder(editor.document.uri);
   if (!folder) return;
   const file = relativePath(folder, editor.document.uri);
+  if (!file) {
+    void vscode.window.showErrorMessage("MP Sentinel: the active file is outside the workspace folder.");
+    return;
+  }
   const service = buildService(folder);
 
   const result = await withProgress("MP Sentinel: explaining context", deps, async (token) => {

@@ -1,7 +1,18 @@
 import * as vscode from "vscode";
 
+import { COMMAND_IDS } from "../pure/commandIds.js";
+import { formatIndexHealth } from "../pure/statusFormat.js";
 import { buildContext, buildService } from "../core/serviceFactory.js";
 import { resolveFolder, withProgress, type CommandDeps } from "./shared.js";
+
+/** Routes a notification action button to its command / behaviour. */
+function runHealthAction(choice: string | undefined, deps: CommandDeps): void {
+  if (choice === "Rebuild Index") {
+    void vscode.commands.executeCommand(COMMAND_IDS.rebuildIndex);
+  } else if (choice === "Show Output") {
+    deps.output.show();
+  }
+}
 
 export async function indexHealth(deps: CommandDeps): Promise<void> {
   const folder = await resolveFolder();
@@ -15,23 +26,26 @@ export async function indexHealth(deps: CommandDeps): Promise<void> {
   if (!health) return;
 
   deps.statusBar.showIndexHealth(health);
-  deps.output.info(`\nSource index health: ${health.status}`);
-  if (health.totalFiles !== undefined) deps.output.info(`  files: ${health.totalFiles}`);
-  if (health.staleReasons?.length) deps.output.info(`  stale: ${health.staleReasons.join(", ")}`);
-  if (health.parseErrorCount) deps.output.info(`  parse errors: ${health.parseErrorCount}`);
-  if (health.suggestedCommands?.length) {
-    deps.output.info(`  suggested: ${health.suggestedCommands.join(" | ")}`);
-  }
+  const display = formatIndexHealth(health);
+  deps.output.info("");
+  for (const line of display.lines) deps.output.info(line);
 
-  if (health.status === "ok") {
+  if (display.healthy && display.actions.length === 0) {
     void vscode.window.showInformationMessage("MP Sentinel: source index is healthy.");
-  } else {
-    void vscode.window
-      .showWarningMessage(`MP Sentinel: source index is ${health.status}.`, "Rebuild Index")
-      .then((choice) => {
-        if (choice) void vscode.commands.executeCommand("mpSentinel.rebuildIndex");
-      });
+    return;
   }
+  if (display.healthy) {
+    void vscode.window
+      .showInformationMessage(
+        "MP Sentinel: source index is healthy, with recoverable parser debt.",
+        ...display.actions,
+      )
+      .then((choice) => runHealthAction(choice, deps));
+    return;
+  }
+  void vscode.window
+    .showWarningMessage(`MP Sentinel: source index is ${health.status}.`, ...display.actions)
+    .then((choice) => runHealthAction(choice, deps));
 }
 
 export async function rebuildIndex(deps: CommandDeps): Promise<void> {

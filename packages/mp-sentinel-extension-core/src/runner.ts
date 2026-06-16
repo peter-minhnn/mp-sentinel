@@ -15,7 +15,8 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 
-import { assertNoSecretsInArgs, type SecretBundle } from "./secrets.js";
+import { CliExecError } from "./errors.js";
+import { assertNoSecretsInArgs, redactSecrets, type SecretBundle } from "./secrets.js";
 
 export type SpawnFn = (
   command: string,
@@ -101,17 +102,19 @@ export class CliRunner {
 
       const timer = setTimeout(() => {
         child.kill("SIGTERM");
-        finish(() => reject(new Error(`mp-sentinel timed out after ${timeoutMs}ms`)));
+        finish(() =>
+          reject(new CliExecError("timeout", `mp-sentinel timed out after ${timeoutMs}ms`)),
+        );
       }, timeoutMs);
 
       const onAbort = (): void => {
         child.kill("SIGTERM");
-        finish(() => reject(new Error("mp-sentinel run aborted")));
+        finish(() => reject(new CliExecError("aborted", "mp-sentinel run aborted")));
       };
       if (options.signal) {
         if (options.signal.aborted) {
           child.kill("SIGTERM");
-          return finish(() => reject(new Error("mp-sentinel run aborted")));
+          return finish(() => reject(new CliExecError("aborted", "mp-sentinel run aborted")));
         }
         options.signal.addEventListener("abort", onAbort, { once: true });
       }
@@ -124,7 +127,10 @@ export class CliRunner {
       });
 
       child.on("error", (error: Error) => {
-        finish(() => reject(error));
+        // A spawn failure (e.g. ENOENT for a missing binary). Redact defensively
+        // even though such messages don't normally carry secrets.
+        const message = redactSecrets(error.message, options.secrets);
+        finish(() => reject(new CliExecError("spawn", message, { cause: error })));
       });
 
       child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
