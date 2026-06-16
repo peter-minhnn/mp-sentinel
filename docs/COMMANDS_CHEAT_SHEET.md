@@ -103,6 +103,7 @@ Detects tech stack via `detectTechProfile`, picks a provider from env vars (`ANT
       "maxFileLines": 500,
       "warnFileLines": 350,
       "maxFunctionLines": 80,
+      "maxComponentLines": 150,
       "maxParams": 5,
       "maxCyclomaticHint": 12,
       "forbidDefaultExports": false

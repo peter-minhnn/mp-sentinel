@@ -135,18 +135,40 @@ const CreateSkillsAIConfigSchema = z.object({
  * silently fall back to defaults for missing fields, which is confusing.
  */
 const CreateSkillsPoliciesSchema = z.object({
-  maxFileLines: z.number().int().positive("createSkills.policies.maxFileLines must be positive"),
-  warnFileLines: z.number().int().positive("createSkills.policies.warnFileLines must be positive"),
+  // All fields are optional so legacy/partial policy blocks still validate;
+  // mergeConfig() fills any omitted field from DEFAULT_CREATE_SKILLS_POLICIES,
+  // keeping the resolved CreateSkillsPolicies fully populated.
+  maxFileLines: z
+    .number()
+    .int()
+    .positive("createSkills.policies.maxFileLines must be positive")
+    .optional(),
+  warnFileLines: z
+    .number()
+    .int()
+    .positive("createSkills.policies.warnFileLines must be positive")
+    .optional(),
   maxFunctionLines: z
     .number()
     .int()
-    .positive("createSkills.policies.maxFunctionLines must be positive"),
-  maxParams: z.number().int().positive("createSkills.policies.maxParams must be positive"),
+    .positive("createSkills.policies.maxFunctionLines must be positive")
+    .optional(),
+  maxComponentLines: z
+    .number()
+    .int()
+    .positive("createSkills.policies.maxComponentLines must be positive")
+    .optional(),
+  maxParams: z
+    .number()
+    .int()
+    .positive("createSkills.policies.maxParams must be positive")
+    .optional(),
   maxCyclomaticHint: z
     .number()
     .int()
-    .positive("createSkills.policies.maxCyclomaticHint must be positive"),
-  forbidDefaultExports: z.boolean(),
+    .positive("createSkills.policies.maxCyclomaticHint must be positive")
+    .optional(),
+  forbidDefaultExports: z.boolean().optional(),
 });
 
 /**
@@ -438,7 +460,10 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
     // create-skills silently ignore user config (and --check blind to it).
     // Fall back to the same defaults loadProjectConfig returns when no
     // config file exists, so both paths produce an identical shape.
-    policies: userConfig.createSkills?.policies ?? DEFAULT_CONFIG.createSkills.policies,
+    policies: {
+      ...DEFAULT_CONFIG.createSkills.policies,
+      ...(userConfig.createSkills?.policies ?? {}),
+    },
     disableRules: userConfig.createSkills?.disableRules ?? DEFAULT_CONFIG.createSkills.disableRules,
   },
   mcp: {

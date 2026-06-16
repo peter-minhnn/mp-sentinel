@@ -188,6 +188,45 @@ describe("loadProjectConfig with ruleFiles", () => {
     expect(config.eslint!.enabled).toBe(true);
   });
 
+  it("preserves createSkills.policies.maxComponentLines through parsing (not stripped)", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      JSON.stringify({
+        createSkills: {
+          policies: {
+            maxFileLines: 500,
+            warnFileLines: 350,
+            maxFunctionLines: 80,
+            maxComponentLines: 222,
+            maxParams: 5,
+            maxCyclomaticHint: 12,
+            forbidDefaultExports: false,
+          },
+        },
+      }),
+    );
+
+    const config = await loadProjectConfig(cwd);
+    expect(config.createSkills?.policies?.maxComponentLines).toBe(222);
+  });
+
+  it("fills missing policy fields from defaults for legacy partial configs", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      join(cwd, ".mp-sentinelrc.json"),
+      // Legacy partial block (predates maxComponentLines) must still load.
+      JSON.stringify({ createSkills: { policies: { maxFileLines: 600 } } }),
+    );
+
+    const config = await loadProjectConfig(cwd);
+    // User-provided field is preserved...
+    expect(config.createSkills?.policies?.maxFileLines).toBe(600);
+    // ...and omitted fields are filled from DEFAULT_CREATE_SKILLS_POLICIES.
+    expect(config.createSkills?.policies?.maxComponentLines).toBe(150);
+    expect(config.createSkills?.policies?.maxFunctionLines).toBe(80);
+  });
+
   it("reads multiple rule files", async () => {
     const cwd = await makeTempDir();
     await writeFile(join(cwd, "ARCH.md"), "Architecture rules here.");

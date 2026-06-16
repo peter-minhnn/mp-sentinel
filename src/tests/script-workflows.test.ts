@@ -401,22 +401,22 @@ describe("adoption-preview.mjs", () => {
 
 // --- adoption-preview against real validation repos (optional) ----------
 //
-// Runs the preview against the two reference repos when their paths are
-// available (MP_SENTINEL_VALIDATION_REPOS=path1,path2 or sibling dirs).
-// Skips with a clear message when absent so CI on a clean checkout stays
-// green.
+// Real-repo validation is OPT-IN: it runs only when MP_SENTINEL_VALIDATION_REPOS
+// (comma-separated repo paths) is set. Ambient sibling directories are NOT
+// auto-discovered, so a normal `npm test` is deterministic regardless of what
+// sits beside the checkout. When the env var is set, the strict quality
+// assertions below still apply. Skips with a clear message when unset.
 
 describe("adoption-preview.mjs real validation repos", () => {
   const adoptionPreview = scriptPath("adoption-preview.mjs");
 
-  const candidateRoots = (name: string): string[] => {
-    const fromEnv = (process.env["MP_SENTINEL_VALIDATION_REPOS"] ?? "")
+  // Opt-in only: env-provided paths, never ambient sibling directories.
+  const candidateRoots = (name: string): string[] =>
+    (process.env["MP_SENTINEL_VALIDATION_REPOS"] ?? "")
       .split(",")
       .map((p) => p.trim())
       .filter(Boolean)
       .filter((p) => p.endsWith(name) || p.includes(`${name}`));
-    return [...fromEnv, resolve(REPO_ROOT, "..", name), resolve(REPO_ROOT, "..", "..", name)];
-  };
 
   const resolveRepo = (name: string): string | null =>
     candidateRoots(name).find((p) => {
@@ -432,7 +432,7 @@ describe("adoption-preview.mjs real validation repos", () => {
       const repoRoot = resolveRepo(repoName);
       if (!repoRoot) {
         console.info(
-          `[skip] ${repoName} not found (set MP_SENTINEL_VALIDATION_REPOS or place it beside the repo) - skipping real-repo preview.`,
+          `[skip] ${repoName} not provided (set MP_SENTINEL_VALIDATION_REPOS to opt in) - skipping real-repo preview.`,
         );
         return;
       }

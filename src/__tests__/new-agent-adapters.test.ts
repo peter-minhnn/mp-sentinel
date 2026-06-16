@@ -88,19 +88,14 @@ describe("Phase 4.2 — adapter output paths", () => {
   it("writes to expected canonical paths", () => {
     const root = "/tmp/proj";
     const find = (id: string) => ADAPTER_REGISTRY.find((a) => a.id === id);
-    expect(find("aider")?.getDefaultOutput(root, "demo")).toBe(`${root}/CONVENTIONS.md`);
-    expect(find("continue")?.getDefaultOutput(root, "demo")).toBe(
-      `${root}/.continue/rules/demo-best-practices.md`,
-    );
-    expect(find("roo")?.getDefaultOutput(root, "demo")).toBe(
-      `${root}/.roo/skills/demo-roo-best-practices`,
-    );
-    expect(find("copilot")?.getDefaultOutput(root, "demo")).toBe(
-      `${root}/.github/copilot-instructions.md`,
-    );
-    expect(find("zed")?.getDefaultOutput(root, "demo")).toBe(
-      `${root}/.agents/skills/demo-zed-best-practices`,
-    );
-    expect(find("jetbrains")?.getDefaultOutput(root, "demo")).toBe(`${root}/.junie/AGENTS.md`);
+    // getDefaultOutput uses path.join, so normalize separators for Windows.
+    const out = (id: string): string =>
+      (find(id)?.getDefaultOutput(root, "demo") ?? "").replace(/\\/g, "/");
+    expect(out("aider")).toBe(`${root}/CONVENTIONS.md`);
+    expect(out("continue")).toBe(`${root}/.continue/rules/demo-best-practices.md`);
+    expect(out("roo")).toBe(`${root}/.roo/skills/demo-roo-best-practices`);
+    expect(out("copilot")).toBe(`${root}/.github/copilot-instructions.md`);
+    expect(out("zed")).toBe(`${root}/.agents/skills/demo-zed-best-practices`);
+    expect(out("jetbrains")).toBe(`${root}/.junie/AGENTS.md`);
   });
 });

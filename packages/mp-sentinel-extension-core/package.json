@@ -1,0 +1,33 @@
+{
+  "name": "mp-sentinel-extension-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IDE-agnostic core for MP Sentinel editor extensions: CLI runner, env injection, JSON parsing, config helpers, and result normalization. No VS Code dependency.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "tsc -p tsconfig.test.json",
+    "test": "node --test \"dist-test/test/\"*.spec.js"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "author": "Nguyen Nhat Minh",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "typescript": "^6.0.3"
+  }
+}

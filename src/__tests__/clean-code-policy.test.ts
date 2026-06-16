@@ -46,6 +46,7 @@ const policies: CreateSkillsPolicies = {
   maxFileLines: 500,
   warnFileLines: 350,
   maxFunctionLines: 80,
+  maxComponentLines: 150,
   maxParams: 5,
   maxCyclomaticHint: 12,
   forbidDefaultExports: true,

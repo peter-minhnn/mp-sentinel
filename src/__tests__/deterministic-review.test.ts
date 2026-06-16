@@ -327,7 +327,7 @@ describe("printResultsSummary", () => {
     expect(calls).toContain("Overview");
     expect(calls).toContain("Status");
     expect(calls).toContain("PASS");
-    expect(calls).toContain("2 total");
+    expect(calls).toContain("2 audited");
     expect(calls).toContain("2 passed");
     expect(calls).toContain("0 failed");
     expect(calls).toContain("critical");

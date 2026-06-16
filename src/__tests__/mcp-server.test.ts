@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { setLogQuietMode } from "../utils/logger.js";
 import { clearConfigCache } from "../utils/config.js";
 
@@ -44,7 +44,7 @@ const writeMinimalIndex = async (
       parseErrors: 0,
     },
   });
-  await mkdir(cachePath.substring(0, cachePath.lastIndexOf("/")), { recursive: true });
+  await mkdir(dirname(cachePath), { recursive: true });
   await writeFile(cachePath, content, "utf-8");
 };
 
@@ -406,7 +406,7 @@ const writeRichIndex = async (cachePath: string): Promise<void> => {
       importEdges: 2,
     },
   });
-  await mkdir(cachePath.substring(0, cachePath.lastIndexOf("/")), { recursive: true });
+  await mkdir(dirname(cachePath), { recursive: true });
   await writeFile(cachePath, content, "utf-8");
 };
 
@@ -600,7 +600,7 @@ describe("mcp-server index query handlers", () => {
       files: [...recoveredFiles, ...errorFiles],
       stats: { totalFiles: 240, indexedFiles: 240, skippedFiles: 0, parseErrors: 120 },
     });
-    await mkdir(cachePath.substring(0, cachePath.lastIndexOf("/")), { recursive: true });
+    await mkdir(dirname(cachePath), { recursive: true });
     await writeFile(cachePath, content, "utf-8");
   };
 

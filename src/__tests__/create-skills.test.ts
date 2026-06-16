@@ -455,11 +455,13 @@ describe("Cline adapter generate()", () => {
       projectName: "my-app",
       force: false,
     });
-    const skillMd = files.find((f) => f.outputPath.endsWith("SKILL.md"));
+    // Normalize separators so the path assertions hold on Windows too.
+    const norm = (path: string): string => path.replace(/\\/g, "/");
+    const skillMd = files.find((f) => norm(f.outputPath).endsWith("SKILL.md"));
     expect(skillMd).toBeDefined();
-    expect(skillMd?.outputPath).toContain(".cline/skills/my-app-cline-best-practices");
+    expect(norm(skillMd?.outputPath ?? "")).toContain(".cline/skills/my-app-cline-best-practices");
     // Full progressive reference set ships alongside SKILL.md
-    expect(files.filter((f) => f.outputPath.includes("references/")).length).toBe(10);
+    expect(files.filter((f) => norm(f.outputPath).includes("references/")).length).toBe(10);
   });
 });
 
@@ -954,6 +956,7 @@ describe("metadata utilities", () => {
         maxFileLines: 400,
         warnFileLines: 300,
         maxFunctionLines: 60,
+        maxComponentLines: 120,
         maxParams: 4,
         maxCyclomaticHint: 10,
         forbidDefaultExports: true,
@@ -1132,6 +1135,7 @@ describe("metadata utilities", () => {
       maxFileLines: 400,
       warnFileLines: 300,
       maxFunctionLines: 60,
+      maxComponentLines: 120,
       maxParams: 4,
       maxCyclomaticHint: 10,
       forbidDefaultExports: true,

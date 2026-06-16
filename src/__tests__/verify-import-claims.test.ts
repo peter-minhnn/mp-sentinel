@@ -16,7 +16,7 @@ function file(filePath: string, issues: AuditIssue[]): FileAuditResult {
 const existsFor =
   (present: string[]) =>
   (p: string): boolean =>
-    present.some((name) => p.endsWith(name));
+    present.some((name) => p.replace(/\\/g, "/").endsWith(name));
 
 describe("verifyImportClaims", () => {
   it("downgrades a missing-import CRITICAL whose alias target exists (RichTextEditor)", () => {

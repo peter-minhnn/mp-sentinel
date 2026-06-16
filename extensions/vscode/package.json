@@ -1,0 +1,190 @@
+{
+  "name": "mp-sentinel-vscode",
+  "displayName": "MP Sentinel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered code review, source indexing, and agent-skill generation in VS Code, powered by the mp-sentinel CLI.",
+  "publisher": "mp-sentinel",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20.11.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:.mp-sentinelrc.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mpSentinel.setupCredentials",
+        "title": "MP Sentinel: Set API Key / Token"
+      },
+      {
+        "command": "mpSentinel.clearCredential",
+        "title": "MP Sentinel: Clear Stored Credential"
+      },
+      {
+        "command": "mpSentinel.selectProvider",
+        "title": "MP Sentinel: Select Provider & Model Tier"
+      },
+      {
+        "command": "mpSentinel.initConfig",
+        "title": "MP Sentinel: Create .mp-sentinelrc.json"
+      },
+      {
+        "command": "mpSentinel.reviewStaged",
+        "title": "MP Sentinel: Review Staged Changes"
+      },
+      {
+        "command": "mpSentinel.reviewCurrentFile",
+        "title": "MP Sentinel: Review Current File"
+      },
+      {
+        "command": "mpSentinel.reviewSelectedFiles",
+        "title": "MP Sentinel: Review Selected File(s)"
+      },
+      {
+        "command": "mpSentinel.reviewRange",
+        "title": "MP Sentinel: Review Git Range..."
+      },
+      {
+        "command": "mpSentinel.dryRunPreview",
+        "title": "MP Sentinel: Dry-Run Preview (no AI)"
+      },
+      {
+        "command": "mpSentinel.explainContext",
+        "title": "MP Sentinel: Explain Review Context"
+      },
+      {
+        "command": "mpSentinel.indexHealth",
+        "title": "MP Sentinel: Source Index Health"
+      },
+      {
+        "command": "mpSentinel.rebuildIndex",
+        "title": "MP Sentinel: Rebuild Source Index"
+      },
+      {
+        "command": "mpSentinel.skillsCheck",
+        "title": "MP Sentinel: Check Agent Skills Freshness"
+      },
+      {
+        "command": "mpSentinel.generateSkills",
+        "title": "MP Sentinel: Generate / Update Agent Skills"
+      },
+      {
+        "command": "mpSentinel.clearDiagnostics",
+        "title": "MP Sentinel: Clear Findings"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "mpSentinel.reviewSelectedFiles",
+          "group": "mpSentinel@1",
+          "when": "resourceLangId || explorerResourceIsFolder"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "mpSentinel.reviewCurrentFile",
+          "group": "mpSentinel@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MP Sentinel",
+      "properties": {
+        "mpSentinel.cli.command": {
+          "type": "string",
+          "default": "npx",
+          "markdownDescription": "Executable used to launch the CLI. Use `npx` (with `mp-sentinel` in `cli.baseArgs`), an absolute path to the binary, or `mp-sentinel` if it is on PATH."
+        },
+        "mpSentinel.cli.baseArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "mp-sentinel"
+          ],
+          "description": "Arguments prepended to every CLI invocation. Leave as [\"mp-sentinel\"] when command is \"npx\"; set to [] when command is the binary itself."
+        },
+        "mpSentinel.cli.timeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "Kill a CLI run after this many milliseconds."
+        },
+        "mpSentinel.ai.provider": {
+          "type": "string",
+          "enum": [
+            "",
+            "gemini",
+            "openai",
+            "anthropic",
+            "grok",
+            "openrouter"
+          ],
+          "default": "",
+          "description": "AI provider (injected as AI_PROVIDER). Leave blank to use the CLI/config default."
+        },
+        "mpSentinel.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Exact model id (injected as AI_MODEL). Overrides the tier when set."
+        },
+        "mpSentinel.ai.modelTier": {
+          "type": "string",
+          "enum": [
+            "",
+            "premium",
+            "balanced",
+            "budget"
+          ],
+          "default": "",
+          "description": "Model tier when no explicit model is set (injected as AI_MODEL_TIER)."
+        },
+        "mpSentinel.review.targetBranch": {
+          "type": "string",
+          "default": "",
+          "description": "Default target branch for range reviews (e.g. origin/main). Blank uses the CLI default."
+        },
+        "mpSentinel.review.includeInfoSeverity": {
+          "type": "boolean",
+          "default": true,
+          "description": "Surface INFO findings as diagnostics (Hints). Disable to show only CRITICAL/WARNING."
+        },
+        "mpSentinel.skills.agents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "claude"
+          ],
+          "description": "Agent adapter ids to generate/check skills for (e.g. claude, cursor, codex, windsurf)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vscode:prepublish": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "mp-sentinel-extension-core": "file:../../packages/mp-sentinel-extension-core"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^6.0.3",
+    "esbuild": "0.28.1"
+  }
+}
