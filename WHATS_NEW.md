@@ -1,3 +1,13 @@
+# What's New in v3.2.5
+
+## Branch-diff review in your editor, JSON for local mode, and AI setup
+
+- **Local reviews can now emit JSON.** `mp-sentinel --local` and `--branch-diff` accept `--format json` and print a valid `ReviewReport` to stdout (stdout stays JSON-only; logs go to stderr) — even when nothing changed, you get a parseable empty report. Pair it with `--output reports/review-MMDD.md` to also write a clean markdown report. (VS Code branch review needs this; upgrade from ≤ 3.2.4.)
+- **VS Code: "Review Current Branch Against Base…".** Review every commit on your current branch against a base branch (default `origin/main`, editable per run). Findings flow into the Problems panel and the MP Sentinel side panel, and the markdown report opens automatically. Configure defaults via `mpSentinel.review.compareBranch`, `mpSentinel.review.branchReportDirectory`, and `mpSentinel.review.branchSeverityThreshold`.
+- **VS Code: "Configure AI Provider…".** A wizard to pick provider, model or tier, and (for Anthropic-compatible endpoints like DeepSeek) a custom base URL — then optionally store the API key in Secret Storage. The panel shows a compact, secret-free AI status.
+
+---
+
 # What's New in v3.2.4
 
 ## Fewer AI false positives

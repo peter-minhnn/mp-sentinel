@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { AiModelTier, AiSelection } from "mp-sentinel-extension-core";
+import type { AiModelTier, AiSelection, SeverityThreshold } from "mp-sentinel-extension-core";
 
 const SECTION = "mpSentinel";
 
@@ -12,6 +12,16 @@ export interface CliSettings {
 export interface ReviewSettings {
   targetBranch?: string;
   includeInfoSeverity: boolean;
+  /** Default base branch for branch-diff review. */
+  compareBranch: string;
+  /** Directory (workspace-relative) for branch-diff markdown reports. */
+  branchReportDirectory: string;
+  /** Severity floor for branch-diff FAIL. */
+  branchSeverityThreshold: SeverityThreshold;
+}
+
+function asSeverityThreshold(value: string | undefined): SeverityThreshold {
+  return value === "CRITICAL" || value === "WARNING" ? value : "INFO";
 }
 
 export interface ExtensionSettings {
@@ -36,9 +46,19 @@ export function readSettings(scope?: vscode.Uri): ExtensionSettings {
   if (provider) ai.provider = provider;
   if (model) ai.model = model;
   if (modelTier) ai.modelTier = modelTier;
+  // Optional non-secret provider settings (never credentials).
+  const anthropicBaseUrl = nonEmpty(cfg.get<string>("ai.anthropicBaseUrl"));
+  const openrouterSiteUrl = nonEmpty(cfg.get<string>("ai.openrouterSiteUrl"));
+  const openrouterAppName = nonEmpty(cfg.get<string>("ai.openrouterAppName"));
+  if (anthropicBaseUrl) ai.anthropicBaseUrl = anthropicBaseUrl;
+  if (openrouterSiteUrl) ai.openrouterSiteUrl = openrouterSiteUrl;
+  if (openrouterAppName) ai.openrouterAppName = openrouterAppName;
 
   const review: ReviewSettings = {
     includeInfoSeverity: cfg.get<boolean>("review.includeInfoSeverity", true),
+    compareBranch: cfg.get<string>("review.compareBranch", "origin/main") || "origin/main",
+    branchReportDirectory: cfg.get<string>("review.branchReportDirectory", "reports") || "reports",
+    branchSeverityThreshold: asSeverityThreshold(cfg.get<string>("review.branchSeverityThreshold")),
   };
   const targetBranch = nonEmpty(cfg.get<string>("review.targetBranch"));
   if (targetBranch) review.targetBranch = targetBranch;

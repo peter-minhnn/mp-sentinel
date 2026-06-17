@@ -33,15 +33,15 @@ export class DiagnosticsManager {
     options: { includeInfo: boolean },
   ): number {
     const findings = normalizeFindings(report);
-    const filtered = options.includeInfo
-      ? findings
-      : findings.filter((f) => f.severity !== "INFO");
+    const filtered = options.includeInfo ? findings : findings.filter((f) => f.severity !== "INFO");
     const byFile = groupFindingsByFile(filtered);
 
-    // Clear every reviewed file first so resolved issues disappear.
-    for (const file of report.results) {
-      this.collection.delete(this.resolveUri(file.filePath, folder));
-    }
+    // Replace the entire previous review's diagnostics so the Problems panel
+    // always reflects only the latest report — matching the side panel, which
+    // also replaces its findings each run. (Clearing just the reviewed files
+    // would leave stale entries from a prior review of other files, drifting the
+    // Problems count away from the report/panel.)
+    this.collection.clear();
 
     let total = 0;
     for (const [filePath, fileFindings] of byFile) {

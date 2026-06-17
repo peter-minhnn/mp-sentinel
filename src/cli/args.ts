@@ -9,6 +9,7 @@ export type CLICommand =
   | "create-skills"
   | "mcp-server"
   | "init"
+  | "check-ai"
   | "default";
 
 export interface CLIValues {
@@ -227,6 +228,10 @@ export const buildProgram = (): Command => {
     .description("Run mp-sentinel as a stdio MCP server (read-only, no AI)");
 
   program
+    .command("check-ai")
+    .description("Check AI provider connectivity using the current env (JSON output)");
+
+  program
     .command("init")
     .description("Interactively generate .mp-sentinelrc.json from detected project tech")
     .option("--force", "Overwrite an existing .mp-sentinelrc.json", false)
@@ -335,7 +340,9 @@ export const parseCliArgs = (): {
             ? "mcp-server"
             : rawPositionals[0] === "init"
               ? "init"
-              : "review";
+              : rawPositionals[0] === "check-ai"
+                ? "check-ai"
+                : "review";
     const commandPositionals =
       command === "indexing" || command === "create-skills" || command === "init"
         ? rawPositionals.slice(1)

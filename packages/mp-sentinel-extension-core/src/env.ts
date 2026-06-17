@@ -34,9 +34,19 @@ export interface BuildEnvInput {
   secrets?: SecretBundle;
   /** Extra non-secret MCP env vars the user configured (e.g. server URLs). */
   mcpEnv?: Readonly<Record<string, string>>;
+  /**
+   * Extra non-secret env vars the adapter sets per run (e.g. an internal
+   * progress flag). Applied after MCP env and before secrets, so it can never
+   * override a credential.
+   */
+  extraEnv?: Readonly<Record<string, string>>;
 }
 
-function assignIfPresent(target: Record<string, string>, key: string, value: string | undefined): void {
+function assignIfPresent(
+  target: Record<string, string>,
+  key: string,
+  value: string | undefined,
+): void {
   if (typeof value === "string" && value.length > 0) {
     target[key] = value;
   }
@@ -48,7 +58,7 @@ function assignIfPresent(target: Record<string, string>, key: string, value: str
  * first so the CLI still sees PATH etc., then overlaid with our injections.
  */
 export function buildEnv(input: BuildEnvInput = {}): Record<string, string> {
-  const { baseEnv = {}, ai = {}, secrets, mcpEnv } = input;
+  const { baseEnv = {}, ai = {}, secrets, mcpEnv, extraEnv } = input;
 
   const env: Record<string, string> = {};
 
@@ -68,6 +78,13 @@ export function buildEnv(input: BuildEnvInput = {}): Record<string, string> {
   // 3. MCP env (non-secret config only — secrets must come via the bundle).
   if (mcpEnv) {
     for (const [key, value] of Object.entries(mcpEnv)) {
+      assignIfPresent(env, key, value);
+    }
+  }
+
+  // 3b. Per-run extra env (non-secret, e.g. internal progress flag).
+  if (extraEnv) {
+    for (const [key, value] of Object.entries(extraEnv)) {
       assignIfPresent(env, key, value);
     }
   }

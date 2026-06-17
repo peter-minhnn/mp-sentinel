@@ -187,6 +187,23 @@ const run = async (): Promise<void> => {
     return;
   }
 
+  // Handle check-ai command — a connectivity probe; no git repo required.
+  if (command === "check-ai") {
+    try {
+      const { runCheckAiCommand } = await import("./commands/check-ai.js");
+      process.exitCode = await runCheckAiCommand();
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          status: "error",
+          error: error instanceof Error ? error.message : "check-ai failed with unknown error",
+        }),
+      );
+      process.exitCode = 2;
+    }
+    return;
+  }
+
   // Check if in git repository (for review commands)
   if (!(await isGitRepository())) {
     throw new SystemError("Not a git repository. Please run from a git project root.");

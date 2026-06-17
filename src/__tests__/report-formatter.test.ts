@@ -35,6 +35,71 @@ const makeReport = (overrides?: Partial<ReviewReport>): ReviewReport => ({
   ...overrides,
 });
 
+// ── INFO-only files appear in Findings ──────────────────────────────────────
+
+describe("formatMarkdownReport — INFO-only files", () => {
+  it("renders INFO-only files in `## Findings` so summary and body agree", () => {
+    const md = formatMarkdownReport(
+      makeReport({
+        status: "PASS",
+        summary: {
+          ...makeReport().summary,
+          criticalIssues: 0,
+          warningIssues: 0,
+          infoIssues: 1,
+        },
+        results: [
+          {
+            filePath: "src/info-only.ts",
+            duration: 5,
+            result: {
+              status: "PASS",
+              issues: [{ line: 4, severity: "INFO", message: "Consider a clearer name" }],
+            },
+          },
+        ],
+      }),
+    );
+    expect(md).toContain("## Findings");
+    expect(md).toContain("src/info-only.ts");
+    expect(md).toContain("Consider a clearer name");
+  });
+});
+
+// ── Target label & diff lines ──────────────────────────────────────────────
+
+describe("formatMarkdownReport — target label & diff lines", () => {
+  it("prefers targetLabel over the raw machine target", () => {
+    const md = formatMarkdownReport(
+      makeReport({
+        target: { mode: "range", value: "origin/develop" },
+        targetLabel: "branch-diff (feature/x vs origin/develop)",
+      }),
+    );
+    expect(md).toContain("branch-diff (feature/x vs origin/develop)");
+    expect(md).not.toContain("range:origin/develop");
+  });
+
+  it("falls back to the machine target when no label is set", () => {
+    const md = formatMarkdownReport(makeReport({ target: { mode: "staged" } }));
+    expect(md).toContain("staged");
+  });
+
+  it("shows the diff-line count when available", () => {
+    const md = formatMarkdownReport(
+      makeReport({ summary: { ...makeReport().summary, totalChangedLines: 42 } }),
+    );
+    expect(md).toMatch(/Diff lines \| 42/);
+  });
+
+  it("shows N/A for diff lines when 0 but files were audited", () => {
+    const md = formatMarkdownReport(
+      makeReport({ summary: { ...makeReport().summary, totalChangedLines: 0, auditedFiles: 3 } }),
+    );
+    expect(md).toMatch(/Diff lines \| N\/A/);
+  });
+});
+
 // ── Markdown report tests ──────────────────────────────────────────────────
 
 describe("formatMarkdownReport — metadata display", () => {
@@ -209,7 +274,7 @@ describe("formatMarkdownReport — metadata display", () => {
     expect(md).toContain("## Findings");
   });
 
-  it("does NOT render findings section when only INFO issues exist with PASS status", () => {
+  it("renders the findings section for INFO-only PASS files (summary/body must agree)", () => {
     const report = makeReport({
       status: "PASS",
       summary: {
@@ -236,7 +301,10 @@ describe("formatMarkdownReport — metadata display", () => {
     });
 
     const md = formatMarkdownReport(report);
-    expect(md).not.toContain("## Findings");
+    expect(md).toContain("## Findings");
+    expect(md).toContain("src/test.ts");
+    expect(md).toContain("minor style issue");
+    expect(md).toContain("INFO");
   });
 
   it("renders summary with Icon | Metric | Value columns", () => {

@@ -17,6 +17,7 @@ import {
   matchCommitPattern,
   shouldSkipCommit,
   resolveRenamedPaths,
+  getChangeStatsForTarget,
 } from "../utils/git.js";
 import prompts from "prompts";
 import { getSecurityService } from "../services/security/index.js";
@@ -42,7 +43,10 @@ import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-
 import {
   reconcileLodashBundleFindings,
   reconcileHookPlacementFindings,
+  reconcileUnusedJsxFindings,
+  reconcileAntdIconImportFindings,
 } from "../utils/reconcile-false-positive-findings.js";
+import { dedupeCrossCategoryFindings } from "../utils/dedupe-cross-category-findings.js";
 import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
@@ -76,17 +80,24 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   const verbosePatternMatching = config.localReview?.verbosePatternMatching || values.verbose;
   const commitSha = values.commit;
 
-  // Structured formats (json/markdown/sarif) globally silence the logger so
-  // CI stdout stays parseable — but local mode has no structured renderer:
-  // its findings print through log.plain while headers/file names bypass the
-  // logger. Left quiet, the summary would show file names with NO finding
-  // details. Re-enable logs here unless the user explicitly asked for -q.
-  if (!values.quiet && values.format && values.format !== "console") {
+  // Local mode emits a structured ReviewReport for `--format json` (stdout
+  // stays JSON-only; logs already route to stderr/quiet). Other non-console
+  // formats have no local renderer, so fall back to the console report with a
+  // warning. Re-enable logs for that fallback unless the user asked for -q.
+  const wantsJson = values.format === "json";
+  if (!values.quiet && values.format && values.format !== "console" && !wantsJson) {
     setLogQuietMode(false);
     log.warning(
       `--format ${values.format} is not supported in local mode — rendering the console report.`,
     );
   }
+  // Report target used for both the populated and the empty-result JSON paths.
+  const reportCompareBranch = commitSha ?? (isBranchDiffMode ? compareBranch : "HEAD");
+  // Any early return in JSON mode must still print a valid (empty) ReviewReport
+  // so stdout is always parseable, never blank.
+  const emitEmptyIfJson = (): void => {
+    if (wantsJson) emitEmptyLocalJsonReport(reportCompareBranch, startTime);
+  };
 
   // --no-cache: bypass the AI response cache for this run (pre-merge gates
   // should never serve findings from a previous prompt/file state).
@@ -121,6 +132,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     } else {
       log.warning("No commits found to review.");
     }
+    emitEmptyIfJson();
     return 0;
   }
 
@@ -144,6 +156,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     if (values.verbose && (config.localReview?.filterByPattern ?? false)) {
       log.info(`Patterns configured: ${(config.localReview?.commitPatterns ?? []).length}`);
     }
+    emitEmptyIfJson();
     return 0;
   }
 
@@ -173,8 +186,8 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   // place commits are displayed, so "later commit" can never be misread.
   commitsToReview = sortCommitsChronologically(commitsToReview);
 
-  // Print commits being reviewed
-  printCommitList(commitsToReview);
+  // Print commits being reviewed (console-only: keeps JSON stdout clean).
+  if (!wantsJson) printCommitList(commitsToReview);
 
   let hasErrors = false;
   const dryRun = values["dry-run"] || values["verbose-dry-run"];
@@ -230,6 +243,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   if (resolvedFiles.length === 0) {
     log.success("No code files changed in the reviewed scope.");
+    emitEmptyIfJson();
     return hasErrors ? 1 : 0;
   }
 
@@ -242,6 +256,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   if (fileReadResult.success.length === 0) {
     log.warning("No files could be read for auditing.");
+    emitEmptyIfJson();
     return 1;
   }
 
@@ -263,6 +278,7 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
 
   if (acceptedFiles.length === 0) {
     log.success("All changed files were ignored. Nothing to review.");
+    emitEmptyIfJson();
     return hasErrors ? 1 : 0;
   }
 
@@ -473,18 +489,39 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   auditResults = unusedReconcile.results;
 
   // Deterministic false-positive backstops (lodash subpath imports wrongly
-  // called whole-package; hooks wrongly flagged as outside a hooks/ directory).
+  // called whole-package; hooks wrongly flagged as outside a hooks/ directory;
+  // rendered JSX elements wrongly flagged as "unused").
+  const fileContentMap = new Map(sanitizedFiles.map((f) => [f.path, f.content]));
   const lodashReconcile = reconcileLodashBundleFindings(auditResults, {
-    fileContents: new Map(sanitizedFiles.map((f) => [f.path, f.content])),
+    fileContents: fileContentMap,
   });
   const hookReconcile = reconcileHookPlacementFindings(lodashReconcile.results);
-  if (lodashReconcile.suppressed + hookReconcile.suppressed > 0) {
+  const jsxReconcile = reconcileUnusedJsxFindings(hookReconcile.results, {
+    fileContents: fileContentMap,
+  });
+  const iconReconcile = reconcileAntdIconImportFindings(jsxReconcile.results, {
+    fileContents: fileContentMap,
+  });
+  if (
+    lodashReconcile.suppressed +
+      hookReconcile.suppressed +
+      jsxReconcile.suppressed +
+      iconReconcile.suppressed >
+    0
+  ) {
     log.info(
-      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement AI finding(s).`,
+      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement + ${jsxReconcile.suppressed} unused-JSX + ${iconReconcile.suppressed} antd-icon AI finding(s).`,
     );
   }
-  auditResults = hookReconcile.results;
+  auditResults = iconReconcile.results;
   auditResults = dedupeFindings(auditResults).results;
+  const crossDedupe = dedupeCrossCategoryFindings(auditResults);
+  if (crossDedupe.removed > 0) {
+    log.info(
+      `Cross-category dedupe: merged ${crossDedupe.removed} same-line duplicate finding(s).`,
+    );
+  }
+  auditResults = crossDedupe.results;
 
   // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs
   // always kept). Off by default; opt in via review.maxFindingsPerFile.
@@ -508,28 +545,58 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
   const targetLabel = commitSha
     ? `commit (${commitSha.slice(0, 7)})`
     : isBranchDiffMode
-      ? `branch-diff (${compareBranch})`
+      ? `branch-diff (${currentBranch} vs ${compareBranch})`
       : `local (${commitsToReview.length} commit${commitsToReview.length === 1 ? "" : "s"})`;
 
-  const allPassed = printResultsSummary(auditResults, auditDuration, threshold, {
-    target: targetLabel,
-    aiEnabled,
-    skipped: filterResult.rejected.map(({ path, reason }) => ({ path, reason })),
-    commits: commitsToReview,
-  });
+  // Changed-line count for the report's Diff lines metric. Computed for
+  // branch-diff via a single numstat over the compare range, summed across the
+  // files actually reviewed. 0 (unavailable) renders as N/A downstream.
+  const totalChangedLines = isBranchDiffMode
+    ? await sumChangedLines(
+        `${compareBranch}..HEAD`,
+        sanitizedFiles.map((f) => f.path),
+      )
+    : 0;
 
-  // --output: write a clean markdown report (no ANSI codes) for MR attachment.
-  if (values.output) {
-    await writeLocalMarkdownReport({
-      outputPath: values.output,
+  let allPassed: boolean;
+  if (wantsJson) {
+    // Structured path: emit a ReviewReport as JSON-only stdout, optionally
+    // writing the markdown report (logged to stderr) when --output is set.
+    allPassed = await emitLocalJsonReport({
       auditResults,
       skipped: filterResult.rejected,
       aiEnabled,
       threshold,
       startTime,
       commits: commitsToReview,
-      compareBranch: commitSha ?? (isBranchDiffMode ? compareBranch : "HEAD"),
+      compareBranch: reportCompareBranch,
+      targetLabel,
+      totalChangedLines,
+      ...(values.output ? { outputPath: values.output } : {}),
     });
+  } else {
+    allPassed = printResultsSummary(auditResults, auditDuration, threshold, {
+      target: targetLabel,
+      aiEnabled,
+      skipped: filterResult.rejected.map(({ path, reason }) => ({ path, reason })),
+      commits: commitsToReview,
+    });
+
+    // --output: write a clean markdown report (no ANSI codes) for MR attachment.
+    if (values.output) {
+      await writeLocalMarkdownReport({
+        outputPath: values.output,
+        auditResults,
+        skipped: filterResult.rejected,
+        aiEnabled,
+        threshold,
+        startTime,
+        commits: commitsToReview,
+        compareBranch: reportCompareBranch,
+        targetLabel,
+        totalChangedLines,
+      });
+    }
   }
 
   if (!allPassed) {
@@ -559,6 +626,10 @@ interface LocalMarkdownReportOptions {
   startTime: number;
   commits: CommitInfo[];
   compareBranch: string;
+  /** Human-readable target label for the report. */
+  targetLabel?: string;
+  /** Changed-line count (0 = unavailable -> rendered as N/A). */
+  totalChangedLines?: number;
 }
 
 /**
@@ -576,13 +647,14 @@ const writeLocalMarkdownReport = async (options: LocalMarkdownReportOptions): Pr
       auditResults,
       skipped,
       [],
-      0,
+      options.totalChangedLines ?? 0,
       startTime,
       undefined,
       undefined,
       { threshold },
     );
     if (commits.length > 0) report.commits = commits;
+    if (options.targetLabel) report.targetLabel = options.targetLabel;
     await writeFile(resolve(process.cwd(), outputPath), formatMarkdownReport(report));
     log.info(`Markdown report written to ${outputPath}`);
   } catch (error) {
@@ -590,6 +662,98 @@ const writeLocalMarkdownReport = async (options: LocalMarkdownReportOptions): Pr
       `Failed to write report to ${outputPath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+};
+
+/**
+ * Sum changed lines (additions + deletions) for `range` across the reviewed
+ * files. Best-effort: returns 0 if git can't produce stats (rendered as N/A).
+ */
+const sumChangedLines = async (range: string, files: readonly string[]): Promise<number> => {
+  try {
+    const stats = await getChangeStatsForTarget({ mode: "range", value: range }, process.cwd());
+    const reviewed = new Set(files);
+    let total = 0;
+    for (const [path, lines] of stats) {
+      if (reviewed.has(path)) total += lines;
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+};
+
+interface LocalJsonReportOptions {
+  auditResults: FileAuditResult[];
+  skipped: Array<{ path: string; reason: string }>;
+  aiEnabled: boolean;
+  threshold: SeverityThreshold;
+  startTime: number;
+  commits: CommitInfo[];
+  compareBranch: string;
+  /** Human-readable target label for the report. */
+  targetLabel?: string;
+  /** Changed-line count (0 = unavailable -> rendered as N/A). */
+  totalChangedLines?: number;
+  /** When set, also write the markdown report (logged to stderr, never stdout). */
+  outputPath?: string;
+}
+
+/**
+ * Print an empty (PASS) ReviewReport to stdout. Used by every JSON-mode early
+ * return — no commits differ/match, no changed files, all ignored — so stdout
+ * always carries a parseable report rather than going blank.
+ */
+const emitEmptyLocalJsonReport = (compareBranch: string, startTime: number): void => {
+  const report = buildReport(
+    { mode: "range", value: compareBranch },
+    false,
+    DEFAULT_PROMPT_VERSION,
+    [],
+    [],
+    [],
+    0,
+    startTime,
+  );
+  console.log(JSON.stringify(report, null, 2));
+};
+
+/**
+ * Build a ReviewReport from local-mode results (reusing the CI report builder)
+ * and print it as JSON to stdout, keeping stdout machine-readable. Returns
+ * whether the review passed (status === "PASS"). Any markdown side-output is
+ * written to disk and announced on stderr so stdout stays JSON-only.
+ */
+const emitLocalJsonReport = async (options: LocalJsonReportOptions): Promise<boolean> => {
+  const report = buildReport(
+    { mode: "range", value: options.compareBranch },
+    options.aiEnabled,
+    DEFAULT_PROMPT_VERSION,
+    options.auditResults,
+    options.skipped,
+    [],
+    options.totalChangedLines ?? 0,
+    options.startTime,
+    undefined,
+    undefined,
+    { threshold: options.threshold },
+  );
+  if (options.commits.length > 0) report.commits = options.commits;
+  if (options.targetLabel) report.targetLabel = options.targetLabel;
+
+  if (options.outputPath) {
+    try {
+      await writeFile(resolve(process.cwd(), options.outputPath), formatMarkdownReport(report));
+      log.infoStderr(`Markdown report written to ${options.outputPath}`);
+    } catch (error) {
+      log.warningStderr(
+        `Failed to write report to ${options.outputPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  // stdout is reserved for the machine-readable report.
+  console.log(JSON.stringify(report, null, 2));
+  return report.status === "PASS";
 };
 
 /**
@@ -741,7 +905,7 @@ const auditCommitMessages = async (
       hasErrors = true;
     }
   }
-  console.log();
+  log.plain(""); // quiet-aware blank line; suppressed for machine formats
 
   return hasErrors;
 };

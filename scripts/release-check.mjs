@@ -239,10 +239,20 @@ function checkLockfileIntegrity() {
   const lock = readJson("package-lock.json");
   if (!lock || !lock.packages) return;
 
+  // Only published npm dependencies carry a tarball `resolved`. Workspace
+  // symlinks (`link: true`), and git/file/workspace deps (no version or a
+  // non-tarball `resolved`) have no tarball version to validate, so skip them.
+  const isTarballEntry = (entry) =>
+    Boolean(entry) &&
+    entry.link !== true &&
+    typeof entry.version === "string" &&
+    typeof entry.resolved === "string" &&
+    entry.resolved.endsWith(".tgz");
+
   const errors = [];
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (!key.startsWith("node_modules/")) continue;
-    if (!entry.resolved) continue; // git / file / link / workspace dep
+    if (!isTarballEntry(entry)) continue;
 
     // resolved URL ends with /-/<unscoped-name>-<version>.tgz
     // So it must end with -<version>.tgz
@@ -257,7 +267,10 @@ function checkLockfileIntegrity() {
       fail(`Lockfile integrity: ${err}`);
     }
   } else {
-    ok(`Lockfile dependency integrity (${Object.keys(lock.packages).filter((k) => k.startsWith("node_modules/") && lock.packages[k].resolved).length} resolved entries)`);
+    const validated = Object.entries(lock.packages).filter(
+      ([k, e]) => k.startsWith("node_modules/") && isTarballEntry(e),
+    ).length;
+    ok(`Lockfile dependency integrity (${validated} resolved entries)`);
   }
 }
 

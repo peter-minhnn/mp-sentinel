@@ -23,7 +23,10 @@ class FakeChild extends EventEmitter {
   }
 }
 
-function fakeRunner(child: FakeChild, capture?: (cmd: string, args: readonly string[]) => void): CliRunner {
+function fakeRunner(
+  child: FakeChild,
+  capture?: (cmd: string, args: readonly string[]) => void,
+): CliRunner {
   const spawnFn: SpawnFn = (cmd, args) => {
     capture?.(cmd, args);
     return child as unknown as ChildProcess;
@@ -41,7 +44,11 @@ test("captures stdout/stderr and exit code; prepends baseArgs", async () => {
   const runner = new CliRunner({ command: "npx", baseArgs: ["mp-sentinel"], spawnFn });
 
   child.emitRun('{"status":"PASS"}', "warn: heads up", 0);
-  const result = await runner.run({ args: ["--staged", "--format", "json"], cwd: "/repo", env: {} });
+  const result = await runner.run({
+    args: ["--staged", "--format", "json"],
+    cwd: "/repo",
+    env: {},
+  });
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.stdout, '{"status":"PASS"}');
@@ -84,12 +91,32 @@ test("aborts when the signal is already aborted", async () => {
   assert.equal(child.killed, true);
 });
 
+test("streams redacted output chunks while still buffering the full result", async () => {
+  const child = new FakeChild();
+  const runner = fakeRunner(child);
+  const events: Array<{ stream: string; chunk: string }> = [];
+
+  child.emitRun('{"status":"PASS"}', "progress GITHUB_TOKEN=ghp_secretvalue done", 0);
+  const result = await runner.run({
+    args: ["--staged"],
+    cwd: "/repo",
+    env: {},
+    secrets: { GITHUB_TOKEN: "ghp_secretvalue" },
+    onOutput: (e) => events.push({ stream: e.stream, chunk: e.chunk }),
+  });
+
+  // Full buffers preserved for parse/error handling.
+  assert.equal(result.stdout, '{"status":"PASS"}');
+  // Live chunks fired, and the secret never reached the callback.
+  const stderrChunks = events.filter((e) => e.stream === "stderr").map((e) => e.chunk);
+  assert.ok(stderrChunks.length > 0);
+  assert.ok(!stderrChunks.join("").includes("ghp_secretvalue"));
+  assert.ok(stderrChunks.join("").includes("***REDACTED***"));
+});
+
 test("propagates spawn error events", async () => {
   const child = new FakeChild();
   const runner = fakeRunner(child);
   setImmediate(() => child.emit("error", new Error("ENOENT: mp-sentinel not found")));
-  await assert.rejects(
-    () => runner.run({ args: ["--staged"], cwd: "/repo", env: {} }),
-    /ENOENT/,
-  );
+  await assert.rejects(() => runner.run({ args: ["--staged"], cwd: "/repo", env: {} }), /ENOENT/);
 });

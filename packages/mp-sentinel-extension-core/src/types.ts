@@ -105,6 +105,14 @@ export interface IndexHealthOutput {
   error?: string;
 }
 
+/** Output of `mp-sentinel check-ai` — an AI connectivity probe. */
+export interface CheckAiOutput {
+  status: "ok" | "error";
+  provider?: string;
+  model?: string;
+  error?: string;
+}
+
 /** Per-file row from `create-skills --check --format json`. */
 export interface CreateSkillsCheckRow {
   outputPath: string;

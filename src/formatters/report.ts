@@ -55,13 +55,28 @@ const formatCostUsd = (cost: number): string => {
   return `$${cost.toFixed(2)}`;
 };
 
+/** Prefer the human-readable label; fall back to the machine target mode/value. */
+const targetDescription = (report: ReviewReport): string =>
+  report.targetLabel ??
+  `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`;
+
+/**
+ * Changed-line count for display. Show `N/A` rather than `0` when the metric
+ * wasn't computed but files were audited (avoids a misleading "0 diff lines"
+ * on a real review).
+ */
+const formatDiffLines = (summary: ReviewReport["summary"]): string => {
+  if (summary.totalChangedLines > 0) return String(summary.totalChangedLines);
+  return summary.auditedFiles > 0 ? "N/A" : "0";
+};
+
 const buildSummaryRows = (report: ReviewReport): SummaryRow[] => {
   const rows: SummaryRow[] = [
     { icon: "", label: "Status", value: `${statusIcon(report.status)} ${report.status}` },
     {
       icon: "",
       label: "Target",
-      value: `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`,
+      value: targetDescription(report),
     },
     { icon: "", label: "AI Enabled", value: report.aiEnabled ? "yes" : "no" },
     { icon: "", label: "Total files", value: String(report.summary.totalFiles) },
@@ -72,7 +87,7 @@ const buildSummaryRows = (report: ReviewReport): SummaryRow[] => {
     { icon: "⚠️ ", label: "Warning", value: String(report.summary.warningIssues) },
     { icon: "ℹ️ ", label: "Info", value: String(report.summary.infoIssues) },
     { icon: "⏱️ ", label: "Duration", value: formatDuration(report.summary.durationMs) },
-    { icon: "🔢", label: "Diff lines", value: String(report.summary.totalChangedLines) },
+    { icon: "🔢", label: "Diff lines", value: formatDiffLines(report.summary) },
   ];
 
   const usage = report.summary.tokenUsage;
@@ -98,9 +113,6 @@ const buildSummaryRows = (report: ReviewReport): SummaryRow[] => {
 
 const ISSUE_INDENT = "    ";
 const ISSUE_DETAIL_INDENT = `${ISSUE_INDENT}  `;
-
-const targetDescription = (report: ReviewReport): string =>
-  `${report.target.mode}${report.target.value ? ` (${report.target.value})` : ""}`;
 
 const printReportHeader = (report: ReviewReport): void => {
   const subtitle = [
@@ -144,7 +156,7 @@ const printOverviewSection = (report: ReviewReport): void => {
       ].join(dot()),
     ),
   );
-  console.log(keyValueRow("Diff lines", String(s.totalChangedLines)));
+  console.log(keyValueRow("Diff lines", formatDiffLines(s)));
   console.log(keyValueRow("Duration", formatDuration(s.durationMs)));
 
   const usage = s.tokenUsage;
@@ -354,9 +366,7 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
   lines.push(`# MP Sentinel Review Report`);
   lines.push("");
   lines.push(`- Status: **${report.status}**`);
-  lines.push(
-    `- Target: \`${report.target.mode}${report.target.value ? `:${report.target.value}` : ""}\``,
-  );
+  lines.push(`- Target: ${targetDescription(report)}`);
   lines.push(`- AI Enabled: \`${report.aiEnabled}\``);
   lines.push(`- Generated At: \`${report.generatedAt}\``);
   lines.push("");
@@ -423,14 +433,14 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     }
   }
 
-  // Filter findings: ERROR, FAIL, or results with ACTIVE CRITICAL/WARNING issues
+  // Filter findings: ERROR, FAIL, or any file with ACTIVE issues (including
+  // INFO-only). INFO findings count toward the summary, so they must also
+  // appear in `## Findings` — otherwise summary and body disagree.
   const findingResults = report.results.filter(
     (entry) =>
       entry.result.status === "FAIL" ||
       entry.result.status === "ERROR" ||
-      activeIssues(entry.result.issues).some(
-        (i) => i.severity === "CRITICAL" || i.severity === "WARNING",
-      ),
+      activeIssues(entry.result.issues).length > 0,
   );
 
   const renderIssueLine = (issue: AuditIssue): string => {

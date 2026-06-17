@@ -8,12 +8,15 @@
  * requested where the operation is meant to be machine-parsed.
  */
 
+/** Severity floor passed to `--severity-threshold`. */
+export type SeverityThreshold = "CRITICAL" | "WARNING" | "INFO";
+
 export type ReviewScope =
   | { kind: "staged" }
   | { kind: "files"; files: readonly string[] }
   | { kind: "range"; range: string }
   | { kind: "commit"; sha: string }
-  | { kind: "local"; commits?: number; branchDiff?: boolean };
+  | { kind: "local"; commits?: number; branchDiff?: boolean; compareBranch?: string };
 
 export interface ReviewOptions {
   scope: ReviewScope;
@@ -27,6 +30,10 @@ export interface ReviewOptions {
   noCache?: boolean;
   /** Target branch for range/default diff mode. */
   targetBranch?: string;
+  /** Severity floor for FAIL (`--severity-threshold`). */
+  severityThreshold?: SeverityThreshold;
+  /** Write a markdown report to this path (`--output`). */
+  output?: string;
 }
 
 export type IndexingOperation =
@@ -81,6 +88,7 @@ export function buildReviewArgs(options: ReviewOptions): string[] {
       args.push("--local");
       if (typeof scope.commits === "number") args.push("--commits", String(scope.commits));
       if (scope.branchDiff) args.push("--branch-diff");
+      if (scope.compareBranch) args.push("--compare-branch", scope.compareBranch);
       break;
   }
 
@@ -88,6 +96,8 @@ export function buildReviewArgs(options: ReviewOptions): string[] {
   if (options.forceAi) args.push("--ai");
   if (options.noAi) args.push("--no-ai");
   if (options.noCache) args.push("--no-cache");
+  if (options.severityThreshold) args.push("--severity-threshold", options.severityThreshold);
+  if (options.output) args.push("--output", options.output);
 
   args.push("--format", options.format ?? "json");
   return args;
@@ -108,6 +118,11 @@ export function buildDryRunArgs(scope?: ReviewScope): string[] {
   const args = buildReviewArgs({ scope: scope ?? { kind: "staged" }, format: "json" });
   // Insert --dry-run ahead of --format for readability; order is irrelevant to commander.
   return ["--dry-run", ...args];
+}
+
+/** Builds argv for the AI connectivity probe: `check-ai`. Output is JSON-only. */
+export function buildCheckAiArgs(): string[] {
+  return ["check-ai"];
 }
 
 /** Builds argv for indexing operations (always JSON for query modes). */

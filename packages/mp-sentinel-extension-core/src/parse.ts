@@ -7,6 +7,7 @@
  */
 
 import type {
+  CheckAiOutput,
   CreateSkillsCheckOutput,
   CreateSkillsDryRunOutput,
   ExplainContextOutput,
@@ -124,6 +125,14 @@ export function parseIndexHealth(stdout: string): IndexHealthOutput {
     throw new CliJsonParseError("Output is not an IndexHealthOutput.", stdout);
   }
   return json as unknown as IndexHealthOutput;
+}
+
+export function parseCheckAi(stdout: string): CheckAiOutput {
+  const json = extractJson(stdout);
+  if (!isRecord(json) || typeof json["status"] !== "string") {
+    throw new CliJsonParseError("Output is not a check-ai result.", stdout);
+  }
+  return json as unknown as CheckAiOutput;
 }
 
 export function parseCreateSkillsCheck(stdout: string): CreateSkillsCheckOutput {

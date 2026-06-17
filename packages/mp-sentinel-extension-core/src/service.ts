@@ -10,6 +10,7 @@
  */
 
 import {
+  buildCheckAiArgs,
   buildCreateSkillsArgs,
   buildExplainContextArgs,
   buildIndexingArgs,
@@ -22,14 +23,21 @@ import { buildEnv, type AiSelection } from "./env.js";
 import { CliExecError, CliRuntimeError } from "./errors.js";
 import {
   CliJsonParseError,
+  parseCheckAi,
   parseCreateSkillsCheck,
   parseExplainContext,
   parseIndexHealth,
   parseReviewReport,
 } from "./parse.js";
-import { CliRunner, type CliRunnerConfig, type CliRunResult } from "./runner.js";
+import {
+  CliRunner,
+  type CliOutputEvent,
+  type CliRunnerConfig,
+  type CliRunResult,
+} from "./runner.js";
 import { redactSecrets, type SecretBundle } from "./secrets.js";
 import type {
+  CheckAiOutput,
   CreateSkillsCheckOutput,
   ExplainContextOutput,
   IndexHealthOutput,
@@ -45,10 +53,14 @@ export interface ServiceContext {
   secrets?: SecretBundle;
   /** Extra non-secret MCP env vars. */
   mcpEnv?: Record<string, string>;
+  /** Extra non-secret env vars for this run (e.g. an internal progress flag). */
+  extraEnv?: Record<string, string>;
   /** Cancellation signal. */
   signal?: AbortSignal;
   /** Per-run timeout override. */
   timeoutMs?: number;
+  /** Live, redacted output chunks (typically stderr progress) for a UI. */
+  onOutput?: (event: CliOutputEvent) => void;
 }
 
 export class MpSentinelService {
@@ -64,6 +76,7 @@ export class MpSentinelService {
       ...(ctx.ai !== undefined ? { ai: ctx.ai } : {}),
       ...(ctx.secrets !== undefined ? { secrets: ctx.secrets } : {}),
       ...(ctx.mcpEnv !== undefined ? { mcpEnv: ctx.mcpEnv } : {}),
+      ...(ctx.extraEnv !== undefined ? { extraEnv: ctx.extraEnv } : {}),
     });
 
     return this.runner.run({
@@ -73,6 +86,7 @@ export class MpSentinelService {
       ...(ctx.secrets !== undefined ? { secrets: ctx.secrets } : {}),
       ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
       ...(ctx.timeoutMs !== undefined ? { timeoutMs: ctx.timeoutMs } : {}),
+      ...(ctx.onOutput !== undefined ? { onOutput: ctx.onOutput } : {}),
     });
   }
 
@@ -93,11 +107,7 @@ export class MpSentinelService {
    * secret-free message. The raw (redacted) stderr is attached for the output
    * channel.
    */
-  private parse<T>(
-    parser: (stdout: string) => T,
-    result: CliRunResult,
-    ctx: ServiceContext,
-  ): T {
+  private parse<T>(parser: (stdout: string) => T, result: CliRunResult, ctx: ServiceContext): T {
     try {
       return parser(result.stdout);
     } catch (error) {
@@ -120,7 +130,10 @@ export class MpSentinelService {
   }
 
   /** Context/token preview with no AI call. */
-  async explainContext(files: readonly string[], ctx: ServiceContext): Promise<ExplainContextOutput> {
+  async explainContext(
+    files: readonly string[],
+    ctx: ServiceContext,
+  ): Promise<ExplainContextOutput> {
     const result = await this.exec(buildExplainContextArgs(files), ctx);
     this.failOnRuntimeError(result, ctx);
     return this.parse(parseExplainContext, result, ctx);
@@ -145,6 +158,16 @@ export class MpSentinelService {
     const result = await this.exec(buildIndexingArgs(operation), ctx);
     this.failOnRuntimeError(result, ctx);
     return result;
+  }
+
+  /**
+   * AI connectivity probe. Exit 0 = reachable, 2 = misconfigured — both still
+   * emit a JSON result, so we parse rather than treat exit 2 as a hard failure.
+   * Only non-JSON stdout (e.g. a CLI too old to know `check-ai`) rejects.
+   */
+  async checkAi(ctx: ServiceContext): Promise<CheckAiOutput> {
+    const result = await this.exec(buildCheckAiArgs(), ctx);
+    return this.parse(parseCheckAi, result, ctx);
   }
 
   /** create-skills staleness gate. Exit 0 = ok, 1 = stale; both parse. */

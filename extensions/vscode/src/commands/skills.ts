@@ -17,6 +17,7 @@ export async function skillsCheck(deps: CommandDeps): Promise<void> {
   });
   if (!result) return;
 
+  deps.panel.publishSkills(result.status);
   const stale = result.check.filter((r) => r.status !== "up-to-date");
   for (const row of result.check) deps.output.info(`  ${row.status}: ${row.outputPath}`);
 

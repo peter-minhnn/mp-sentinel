@@ -17,9 +17,26 @@ export class OutputLog {
     this.channel.appendLine(message);
   }
 
+  /** Begin a fresh run: clear, reveal the tab, and write a header line. */
+  startRun(title: string): void {
+    this.channel.clear();
+    this.channel.show(true);
+    this.channel.appendLine(title);
+  }
+
   appendRedacted(text: string, secrets?: SecretBundle): void {
     if (!text) return;
     this.channel.appendLine(redactSecrets(text, secrets));
+  }
+
+  /**
+   * Append a live output chunk (already redacted by the runner; redacted again
+   * defensively). Preserves the CLI's own newlines and normalizes stray CR so
+   * progress lines stay readable in the Output tab.
+   */
+  appendRedactedRaw(text: string, secrets?: SecretBundle): void {
+    if (!text) return;
+    this.channel.append(redactSecrets(text, secrets).replace(/\r(?!\n)/g, "\n"));
   }
 
   show(): void {

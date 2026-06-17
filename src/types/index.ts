@@ -53,6 +53,13 @@ export interface ReviewReport {
   schemaVersion: "1.0";
   status: "PASS" | "FAIL" | "ERROR";
   target: ReviewTarget;
+  /**
+   * Human-readable target description for report/summary display, e.g.
+   * `branch-diff (feature/x vs origin/main)`. Additive and optional: the
+   * machine-readable `target` (mode/value) is unchanged. Formatters prefer
+   * `targetLabel` when present, falling back to `target`. (v3.2.5+)
+   */
+  targetLabel?: string;
   aiEnabled: boolean;
   promptVersion: string;
   summary: ReviewSummary;

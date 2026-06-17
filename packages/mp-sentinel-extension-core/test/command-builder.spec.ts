@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  buildCheckAiArgs,
   buildCreateSkillsArgs,
   buildDryRunArgs,
   buildExplainContextArgs,
@@ -9,6 +10,10 @@ import {
   buildInitArgs,
   buildReviewArgs,
 } from "../src/command-builder.js";
+
+test("check-ai builds the bare subcommand", () => {
+  assert.deepEqual(buildCheckAiArgs(), ["check-ai"]);
+});
 
 test("review: staged defaults to json and force-ai when requested", () => {
   assert.deepEqual(buildReviewArgs({ scope: { kind: "staged" }, forceAi: true }), [
@@ -20,10 +25,13 @@ test("review: staged defaults to json and force-ai when requested", () => {
 });
 
 test("review: files scope expands variadic file list", () => {
-  assert.deepEqual(
-    buildReviewArgs({ scope: { kind: "files", files: ["a.ts", "b.ts"] } }),
-    ["--files", "a.ts", "b.ts", "--format", "json"],
-  );
+  assert.deepEqual(buildReviewArgs({ scope: { kind: "files", files: ["a.ts", "b.ts"] } }), [
+    "--files",
+    "a.ts",
+    "b.ts",
+    "--format",
+    "json",
+  ]);
 });
 
 test("review: range with target branch and no-cache", () => {
@@ -38,10 +46,45 @@ test("review: range with target branch and no-cache", () => {
 });
 
 test("review: local mode with commit count and branch diff", () => {
-  assert.deepEqual(
-    buildReviewArgs({ scope: { kind: "local", commits: 5, branchDiff: true } }),
-    ["--local", "--commits", "5", "--branch-diff", "--format", "json"],
-  );
+  assert.deepEqual(buildReviewArgs({ scope: { kind: "local", commits: 5, branchDiff: true } }), [
+    "--local",
+    "--commits",
+    "5",
+    "--branch-diff",
+    "--format",
+    "json",
+  ]);
+});
+
+test("local branch-diff includes --compare-branch and machine-readable flags", () => {
+  const args = buildReviewArgs({
+    scope: { kind: "local", branchDiff: true, compareBranch: "origin/main" },
+    forceAi: true,
+    noCache: true,
+    severityThreshold: "INFO",
+    output: "reports/review-0617.md",
+  });
+  assert.deepEqual(args, [
+    "--local",
+    "--branch-diff",
+    "--compare-branch",
+    "origin/main",
+    "--ai",
+    "--no-cache",
+    "--severity-threshold",
+    "INFO",
+    "--output",
+    "reports/review-0617.md",
+    "--format",
+    "json",
+  ]);
+});
+
+test("local scope omits branch-diff flags when not requested", () => {
+  const args = buildReviewArgs({ scope: { kind: "local", commits: 3 } });
+  assert.ok(!args.includes("--compare-branch"));
+  assert.ok(!args.includes("--branch-diff"));
+  assert.deepEqual(args, ["--local", "--commits", "3", "--format", "json"]);
 });
 
 test("explain-context targets files in json", () => {
@@ -79,13 +122,10 @@ test("indexing query modes request json; rebuild does not", () => {
 });
 
 test("create-skills: check with all-agents in json", () => {
-  assert.deepEqual(buildCreateSkillsArgs({ operation: { kind: "check" }, agents: "all", json: true }), [
-    "create-skills",
-    "--check",
-    "--all-agents",
-    "--format",
-    "json",
-  ]);
+  assert.deepEqual(
+    buildCreateSkillsArgs({ operation: { kind: "check" }, agents: "all", json: true }),
+    ["create-skills", "--check", "--all-agents", "--format", "json"],
+  );
 });
 
 test("create-skills: generate with explicit agents and force", () => {
@@ -108,5 +148,10 @@ test("create-skills: explain-agents allows json without agents", () => {
 });
 
 test("init builds with force and json", () => {
-  assert.deepEqual(buildInitArgs({ force: true, json: true }), ["init", "--force", "--format", "json"]);
+  assert.deepEqual(buildInitArgs({ force: true, json: true }), [
+    "init",
+    "--force",
+    "--format",
+    "json",
+  ]);
 });

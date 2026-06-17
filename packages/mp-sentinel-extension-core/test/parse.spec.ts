@@ -4,17 +4,24 @@ import { test } from "node:test";
 import {
   CliJsonParseError,
   extractJson,
+  parseCheckAi,
   parseCreateSkillsCheck,
   parseIndexHealth,
   parseReviewReport,
 } from "../src/parse.js";
+
+test("parseCheckAi accepts ok and error results, rejects non-JSON", () => {
+  assert.equal(parseCheckAi('{"status":"ok","provider":"anthropic"}').status, "ok");
+  assert.equal(parseCheckAi('{"status":"error","error":"403"}').status, "error");
+  assert.throws(() => parseCheckAi("not json"), CliJsonParseError);
+});
 
 test("extractJson parses pure JSON", () => {
   assert.deepEqual(extractJson('{"a":1}'), { a: 1 });
 });
 
 test("extractJson skips a leading banner line", () => {
-  const out = "Some stderr leaked to stdout\n{\"status\":\"ok\"}\n";
+  const out = 'Some stderr leaked to stdout\n{"status":"ok"}\n';
   assert.deepEqual(extractJson(out), { status: "ok" });
 });
 
@@ -38,7 +45,10 @@ test("parseReviewReport validates shape", () => {
 
 test("parseIndexHealth accepts missing/stale states", () => {
   assert.equal(parseIndexHealth('{"status":"missing"}').status, "missing");
-  assert.equal(parseIndexHealth('{"status":"stale","staleReasons":["manifest changed"]}').status, "stale");
+  assert.equal(
+    parseIndexHealth('{"status":"stale","staleReasons":["manifest changed"]}').status,
+    "stale",
+  );
 });
 
 test("parseCreateSkillsCheck requires a check array", () => {

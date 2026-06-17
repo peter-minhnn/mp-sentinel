@@ -17,9 +17,28 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:.mp-sentinelrc.json"
+    "workspaceContains:.mp-sentinelrc.json",
+    "onView:mpSentinel.panel"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mpSentinel",
+          "title": "MP Sentinel",
+          "icon": "media/sentinel.svg"
+        }
+      ]
+    },
+    "views": {
+      "mpSentinel": [
+        {
+          "id": "mpSentinel.panel",
+          "name": "Actions & Results",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "mpSentinel.setupCredentials",
@@ -31,7 +50,11 @@
       },
       {
         "command": "mpSentinel.selectProvider",
-        "title": "MP Sentinel: Select Provider & Model Tier"
+        "title": "MP Sentinel: Configure AI Provider..."
+      },
+      {
+        "command": "mpSentinel.checkAiConnection",
+        "title": "MP Sentinel: Check AI Connection"
       },
       {
         "command": "mpSentinel.initConfig",
@@ -52,6 +75,10 @@
       {
         "command": "mpSentinel.reviewRange",
         "title": "MP Sentinel: Review Git Range..."
+      },
+      {
+        "command": "mpSentinel.reviewBranchDiff",
+        "title": "MP Sentinel: Review Current Branch Against Base..."
       },
       {
         "command": "mpSentinel.dryRunPreview",
@@ -149,6 +176,21 @@
           "default": "",
           "description": "Model tier when no explicit model is set (injected as AI_MODEL_TIER)."
         },
+        "mpSentinel.ai.anthropicBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Custom base URL for Anthropic-compatible endpoints (e.g. DeepSeek). Injected as ANTHROPIC_BASE_URL. Blank uses the official Anthropic API."
+        },
+        "mpSentinel.ai.openrouterSiteUrl": {
+          "type": "string",
+          "default": "",
+          "description": "OpenRouter attribution site URL (injected as OPENROUTER_SITE_URL). Optional."
+        },
+        "mpSentinel.ai.openrouterAppName": {
+          "type": "string",
+          "default": "",
+          "description": "OpenRouter attribution app name (injected as OPENROUTER_APP_NAME). Optional."
+        },
         "mpSentinel.review.targetBranch": {
           "type": "string",
           "default": "",
@@ -158,6 +200,26 @@
           "type": "boolean",
           "default": true,
           "description": "Surface INFO findings as diagnostics (Hints). Disable to show only CRITICAL/WARNING."
+        },
+        "mpSentinel.review.compareBranch": {
+          "type": "string",
+          "default": "origin/main",
+          "description": "Default base branch for 'Review Current Branch Against Base'. Editable per run."
+        },
+        "mpSentinel.review.branchReportDirectory": {
+          "type": "string",
+          "default": "reports",
+          "description": "Workspace-relative directory for branch-diff markdown reports (review-MMDD.md)."
+        },
+        "mpSentinel.review.branchSeverityThreshold": {
+          "type": "string",
+          "enum": [
+            "CRITICAL",
+            "WARNING",
+            "INFO"
+          ],
+          "default": "INFO",
+          "description": "Severity floor that fails a branch-diff review."
         },
         "mpSentinel.skills.agents": {
           "type": "array",

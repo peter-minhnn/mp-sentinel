@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.5] — 2026-06-17
+
+### Added
+- **Local mode now supports `--format json`.** `--local` / `--branch-diff` reviews emit a valid `ReviewReport` to stdout (stdout stays JSON-only; logs and diagnostics route to stderr), reusing the same report builder and markdown formatter as CI mode — no new schema. Every early-exit path (no commits differ, no commits match filters, no changed files, all files ignored) still prints a valid empty `ReviewReport`, so the output is always parseable. `--output <path>` continues to write clean markdown. (This is the fix VS Code branch review requires; CLIs ≤ 3.2.4 print a console report instead.)
+- **VS Code "Review Current Branch Against Base…" command.** Prompts for a base branch (default `origin/main`), runs a branch-diff review with AI enabled, applies findings to the Problems panel and the MP Sentinel side panel, updates the status bar, and opens the generated `reports/review-MMDD.md` report. New settings: `mpSentinel.review.compareBranch` (default `origin/main`), `mpSentinel.review.branchReportDirectory` (default `reports`), `mpSentinel.review.branchSeverityThreshold` (default `INFO`).
+- **VS Code "Configure AI Provider…" wizard.** Guided flow: pick provider, an exact model or a tier (mutually exclusive), optional `ANTHROPIC_BASE_URL` for Anthropic-compatible endpoints (e.g. DeepSeek) or OpenRouter attribution, and optionally store the provider's API key. New non-secret settings `mpSentinel.ai.anthropicBaseUrl`, `mpSentinel.ai.openrouterSiteUrl`, `mpSentinel.ai.openrouterAppName` are read into the CLI environment; the side panel shows a compact, secret-free `AI: …` status. API keys remain in VS Code Secret Storage only.
+- **`check-ai` command + VS Code "Check AI Connection".** `mp-sentinel check-ai` builds the provider from the environment, makes one minimal request, and prints `{ status, provider, model, error? }` as JSON (exit 0 reachable, 2 misconfigured). The VS Code command surfaces a 403, invalid base URL, or unknown model fast — before a large review — and refreshes the panel AI status.
+- **Sticky VS Code panel header.** The status, action buttons, AI/index metadata, counters, and severity filters stay fixed while only the findings list scrolls; Show Output / Clear Findings stay pinned in the footer. CSP nonce, keyboard accessibility, filters, collapsible groups, and Open behavior unchanged.
+- **Live review progress in the VS Code Output tab.** Review commands now stream the CLI's progress to the Output channel as it runs (cleared + revealed per run), instead of appearing only at the end. Internal only: when the extension sets `MP_SENTINEL_VSCODE_PROGRESS=1`, the CLI routes its otherwise-quiet logs/progress to stderr (line-readable), while stdout stays JSON-only for parsing. Chunks are redacted before display; no public CLI flag, and the JSON contract is unchanged.
+
+### Changed
+- **`npm test` / `npm run test:coverage` run Jest serially (`--runInBand`).** The default parallel run raced against repo-state integration checks (e.g. `agent-skills-check`); serial execution is stable.
+- **VS Code branch review gives an actionable message against an old CLI.** When the child CLI predates local `--format json` (≤ 3.2.4), the review now reports that the CLI is too old and points at upgrading or setting `mpSentinel.cli.command` to a local dist build, instead of an opaque "cancelled or failed".
+
+### Fixed
+- **Markdown report INFO consistency.** `## Findings` now lists every file with active issues — including INFO-only files — so the section matches the summary counts (previously an INFO-only file was counted but omitted from the body).
+- **Ant Design icon barrel false positive.** A new deterministic backstop drops AI "import from the gems-ui barrel, not `@ant-design/icons`" findings when the source actually imports from `@ant-design/icons` (icons are exempt from the UI-primitive barrel rule). Direct component imports from `'antd'` keep their finding; ESLint-sourced findings are untouched.
+
 ## [3.2.4] — 2026-06-16
 
 ### Fixed

@@ -26,6 +26,7 @@ export async function indexHealth(deps: CommandDeps): Promise<void> {
   if (!health) return;
 
   deps.statusBar.showIndexHealth(health);
+  deps.panel.publishIndexHealth(health.status);
   const display = formatIndexHealth(health);
   deps.output.info("");
   for (const line of display.lines) deps.output.info(line);

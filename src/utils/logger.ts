@@ -14,8 +14,22 @@ export const setLogQuietMode = (value: boolean): void => {
   quietMode = value;
 };
 
+/**
+ * Internal progress channel for editor integrations. When
+ * `MP_SENTINEL_VSCODE_PROGRESS=1`, logs that quiet mode would otherwise drop
+ * (machine formats reserve stdout for JSON) are routed to stderr instead, so a
+ * host like VS Code can stream live progress without corrupting stdout. Read
+ * dynamically so a per-run child env applies. Not a public CLI flag.
+ */
+const progressToStderr = (): boolean => process.env.MP_SENTINEL_VSCODE_PROGRESS === "1";
+
 const write = (fn: (...args: Array<string>) => void, value: string): void => {
-  if (quietMode) return;
+  if (quietMode) {
+    // Quiet (json/markdown/sarif): route to stderr only when the editor
+    // progress channel is on; otherwise stay silent as before.
+    if (progressToStderr()) console.error(value);
+    return;
+  }
   fn(value);
 };
 
@@ -51,7 +65,15 @@ export const log = {
 
   // Progress bar — adapts to terminal width to avoid overflow on narrow terminals
   progress: (current: number, total: number, label: string) => {
-    if (quietMode) return;
+    if (quietMode) {
+      // Line-readable progress to stderr (no carriage return) for the editor
+      // progress channel; otherwise silent.
+      if (progressToStderr()) {
+        const percent = Math.round((current / total) * 100);
+        console.error(`${percent}% | ${current}/${total} ${label}`);
+      }
+      return;
+    }
     const percent = Math.round((current / total) * 100);
     const cols = process.stdout.columns ?? 80;
     const barLength = Math.max(10, Math.min(40, cols - label.length - 20));
@@ -73,7 +95,10 @@ export const log = {
 
   // Header
   header: (title: string) => {
-    if (quietMode) return;
+    if (quietMode) {
+      if (progressToStderr()) console.error(paint(`🏗️  ${title}`, "cyan", "bold"));
+      return;
+    }
     console.log();
     console.log(paint(`🏗️  ${title}`, "cyan", "bold"));
     console.log(paint("─".repeat(50), "dim"));

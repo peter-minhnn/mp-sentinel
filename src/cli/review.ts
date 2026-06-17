@@ -44,6 +44,7 @@ import { generateMCPDiagnostics } from "../services/mcp/diagnostics.js";
 import { runDeterministicReview, runRulePackEvaluators } from "./deterministic-review.js";
 import { mergeFindings } from "../services/risk-analyzer/index.js";
 import { dedupeFindings } from "../utils/dedupe-findings.js";
+import { dedupeCrossCategoryFindings } from "../utils/dedupe-cross-category-findings.js";
 import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
@@ -52,6 +53,8 @@ import { reconcileUnusedImportFindings } from "../utils/reconcile-unused-import-
 import {
   reconcileLodashBundleFindings,
   reconcileHookPlacementFindings,
+  reconcileUnusedJsxFindings,
+  reconcileAntdIconImportFindings,
 } from "../utils/reconcile-false-positive-findings.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
@@ -770,24 +773,43 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
   // Deterministic false-positive backstops: lodash subpath/lodash-es imports
   // wrongly flagged as "imports the entire package", and hooks wrongly flagged
   // as "not in a hooks/ directory" when the path already says otherwise.
+  const fileContentMap = new Map(sanitizedFiles.map((f) => [f.path, f.content]));
   const lodashReconcile = reconcileLodashBundleFindings(unusedReconcile.results, {
-    fileContents: new Map(sanitizedFiles.map((f) => [f.path, f.content])),
+    fileContents: fileContentMap,
   });
   const hookReconcile = reconcileHookPlacementFindings(lodashReconcile.results);
-  const fpSuppressed = lodashReconcile.suppressed + hookReconcile.suppressed;
+  const jsxReconcile = reconcileUnusedJsxFindings(hookReconcile.results, {
+    fileContents: fileContentMap,
+  });
+  const iconReconcile = reconcileAntdIconImportFindings(jsxReconcile.results, {
+    fileContents: fileContentMap,
+  });
+  const fpSuppressed =
+    lodashReconcile.suppressed +
+    hookReconcile.suppressed +
+    jsxReconcile.suppressed +
+    iconReconcile.suppressed;
   if (fpSuppressed > 0) {
     log.info(
-      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement AI finding(s).`,
+      `False-positive backstop: dropped ${lodashReconcile.suppressed} lodash bundle-size + ${hookReconcile.suppressed} hook-placement + ${jsxReconcile.suppressed} unused-JSX + ${iconReconcile.suppressed} antd-icon AI finding(s).`,
     );
   }
 
   // Collapse exact-duplicate findings (e.g. the model repeating itself) so the
   // report's signal-to-noise stays high. Distinct issues are never merged.
-  const { results: dedupedFinal, removed: duplicatesRemoved } = dedupeFindings(
-    hookReconcile.results,
+  const { results: dedupedExact, removed: duplicatesRemoved } = dedupeFindings(
+    iconReconcile.results,
   );
   if (duplicatesRemoved > 0) {
     log.info(`Removed ${duplicatesRemoved} duplicate finding(s).`);
+  }
+  // Collapse cross-category near-duplicates at the same line (e.g. runtime-crash
+  // + maintainability both about one dependency array) into the higher-severity
+  // finding so they don't read as two independent bugs.
+  const { results: dedupedFinal, removed: crossRemoved } =
+    dedupeCrossCategoryFindings(dedupedExact);
+  if (crossRemoved > 0) {
+    log.info(`Cross-category dedupe: merged ${crossRemoved} same-line duplicate finding(s).`);
   }
 
   // Per-file noise budget — cap non-CRITICAL findings per file (CRITICALs

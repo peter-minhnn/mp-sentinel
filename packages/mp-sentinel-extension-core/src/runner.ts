@@ -33,6 +33,13 @@ export interface CliRunResult {
   args: readonly string[];
 }
 
+/** A live chunk of CLI output, already redacted and safe to display. */
+export interface CliOutputEvent {
+  stream: "stdout" | "stderr";
+  /** Redacted chunk text (secrets masked via {@link redactSecrets}). */
+  chunk: string;
+}
+
 export interface RunOptions {
   args: readonly string[];
   /** Working directory — the workspace/project root. */
@@ -45,6 +52,12 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Kill the process after this many ms. Default 120000. */
   timeoutMs?: number;
+  /**
+   * Live output callback, invoked per chunk with already-redacted text. stdout
+   * is still buffered for parsing; this is for surfacing progress (typically
+   * stderr) to a UI. Never receives raw secrets.
+   */
+  onOutput?: (event: CliOutputEvent) => void;
 }
 
 export interface CliRunnerConfig {
@@ -119,11 +132,20 @@ export class CliRunner {
         options.signal.addEventListener("abort", onAbort, { once: true });
       }
 
+      const emit = (stream: "stdout" | "stderr", text: string): void => {
+        if (!options.onOutput) return;
+        options.onOutput({ stream, chunk: redactSecrets(text, options.secrets) });
+      };
+
       child.stdout?.on("data", (chunk: Buffer | string) => {
-        stdout += chunk.toString();
+        const text = chunk.toString();
+        stdout += text;
+        emit("stdout", text);
       });
       child.stderr?.on("data", (chunk: Buffer | string) => {
-        stderr += chunk.toString();
+        const text = chunk.toString();
+        stderr += text;
+        emit("stderr", text);
       });
 
       child.on("error", (error: Error) => {

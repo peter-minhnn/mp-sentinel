@@ -73,6 +73,11 @@
 | `--commits <n>` | Legacy: number of commits in local mode | 1 |
 | `--quiet` | Suppress non-error output | false |
 
+> Local mode (`--local` / `--branch-diff`) supports `--format json`: it prints a
+> `ReviewReport` to stdout (JSON-only; logs go to stderr), including a valid empty
+> report when nothing differs. `markdown`/`sarif` fall back to the console report;
+> use `--output <path>` for a markdown file. Other formats are unchanged.
+
 ## Root CLI
 
 | Flag | Description |
@@ -81,6 +86,10 @@
 | `--format json` | JSON output for all modes |
 | `--quiet` | Suppress non-JSON output |
 | `--verbose` | Detailed logging |
+
+## `check-ai` — AI connectivity probe
+
+`mp-sentinel check-ai` builds the provider from the environment (`AI_PROVIDER`, `AI_MODEL`, `ANTHROPIC_BASE_URL`, credential vars), makes one minimal request, and prints `{ "status": "ok"|"error", "provider", "model", "error"? }` as JSON. Exit `0` reachable, `2` misconfigured/unreachable. Use it to catch a 403, bad base URL, or unknown model before a large review.
 
 ## `init` — Scaffold .mp-sentinelrc.json
 
