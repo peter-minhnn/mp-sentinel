@@ -53,7 +53,14 @@ test("captures stdout/stderr and exit code; prepends baseArgs", async () => {
   assert.equal(result.exitCode, 0);
   assert.equal(result.stdout, '{"status":"PASS"}');
   assert.equal(result.stderr, "warn: heads up");
-  assert.deepEqual(seen?.args, ["mp-sentinel", "--staged", "--format", "json"]);
+  if (process.platform === "win32") {
+    assert.ok(seen?.cmd.toLowerCase().endsWith("node.exe"));
+    assert.match(String(seen?.args[0]), /npx-cli\.js$/);
+    assert.deepEqual(seen?.args.slice(1), ["mp-sentinel", "--staged", "--format", "json"]);
+  } else {
+    assert.equal(seen?.cmd, "npx");
+    assert.deepEqual(seen?.args, ["mp-sentinel", "--staged", "--format", "json"]);
+  }
 });
 
 test("exit code 1 (findings) is returned verbatim, not treated as failure", async () => {

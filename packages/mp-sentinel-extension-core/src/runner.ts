@@ -14,6 +14,8 @@
 
 import { spawn as nodeSpawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 import { CliExecError } from "./errors.js";
 import { assertNoSecretsInArgs, redactSecrets, type SecretBundle } from "./secrets.js";
@@ -74,6 +76,68 @@ export interface CliRunnerConfig {
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+interface SpawnPlan {
+  command: string;
+  args: readonly string[];
+}
+
+function isNpxCommand(command: string): boolean {
+  const base = path.basename(command).toLowerCase();
+  return base === "npx" || base === "npx.cmd" || base === "npx.ps1";
+}
+
+function windowsPathEntries(): string[] {
+  return (process.env["PATH"] ?? process.env["Path"] ?? "")
+    .split(path.delimiter)
+    .filter((entry) => entry.length > 0);
+}
+
+function windowsExecutableCandidates(command: string): string[] {
+  const hasPath = command.includes("/") || command.includes("\\") || path.isAbsolute(command);
+  const hasExt = path.extname(command).length > 0;
+  const extensions = hasExt
+    ? [""]
+    : (process.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD;.PS1")
+        .split(";")
+        .filter((ext) => ext.length > 0);
+  const names = extensions.map((ext) => `${command}${ext.toLowerCase()}`);
+
+  if (hasPath) return names;
+  return windowsPathEntries().flatMap((entry) => names.map((name) => path.join(entry, name)));
+}
+
+function findWindowsExecutable(command: string): string | undefined {
+  return windowsExecutableCandidates(command).find((candidate) => existsSync(candidate));
+}
+
+function npxCliPath(npxExecutable: string): string | undefined {
+  const candidate = path.join(
+    path.dirname(npxExecutable),
+    "node_modules",
+    "npm",
+    "bin",
+    "npx-cli.js",
+  );
+  return existsSync(candidate) ? candidate : undefined;
+}
+
+function nodeBesideNpx(npxExecutable: string): string {
+  const candidate = path.join(path.dirname(npxExecutable), "node.exe");
+  return existsSync(candidate) ? candidate : "node.exe";
+}
+
+function buildSpawnPlan(command: string, args: readonly string[]): SpawnPlan {
+  if (process.platform === "win32" && isNpxCommand(command)) {
+    const npxExecutable = findWindowsExecutable(command);
+    const cliPath = npxExecutable ? npxCliPath(npxExecutable) : undefined;
+    if (npxExecutable && cliPath) {
+      return { command: nodeBesideNpx(npxExecutable), args: [cliPath, ...args] };
+    }
+  }
+
+  return { command, args };
+}
+
 export class CliRunner {
   private readonly command: string;
   private readonly baseArgs: readonly string[];
@@ -93,11 +157,11 @@ export class CliRunner {
       // Throwing inside the executor rejects the promise — keeps a uniform async
       // contract so a leak guard failure surfaces as a rejection, not a sync throw.
       assertNoSecretsInArgs(fullArgs, options.secrets);
+      const spawnPlan = buildSpawnPlan(this.command, fullArgs);
 
-      const child = this.spawnFn(this.command, fullArgs, {
+      const child = this.spawnFn(spawnPlan.command, spawnPlan.args, {
         cwd: options.cwd,
         env: options.env,
-        // Windows-friendly: allow PATHEXT resolution for `mp-sentinel.cmd` etc.
         shell: false,
       });
 
