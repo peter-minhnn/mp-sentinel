@@ -128,13 +128,19 @@ export const withRetry = async <T>(
         throw error;
       }
 
-      const errorMsg = error instanceof Error ? error.message : "";
+      const errorMsg = error instanceof Error ? error.message : String(error);
       const retryAfter = parseRetryAfterMs(errorMsg, maxDelayMs);
       // Exponential backoff with jitter; clamp to maxDelay. If Retry-After
       // is present, honor it (still capped) — providers know best.
       const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1) + Math.random() * 100, maxDelayMs);
       const delay = retryAfter ?? backoff;
-      log.warning(`Attempt ${attempt}/${maxAttempts} failed. Retrying in ${Math.round(delay)}ms…`);
+      // Surface WHY it failed — a bare "Attempt failed" hides the cause (rate
+      // limit, 5xx, network, timeout), making repeated retries impossible to
+      // diagnose. Keep it to the first line, trimmed, so logs stay readable.
+      const reason = errorMsg.split("\n")[0]?.slice(0, 300) ?? "unknown error";
+      log.warning(
+        `Attempt ${attempt}/${maxAttempts} failed: ${reason}. Retrying in ${Math.round(delay)}ms…`,
+      );
       await new Promise<void>((resolve) => setTimeout(resolve, delay));
     }
   }

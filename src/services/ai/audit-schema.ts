@@ -16,10 +16,16 @@ import type { AIResponseSchema } from "./types.js";
 export const AUDIT_RESPONSE_SCHEMA: AIResponseSchema = {
   name: "mp_sentinel_audit",
   strict: true,
+  // NOTE (OpenAI strict mode): the Responses API with `strict: true` requires
+  // that EVERY key in `properties` is also listed in `required`. Fields that
+  // are conceptually optional cannot simply be left out of `required`; instead
+  // they must be made nullable via a `["<type>", "null"]` union (and `null`
+  // added to any `enum`) so the model may emit `null` to mean "absent".
+  // See: https://platform.openai.com/docs/guides/structured-outputs
   schema: {
     type: "object",
     additionalProperties: false,
-    required: ["status"],
+    required: ["status", "issues"],
     properties: {
       status: { type: "string", enum: ["PASS", "FAIL"] },
       issues: {
@@ -27,15 +33,25 @@ export const AUDIT_RESPONSE_SCHEMA: AIResponseSchema = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["line", "severity", "message"],
+          required: [
+            "line",
+            "severity",
+            "message",
+            "suggestion",
+            "codeSuggestion",
+            "category",
+            "confidence",
+            "evidence",
+          ],
           properties: {
             line: { type: "integer", minimum: 1 },
             severity: { type: "string", enum: ["CRITICAL", "WARNING", "INFO"] },
             message: { type: "string" },
-            suggestion: { type: "string" },
-            codeSuggestion: { type: "string" },
+            // Optional fields — nullable so `strict` accepts their absence.
+            suggestion: { type: ["string", "null"] },
+            codeSuggestion: { type: ["string", "null"] },
             category: {
-              type: "string",
+              type: ["string", "null"],
               enum: [
                 "security",
                 "runtime-crash",
@@ -45,10 +61,11 @@ export const AUDIT_RESPONSE_SCHEMA: AIResponseSchema = {
                 "performance",
                 "maintainability",
                 "refactor",
+                null,
               ],
             },
-            confidence: { type: "string", enum: ["low", "medium", "high"] },
-            evidence: { type: "string" },
+            confidence: { type: ["string", "null"], enum: ["low", "medium", "high", null] },
+            evidence: { type: ["string", "null"] },
           },
         },
       },

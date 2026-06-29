@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# ── MP Sentinel pre-commit hook ────────────────────────────────────────────────
+# Runs deterministic checks only (no AI in pre-commit).
+# Install: npx husky init (or manually: git config core.hooksPath .husky)
+
+set -e
+
+echo "==> Running deterministic staged-file review ..."
+node dist/index.js --staged --no-ai --dry-run
+
+echo ""
+echo "==> Running guardrail checks on staged files ..."
+node scripts/check-review-guardrails.mjs --staged
+
+echo ""
+echo "==> Pre-commit checks passed."

@@ -37,5 +37,9 @@ CONVENTIONS.md
 .github/copilot-instructions.md
 .junie/
 .rules
+# MP Sentinel generated reports (local)
+/reports/
+# Guardrails baseline (local)
+.mp-sentinel-guardrails-baseline.json
 # FUSE artifacts (deleted-but-open files on mounted filesystems)
 .fuse_hidden*

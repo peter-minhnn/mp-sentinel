@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import type { AiModelTier, AiSelection, SeverityThreshold } from "mp-sentinel-extension-core";
+import type {
+  AiModelTier,
+  AiSelection,
+  ReasoningEffort,
+  SeverityThreshold,
+} from "mp-sentinel-extension-core";
 
 const SECTION = "mpSentinel";
 
@@ -48,11 +53,23 @@ export function readSettings(scope?: vscode.Uri): ExtensionSettings {
   if (modelTier) ai.modelTier = modelTier;
   // Optional non-secret provider settings (never credentials).
   const anthropicBaseUrl = nonEmpty(cfg.get<string>("ai.anthropicBaseUrl"));
+  const openaiBaseUrl = nonEmpty(cfg.get<string>("ai.openaiBaseUrl"));
   const openrouterSiteUrl = nonEmpty(cfg.get<string>("ai.openrouterSiteUrl"));
   const openrouterAppName = nonEmpty(cfg.get<string>("ai.openrouterAppName"));
   if (anthropicBaseUrl) ai.anthropicBaseUrl = anthropicBaseUrl;
+  if (openaiBaseUrl) ai.openaiBaseUrl = openaiBaseUrl;
   if (openrouterSiteUrl) ai.openrouterSiteUrl = openrouterSiteUrl;
   if (openrouterAppName) ai.openrouterAppName = openrouterAppName;
+  // Per-AI-request timeout: 0 (default) means "leave to the CLI default" so we
+  // only inject AI_TIMEOUT_MS when the user opts into a larger value.
+  const requestTimeoutMs = cfg.get<number>("ai.requestTimeoutMs", 0);
+  if (typeof requestTimeoutMs === "number" && requestTimeoutMs > 0) {
+    ai.requestTimeoutMs = requestTimeoutMs;
+  }
+  const reasoningEffort = nonEmpty(cfg.get<string>("ai.reasoningEffort")) as
+    | ReasoningEffort
+    | undefined;
+  if (reasoningEffort) ai.reasoningEffort = reasoningEffort;
 
   const review: ReviewSettings = {
     includeInfoSeverity: cfg.get<boolean>("review.includeInfoSeverity", true),

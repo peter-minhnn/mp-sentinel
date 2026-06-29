@@ -25,8 +25,12 @@ export class StatusBar {
   }
 
   busy(label: string): void {
-    this.item.text = `$(sync~spin) ${label}`;
-    this.item.tooltip = label;
+    // While a run is in flight the item becomes a one-click "stop": clicking it
+    // cancels the active review (also reachable via the command palette and the
+    // progress notification's cancel button).
+    this.item.command = COMMAND_IDS.stopReview;
+    this.item.text = `$(sync~spin) ${label} $(stop-circle)`;
+    this.item.tooltip = `${label} — click to stop`;
     this.item.backgroundColor = undefined;
   }
 
@@ -49,6 +53,8 @@ export class StatusBar {
   }
 
   private apply(display: StatusDisplay): void {
+    // Any non-busy state makes the item trigger a staged review again.
+    this.item.command = COMMAND_IDS.reviewStaged;
     this.item.text = display.text;
     this.item.tooltip = display.tooltip;
     this.item.backgroundColor =

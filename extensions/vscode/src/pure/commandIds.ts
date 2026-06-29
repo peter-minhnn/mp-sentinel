@@ -22,6 +22,7 @@ export const COMMAND_IDS = {
   reviewSelectedFiles: "mpSentinel.reviewSelectedFiles",
   reviewRange: "mpSentinel.reviewRange",
   reviewBranchDiff: "mpSentinel.reviewBranchDiff",
+  stopReview: "mpSentinel.stopReview",
   dryRunPreview: "mpSentinel.dryRunPreview",
   explainContext: "mpSentinel.explainContext",
   indexHealth: "mpSentinel.indexHealth",

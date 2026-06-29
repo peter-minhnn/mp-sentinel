@@ -126,6 +126,36 @@ function nodeBesideNpx(npxExecutable: string): string {
   return existsSync(candidate) ? candidate : "node.exe";
 }
 
+/**
+ * Terminate a child and everything it spawned.
+ *
+ * `child.kill("SIGTERM")` only signals the direct child. When the CLI is
+ * launched via `npx` (which spawns a `node` grandchild that does the real
+ * work) or otherwise spawns sub-processes, a plain SIGTERM leaves the
+ * grandchild running — the review keeps going after the user cancels. On
+ * Windows there are no real signals at all, so we use `taskkill /T /F` to
+ * tear down the whole tree by PID. On POSIX, SIGTERM to the child is enough
+ * for our single-process CLI, with SIGKILL as a fallback.
+ */
+function killProcessTree(child: ChildProcess): void {
+  if (child.pid === undefined) {
+    child.kill("SIGKILL");
+    return;
+  }
+  if (process.platform === "win32") {
+    try {
+      nodeSpawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } catch {
+      child.kill();
+    }
+    return;
+  }
+  child.kill("SIGTERM");
+}
+
 function buildSpawnPlan(command: string, args: readonly string[]): SpawnPlan {
   if (process.platform === "win32" && isNpxCommand(command)) {
     const npxExecutable = findWindowsExecutable(command);
@@ -178,19 +208,19 @@ export class CliRunner {
       };
 
       const timer = setTimeout(() => {
-        child.kill("SIGTERM");
+        killProcessTree(child);
         finish(() =>
           reject(new CliExecError("timeout", `mp-sentinel timed out after ${timeoutMs}ms`)),
         );
       }, timeoutMs);
 
       const onAbort = (): void => {
-        child.kill("SIGTERM");
+        killProcessTree(child);
         finish(() => reject(new CliExecError("aborted", "mp-sentinel run aborted")));
       };
       if (options.signal) {
         if (options.signal.aborted) {
-          child.kill("SIGTERM");
+          killProcessTree(child);
           return finish(() => reject(new CliExecError("aborted", "mp-sentinel run aborted")));
         }
         options.signal.addEventListener("abort", onAbort, { once: true });

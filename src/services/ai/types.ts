@@ -13,6 +13,13 @@ export type AIProvider = "gemini" | "openai" | "anthropic" | "grok" | "openroute
  */
 export type ModelTier = "premium" | "balanced" | "budget";
 
+/**
+ * Reasoning effort level for OpenAI reasoning models (GPT-5.x, o-series).
+ * These models use the Responses API `reasoning.effort` parameter instead
+ * of `temperature`, which they do not support.
+ */
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
 export interface AIModelConfig {
   provider: AIProvider;
   model: string;
@@ -20,6 +27,12 @@ export interface AIModelConfig {
   baseUrl?: string;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Reasoning effort for OpenAI reasoning models (GPT-5.x, o-series).
+   * Ignored by non-reasoning models and other providers. Defaults to
+   * "medium" when omitted.
+   */
+  reasoningEffort?: ReasoningEffort;
 }
 
 /**

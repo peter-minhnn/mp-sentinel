@@ -243,6 +243,220 @@ describe("downgradeUnsinkedXssClaims", () => {
   });
 });
 
+// ── guard/sanitizer vs. sink, weak-random, verb mismatch (temp.md 2026-06-26) ──
+
+import {
+  downgradeDefensiveXssClaims,
+  reclassifyWeakRandomFindings,
+  flagVerbMismatchClaims,
+  downgradeBarrelExportClaims,
+} from "../utils/finding-hygiene.js";
+
+describe("downgradeDefensiveXssClaims", () => {
+  it("downgrades an XSS CRITICAL whose evidence is a javascript: guard (SafeHtml L31)", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 31,
+        severity: "CRITICAL",
+        category: "security",
+        message:
+          "XSS via javascript: protocol in href/src attributes. The code only checks for javascript: in style values.",
+        evidence:
+          "if (name.toLowerCase().startsWith('on') || /^\\s*javascript:/i.test(attr.value)) { console.warn(`Blocked attribute encountered: ${name}`); return; }",
+      },
+    ];
+    const { results, downgraded } = downgradeDefensiveXssClaims([file("SafeHtml.tsx", issues)]);
+    expect(downgraded).toBe(1);
+    const issue = results[0]!.result.issues![0]!;
+    expect(issue.severity).toBe("WARNING");
+    expect(issue.message).toContain("guard/sanitizer");
+  });
+
+  it("keeps a real mXSS sink (DOMParser/parseFromString) as CRITICAL", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 60,
+        severity: "CRITICAL",
+        category: "security",
+        message: "mutation XSS risk: re-parsing sanitized HTML through DOMParser.",
+        evidence: "const doc = parser.parseFromString(sanitized, 'text/html');",
+      },
+    ];
+    const { downgraded } = downgradeDefensiveXssClaims([file("SafeHtml.tsx", issues)]);
+    expect(downgraded).toBe(0);
+  });
+
+  it("keeps a guarded but genuinely unsafe assignment as CRITICAL", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 5,
+        severity: "CRITICAL",
+        category: "security",
+        message: "XSS: user input assigned to innerHTML.",
+        evidence: "if (cond === true) el.innerHTML = userInput;",
+      },
+    ];
+    const { downgraded } = downgradeDefensiveXssClaims([file("a.tsx", issues)]);
+    expect(downgraded).toBe(0);
+  });
+});
+
+describe("reclassifyWeakRandomFindings", () => {
+  it("reclassifies Math.random rowId fallback from security to maintainability (useMyRequestCreate L27)", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 27,
+        severity: "CRITICAL",
+        category: "security",
+        message:
+          "Math.random() is used to generate a rowId fallback, which is not cryptographically secure.",
+        evidence: "rowId: item.id || Math.random().toString(36).substring(2, 9),",
+      },
+    ];
+    const { results, reclassified } = reclassifyWeakRandomFindings([
+      file("useMyRequestCreate.ts", issues),
+    ]);
+    expect(reclassified).toBe(1);
+    const issue = results[0]!.result.issues![0]!;
+    expect(issue.severity).toBe("WARNING");
+    expect(issue.category).toBe("maintainability");
+    expect(issue.message).toContain("non-security Math.random");
+  });
+
+  it("keeps Math.random as security when the value is a token/secret", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 3,
+        severity: "CRITICAL",
+        category: "security",
+        message: "Session token generated with Math.random — not cryptographically secure.",
+        evidence: "const sessionToken = Math.random().toString(36).slice(2);",
+      },
+    ];
+    const { reclassified } = reclassifyWeakRandomFindings([file("auth.ts", issues)]);
+    expect(reclassified).toBe(0);
+  });
+});
+
+describe("reclassifyWeakRandomFindings — runtime-crash/perf framing (review-0626.md)", () => {
+  it("downgrades the Math.random rowId 'remounts every render' CRITICAL (runtime-crash)", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 23,
+        severity: "CRITICAL",
+        category: "runtime-crash",
+        message:
+          "Using Math.random() for a stable key (rowId) will cause React to remount list items on every render, leading to lost component state and poor performance.",
+        evidence: "rowId: item.id || Math.random().toString(36).substring(2, 9),",
+      },
+    ];
+    const { results, reclassified } = reclassifyWeakRandomFindings([
+      file("useMyRequestCreate.ts", issues),
+    ]);
+    expect(reclassified).toBe(1);
+    const issue = results[0]!.result.issues![0]!;
+    expect(issue.severity).toBe("WARNING");
+    expect(issue.category).toBe("maintainability");
+  });
+
+  it("still keeps a token-context Math.random runtime-crash claim as security-relevant", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 3,
+        severity: "CRITICAL",
+        category: "runtime-crash",
+        message: "Math.random used to derive the auth token seed.",
+        evidence: "const token = Math.random().toString(36);",
+      },
+    ];
+    const { reclassified } = reclassifyWeakRandomFindings([file("a.ts", issues)]);
+    expect(reclassified).toBe(0);
+  });
+});
+
+describe("downgradeBarrelExportClaims", () => {
+  it("downgrades a 'message not exported by the GEMS UI barrel' claim (MyRequestListPage L1)", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 1,
+        severity: "WARNING",
+        category: "architecture",
+        message:
+          "Importing message from @/shared/gems-ui but message is not a UI primitive exported by the GEMS UI barrel.",
+        evidence: "import { Badge, Button, message } from '@/shared/gems-ui';",
+      },
+    ];
+    const { results, downgraded } = downgradeBarrelExportClaims([
+      file("MyRequestListPage.tsx", issues),
+    ]);
+    expect(downgraded).toBe(1);
+    expect(results[0]!.result.issues![0]!.severity).toBe("INFO");
+  });
+
+  it("leaves the valid 'import from antd, use the gems-ui barrel instead' finding untouched", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 1,
+        severity: "WARNING",
+        category: "architecture",
+        message:
+          "Direct import from 'antd' for Popconfirm violates project rule: add Popconfirm to the gems-ui barrel export and import it from '@/shared/gems-ui'.",
+        evidence: "import { Popconfirm } from 'antd';",
+      },
+    ];
+    const { downgraded } = downgradeBarrelExportClaims([file("TemplateList.tsx", issues)]);
+    expect(downgraded).toBe(0);
+  });
+
+  it("leaves the valid 'deep path instead of the public barrel' finding untouched", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 2,
+        severity: "WARNING",
+        category: "architecture",
+        message: "Importing Tabs from a deep internal path instead of the public barrel.",
+        evidence: "import { Tabs } from '@/shared/gems-ui/components/navigation/Tabs';",
+      },
+    ];
+    const { downgraded } = downgradeBarrelExportClaims([file("MyRequestListPage.tsx", issues)]);
+    expect(downgraded).toBe(0);
+  });
+});
+
+describe("flagVerbMismatchClaims", () => {
+  it("downgrades a 'causes updates' claim whose evidence uses the DELETE verb (typeGroupsApi L39)", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 39,
+        severity: "CRITICAL",
+        category: "runtime-crash",
+        message:
+          "fetchDeleteTypeGroup uses the update endpoint instead of the delete endpoint, causing unintended updates instead of deletions.",
+        evidence: "await apiClient.delete(DASHBOARD_ENDPOINTS.updateTypeGroup(id));",
+      },
+    ];
+    const { results, downgraded } = flagVerbMismatchClaims([file("typeGroupsApi.ts", issues)]);
+    expect(downgraded).toBe(1);
+    const issue = results[0]!.result.issues![0]!;
+    expect(issue.severity).toBe("WARNING");
+    expect(issue.message).toContain("DELETE verb");
+  });
+
+  it("leaves a consistent delete finding untouched", () => {
+    const issues: AuditIssue[] = [
+      {
+        line: 10,
+        severity: "WARNING",
+        category: "maintainability",
+        message: "deleteThing removes the record but does not refetch the list.",
+        evidence: "await apiClient.delete(ENDPOINTS.deleteThing(id));",
+      },
+    ];
+    const { downgraded } = flagVerbMismatchClaims([file("api.ts", issues)]);
+    expect(downgraded).toBe(0);
+  });
+});
+
 describe("hedged self-negation (field test round 2)", () => {
   it("catches 'may be acceptable' hedging in the message", () => {
     expect(

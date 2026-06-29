@@ -6,6 +6,7 @@ import {
   type ReviewReport,
 } from "mp-sentinel-extension-core";
 
+import { registerRun } from "../core/activeRuns.js";
 import { workspaceRelativePath } from "../pure/paths.js";
 import { toPanelFindings, type PanelResult } from "../pure/panelView.js";
 import { makeStreamingExtras, type StreamingExtras } from "../pure/streaming.js";
@@ -81,14 +82,25 @@ export async function withProgress<T>(
   task: (token: vscode.CancellationToken) => Promise<T>,
   opts: WithProgressOptions = {},
 ): Promise<T | undefined> {
+  // A dedicated source so the run can be cancelled either from the progress
+  // notification's own button or from the global "Stop Review" command / the
+  // clickable status-bar item. Registered for the lifetime of the run.
+  const cts = new vscode.CancellationTokenSource();
+  const untrack = registerRun(cts);
   try {
     return await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title, cancellable: true },
-      (_progress, token) => task(token),
+      (_progress, token) => {
+        const sub = token.onCancellationRequested(() => cts.cancel());
+        return task(cts.token).finally(() => sub.dispose());
+      },
     );
   } catch (error) {
     handleCommandError(error, deps, opts);
     return undefined;
+  } finally {
+    untrack();
+    cts.dispose();
   }
 }
 

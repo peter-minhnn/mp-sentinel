@@ -99,6 +99,217 @@ export const downgradeUnsinkedXssClaims = (
   return { results: next, downgraded };
 };
 
+// ── defensive-code XSS guard (guard/sanitizer vs. unsafe sink) ──────────────
+
+/**
+ * Evidence that DEFENDS against an XSS payload rather than emitting one:
+ * a check/comparison against the dangerous value, or a sanitizer call.
+ * e.g. `if (/^\s*javascript:/i.test(attr.value)) return;` — the line is the
+ * guard, not the sink. Field sample: SafeHtml.tsx L31 (temp.md 2026-06-26).
+ */
+const DEFENSIVE_EVIDENCE_RE =
+  /\.(test|match|includes|indexOf|search|startsWith|endsWith)\s*\(|[!=]==|\bDOMPurify\b|\bsanitize(?:Html)?\s*\(|\.removeAttribute\s*\(/i;
+
+/**
+ * Evidence of an ACTUAL unsafe assignment into a sink. When present we never
+ * treat the line as defensive — `if (cond) el.innerHTML = x` is still a sink.
+ */
+const UNSAFE_ASSIGN_RE =
+  /\binnerHTML\s*=|\bouterHTML\s*=|insertAdjacentHTML|document\.write|dangerouslySetInnerHTML|\.src\s*=|setAttribute\s*\(\s*['"](?:href|src|action|formaction)/i;
+
+/**
+ * Downgrade XSS CRITICALs whose evidence is a guard/check/sanitizer rather
+ * than an unsafe sink. The plain `downgradeUnsinkedXssClaims` keeps any finding
+ * whose evidence merely MENTIONS a sink token (`javascript:`, `DOMParser`…),
+ * which lets a defensive line that checks for `javascript:` survive as a false
+ * CRITICAL. This pass closes that gap: defensive evidence (and no unsafe
+ * assignment) downgrades to WARNING for human review.
+ */
+export const downgradeDefensiveXssClaims = (
+  results: readonly FileAuditResult[],
+): { results: FileAuditResult[]; downgraded: number } => {
+  let downgraded = 0;
+  const next = results.map((file): FileAuditResult => {
+    const issues = file.result.issues ?? [];
+    if (!issues.some(isXssClaim)) return file;
+
+    const nextIssues = issues.map((issue): AuditIssue => {
+      if (!isXssClaim(issue) || !issue.evidence) return issue;
+      const ev = issue.evidence;
+      if (!DEFENSIVE_EVIDENCE_RE.test(ev) || UNSAFE_ASSIGN_RE.test(ev)) return issue;
+      downgraded += 1;
+      return {
+        ...issue,
+        severity: "WARNING",
+        confidence: "low",
+        message: `${issue.message} [downgraded: evidence is a guard/sanitizer, not an unsafe sink]`,
+      };
+    });
+    return { ...file, result: { ...file.result, issues: nextIssues } };
+  });
+  return { results: next, downgraded };
+};
+
+// ── weak-random reclassification (security vs. non-security use) ─────────────
+
+const WEAK_RANDOM_RE = /Math\.random\s*\(/;
+
+/**
+ * Identifiers whose value is genuinely security-sensitive — only THEN is
+ * `Math.random()` a security defect. A UI row key, temp id, color seed, or
+ * jitter value is not. Field sample: useMyRequestCreate.ts L27 (`rowId`).
+ */
+const SECURITY_CONTEXT_RE =
+  /\b(token|secret|api[_-]?key|apikey|password|passwd|pwd|session|csrf|xsrf|nonce|salt|\biv\b|otp|auth|credential|signature|jwt|cookie)\b/i;
+
+/**
+ * Categories that over-fire on `Math.random()`. Besides the security/crypto
+ * framing, the model also raises it as a runtime-crash/performance CRITICAL
+ * ("used as a React key → remounts every render → lost state"). That claim
+ * requires the value to be produced DURING render and used as a `key`; when
+ * it is generated once (e.g. inside a `useEffect`/initializer) it is stable,
+ * so the crash framing is unverifiable from the single evidence line. Field
+ * sample: useMyRequestCreate.ts L23 (review-0626.md, the lone CRITICAL).
+ */
+const WEAK_RANDOM_CATEGORIES = new Set(["security", "runtime-crash", "performance"]);
+
+const isWeakRandomMisclassification = (issue: AuditIssue): boolean =>
+  issue.severity !== "INFO" &&
+  issue.evidence !== undefined &&
+  WEAK_RANDOM_RE.test(issue.evidence) &&
+  ((issue.category !== undefined && WEAK_RANDOM_CATEGORIES.has(issue.category)) ||
+    /cryptographic|secure random|insecure random|remount/i.test(issue.message));
+
+/**
+ * Reclassify `Math.random()` findings raised as security / runtime-crash /
+ * performance when neither the evidence nor the message ties the value to a
+ * security-sensitive identifier. Recategorized to maintainability and capped
+ * at WARNING (never CRITICAL) — `crypto.randomUUID()` is a nicety here, not a
+ * security fix or a crash.
+ */
+export const reclassifyWeakRandomFindings = (
+  results: readonly FileAuditResult[],
+): { results: FileAuditResult[]; reclassified: number } => {
+  let reclassified = 0;
+  const next = results.map((file): FileAuditResult => {
+    const issues = file.result.issues ?? [];
+    if (!issues.some(isWeakRandomMisclassification)) return file;
+
+    const nextIssues = issues.map((issue): AuditIssue => {
+      if (!isWeakRandomMisclassification(issue)) return issue;
+      const haystack = `${issue.evidence ?? ""} ${issue.message}`;
+      if (SECURITY_CONTEXT_RE.test(haystack)) return issue;
+      reclassified += 1;
+      const severity = issue.severity === "CRITICAL" ? "WARNING" : issue.severity;
+      return {
+        ...issue,
+        severity,
+        category: "maintainability",
+        confidence: "low",
+        message: `${issue.message} [reclassified: non-security Math.random (UI/local id) → maintainability]`,
+      };
+    });
+    return { ...file, result: { ...file.result, issues: nextIssues } };
+  });
+  return { results: next, reclassified };
+};
+
+// ── claim-vs-evidence verb mismatch ─────────────────────────────────────────
+
+const EVIDENCE_DELETE_RE = /\.(delete|del|remove|destroy)\s*\(|method\s*:\s*['"]delete['"]/i;
+const CLAIM_UPDATE_EFFECT_RE = /\b(update|updates|updating|mutat|overwrit|modif)/i;
+
+const hasVerbMismatch = (issue: AuditIssue): boolean =>
+  issue.severity !== "INFO" &&
+  issue.evidence !== undefined &&
+  EVIDENCE_DELETE_RE.test(issue.evidence) &&
+  CLAIM_UPDATE_EFFECT_RE.test(issue.message);
+
+/**
+ * Downgrade findings whose stated mechanism contradicts the verb in their own
+ * evidence — e.g. "causes unintended updates instead of deletions" quoting
+ * `apiClient.delete(...)`. The DELETE verb means it will not update; the claim
+ * is wrong even if the endpoint constant is misnamed. Kept as WARNING for
+ * human review (the naming concern may be real). Field sample: typeGroupsApi.ts
+ * L39 (temp.md 2026-06-26).
+ */
+export const flagVerbMismatchClaims = (
+  results: readonly FileAuditResult[],
+): { results: FileAuditResult[]; downgraded: number } => {
+  let downgraded = 0;
+  const next = results.map((file): FileAuditResult => {
+    const issues = file.result.issues ?? [];
+    if (!issues.some(hasVerbMismatch)) return file;
+
+    const nextIssues = issues.map((issue): AuditIssue => {
+      if (!hasVerbMismatch(issue)) return issue;
+      downgraded += 1;
+      const severity = issue.severity === "CRITICAL" ? "WARNING" : issue.severity;
+      return {
+        ...issue,
+        severity,
+        confidence: "low",
+        message: `${issue.message} [needs-human-review: evidence uses DELETE verb but claim asserts an update — verify endpoint method/naming]`,
+      };
+    });
+    return { ...file, result: { ...file.result, issues: nextIssues } };
+  });
+  return { results: next, downgraded };
+};
+
+// ── barrel re-export claims (invisible in a diff) ───────────────────────────
+
+/**
+ * Claim that a symbol is NOT exported by a barrel/index. A barrel re-exports
+ * transitively (`index.ts` → `feedback/index.ts` → `Toast.tsx`), and none of
+ * that chain is visible in a diff, so "X is not exported by the barrel" is
+ * unverifiable and a frequent false positive. Field sample: MyRequestListPage
+ * L1 — "message is not a UI primitive exported by the GEMS UI barrel" (it is,
+ * via the feedback re-export). review-0626.md.
+ *
+ * Note: this is narrow on purpose. The VALID sibling findings — "imported from
+ * 'antd', import from the gems-ui barrel instead" / "imported from a deep path
+ * instead of the public barrel" — do NOT assert "not exported", so they pass
+ * through untouched.
+ */
+const BARREL_NOT_EXPORTED_RE =
+  /\bnot\s+(?:a\s+\w+\s+|an?\s+)?(?:ui\s+)?(?:primitive\s+)?(?:re-?)?export(?:ed)?\b|\bis\s+not\s+exported\b|\bnot\s+(?:re-?)?exported\s+(?:by|from)\b/i;
+const BARREL_REF_RE = /\bbarrel\b|gems-ui|index\.ts|@\/shared/i;
+
+const isBarrelNotExportedClaim = (issue: AuditIssue): boolean =>
+  issue.severity !== "INFO" &&
+  BARREL_NOT_EXPORTED_RE.test(issue.message) &&
+  (BARREL_REF_RE.test(issue.message) ||
+    (issue.evidence !== undefined && BARREL_REF_RE.test(issue.evidence)));
+
+/**
+ * Downgrade "symbol not exported by the barrel" claims to INFO — the reviewer
+ * cannot see a barrel's transitive re-exports from a diff, so the assertion is
+ * unverifiable. Kept visible (INFO) for human confirmation, never blocking.
+ */
+export const downgradeBarrelExportClaims = (
+  results: readonly FileAuditResult[],
+): { results: FileAuditResult[]; downgraded: number } => {
+  let downgraded = 0;
+  const next = results.map((file): FileAuditResult => {
+    const issues = file.result.issues ?? [];
+    if (!issues.some(isBarrelNotExportedClaim)) return file;
+
+    const nextIssues = issues.map((issue): AuditIssue => {
+      if (!isBarrelNotExportedClaim(issue)) return issue;
+      downgraded += 1;
+      return {
+        ...issue,
+        severity: "INFO",
+        confidence: "low",
+        message: `${issue.message} [downgraded: barrel re-exports are not visible in a diff — verify against the barrel index]`,
+      };
+    });
+    return { ...file, result: { ...file.result, issues: nextIssues } };
+  });
+  return { results: next, downgraded };
+};
+
 /**
  * Remove or downgrade findings whose message negates itself.
  */

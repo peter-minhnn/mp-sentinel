@@ -3,7 +3,7 @@
  * Handles environment variables and provider selection
  */
 
-import type { AIModelConfig, AIProvider, ModelTier } from "./types.js";
+import type { AIModelConfig, AIProvider, ModelTier, ReasoningEffort } from "./types.js";
 import { AIProviderFactory } from "./factory.js";
 import { ProviderError } from "../../utils/errors.js";
 import { normalizeAnthropicBaseUrl, isValidHttpUrl } from "./anthropic-utils.js";
@@ -97,6 +97,7 @@ export class AIConfig {
       apiKey,
       temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
+      reasoningEffort: this.resolveReasoningEffort(),
     };
 
     // Read ANTHROPIC_BASE_URL only for anthropic provider
@@ -214,6 +215,7 @@ export class AIConfig {
       apiKey,
       temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
+      reasoningEffort: this.resolveReasoningEffort(),
     };
     if (baseUrl) {
       config.baseUrl = baseUrl;
@@ -223,6 +225,19 @@ export class AIConfig {
       status: "ready",
       config,
     };
+  }
+
+  /**
+   * Resolve the reasoning effort hint for OpenAI reasoning models from
+   * AI_REASONING_EFFORT. Falls back to "medium" for unset/invalid values.
+   * Only meaningful for OpenAI reasoning models; ignored elsewhere.
+   */
+  private static resolveReasoningEffort(): ReasoningEffort {
+    const raw = (process.env.AI_REASONING_EFFORT || "").trim().toLowerCase();
+    if (raw === "minimal" || raw === "low" || raw === "medium" || raw === "high") {
+      return raw;
+    }
+    return "medium";
   }
 
   private static isProvider(provider: string): provider is AIProvider {

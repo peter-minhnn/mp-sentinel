@@ -81,6 +81,10 @@
         "title": "MP Sentinel: Review Current Branch Against Base..."
       },
       {
+        "command": "mpSentinel.stopReview",
+        "title": "MP Sentinel: Stop Review"
+      },
+      {
         "command": "mpSentinel.dryRunPreview",
         "title": "MP Sentinel: Dry-Run Preview (no AI)"
       },
@@ -181,6 +185,11 @@
           "default": "",
           "description": "Custom base URL for Anthropic-compatible endpoints (e.g. DeepSeek). Injected as ANTHROPIC_BASE_URL. Blank uses the official Anthropic API."
         },
+        "mpSentinel.ai.openaiBaseUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Custom base URL for OpenAI-compatible endpoints / proxies (injected as `OPENAI_BASE_URL`). Accepts a host, a `.../v1`, or a full `.../v1/responses` URL. Blank uses the official OpenAI API (`https://api.openai.com/v1/responses`)."
+        },
         "mpSentinel.ai.openrouterSiteUrl": {
           "type": "string",
           "default": "",
@@ -190,6 +199,23 @@
           "type": "string",
           "default": "",
           "description": "OpenRouter attribution app name (injected as OPENROUTER_APP_NAME). Optional."
+        },
+        "mpSentinel.ai.requestTimeoutMs": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Timeout for a single AI request, in ms (injected as `AI_TIMEOUT_MS`). `0` keeps the CLI default of 30000. Reasoning models (GPT-5.x, o-series) are much slower than chat models like DeepSeek, so a 30s timeout makes them abort and retry repeatedly — raise this (e.g. `120000`) for those models."
+        },
+        "mpSentinel.ai.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "",
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "",
+          "markdownDescription": "Reasoning effort for OpenAI reasoning models (injected as `AI_REASONING_EFFORT`). Lower effort (`minimal`/`low`) responds faster and reduces timeouts. Blank uses the default (`medium`). Ignored by non-reasoning models and other providers."
         },
         "mpSentinel.review.targetBranch": {
           "type": "string",

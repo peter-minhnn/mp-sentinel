@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { COMMAND_IDS } from "../pure/commandIds.js";
+import { cancelAllRuns } from "../core/activeRuns.js";
 import type { CommandDeps } from "./shared.js";
 import { dryRunPreview } from "./dryrun.js";
 import { indexHealth, rebuildIndex } from "./indexing.js";
@@ -44,6 +45,17 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
   );
   register(COMMAND_IDS.reviewRange, () => reviewRange(deps));
   register(COMMAND_IDS.reviewBranchDiff, () => reviewBranchDiff(deps));
+  register(COMMAND_IDS.stopReview, () => {
+    const cancelled = cancelAllRuns();
+    if (cancelled > 0) {
+      deps.statusBar.reset();
+      deps.panel.setIdle("Review cancelled.");
+      deps.output.info("Review cancelled by user.");
+      void vscode.window.showInformationMessage("MP Sentinel: review cancelled.");
+    } else {
+      void vscode.window.showInformationMessage("MP Sentinel: no review is running.");
+    }
+  });
   register(COMMAND_IDS.dryRunPreview, () => dryRunPreview(deps));
   register(COMMAND_IDS.explainContext, () => explainContext(deps));
 

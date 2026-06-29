@@ -174,10 +174,26 @@ describe("AUDIT_RESPONSE_SCHEMA shape", () => {
     expect(schema.properties.issues).toBeDefined();
   });
 
-  it("declares the optional codeSuggestion field", () => {
+  it("declares the optional codeSuggestion field as nullable", () => {
     const schema = AUDIT_RESPONSE_SCHEMA.schema as {
-      properties: { issues: { items: { properties: Record<string, { type: string }> } } };
+      properties: { issues: { items: { properties: Record<string, { type: string[] }> } } };
     };
-    expect(schema.properties.issues.items.properties.codeSuggestion).toEqual({ type: "string" });
+    expect(schema.properties.issues.items.properties.codeSuggestion).toEqual({
+      type: ["string", "null"],
+    });
+  });
+
+  it("lists every issue property in `required` for OpenAI strict mode", () => {
+    const schema = AUDIT_RESPONSE_SCHEMA.schema as {
+      required: string[];
+      properties: {
+        issues: { items: { required: string[]; properties: Record<string, unknown> } };
+      };
+    };
+    // Top-level: all properties must be required under strict mode.
+    expect(new Set(schema.required)).toEqual(new Set(["status", "issues"]));
+    // Issue items: required must cover every declared property.
+    const items = schema.properties.issues.items;
+    expect(new Set(items.required)).toEqual(new Set(Object.keys(items.properties)));
   });
 });

@@ -52,7 +52,14 @@ import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
-import { downgradeUnsinkedXssClaims, filterSelfNegatedFindings } from "../utils/finding-hygiene.js";
+import {
+  downgradeBarrelExportClaims,
+  downgradeDefensiveXssClaims,
+  downgradeUnsinkedXssClaims,
+  filterSelfNegatedFindings,
+  flagVerbMismatchClaims,
+  reclassifyWeakRandomFindings,
+} from "../utils/finding-hygiene.js";
 import type { CLIValues } from "./args.js";
 import { resolveSeverityThreshold } from "../utils/severity.js";
 
@@ -393,6 +400,38 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
       log.info(`Hygiene: ${xssCheck.downgraded} XSS claim(s) without a sink downgraded.`);
     }
     aiResults = xssCheck.results;
+
+    const guardCheck = downgradeDefensiveXssClaims(aiResults);
+    if (guardCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${guardCheck.downgraded} XSS claim(s) downgraded (evidence is a guard/sanitizer).`,
+      );
+    }
+    aiResults = guardCheck.results;
+
+    const randomCheck = reclassifyWeakRandomFindings(aiResults);
+    if (randomCheck.reclassified > 0) {
+      log.info(
+        `Hygiene: ${randomCheck.reclassified} Math.random finding(s) reclassified (non-security use).`,
+      );
+    }
+    aiResults = randomCheck.results;
+
+    const verbCheck = flagVerbMismatchClaims(aiResults);
+    if (verbCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${verbCheck.downgraded} finding(s) downgraded (claim contradicts the verb in its evidence).`,
+      );
+    }
+    aiResults = verbCheck.results;
+
+    const barrelCheck = downgradeBarrelExportClaims(aiResults);
+    if (barrelCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${barrelCheck.downgraded} 'not exported by barrel' claim(s) downgraded (unverifiable from diff).`,
+      );
+    }
+    aiResults = barrelCheck.results;
 
     const clampOutcome = clampSeverities(aiResults, config.ai?.severityCeilings);
     if (clampOutcome.clamped > 0) {

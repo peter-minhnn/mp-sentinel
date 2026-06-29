@@ -14,6 +14,8 @@ import { sanitizeSecretBundle, type SecretBundle } from "./secrets.js";
 
 export type AiModelTier = "premium" | "balanced" | "budget";
 
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
 /** Non-secret AI selection, typically mirrored from editor settings. */
 export interface AiSelection {
   provider?: string;
@@ -21,8 +23,18 @@ export interface AiSelection {
   modelTier?: AiModelTier;
   /** Optional non-secret provider settings (e.g. custom Anthropic-compatible base URL). */
   anthropicBaseUrl?: string;
+  /** Custom OpenAI-compatible base URL / proxy (injected as OPENAI_BASE_URL). */
+  openaiBaseUrl?: string;
   openrouterSiteUrl?: string;
   openrouterAppName?: string;
+  /**
+   * Per-AI-request timeout in ms (injected as AI_TIMEOUT_MS). Distinct from the
+   * overall CLI process timeout. Reasoning models (GPT-5.x, o-series) can take
+   * far longer than the 30s default, so a low value causes abort/retry storms.
+   */
+  requestTimeoutMs?: number;
+  /** Reasoning effort for OpenAI reasoning models (injected as AI_REASONING_EFFORT). */
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface BuildEnvInput {
@@ -72,8 +84,13 @@ export function buildEnv(input: BuildEnvInput = {}): Record<string, string> {
   assignIfPresent(env, "AI_MODEL", ai.model);
   assignIfPresent(env, "AI_MODEL_TIER", ai.modelTier);
   assignIfPresent(env, "ANTHROPIC_BASE_URL", ai.anthropicBaseUrl);
+  assignIfPresent(env, "OPENAI_BASE_URL", ai.openaiBaseUrl);
   assignIfPresent(env, "OPENROUTER_SITE_URL", ai.openrouterSiteUrl);
   assignIfPresent(env, "OPENROUTER_APP_NAME", ai.openrouterAppName);
+  if (typeof ai.requestTimeoutMs === "number" && ai.requestTimeoutMs > 0) {
+    assignIfPresent(env, "AI_TIMEOUT_MS", String(Math.floor(ai.requestTimeoutMs)));
+  }
+  assignIfPresent(env, "AI_REASONING_EFFORT", ai.reasoningEffort);
 
   // 3. MCP env (non-secret config only — secrets must come via the bundle).
   if (mcpEnv) {

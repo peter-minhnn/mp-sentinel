@@ -59,7 +59,14 @@ import {
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
-import { downgradeUnsinkedXssClaims, filterSelfNegatedFindings } from "../utils/finding-hygiene.js";
+import {
+  downgradeBarrelExportClaims,
+  downgradeDefensiveXssClaims,
+  downgradeUnsinkedXssClaims,
+  filterSelfNegatedFindings,
+  flagVerbMismatchClaims,
+  reclassifyWeakRandomFindings,
+} from "../utils/finding-hygiene.js";
 import {
   DEFAULT_BASELINE_PATH,
   filterAgainstBaseline,
@@ -631,6 +638,38 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
       log.info(`Hygiene: ${xssCheck.downgraded} XSS claim(s) without a sink downgraded.`);
     }
     auditResults = xssCheck.results;
+
+    const guardCheck = downgradeDefensiveXssClaims(auditResults);
+    if (guardCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${guardCheck.downgraded} XSS claim(s) downgraded (evidence is a guard/sanitizer).`,
+      );
+    }
+    auditResults = guardCheck.results;
+
+    const randomCheck = reclassifyWeakRandomFindings(auditResults);
+    if (randomCheck.reclassified > 0) {
+      log.info(
+        `Hygiene: ${randomCheck.reclassified} Math.random finding(s) reclassified (non-security use).`,
+      );
+    }
+    auditResults = randomCheck.results;
+
+    const verbCheck = flagVerbMismatchClaims(auditResults);
+    if (verbCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${verbCheck.downgraded} finding(s) downgraded (claim contradicts the verb in its evidence).`,
+      );
+    }
+    auditResults = verbCheck.results;
+
+    const barrelCheck = downgradeBarrelExportClaims(auditResults);
+    if (barrelCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${barrelCheck.downgraded} 'not exported by barrel' claim(s) downgraded (unverifiable from diff).`,
+      );
+    }
+    auditResults = barrelCheck.results;
 
     const clampOutcome = clampSeverities(auditResults, config.ai?.severityCeilings);
     if (clampOutcome.clamped > 0) {

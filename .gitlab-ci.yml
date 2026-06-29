@@ -1,5 +1,12 @@
-image: node:24
+# ── MP Sentinel — GitLab CI Pipeline ────────────────────────────────────────────
+# Stages: quality (deterministic gates) → audit (AI review, conditional) → security (trivy)
 
+stages:
+  - quality
+  - audit
+  - security
+
+# ── Shared cache ───────────────────────────────────────────────────────────────
 cache:
   key:
     files:
@@ -7,11 +14,89 @@ cache:
   paths:
     - node_modules/
 
-stages:
-  - audit
+# ── MR Quality Gate (deterministic, always runs) ───────────────────────────────
+mr_quality:
+  stage: quality
+  image: oven/bun:1.3.14-alpine
+  before_script:
+    - apk add --no-cache git
+    - bun install --frozen-lockfile
+    - git fetch --unshallow 2>/dev/null || true
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+  script:
+    - bun run typecheck
+    - bun run lint:format
+    - bun run sentinel:index
+    - bun run sentinel:skills:check
+    - bun run review:branch:deterministic
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'  # also gate main pushes
+    - if: $CI_COMMIT_BRANCH == 'master'
 
+# ── MR AI Review (max recall, conditional on API key) ──────────────────────────
+mr_ai_review:
+  stage: audit
+  image: oven/bun:1.3.14-alpine
+  before_script:
+    - apk add --no-cache git
+    - bun install --frozen-lockfile
+    - git fetch --unshallow 2>/dev/null || true
+    - git fetch origin ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
+    # Rebuild index so AI review has fresh context (avoid stale index)
+    - bun run sentinel:index
+  script:
+    # Run branch-diff AI review with max-recall settings
+    - |
+      TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+      mkdir -p reports
+      bun run --silent sentinel:index --health 2>/dev/null || true
+      node dist/index.js \
+        --branch-diff \
+        --compare-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main} \
+        --fetch \
+        --ai \
+        --no-cache \
+        --severity-threshold INFO \
+        --format json \
+        --output "reports/review-${TIMESTAMP}.md" \
+        2>&1 | tee "reports/review-${TIMESTAMP}.json"
+  artifacts:
+    name: "mp-sentinel-review-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - reports/*.md
+      - reports/*.json
+    when: always
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $MP_SENTINEL_AI == '1'
+      allow_failure: false
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: manual
+      allow_failure: true
+  variables:
+    # ── AI Provider Configuration ──────────────────────────────────────────
+    # Set MP_SENTINEL_AI=1 in CI/CD Variables to enable this job on every MR.
+    # Also set the provider's API key variable (e.g. ANTHROPIC_API_KEY).
+    #
+    # Provider settings are read from the project .env / CI variables:
+    #   AI_PROVIDER      — gemini | openai | anthropic | grok | openrouter
+    #   AI_MODEL          — model id override (falls back to tier-based selection)
+    #   AI_MODEL_TIER     — premium (max recall default) | balanced | budget
+    #   ANTHROPIC_API_KEY — required when AI_PROVIDER=anthropic
+    #   ANTHROPIC_BASE_URL — optional custom endpoint (e.g. DeepSeek)
+    #   OPENAI_API_KEY    — required when AI_PROVIDER=openai
+    #   GEMINI_API_KEY    — required when AI_PROVIDER=gemini
+    #
+    # For GitLab MR inline comments:
+    #   GITLAB_TOKEN (PAT/project token with `api` scope) enables one-click
+    #   "Suggest changes". Add in Settings → CI/CD → Variables.
+    #   Fallback: CI_JOB_TOKEN (may lack Notes API permission → 401).
+
+# ── Existing audit job (kept for backward compatibility) ───────────────────────
 code_audit:
   stage: audit
+  image: node:24
   before_script:
     - npm ci
     - git fetch --unshallow 2>/dev/null || true
@@ -21,7 +106,7 @@ code_audit:
     - node dist/index.js indexing
     - node dist/index.js --target-branch origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}
   rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $MP_SENTINEL_AI != '1'
   variables:
     # AI Provider Configuration (choose one)
     # Option 1: Google Gemini (default, free tier available)
@@ -34,7 +119,7 @@ code_audit:
 
     # Option 3: Anthropic Claude (uncomment to use)
     AI_PROVIDER: anthropic
-    AI_MODEL: deepseek-v4-pro  # or claude-opus-4
+    AI_MODEL: deepseek-v4-pro
     ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
     # ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
 

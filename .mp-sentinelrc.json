@@ -1,4 +1,5 @@
 {
+  "$schema": "./schemas/mp-sentinelrc.schema.json",
   "techStack": "TypeScript 5.7, Node.js 24 (ESM), tsup (esbuild)",
   "enableSkillsFetch": true,
   "skillsFetchTimeout": 3000,
@@ -18,7 +19,14 @@
   ],
   "commitFormat": "<type>(<scope>): <subject>",
   "bypassKeyword": "skip:",
-  "maxConcurrency": 5,
+  "maxConcurrency": 2,
+  "ai": {
+    "modelTier": "premium"
+  },
+  "review": {
+    "severityThreshold": "WARNING",
+    "maxFindingsPerFile": 0
+  },
   "indexing": {
     "enabled": true,
     "maxRelatedFiles": 3
