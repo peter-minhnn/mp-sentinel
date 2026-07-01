@@ -54,6 +54,7 @@ export class GeminiProvider implements IAIProvider {
   private readonly client: GoogleGenAI;
   private readonly model: string;
   private readonly temperature: number;
+  private readonly seed: number | undefined;
   private readonly maxTokens: number;
   private readonly timeoutMs: number;
 
@@ -63,7 +64,8 @@ export class GeminiProvider implements IAIProvider {
     this.client = new GoogleGenAI({ apiKey: config.apiKey });
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.temperature = config.temperature ?? 0.2;
+    this.temperature = config.temperature ?? 0;
+    this.seed = config.seed;
     this.maxTokens = config.maxTokens ?? 2048;
     this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
   }
@@ -82,6 +84,7 @@ export class GeminiProvider implements IAIProvider {
     const generationConfig: Record<string, unknown> = {
       systemInstruction: systemPrompt,
       temperature: this.temperature,
+      ...(this.seed !== undefined && { seed: this.seed }),
       maxOutputTokens: this.maxTokens,
       abortSignal: controller.signal,
     };

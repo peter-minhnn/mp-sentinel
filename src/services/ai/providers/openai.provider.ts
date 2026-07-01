@@ -135,6 +135,7 @@ export class OpenAIProvider implements IAIProvider {
   private apiKey: string;
   private model: string;
   private temperature: number;
+  private seed: number | undefined;
   private reasoningEffort: ReasoningEffort;
   private maxTokens: number;
   private timeoutMs: number;
@@ -143,7 +144,8 @@ export class OpenAIProvider implements IAIProvider {
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.temperature = config.temperature ?? 0.2;
+    this.temperature = config.temperature ?? 0;
+    this.seed = config.seed;
     this.reasoningEffort = config.reasoningEffort ?? "medium";
     this.maxTokens = config.maxTokens ?? 2048;
     // Reasoning models (GPT-5.x, o-series) think before answering, so a single
@@ -167,9 +169,14 @@ export class OpenAIProvider implements IAIProvider {
    */
   private samplingParams(): Record<string, unknown> {
     if (isReasoningModel(this.model)) {
+      // Reasoning models reject `temperature`/`seed`; determinism is governed
+      // by `reasoning.effort` only.
       return { reasoning: { effort: this.reasoningEffort } };
     }
-    return { temperature: this.temperature };
+    return {
+      temperature: this.temperature,
+      ...(this.seed !== undefined && { seed: this.seed }),
+    };
   }
 
   /**

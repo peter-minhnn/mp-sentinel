@@ -9,6 +9,7 @@ import { OpenAIProvider } from "./providers/openai.provider.js";
 import { AnthropicProvider } from "./providers/anthropic.provider.js";
 import { GrokProvider } from "./providers/grok.provider.js";
 import { OpenRouterProvider } from "./providers/openrouter.provider.js";
+import { DeepSeekProvider } from "./providers/deepseek.provider.js";
 
 /**
  * Model tier catalog for each AI provider.
@@ -53,6 +54,11 @@ const modelTiers: Record<AIProvider, ModelTiers> = {
     balanced: ["openai/gpt-5.2"],
     budget: ["google/gemini-2.5-flash"],
   },
+  deepseek: {
+    premium: ["deepseek-v4-pro"],
+    balanced: ["deepseek-v4-pro"],
+    budget: ["deepseek-v4-flash"],
+  },
 };
 
 export class AIProviderFactory {
@@ -68,6 +74,8 @@ export class AIProviderFactory {
         return new GrokProvider(config);
       case "openrouter":
         return new OpenRouterProvider(config);
+      case "deepseek":
+        return new DeepSeekProvider(config);
       default:
         throw new Error(`Unsupported AI provider: ${config.provider}`);
     }
@@ -80,6 +88,7 @@ export class AIProviderFactory {
       anthropic: "claude-sonnet-4-6",
       grok: "grok-4-1-fast-reasoning",
       openrouter: "openai/gpt-5.2",
+      deepseek: "deepseek-v4-pro",
     };
     return defaults[provider];
   }

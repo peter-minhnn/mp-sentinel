@@ -56,6 +56,7 @@ export class GrokProvider implements IAIProvider {
   private apiKey: string;
   private model: string;
   private temperature: number;
+  private seed: number | undefined;
   private maxTokens: number;
   private timeoutMs: number;
   private baseURL = "https://api.x.ai/v1/chat/completions";
@@ -63,7 +64,8 @@ export class GrokProvider implements IAIProvider {
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.temperature = config.temperature ?? 0.2;
+    this.temperature = config.temperature ?? 0;
+    this.seed = config.seed;
     this.maxTokens = config.maxTokens ?? 2048;
     this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
   }
@@ -82,6 +84,7 @@ export class GrokProvider implements IAIProvider {
       model: this.model,
       messages,
       temperature: this.temperature,
+      ...(this.seed !== undefined && { seed: this.seed }),
       max_tokens: this.maxTokens,
     };
     // Phase 2.5: Grok ships OpenAI-compatible `response_format` for

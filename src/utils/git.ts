@@ -606,6 +606,48 @@ export const getCurrentBranch = async (): Promise<string> => {
 };
 
 /**
+ * Resolve the diff target to use when the user did not pass `--target-branch`
+ * or set `TARGET_BRANCH`. Many repos don't have a `main` branch (they use
+ * `master`, `develop`, `trunk`, …), so a hardcoded `origin/main` fails with
+ * "unknown revision". Strategy, in order:
+ *   1. The remote's configured default branch (`origin/HEAD`), i.e. what the
+ *      repo was cloned to track — usually the right base.
+ *   2. The first common integration branch that actually exists on the remote
+ *      (`main`, `master`, `develop`).
+ *   3. Literal `origin/main` as a last resort, preserving legacy behavior when
+ *      git is unavailable or no candidate exists.
+ *
+ * Never throws — always returns a usable ref string. Note: this picks the
+ * repository default, not a feature branch's intended PR base; teams whose
+ * features branch off `develop` should still set `TARGET_BRANCH=origin/develop`.
+ */
+export const resolveDefaultTargetBranch = async (remote = "origin"): Promise<string> => {
+  // 1. origin/HEAD — the remote's default branch (e.g. "origin/master").
+  try {
+    const { stdout } = await execAsync(
+      `git symbolic-ref --quiet --short refs/remotes/${remote}/HEAD`,
+    );
+    const ref = stdout.trim();
+    if (ref) return ref;
+  } catch {
+    // origin/HEAD not configured locally — fall through to candidate probing.
+  }
+
+  // 2. First existing common integration branch.
+  for (const candidate of [`${remote}/main`, `${remote}/master`, `${remote}/develop`]) {
+    try {
+      await execAsync(`git rev-parse --verify --quiet ${candidate}`);
+      return candidate;
+    } catch {
+      // Candidate doesn't exist — try the next one.
+    }
+  }
+
+  // 3. Legacy default.
+  return `${remote}/main`;
+};
+
+/**
  * Resolve the current git HEAD SHA (full 40-char hash). Returns `null`
  * when the cwd isn't a git repository or git isn't installed. Used by
  * the source-index pipeline to record drift between an indexed snapshot

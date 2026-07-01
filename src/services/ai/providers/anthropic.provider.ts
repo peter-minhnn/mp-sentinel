@@ -73,7 +73,7 @@ export class AnthropicProvider implements IAIProvider {
   constructor(config: AIModelConfig) {
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.temperature = config.temperature ?? 0.2;
+    this.temperature = config.temperature ?? 0;
     this.maxTokens = config.maxTokens ?? 2048;
     this.timeoutMs = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
     this.baseURL = normalizeAnthropicBaseUrl(config.baseUrl);

@@ -8,6 +8,15 @@ import { AIProviderFactory } from "./factory.js";
 import { ProviderError } from "../../utils/errors.js";
 import { normalizeAnthropicBaseUrl, isValidHttpUrl } from "./anthropic-utils.js";
 
+/**
+ * Default sampling temperature. 0 makes code review deterministic — the same
+ * diff produces the same findings across runs (override via AI_TEMPERATURE).
+ */
+const DEFAULT_AI_TEMPERATURE = "0";
+
+/** Default deterministic seed when AI_SEED is unset (override via AI_SEED). */
+const DEFAULT_AI_SEED = 1;
+
 export interface AIEnvironmentReady {
   status: "ready";
   config: AIModelConfig;
@@ -30,6 +39,7 @@ export class AIConfig {
     "anthropic",
     "grok",
     "openrouter",
+    "deepseek",
   ] as const;
 
   /**
@@ -95,7 +105,8 @@ export class AIConfig {
       provider,
       model,
       apiKey,
-      temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
+      temperature: parseFloat(process.env.AI_TEMPERATURE || DEFAULT_AI_TEMPERATURE),
+      seed: this.resolveSeed(),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
       reasoningEffort: this.resolveReasoningEffort(),
     };
@@ -131,6 +142,8 @@ export class AIConfig {
         return process.env.GROK_API_KEY || process.env.XAI_API_KEY;
       case "openrouter":
         return process.env.OPENROUTER_API_KEY;
+      case "deepseek":
+        return process.env.DEEPSEEK_API_KEY;
       default:
         return undefined;
     }
@@ -213,7 +226,8 @@ export class AIConfig {
       provider,
       model,
       apiKey,
-      temperature: parseFloat(process.env.AI_TEMPERATURE || "0.2"),
+      temperature: parseFloat(process.env.AI_TEMPERATURE || DEFAULT_AI_TEMPERATURE),
+      seed: this.resolveSeed(),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || "2048", 10),
       reasoningEffort: this.resolveReasoningEffort(),
     };
@@ -240,6 +254,16 @@ export class AIConfig {
     return "medium";
   }
 
+  /**
+   * Resolve the deterministic sampling seed from AI_SEED. Defaults to a fixed
+   * constant so repeated reviews of the same diff produce identical findings.
+   * An invalid/non-integer value falls back to the default rather than NaN.
+   */
+  private static resolveSeed(): number {
+    const parsed = parseInt(process.env.AI_SEED || "", 10);
+    return Number.isInteger(parsed) ? parsed : DEFAULT_AI_SEED;
+  }
+
   private static isProvider(provider: string): provider is AIProvider {
     return (this.VALID_PROVIDERS as readonly string[]).includes(provider);
   }
@@ -258,6 +282,7 @@ export class AIConfig {
       anthropic: "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN",
       grok: "XAI_API_KEY",
       openrouter: "OPENROUTER_API_KEY",
+      deepseek: "DEEPSEEK_API_KEY",
     };
     return names[provider];
   }

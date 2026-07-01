@@ -2,7 +2,7 @@
  * AI Provider types and interfaces
  */
 
-export type AIProvider = "gemini" | "openai" | "anthropic" | "grok" | "openrouter";
+export type AIProvider = "gemini" | "openai" | "anthropic" | "grok" | "openrouter" | "deepseek";
 
 /**
  * Model tier selector — controls which model from the provider's tier
@@ -26,6 +26,12 @@ export interface AIModelConfig {
   apiKey: string;
   baseUrl?: string;
   temperature?: number;
+  /**
+   * Deterministic sampling seed. Sent to providers that support it (OpenAI,
+   * xAI/Grok, OpenRouter, Gemini) so identical inputs yield identical audits
+   * across runs. Anthropic has no seed parameter and relies on temperature 0.
+   */
+  seed?: number;
   maxTokens?: number;
   /**
    * Reasoning effort for OpenAI reasoning models (GPT-5.x, o-series).

@@ -16,12 +16,22 @@ import type { CacheBackend } from "./cache-backends/types.js";
 import { createFsCacheBackend } from "./cache-backends/fs.js";
 import { createHttpCacheBackend } from "./cache-backends/http.js";
 
-// v4 — invalidates cache entries produced before Phase 2.5 structured-
+// v6 — invalidates entries produced while DeepSeek ran with thinking disabled,
+// which rubber-stamped files as PASS (~15 output tokens) instead of analyzing.
+// With thinking enabled the model actually reviews, so the prior PASS entries
+// are stale. Bumping forces a one-time re-audit.
+//
+// v5 — invalidated cache entries produced under non-deterministic sampling
+// (temperature 0.2, no seed). Reviews now run at temperature 0 with a fixed
+// seed, so older entries may carry findings that no longer reproduce. Bumping
+// the version forces a one-time refresh to deterministic results.
+//
+// v4 — invalidated cache entries produced before Phase 2.5 structured-
 // output rollout. The request/response shape changes when providers honor
 // `responseSchema` (OpenAI json_schema, Anthropic tool_use, Gemini
-// responseSchema), so cached v3 entries are stale w.r.t. the new prompt
+// responseSchema), so cached v3 entries were stale w.r.t. the new prompt
 // contract even though the parsed AuditResult shape is unchanged.
-const CACHE_VERSION = "4";
+const CACHE_VERSION = "6";
 
 export const buildAuditCacheKey = (input: {
   provider: string;

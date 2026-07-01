@@ -12,7 +12,7 @@ import * as dotenv from "dotenv";
 
 import type { ProjectConfig } from "./types/index.js";
 import { loadProjectConfig } from "./utils/config.js";
-import { isGitRepository, getCurrentBranch } from "./utils/git.js";
+import { isGitRepository, getCurrentBranch, resolveDefaultTargetBranch } from "./utils/git.js";
 import { log, setLogQuietMode } from "./utils/logger.js";
 import { parseCliArgs } from "./cli/args.js";
 import { runLocalReview } from "./cli/local-review.js";
@@ -222,7 +222,11 @@ const run = async (): Promise<void> => {
   );
   const maxConcurrency =
     Number.isFinite(_parsedConcurrency) && _parsedConcurrency > 0 ? _parsedConcurrency : 5;
-  const targetBranch = values["target-branch"] ?? process.env.TARGET_BRANCH ?? "origin/main";
+  // Priority: --target-branch flag > TARGET_BRANCH env > auto-detected remote
+  // default branch. Auto-detection avoids the hardcoded "origin/main", which
+  // fails in repos that use master/develop/trunk as their default.
+  const targetBranch =
+    values["target-branch"] ?? process.env.TARGET_BRANCH ?? (await resolveDefaultTargetBranch());
 
   const currentBranch = await getCurrentBranch();
   const isLocalMode = values.local;
