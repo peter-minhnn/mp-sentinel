@@ -57,6 +57,15 @@ describe("isRetryableError", () => {
     expect(isRetryableError(new Error("fetch failed"))).toBe(true);
   });
 
+  it("returns true for undici socket teardown (field sample: DeepSeek thinking mode)", () => {
+    expect(isRetryableError(new Error("The socket connection was closed unexpectedly."))).toBe(
+      true,
+    );
+    expect(isRetryableError(new Error("terminated (UND_ERR_SOCKET): other side closed"))).toBe(
+      true,
+    );
+  });
+
   it("returns true for AbortError", () => {
     const err = new Error("aborted");
     err.name = "AbortError";

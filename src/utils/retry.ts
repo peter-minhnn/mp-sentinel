@@ -40,11 +40,20 @@ const RETRYABLE_STATUS_PATTERNS: RegExp[] = [
 const RETRYABLE_MESSAGE_NEEDLES: readonly string[] = [
   "ECONNRESET",
   "ECONNREFUSED",
+  "ECONNABORTED",
   "ETIMEDOUT",
+  "EPIPE", // broken pipe on a half-closed connection
   "EAI_AGAIN",
   "ENETUNREACH",
   "ENOTFOUND", // transient DNS hiccup
   "socket hang up",
+  // undici/fetch transient socket teardown mid-request. The provider drops a
+  // long-running request (common with DeepSeek thinking mode) and the whole
+  // review otherwise fails on a single file. Safe to retry.
+  "socket connection was closed",
+  "closed unexpectedly",
+  "other side closed",
+  "UND_ERR_SOCKET",
   "network timeout",
   "fetch failed",
   "request timed out",

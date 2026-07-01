@@ -310,6 +310,56 @@ export const downgradeBarrelExportClaims = (
   return { results: next, downgraded };
 };
 
+// ── build-break / syntax-error claims (caught deterministically) ────────────
+
+/**
+ * The model sometimes escalates a stylistic or lint-level issue to CRITICAL by
+ * asserting it "breaks the build" / "is a syntax error". Field sample:
+ * SystemFieldCanvas.tsx L25 — "misplaced import statement causes a syntax error
+ * … will break the build" (review-0701.md). In ES modules `import` declarations
+ * are hoisted and valid anywhere at the top level, so the file compiles fine.
+ *
+ * A genuine syntax/build break is caught deterministically by `tsc`, ESLint and
+ * CI — it is not something an AI reviewer should assert as CRITICAL from a
+ * single hunk. So a CRITICAL whose claim rests on "won't compile / breaks the
+ * build / syntax error" is downgraded to WARNING for typecheck/CI to confirm.
+ * Kept visible, never dropped.
+ */
+const BUILD_BREAK_RE =
+  /\b(syntax error|will (?:break|fail) the build|breaks? the build|won'?t compile|will not compile|fails? to compile|does not compile|compilation (?:error|failure)|import (?:declarations? )?must be at the top|misplaced import)\b/i;
+
+const isBuildBreakClaim = (issue: AuditIssue): boolean =>
+  issue.severity === "CRITICAL" && BUILD_BREAK_RE.test(issue.message);
+
+/**
+ * Downgrade CRITICAL "breaks the build / syntax error" claims to WARNING —
+ * build/compile breakage is verified deterministically (typecheck, lint, CI),
+ * not by AI inspection of a diff, so these over-severity CRITICALs should not
+ * block. Tagged for human/CI confirmation.
+ */
+export const downgradeBuildBreakClaims = (
+  results: readonly FileAuditResult[],
+): { results: FileAuditResult[]; downgraded: number } => {
+  let downgraded = 0;
+  const next = results.map((file): FileAuditResult => {
+    const issues = file.result.issues ?? [];
+    if (!issues.some(isBuildBreakClaim)) return file;
+
+    const nextIssues = issues.map((issue): AuditIssue => {
+      if (!isBuildBreakClaim(issue)) return issue;
+      downgraded += 1;
+      return {
+        ...issue,
+        severity: "WARNING",
+        confidence: "low",
+        message: `${issue.message} [downgraded: build/syntax breakage is caught deterministically by typecheck/lint — verify]`,
+      };
+    });
+    return { ...file, result: { ...file.result, issues: nextIssues } };
+  });
+  return { results: next, downgraded };
+};
+
 /**
  * Remove or downgrade findings whose message negates itself.
  */

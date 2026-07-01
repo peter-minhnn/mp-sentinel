@@ -5,7 +5,10 @@
  * dependency/version context, and that local skills/rules remain highest priority.
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BASE_AUDIT_PROMPT, DEFAULT_PROMPT_VERSION } from "../config/prompts.js";
 import { buildDependencyContext } from "../services/dependency-context.js";
 import { parseAuditResponse } from "../utils/parser.js";
@@ -137,6 +140,57 @@ describe("Dependency context builder", () => {
     expect(ctx.summary).toBe("");
     expect(ctx.depCount).toBe(0);
     expect(ctx.lockfileDetected).toBe(false);
+  });
+});
+
+describe("Dependency context — installed versions & priority (P1-A)", () => {
+  const dirs: string[] = [];
+
+  const fixture = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "mp-dep-"));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "fixture-app",
+        version: "1.0.0",
+        dependencies: { zulu: "^1.0.0", "@tanstack/react-query": "^5.0.0", ghost: "^9.9.9" },
+      }),
+    );
+    // Installed (resolved) versions for two of them; `ghost` is not installed.
+    const installed: Array<[string, string]> = [
+      ["zulu", "1.2.3"],
+      ["@tanstack/react-query", "5.59.20"],
+    ];
+    for (const [name, version] of installed) {
+      mkdirSync(join(dir, "node_modules", name), { recursive: true });
+      writeFileSync(join(dir, "node_modules", name, "package.json"), JSON.stringify({ version }));
+    }
+    return dir;
+  };
+
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("uses the resolved node_modules version, not the declared range", () => {
+    const ctx = buildDependencyContext(fixture());
+    expect(ctx.summary).toContain("@tanstack/react-query@5.59.20");
+    expect(ctx.summary).toContain("zulu@1.2.3");
+    expect(ctx.summary).not.toContain("@tanstack/react-query@^5.0.0");
+  });
+
+  it("marks a declared-but-not-installed dependency as '(declared)'", () => {
+    const ctx = buildDependencyContext(fixture());
+    expect(ctx.summary).toContain("ghost@^9.9.9 (declared)");
+  });
+
+  it("orders priority frameworks before other deps (despite declaration order)", () => {
+    const ctx = buildDependencyContext(fixture());
+    const tanstackAt = ctx.summary.indexOf("@tanstack/react-query");
+    const zuluAt = ctx.summary.indexOf("zulu@");
+    expect(tanstackAt).toBeGreaterThan(-1);
+    expect(tanstackAt).toBeLessThan(zuluAt);
   });
 });
 

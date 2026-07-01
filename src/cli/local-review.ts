@@ -51,9 +51,12 @@ import { capFindingsPerFile } from "../utils/cap-findings.js";
 import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
+import { verifySelfImportClaims } from "../utils/verify-self-import-claims.js";
+import { verifyVersionClaims } from "../utils/verify-version-claims.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
 import {
   downgradeBarrelExportClaims,
+  downgradeBuildBreakClaims,
   downgradeDefensiveXssClaims,
   downgradeUnsinkedXssClaims,
   filterSelfNegatedFindings,
@@ -433,6 +436,14 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
     }
     aiResults = barrelCheck.results;
 
+    const buildBreakCheck = downgradeBuildBreakClaims(aiResults);
+    if (buildBreakCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${buildBreakCheck.downgraded} 'breaks the build/syntax error' CRITICAL(s) downgraded (verified by typecheck/CI, not AI).`,
+      );
+    }
+    aiResults = buildBreakCheck.results;
+
     const clampOutcome = clampSeverities(aiResults, config.ai?.severityCeilings);
     if (clampOutcome.clamped > 0) {
       log.info(`Severity clamp: ${clampOutcome.clamped} finding(s) capped by category ceiling.`);
@@ -449,7 +460,19 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
         `Import check: ${importCheck.downgraded} CRITICAL finding(s) downgraded (import target exists).`,
       );
     }
-    const relocation = await relocateFindingLines(importCheck.results);
+    const selfImportCheck = verifySelfImportClaims(importCheck.results);
+    if (selfImportCheck.downgraded > 0) {
+      log.info(
+        `Self-import check: ${selfImportCheck.downgraded} CRITICAL finding(s) downgraded (not actually a self-import).`,
+      );
+    }
+    const versionCheck = verifyVersionClaims(selfImportCheck.results);
+    if (versionCheck.downgraded > 0) {
+      log.info(
+        `Version check: ${versionCheck.downgraded} unverified version claim(s) downgraded (confirm against installed version).`,
+      );
+    }
+    const relocation = await relocateFindingLines(versionCheck.results);
     if (relocation.relocated > 0) {
       log.info(`Line relocation: corrected ${relocation.relocated} finding line number(s).`);
     }

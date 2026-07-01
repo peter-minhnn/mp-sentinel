@@ -57,10 +57,13 @@ import {
   reconcileAntdIconImportFindings,
 } from "../utils/reconcile-false-positive-findings.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
+import { verifySelfImportClaims } from "../utils/verify-self-import-claims.js";
+import { verifyVersionClaims } from "../utils/verify-version-claims.js";
 import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
 import {
   downgradeBarrelExportClaims,
+  downgradeBuildBreakClaims,
   downgradeDefensiveXssClaims,
   downgradeUnsinkedXssClaims,
   filterSelfNegatedFindings,
@@ -671,6 +674,14 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     }
     auditResults = barrelCheck.results;
 
+    const buildBreakCheck = downgradeBuildBreakClaims(auditResults);
+    if (buildBreakCheck.downgraded > 0) {
+      log.info(
+        `Hygiene: ${buildBreakCheck.downgraded} 'breaks the build/syntax error' CRITICAL(s) downgraded (verified by typecheck/CI, not AI).`,
+      );
+    }
+    auditResults = buildBreakCheck.results;
+
     const clampOutcome = clampSeverities(auditResults, config.ai?.severityCeilings);
     if (clampOutcome.clamped > 0) {
       log.info(`Severity clamp: ${clampOutcome.clamped} finding(s) capped by category ceiling.`);
@@ -716,6 +727,27 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
       );
     }
     auditResults = importCheck.results;
+
+    // Self-import backstop: a CRITICAL claiming a file imports itself is
+    // downgraded when the specifier resolves to a differently-named module.
+    const selfImportCheck = verifySelfImportClaims(auditResults);
+    if (selfImportCheck.downgraded > 0) {
+      log.info(
+        `Self-import check: ${selfImportCheck.downgraded} CRITICAL finding(s) downgraded (not actually a self-import).`,
+      );
+    }
+    auditResults = selfImportCheck.results;
+
+    // Version-claim backstop: "removed/deprecated in vX" assertions are not
+    // verifiable from a diff, so over-confident ones are downgraded for the
+    // reviewer to confirm against the installed version.
+    const versionCheck = verifyVersionClaims(auditResults);
+    if (versionCheck.downgraded > 0) {
+      log.info(
+        `Version check: ${versionCheck.downgraded} unverified version claim(s) downgraded (confirm against installed version).`,
+      );
+    }
+    auditResults = versionCheck.results;
 
     // Evidence-based line relocation: recover the real line for findings the
     // model anchored at line 1 (or a stale line) using their evidence snippet.
