@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * check-review-guardrails.mjs — Deterministic non-AI guardrail checks.
+ * check-review-guardrails.mjs -- Deterministic non-AI guardrail checks.
  *
  * Scans tracked/staged/diff files for repo-specific forbidden patterns that
  * Sentinel AI might miss.  Uses tree-sitter for TS/JS AST-level checks and
  * simple file-system / regex checks for lockfile/config violations.
  *
  * Modes:
- *   (default)          Gate mode — exit 1 if any NEW violation is found
+ *   (default)          Gate mode -- exit 1 if any NEW violation is found
  *   --update-baseline  Accept current violations as baseline and exit 0
  *   --all              Scan entire repo (not just diff/staged)
  *
@@ -99,7 +99,7 @@ function loadBaseline() {
   if (existsSync(BASELINE_PATH)) {
     try {
       return JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
-    } catch { /* corrupted — start fresh */ }
+    } catch { /* corrupted -- start fresh */ }
   }
   return {};
 }
@@ -192,9 +192,9 @@ function* findImports(tree, source, importPath) {
 
 // ── Rule: forbidden lockfiles / package managers ─────────────────────────────
 const FORBIDDEN_LOCKFILES = [
-  { file: 'pnpm-lock.yaml', detail: 'pnpm lockfile detected — project uses npm' },
-  { file: 'yarn.lock', detail: 'yarn lockfile detected — project uses npm' },
-  { file: 'bun.lockb', detail: 'bun lockfile detected — project uses npm' },
+  { file: 'pnpm-lock.yaml', detail: 'pnpm lockfile detected -- project uses npm' },
+  { file: 'yarn.lock', detail: 'yarn lockfile detected -- project uses npm' },
+  { file: 'bun.lockb', detail: 'bun lockfile detected -- project uses npm' },
   { file: 'pnpm-workspace.yaml', detail: 'pnpm workspace config detected' },
 ];
 
@@ -217,12 +217,12 @@ registerRule('forbidden-lockfiles', CRITICAL, (allFiles) => {
 
 // ── Rule: forbidden imports ──────────────────────────────────────────────────
 const FORBIDDEN_IMPORTS = [
-  { path: 'axios', detail: 'Direct axios import — use the shared HTTP client wrapper' },
-  { path: 'react-router-dom', detail: 'Direct react-router-dom import — use framework routing abstractions' },
-  { path: 'next/navigation', detail: 'Direct next/navigation import — review framework coupling' },
-  { path: 'next/router', detail: 'Direct next/router import — review framework coupling' },
-  { path: 'next/link', detail: 'Direct next/link import — review framework coupling' },
-  { path: 'next/image', detail: 'Direct next/image import — review framework coupling' },
+  { path: 'axios', detail: 'Direct axios import -- use the shared HTTP client wrapper' },
+  { path: 'react-router-dom', detail: 'Direct react-router-dom import -- use framework routing abstractions' },
+  { path: 'next/navigation', detail: 'Direct next/navigation import -- review framework coupling' },
+  { path: 'next/router', detail: 'Direct next/router import -- review framework coupling' },
+  { path: 'next/link', detail: 'Direct next/link import -- review framework coupling' },
+  { path: 'next/image', detail: 'Direct next/image import -- review framework coupling' },
 ];
 
 registerRule('forbidden-imports', WARNING, (allFiles, { parseFileFn }) => {
@@ -240,7 +240,7 @@ registerRule('forbidden-imports', WARNING, (allFiles, { parseFileFn }) => {
           line: match.node.startPosition.row + 1,
           severity: WARNING,
           rule: 'forbidden-imports',
-          detail: `Forbidden import: "${match.path}" — use the shared wrapper`,
+          detail: `Forbidden import: "${match.path}" -- use the shared wrapper`,
         });
       }
     }
@@ -265,7 +265,7 @@ registerRule('nextjs-directives', WARNING, (allFiles, { parseFileFn }) => {
         line: 1,
         severity: WARNING,
         rule: 'nextjs-directives',
-        detail: '"use client" directive found — ensure this component truly needs client-side rendering',
+        detail: '"use client" directive found -- ensure this component truly needs client-side rendering',
       });
     }
     if (firstLine === '"use server"' || firstLine === "'use server'") {
@@ -274,7 +274,7 @@ registerRule('nextjs-directives', WARNING, (allFiles, { parseFileFn }) => {
         line: 1,
         severity: WARNING,
         rule: 'nextjs-directives',
-        detail: '"use server" directive found — ensure this action truly needs server execution',
+        detail: '"use server" directive found -- ensure this action truly needs server execution',
       });
     }
   }
@@ -305,7 +305,7 @@ registerRule('direct-antd-imports', WARNING, (allFiles, { parseFileFn }) => {
           line: match.node.startPosition.row + 1,
           severity: WARNING,
           rule: 'direct-antd-imports',
-          detail: `Direct antd import — prefer importing from antd/es/<component> for tree-shaking`,
+          detail: `Direct antd import -- prefer importing from antd/es/<component> for tree-shaking`,
         });
       }
     }
@@ -333,7 +333,7 @@ registerRule('inline-style-objects', INFO, (allFiles, { parseFileFn }) => {
           line: i + 1,
           severity: INFO,
           rule: 'inline-style-objects',
-          detail: 'Inline style={{...}} detected — prefer CSS Modules, Tailwind, or styled-components',
+          detail: 'Inline style={{...}} detected -- prefer CSS Modules, Tailwind, or styled-components',
         });
       }
     }
@@ -360,7 +360,7 @@ registerRule('inline-query-key', INFO, (allFiles, { parseFileFn }) => {
           line: i + 1,
           severity: INFO,
           rule: 'inline-query-key',
-          detail: 'Inline queryKey: [...] detected — extract to a named query key factory for consistency',
+          detail: 'Inline queryKey: [...] detected -- extract to a named query key factory for consistency',
         });
       }
     }
@@ -387,7 +387,7 @@ registerRule('direct-react-query-hooks', WARNING, (allFiles, { parseFileFn }) =>
 
     for (const hook of REACT_QUERY_HOOKS) {
       for (const match of findImports(parsed.tree, parsed.content, '@tanstack/react-query')) {
-        // Found a react-query import — now check if hook is used directly
+        // Found a react-query import -- now check if hook is used directly
         const hookRegex = new RegExp(`\\b${hook}\\b`);
         const lines = parsed.content.split('\n');
         for (let i = 0; i < lines.length; i++) {
@@ -399,7 +399,7 @@ registerRule('direct-react-query-hooks', WARNING, (allFiles, { parseFileFn }) =>
               line: i + 1,
               severity: WARNING,
               rule: 'direct-react-query-hooks',
-              detail: `Direct use of ${hook} outside feature hooks — wrap in a custom hook under features/<name>/hooks/`,
+              detail: `Direct use of ${hook} outside feature hooks -- wrap in a custom hook under features/<name>/hooks/`,
             });
           }
         }
@@ -438,7 +438,7 @@ registerRule('hardcoded-hex-colors', INFO, (allFiles, { parseFileFn }) => {
           line: i + 1,
           severity: INFO,
           rule: 'hardcoded-hex-colors',
-          detail: `Hardcoded hex color "${hex}" — use design tokens or CSS variables`,
+          detail: `Hardcoded hex color "${hex}" -- use design tokens or CSS variables`,
         });
       }
     }
@@ -493,7 +493,7 @@ registerRule('console-log', INFO, (allFiles, { parseFileFn }) => {
           line: i + 1,
           severity: INFO,
           rule: 'console-log',
-          detail: `console.log/warn detected — use a proper logger or remove before production`,
+          detail: `console.log/warn detected -- use a proper logger or remove before production`,
         });
       }
     }
@@ -518,7 +518,7 @@ const SECRETS_ALLOWLIST = [
 function isPlaceholderCredential(line) {
   // Extract key (before : or =) and value (quoted string)
   const m = line.match(/[\s{]?(\w+)\s*[:=]\s*['"]([^'"]+)['"]/);
-  if (m && m[1] === m[2]) return true; // KEY: "KEY" pattern — placeholder
+  if (m && m[1] === m[2]) return true; // KEY: "KEY" pattern -- placeholder
   return false;
 }
 
@@ -658,7 +658,7 @@ function main() {
   // ── Gate ─────────────────────────────────────────────────────────────────
   if (newViolations.length > 0) {
     if (!QUIET && !JSON_OUT) {
-      console.error('\n❌ Guardrails FAILED — new violations found.');
+      console.error('\n❌ Guardrails FAILED -- new violations found.');
       console.error('   Run with --update-baseline to accept current state.');
     }
     process.exit(1);

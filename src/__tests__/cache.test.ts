@@ -265,19 +265,18 @@ describe("buildAuditCacheKey", () => {
     expect(a).toBe(b);
   });
 
-  it("preserves the current no-baseUrl fixture hash (v4)", () => {
+  it("preserves the current no-baseUrl fixture hash (v6)", () => {
     const key = buildAuditCacheKey(BASE_INPUT);
-    // Phase 2.5 bumped CACHE_VERSION 3 → 4 because providers now honor
-    // responseSchema in their request bodies, so the prompt-response
-    // contract changed. The new hash is captured here as the v4 fixture.
-    expect(key).toBe("df3c79ae90b9d5333a84ef37d3ab6f619fcb8135b17c16bf70fca7d1066f0826");
+    // CACHE_VERSION 6 invalidates entries produced while DeepSeek ran with
+    // thinking disabled (rubber-stamped PASS). Bumping forces re-audit.
+    expect(key).toBe("515d67ffebea05236cfe629dbf741edbd26d57ed45484f108e4928b964f8fb0f");
   });
 
   // ── Cache version fixture tests ──
 
-  it("produces the expected v4 fixture hash", () => {
+  it("produces the expected v6 fixture hash", () => {
     const key = buildAuditCacheKey(BASE_INPUT);
-    expect(key).toBe("df3c79ae90b9d5333a84ef37d3ab6f619fcb8135b17c16bf70fca7d1066f0826");
+    expect(key).toBe("515d67ffebea05236cfe629dbf741edbd26d57ed45484f108e4928b964f8fb0f");
   });
 
   it("no longer produces the old v2 fixture hash", () => {

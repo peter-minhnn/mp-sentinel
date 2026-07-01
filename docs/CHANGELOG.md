@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.6] — 2026-07-01
+
+### Added
+- **DeepSeek provider.** `deepseek` is now a first-class AI provider with Anthropic-compatible message shapes, deterministic reviews (`reasoning.effort`, `reasoning.summary`), and full cache-key stability. Supported models: `deepseek-chat`, `deepseek-reasoner`. Retries on 429.
+- **OpenAI reasoning models.** `o3`, `o4-mini`, `gpt-5`, and `codex`-series models are now selectable. `o3`/`o4-mini` use `reasoning.effort` for `max_completion_tokens`; reasoning-summary models pass `reasoning: { summary: "auto" }`.
+- **Custom OpenAI endpoint auto-detection.** `OPENAI_BASE_URL` (e.g. Azure, proxies) is now resolved automatically — the provider detects the concrete API shape without a config flag.
+- **Windows `npx` compatibility.** The CliRunner now uses `npx.cmd` on Windows with proper PowerShell escaping, handles ENOENT/EACCES on `npx` resolution with clearer diagnostics, and ships a `scripts/run-review.ps1` PowerShell helper.
+- **Review guardrails script.** `scripts/check-review-guardrails.mjs` validates finding hygiene (severity ordering, evidence formatting, reference validity) for CI pre-commit and debugging review quality regressions.
+- **Deterministic finding hygiene backstops.** New `src/utils/finding-hygiene.ts` validates finding quality pipeline-wide, reducing false positives from AI model output variations.
+
+### Changed
+- **AI cache keys** now include provider-specific reasoning parameters for cache stability across model families.
+- **VS Code extension** progress streaming, active-run guard, and side-panel status refinements.
+
 ## [3.2.5] — 2026-06-17
 
 ### Added

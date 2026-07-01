@@ -1,3 +1,13 @@
+# What's New in v3.2.6
+
+## DeepSeek provider, OpenAI reasoning models, and Windows compatibility
+
+- **DeepSeek provider.** `deepseek` is now a first-class AI provider — pick it with `MP_SENTINEL_AI_PROVIDER=deepseek` and a DeepSeek API key. The provider uses Anthropic-compatible message shapes and **deterministic reviews** (`reasoning.effort` controls thinking depth, `reasoning.summary` controls token-efficient summaries). Supported models: `deepseek-chat`, `deepseek-reasoner`. DeepSeek reviews are fully cacheable (stable cache keys), with automatic retry on 429.
+- **OpenAI reasoning models and custom endpoints.** OpenAI users can now select `o3`, `o4-mini`, `gpt-5`, and `codex`-series models. `o3`/`o4-mini` use `reasoning.effort` to control explicit `max_completion_tokens`, while reasoning-summary models pass `reasoning: { summary: "auto" }`. Custom endpoints (e.g. Azure, proxies) now resolve via `OPENAI_BASE_URL` — the provider auto-detects the concrete OpenAI-compatible API shape, no config flag needed.
+- **Windows compatibility for VS Code / `npx`.** The CliRunner now detects Windows and runs `npx.cmd` instead of `npx` (PowerShell-compatible), with proper shell escaping. `npx` command resolution is also guarded against ENOENT / EACCES errors on Windows, with clearer diagnostics. A PowerShell helper `scripts/run-review.ps1` handles review execution natively.
+- **Review guardrails script.** `scripts/check-review-guardrails.mjs` validates finding hygiene (severity ordering, evidence formatting, reference validity) across the pipeline — useful for CI pre-commit and debugging review quality regressions.
+
+---
 # What's New in v3.2.5
 
 ## Branch-diff review in your editor, JSON for local mode, and AI setup
