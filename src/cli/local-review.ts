@@ -52,7 +52,10 @@ import { clampSeverities } from "../utils/severity-clamp.js";
 import { verifyEvidence } from "../utils/verify-evidence.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { verifySelfImportClaims } from "../utils/verify-self-import-claims.js";
+import { verifySpreadUndefinedClaims } from "../utils/verify-spread-undefined-claims.js";
+import { verifyOptionalChainClaims } from "../utils/verify-optional-chain-claims.js";
 import { verifyVersionClaims } from "../utils/verify-version-claims.js";
+import { collectProvenance } from "../utils/provenance.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
 import {
   downgradeBarrelExportClaims,
@@ -466,7 +469,19 @@ export const runLocalReview = async (options: LocalReviewOptions): Promise<numbe
         `Self-import check: ${selfImportCheck.downgraded} CRITICAL finding(s) downgraded (not actually a self-import).`,
       );
     }
-    const versionCheck = verifyVersionClaims(selfImportCheck.results);
+    const spreadCheck = verifySpreadUndefinedClaims(selfImportCheck.results);
+    if (spreadCheck.downgraded > 0) {
+      log.info(
+        `Spread check: ${spreadCheck.downgraded} CRITICAL finding(s) downgraded (object spread of undefined is a no-op).`,
+      );
+    }
+    const optionalChainCheck = verifyOptionalChainClaims(spreadCheck.results);
+    if (optionalChainCheck.downgraded > 0) {
+      log.info(
+        `Optional-chain check: ${optionalChainCheck.downgraded} finding(s) downgraded (access protected by an earlier ?. short-circuit).`,
+      );
+    }
+    const versionCheck = verifyVersionClaims(optionalChainCheck.results);
     if (versionCheck.downgraded > 0) {
       log.info(
         `Version check: ${versionCheck.downgraded} unverified version claim(s) downgraded (confirm against installed version).`,
@@ -702,6 +717,12 @@ interface LocalMarkdownReportOptions {
 const writeLocalMarkdownReport = async (options: LocalMarkdownReportOptions): Promise<void> => {
   const { outputPath, auditResults, skipped, aiEnabled, threshold, startTime, commits } = options;
   try {
+    // Reproduce/provenance: command, comparison base, threshold and the git
+    // HEAD SHA so a stale local report (branch advanced) is detectable.
+    const provenance = await collectProvenance({
+      compareBranch: options.compareBranch,
+      threshold,
+    });
     const report = buildReport(
       { mode: "range", value: options.compareBranch },
       aiEnabled,
@@ -713,7 +734,7 @@ const writeLocalMarkdownReport = async (options: LocalMarkdownReportOptions): Pr
       startTime,
       undefined,
       undefined,
-      { threshold },
+      { threshold, provenance },
     );
     if (commits.length > 0) report.commits = commits;
     if (options.targetLabel) report.targetLabel = options.targetLabel;

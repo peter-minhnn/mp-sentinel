@@ -12,6 +12,7 @@ import type {
   ProjectConfig,
   ReviewFormat,
   ReviewIntelligenceSignal,
+  ReviewProvenance,
   ReviewReport,
   ReviewTarget,
   SkillProfile,
@@ -58,6 +59,8 @@ import {
 } from "../utils/reconcile-false-positive-findings.js";
 import { verifyImportClaims } from "../utils/verify-import-claims.js";
 import { verifySelfImportClaims } from "../utils/verify-self-import-claims.js";
+import { verifySpreadUndefinedClaims } from "../utils/verify-spread-undefined-claims.js";
+import { verifyOptionalChainClaims } from "../utils/verify-optional-chain-claims.js";
 import { verifyVersionClaims } from "../utils/verify-version-claims.js";
 import { runESLintAdapter, isLintableFile } from "../services/eslint-adapter.js";
 import { relocateFindingLines } from "../utils/relocate-lines.js";
@@ -83,6 +86,7 @@ import {
   resolveSeverityThreshold,
 } from "../utils/severity.js";
 import { getCurrentBranch } from "../utils/git.js";
+import { collectProvenance } from "../utils/provenance.js";
 import type { SeverityThreshold } from "../types/index.js";
 
 export interface ReviewRunOptions {
@@ -175,6 +179,8 @@ const emitFallbackNotice = (message: string, format: ReviewFormat): void => {
 interface BuildReportContext {
   /** Resolved severity threshold for this run (default WARNING). */
   threshold: SeverityThreshold;
+  /** Reproduce/provenance metadata for the run, when available. */
+  provenance?: ReviewProvenance;
 }
 
 export const buildReport = (
@@ -261,6 +267,10 @@ export const buildReport = (
 
   if (mcpSummary && mcpSummary.enabled) {
     report.mcp = mcpSummary;
+  }
+
+  if (context.provenance) {
+    report.provenance = context.provenance;
   }
 
   return report;
@@ -738,6 +748,27 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     }
     auditResults = selfImportCheck.results;
 
+    // Spread-of-undefined backstop: object spread of a nullish value is a no-op,
+    // so a CRITICAL claiming it "throws" is downgraded (array/call spreads kept).
+    const spreadCheck = verifySpreadUndefinedClaims(auditResults);
+    if (spreadCheck.downgraded > 0) {
+      log.info(
+        `Spread check: ${spreadCheck.downgraded} CRITICAL finding(s) downgraded (object spread of undefined is a no-op).`,
+      );
+    }
+    auditResults = spreadCheck.results;
+
+    // Optional-chain backstop: a `.member`/`.method()` sitting after a `?.` in
+    // the same chain is short-circuit-protected, so a "crashes on undefined"
+    // claim against it is downgraded to INFO (unguarded accesses are kept).
+    const optionalChainCheck = verifyOptionalChainClaims(auditResults);
+    if (optionalChainCheck.downgraded > 0) {
+      log.info(
+        `Optional-chain check: ${optionalChainCheck.downgraded} finding(s) downgraded (access protected by an earlier ?. short-circuit).`,
+      );
+    }
+    auditResults = optionalChainCheck.results;
+
     // Version-claim backstop: "removed/deprecated in vX" assertions are not
     // verifiable from a diff, so over-confident ones are downgraded for the
     // reviewer to confirm against the installed version.
@@ -954,6 +985,31 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     ...(currentBranch && { currentBranch }),
   });
 
+  // Reproduce/provenance metadata: exact command, comparison base, threshold,
+  // provider/model, cache mode, include-uncommitted, and the git HEAD SHA so a
+  // later reviewer can tell whether the report still matches the working tree.
+  let provProvider: string | undefined;
+  let provModel: string | undefined;
+  if (aiEnabled) {
+    try {
+      const cfg = AIConfig.fromEnvironment({
+        ...(config.ai?.modelTier && { modelTier: config.ai.modelTier }),
+      });
+      provProvider = cfg.provider;
+      provModel = cfg.model;
+    } catch {
+      // Leave provider/model unset — provenance is still emitted.
+    }
+  }
+  const provenance = await collectProvenance({
+    ...(values["compare-branch"] && { compareBranch: values["compare-branch"] }),
+    threshold,
+    ...(provProvider && { provider: provProvider }),
+    ...(provModel && { model: provModel }),
+    cacheBypassed: Boolean(values["no-cache"]),
+    includeUncommitted: Boolean(values["include-uncommitted"]),
+  });
+
   const report = buildReport(
     target,
     aiEnabled,
@@ -965,7 +1021,7 @@ export const runReview = async (options: ReviewRunOptions): Promise<number> => {
     startTime,
     mcpSummary,
     tokenUsage,
-    { threshold },
+    { threshold, provenance },
   );
 
   // Attach reviewed-commit metadata (chronological, oldest first) so report

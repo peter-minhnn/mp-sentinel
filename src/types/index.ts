@@ -77,6 +77,41 @@ export interface ReviewReport {
    * (v3.1.1+)
    */
   commits?: CommitInfo[];
+  /**
+   * Reproduce/provenance metadata for the run that produced this report.
+   * Optional and additive (schema-compatible). Lets a consumer tell whether
+   * a report still matches the working tree — a mismatched `gitHeadSha` means
+   * the branch advanced since generation and the scope counts are stale.
+   * (v3.2.7+)
+   */
+  provenance?: ReviewProvenance;
+}
+
+/**
+ * Everything needed to reproduce (or invalidate) a review report: the exact
+ * command, comparison base, resolved threshold, AI provider/model, cache mode,
+ * whether uncommitted changes were included, and the git HEAD + index hash the
+ * run observed. All fields optional so callers populate what they know.
+ */
+export interface ReviewProvenance {
+  /** Exact CLI invocation (argv after the binary), e.g. `review --ai ...`. */
+  command?: string;
+  /** Comparison base for a branch/range diff, e.g. `origin/develop`. */
+  compareBranch?: string;
+  /** Resolved severity threshold in effect for pass/fail. */
+  threshold?: SeverityThreshold;
+  /** AI provider id (e.g. `anthropic`) when AI review ran. */
+  provider?: string;
+  /** AI model id (e.g. `claude-...`) when AI review ran. */
+  model?: string;
+  /** Whether the AI response cache was used or bypassed for this run. */
+  cache?: "enabled" | "bypassed";
+  /** Whether staged/unstaged changes were folded into the review scope. */
+  includeUncommitted?: boolean;
+  /** Full 40-char git HEAD SHA at generation time (drift detector). */
+  gitHeadSha?: string;
+  /** Source-index manifest hash the run observed, when available. */
+  indexHash?: string;
 }
 
 /**

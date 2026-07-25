@@ -2,7 +2,12 @@
  * Report formatters for console/json/markdown outputs.
  */
 
-import type { AuditIssue, FileAuditResult, ReviewReport } from "../types/index.js";
+import type {
+  AuditIssue,
+  FileAuditResult,
+  ReviewProvenance,
+  ReviewReport,
+} from "../types/index.js";
 import { activeIssues } from "../utils/severity.js";
 import { formatDuration, log } from "../utils/logger.js";
 import { sortIssues, sortFileResults } from "../utils/display.js";
@@ -360,6 +365,38 @@ export const printConsoleReport = (report: ReviewReport): void => {
 
 // ── Markdown report ───────────────────────────────────────────────────────
 
+/**
+ * Render the reproduce/provenance block as a `## Reproduce` section. Returns an
+ * empty list when no provenance was recorded (older reports stay unchanged).
+ * The `gitHeadSha` row is the drift detector: if it no longer matches HEAD, the
+ * report predates later commits and its scope counts are stale.
+ */
+const provenanceSection = (provenance: ReviewProvenance | undefined): string[] => {
+  if (!provenance) return [];
+  const rows: Array<[string, string | undefined]> = [
+    ["Command", provenance.command ? `\`${provenance.command}\`` : undefined],
+    ["Compare branch", provenance.compareBranch ? `\`${provenance.compareBranch}\`` : undefined],
+    ["Threshold", provenance.threshold],
+    ["Provider", provenance.provider],
+    ["Model", provenance.model ? `\`${provenance.model}\`` : undefined],
+    ["Cache", provenance.cache],
+    [
+      "Include uncommitted",
+      provenance.includeUncommitted === undefined
+        ? undefined
+        : String(provenance.includeUncommitted),
+    ],
+    ["Git HEAD", provenance.gitHeadSha ? `\`${provenance.gitHeadSha}\`` : undefined],
+    ["Index hash", provenance.indexHash ? `\`${provenance.indexHash}\`` : undefined],
+  ];
+  const present = rows.filter((r): r is [string, string] => r[1] !== undefined && r[1] !== "");
+  if (present.length === 0) return [];
+
+  const out: string[] = ["", "## Reproduce", "", "| Field | Value |", "| --- | --- |"];
+  for (const [label, value] of present) out.push(`| ${label} | ${value} |`);
+  return out;
+};
+
 export const formatMarkdownReport = (report: ReviewReport): string => {
   const lines: string[] = [];
 
@@ -396,6 +433,8 @@ export const formatMarkdownReport = (report: ReviewReport): string => {
     const icon = iconMap[row.label] || "";
     lines.push(`| ${icon} | ${row.label} | ${row.value} |`);
   }
+
+  for (const line of provenanceSection(report.provenance)) lines.push(line);
 
   const recurring = computeRecurringIssues(report.results);
   if (recurring.length > 0) {
