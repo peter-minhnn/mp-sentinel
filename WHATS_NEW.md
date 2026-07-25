@@ -1,3 +1,18 @@
+# What's New in v3.2.7
+
+## Generated skills that describe the codebase you actually have
+
+- **tsconfig path aliases are no longer reported as npm dependencies.** `@/app` and friends look like bare specifiers, so they used to appear in `references/dependencies.md` with version `unknown`, and could even be suggested as the project's "top dependency" in a search example. `collectAliasPrefixes()` now resolves them as internal, at index time and again in `buildDepMap()` so a stale index cache cannot resurrect them.
+- **Rule packs require evidence of use.** Dependency-activated packs (`tanstack-query`, `supabase`, `antd`) declare `usageAnchors`; `computeDependencyReach()` counts importers plus one hop, and a pack whose anchor reaches fewer than 3 files is dropped. Presence in package.json is not evidence that a library shapes the code, and a pack for a library used once buries the rules that apply. Gating is skipped below 40 indexed files, where "used twice" means nothing.
+- **Detected conventions follow the same rule.** A state or form library is only described as the project's stack when at least two files import it.
+- **Reference routing carries information again.** The fallback row now uses a weaker reference set (`codebase-map`) than any classified row, rows that merely repeated the fallback are dropped, and a row naming dozens of directories collapses to a bounded sample plus a count.
+- **Module counts agree across documents.** `commands.md` no longer labels total files as "source file(s)", and per-module references that a run no longer selects are deleted instead of lingering with an older `sourceIndexHash` and contradictory counts.
+- **The advertised dependency count matches the table.** SKILL.md said "20 dependencies" while `dependencies.md` rendered 15; both now come from `MAX_TRACKED_DEPENDENCIES`.
+- **Every React rule can now be disabled.** The React pack's rules had no ids, so `createSkills.disableRules` could not target them — a project whose App Router code legitimately reads data during a server render had no way to drop the generic "never fetch in render" advice. All nine now carry stable `react/*` ids.
+- **Project overlays, for every agent.** Drop a `.mp-sentinel/skill-overlay.md` (or set `createSkills.overlayFile`) and it is copied verbatim into every generated skill and rule file as `## Project Overlay (authoritative)`, above the generated rules. It feeds the generation-config hash, so editing it makes `--check` report stale. This replaces post-processing scripts that patched one agent's `SKILL.md` and were undone by the next `--force`.
+
+---
+
 # What's New in v3.2.6
 
 ## DeepSeek provider, OpenAI reasoning models, and Windows compatibility

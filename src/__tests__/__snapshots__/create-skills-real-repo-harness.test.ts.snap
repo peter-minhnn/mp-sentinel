@@ -32,7 +32,7 @@ Before writing any code for **gems-approval-fixture**, follow these steps in ord
 6. **Load only the relevant references**:
    - \`references/codebase-map.md\` - 6 mods, 3 entrypoints
    - \`references/testing-map.md\` - 0 test associations
-   - \`references/dependencies.md\` - 1 dependencies
+   - \`references/dependencies.md\` - 0 dependencies
    - \`references/public-api.md\` - 0 risk items
    - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs
    - \`references/language-patterns.md\` - per-language rules and language distribution
@@ -40,8 +40,8 @@ Before writing any code for **gems-approval-fixture**, follow these steps in ord
 7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
 
 **Quick-start search examples (from this codebase):**
-   - \`bun run sentinel:index --find-import @/App --index-format json\` - top dependency (used by 1 files)
    - \`bun run sentinel:index --find-symbol App --index-format json\` - locate \`App\` (function) across the codebase
+   - \`bun run sentinel:index --find-symbol getDetail --index-format json\` - locate \`getDetail\` (function) across the codebase
 
 > **Auto-generated.** Regenerate via \`bun run agent:skills:refresh\`. Do not edit.
 
@@ -54,7 +54,7 @@ When touching files, load only the relevant references:
 | \`src/app/\`, \`src/lib/\`, \`src/shared/gems-ui/\` | architecture, codebase-map |
 | \`src/features/approval-detail/\` | modules/src-features-approval-detail, architecture, codebase-map |
 | \`src/features/approval-inbox/\` | modules/src-features-approval-inbox, architecture, codebase-map |
-| Other files | architecture, codebase-map |
+| Other files | codebase-map |
 
 ## Overview
 
@@ -349,7 +349,7 @@ When touching files, load only the relevant references:
 | Directory Pattern | Recommended References |
 |---|---|
 | \`src/app/\`, \`src/components/\`, \`src/lib/\`, \`src/types/\` | architecture, codebase-map |
-| Other files | architecture, codebase-map |
+| Other files | codebase-map |
 
 ## Overview
 

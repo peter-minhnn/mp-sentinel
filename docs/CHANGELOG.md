@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.7] — 2026-07-25
+
+### Added
+- **Project overlay for all agents.** `createSkills.overlayFile` (default `.mp-sentinel/skill-overlay.md`) is copied verbatim into every generated skill and rule file as `## Project Overlay (authoritative)`, wrapped in `mp-sentinel-skill-overlay` markers and included in the generation-config hash.
+- **Dependency reach + rule-pack usage gating.** `computeDependencyReach()` measures direct importers plus one hop; packs declaring `usageAnchors` are dropped below 3 reachable files. Skipped for indexes under 40 files.
+- **Stable ids for the React rule pack** (`react/rules-of-hooks`, `react/no-fetch-in-render`, `react/stable-list-keys`, ...), so every React rule can be targeted by `createSkills.disableRules`.
+- **Accuracy test suite.** `src/__tests__/create-skills-accuracy.test.ts` pins alias filtering, dependency-count agreement, module counts, routing informativeness, usage gating, and overlay propagation.
+
+### Fixed
+- **tsconfig path aliases counted as dependencies.** Alias specifiers are excluded at index time and in `buildDepMap()`, so stale caches cannot reintroduce them.
+- **Dependency count mismatch.** `MAX_TRACKED_DEPENDENCIES` is now the single cap for both the knowledge base and the rendered table.
+- **Module ownership counts.** `commands.md` reported total files as source files; test files are now excluded, matching `codebase-map.md`.
+- **Stale per-module references.** `references/modules/*.md` files no longer selected by a run are removed (generated files only; hand-written ones are preserved).
+- **Uninformative routing rows.** Rows duplicating the fallback reference set are dropped and long directory lists are truncated with a count.
+- **Convention overreach.** State/form library conventions require at least two importing files.
+
 ## [3.2.6] — 2026-07-01
 
 ### Added

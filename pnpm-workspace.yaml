@@ -1,0 +1,21 @@
+# mp-sentinel is primarily an npm project (package-lock.json is the release
+# source of truth — see AGENTS.md §8). This file exists only so `pnpm run`
+# works for contributors who prefer pnpm.
+#
+# pnpm blocks dependency build scripts by default and refuses to run any
+# script while some are still undecided (ERR_PNPM_IGNORED_BUILDS). These are
+# the packages that genuinely need their build step:
+#
+#   tree-sitter*   native parser bindings — indexing cannot load without them
+#   esbuild        the bundler tsup drives in `npm run build`
+#   unrs-resolver  native resolver used by the ESLint import plugin
+#   protobufjs     postinstall generates its runtime type files
+#   @google/genai  provider SDK postinstall
+onlyBuiltDependencies:
+  - "@google/genai"
+  - esbuild
+  - protobufjs
+  - tree-sitter
+  - tree-sitter-javascript
+  - tree-sitter-typescript
+  - unrs-resolver

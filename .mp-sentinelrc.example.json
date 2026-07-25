@@ -32,7 +32,8 @@
       "maxCyclomaticHint": 12,
       "forbidDefaultExports": false
     },
-    "disableRules": []
+    "disableRules": [],
+    "overlayFile": ".mp-sentinel/skill-overlay.md"
   },
   "localReview": {
     "enabled": true,

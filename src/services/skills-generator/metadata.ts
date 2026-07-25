@@ -5,6 +5,7 @@ import type {
   CreateSkillsPolicies,
   EnrichmentMetadata,
   SourceIndex,
+  SkillOverlay,
 } from "../../types/index.js";
 import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
 import { detectInstructionFiles } from "./instruction-files.js";
@@ -109,6 +110,7 @@ export interface GenerationProjectRules {
 export function computeGenerationConfigHash(
   createSkills?: CreateSkillsConfig,
   projectRules?: GenerationProjectRules,
+  overlay?: SkillOverlay | undefined,
 ): string {
   const policies =
     createSkills?.policies && !isDefaultPolicies(createSkills.policies)
@@ -131,6 +133,10 @@ export function computeGenerationConfigHash(
     disableRules,
     rules,
     ruleFiles,
+    // Overlay content is copied into every generated file, so editing it must
+    // mark the outputs stale — otherwise `--check` reports "ok" while the
+    // files on disk still carry the previous overlay.
+    overlay: overlay ? { path: overlay.path, content: overlay.content } : undefined,
   };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
 }

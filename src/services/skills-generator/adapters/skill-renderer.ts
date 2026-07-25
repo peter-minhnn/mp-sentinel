@@ -21,7 +21,7 @@ import type {
   SkillsGenerationContext,
   SourceIndex,
 } from "../../../types/index.js";
-import { generateContent } from "../content.js";
+import { buildSkillOverlaySection, generateContent } from "../content.js";
 import { renderRegenerateCommand } from "../package-manager.js";
 import { buildSkillKnowledgeBase } from "../knowledge-base.js";
 import { detectProjectConventions } from "../convention-detectors.js";
@@ -139,6 +139,7 @@ export function renderProgressiveSkill(
   // Per-module deep-dive references for the top bounded contexts
   const kb = knowledgeBase ?? (index ? buildSkillKnowledgeBase(index) : null);
   const moduleRefs = buildModuleReferences(kb, index, detectProjectConventions(index));
+  const overlaySection = buildSkillOverlaySection(context.overlay);
   const moduleLinks = moduleRefs.map(
     (m) => `- [Module: ${m.directory}](./${m.relPath.replace(/\\/g, "/")})`,
   );
@@ -162,6 +163,10 @@ export function renderProgressiveSkill(
     ...(content.sections.firstFilesToRead ? [``, content.sections.firstFilesToRead] : []),
     ...(content.sections.detectedConventions ? [``, content.sections.detectedConventions] : []),
     ...(content.sections.commonChangePaths ? [``, content.sections.commonChangePaths] : []),
+    // The project overlay sits directly above the generated rule sections:
+    // an agent reading top-down meets the authoritative project statement
+    // before any rule that overlay may contradict.
+    ...(overlaySection ? [``, overlaySection] : []),
     ``,
     content.sections.languageRules,
     ``,

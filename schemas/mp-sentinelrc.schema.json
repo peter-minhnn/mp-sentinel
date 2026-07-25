@@ -320,6 +320,11 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "overlayFile": {
+          "description": "Project-relative markdown file copied verbatim into every generated skill/rule file, for every agent. Defaults to .mp-sentinel/skill-overlay.md when present.",
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

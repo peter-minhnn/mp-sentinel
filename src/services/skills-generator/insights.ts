@@ -167,10 +167,83 @@ function extractPackageName(specifier: string): string | null {
 }
 
 /**
- * Check if an import specifier refers to an external (npm) package.
+ * Measure how far each dependency reaches into the codebase.
+ *
+ * Returns package name -> number of files that import it directly, plus the
+ * files that import one of those files. Presence in package.json says nothing
+ * about influence; a client created in one provider module and consumed
+ * everywhere should outrank a library imported once and never used again.
+ * One hop is deliberate: it separates "wired into the app" from "installed",
+ * without letting a shared util drag every package to the top.
+ *
+ * Deterministic — derived only from the index import graph.
  */
-function isExternalImport(specifier: string): boolean {
-  return !specifier.startsWith(".") && !specifier.startsWith("/") && !specifier.startsWith("\\");
+export function computeDependencyReach(index: SourceIndex): Record<string, number> {
+  const aliasPrefixes = collectAliasPrefixes(index);
+
+  // Reverse edge: file -> internal files importing it.
+  const importers = new Map<string, Set<string>>();
+  for (const file of index.files) {
+    for (const target of file.importsFrom ?? []) {
+      const bucket = importers.get(target) ?? new Set<string>();
+      bucket.add(file.path);
+      importers.set(target, bucket);
+    }
+  }
+
+  const reach: Record<string, number> = {};
+  const directByPkg = new Map<string, Set<string>>();
+  for (const file of index.files) {
+    for (const imp of file.imports) {
+      if (!isExternalImport(imp.source, aliasPrefixes)) continue;
+      const pkg = extractPackageName(imp.source);
+      if (!pkg) continue;
+      const bucket = directByPkg.get(pkg) ?? new Set<string>();
+      bucket.add(file.path);
+      directByPkg.set(pkg, bucket);
+    }
+  }
+
+  for (const [pkg, direct] of directByPkg) {
+    const reachable = new Set(direct);
+    for (const path of direct) {
+      for (const dependent of importers.get(path) ?? []) {
+        reachable.add(dependent);
+      }
+    }
+    reach[pkg] = reachable.size;
+  }
+  return reach;
+}
+
+/**
+ * Collect tsconfig `paths` alias prefixes (e.g. `@/`, `~/`, `@app/`).
+ *
+ * Alias specifiers look bare (`@/lib/utils`) but resolve to files inside the
+ * repository, so they must never be reported as npm dependencies.
+ */
+export function collectAliasPrefixes(index: SourceIndex): string[] {
+  const paths = index.project.tsConfig?.compilerOptions?.paths as
+    | Record<string, unknown>
+    | undefined;
+  if (!paths) return [];
+  return [...new Set(Object.keys(paths).map((key) => key.replace(/\*$/, "")))]
+    .filter((prefix) => prefix.length > 0)
+    .sort();
+}
+
+/**
+ * Check if an import specifier refers to an external (npm) package.
+ *
+ * Specifiers matching a tsconfig path alias are internal, not dependencies.
+ */
+function isExternalImport(specifier: string, aliasPrefixes: readonly string[] = []): boolean {
+  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("\\")) {
+    return false;
+  }
+  return !aliasPrefixes.some(
+    (prefix) => specifier.startsWith(prefix) || specifier === prefix.replace(/\/$/, ""),
+  );
 }
 
 // ── Test association heuristics ────────────────────────────────────────────
@@ -319,10 +392,13 @@ export function buildIndexInsights(index: SourceIndex): IndexInsights {
   }
 
   // 5. Dependency usage
+  const aliasPrefixes = collectAliasPrefixes(index);
   const dependencyUsage: Record<string, string[]> = {};
   for (const file of index.files) {
-    // Track files that import external packages
-    const externalImports = file.imports.filter((imp) => isExternalImport(imp.source));
+    // Track files that import external packages (tsconfig aliases are internal)
+    const externalImports = file.imports.filter((imp) =>
+      isExternalImport(imp.source, aliasPrefixes),
+    );
     for (const imp of externalImports) {
       const pkgName = extractPackageName(imp.source);
       if (pkgName) {

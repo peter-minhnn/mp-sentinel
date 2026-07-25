@@ -13,6 +13,7 @@ import type {
   LanguageProfile,
   CodeStyleProfile,
   CreateSkillsPolicies,
+  SkillOverlay,
 } from "../../types/index.js";
 import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
 import { detectLanguageProfile } from "./language-profile.js";
@@ -25,6 +26,13 @@ import {
   detectProjectConventions,
 } from "./convention-detectors.js";
 import { moduleKeyForPath } from "./module-grouping.js";
+import {
+  MAX_TRACKED_DEPENDENCIES,
+  MIN_FILES_FOR_USAGE_SIGNALS,
+  SKILL_OVERLAY_END_MARKER,
+  SKILL_OVERLAY_START_MARKER,
+} from "./constants.js";
+import { computeDependencyReach } from "./insights.js";
 import { safeModuleName, selectModuleReferenceTargets } from "./module-references.js";
 import { buildCommonChangePathsSection, buildFirstFilesSection } from "./usability-sections.js";
 import {
@@ -51,8 +59,8 @@ const MAX_HUB_FILE_DETAIL_LINES = 15;
 const MAX_RISK_DETAIL_LINES = 3;
 const MAX_TEST_ASSOC_ENTRIES = 20;
 const MAX_TEST_GAP_ENTRIES = 30;
-const MAX_DEP_TABLE_ENTRIES = 15;
-const MAX_DEP_DETAIL_ENTRIES = 15;
+const MAX_DEP_TABLE_ENTRIES = MAX_TRACKED_DEPENDENCIES;
+const MAX_DEP_DETAIL_ENTRIES = MAX_TRACKED_DEPENDENCIES;
 const MAX_DEP_FILE_LIST = 5;
 const MAX_RISK_ENTRIES = 20;
 const MAX_SCRIPT_ENTRIES = 12;
@@ -170,6 +178,7 @@ export function generateContent(
       langProfile: languageProfile,
       frameworks,
       deps: allDeps,
+      depReach: resolveDependencyReach(index),
       tsConfig: index?.project.tsConfig,
     },
     disableRules,
@@ -371,9 +380,47 @@ function buildProjectRulesSection(kb: SkillKnowledgeBase | null): string {
   return lines.join("\n");
 }
 
+/**
+ * Render the project-authored overlay as an authoritative, clearly bounded
+ * section.
+ *
+ * The content is copied verbatim: an overlay exists precisely to say things
+ * generation cannot derive, so reformatting or summarising it would defeat
+ * the point. Markers let quality checks tell project prose from generated
+ * guidance.
+ */
+export function buildSkillOverlaySection(overlay: SkillOverlay | undefined): string {
+  if (!overlay || overlay.content.trim().length === 0) return "";
+  return [
+    SKILL_OVERLAY_START_MARKER,
+    `## Project Overlay (authoritative)`,
+    ``,
+    `Authored by the project in \`${overlay.path}\`. Where it conflicts with any generated guidance below, the overlay wins.`,
+    ``,
+    overlay.content.trim(),
+    SKILL_OVERLAY_END_MARKER,
+  ].join("\n");
+}
+
+/**
+ * Dependency reach for rule-pack gating, or `undefined` when the index is too
+ * small or too import-poor for "used in few files" to mean anything.
+ *
+ * Returning `undefined` disables usage gating entirely, so an unusable signal
+ * degrades to the previous presence-based behaviour instead of silently
+ * dropping packs the project needs.
+ */
+function resolveDependencyReach(index: SourceIndex | null): Record<string, number> | undefined {
+  if (!index || index.files.length < MIN_FILES_FOR_USAGE_SIGNALS) return undefined;
+  const reach = computeDependencyReach(index);
+  return Object.keys(reach).length > 0 ? reach : undefined;
+}
+
 // ── Reference Routing ──────────────────────────────────────────────────────
 
 const MAX_ROUTING_ROWS = 15;
+/** Directories listed per routing row before collapsing into a count. */
+const MAX_ROUTING_DIRS_PER_ROW = 8;
 
 /**
  * Build a compact Reference Routing table that maps directories to recommended
@@ -538,14 +585,17 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
     }
   }
 
-  // Sort: non-fallback rows first (by first dir name), fallback last
-  const fallback = merged.find((r) => r.dirs.length === 1 && r.dirs[0] === "#fallback");
-  const sorted = merged
-    .filter((r) => r !== fallback)
-    .sort((a, b) => a.dirs[0]!.localeCompare(b.dirs[0]!));
+  // The fallback deliberately carries a WEAKER reference set than any
+  // classified row. When it matched the priority-3 set, hub directories and
+  // "everything else" became indistinguishable, and the merge below collapsed
+  // dozens of directories into one row that repeated the default.
+  const fallbackRefs = "codebase-map";
 
-  // Always add an "Other files" fallback row with the default ref set
-  const fallbackRefs = "architecture, codebase-map";
+  // Rows whose reference set is identical to the fallback carry no routing
+  // signal — the "Other files" row already covers them.
+  const fallback = merged.find((r) => r.dirs.length === 1 && r.dirs[0] === "#fallback");
+  const informative = merged.filter((r) => r !== fallback && r.refs !== fallbackRefs);
+  const sorted = informative.sort((a, b) => a.dirs[0]!.localeCompare(b.dirs[0]!));
 
   // ── Build markdown table ────────────────────────────────────────────────
   const lines = [
@@ -558,7 +608,12 @@ function buildReferenceRouting(index: SourceIndex | null, kb: SkillKnowledgeBase
   ];
 
   for (const row of sorted.slice(0, MAX_ROUTING_ROWS)) {
-    const dirCell = row.dirs.map((d) => `\`${d}\``).join(", ");
+    // A row naming forty directories is unreadable and stops functioning as
+    // routing; show a bounded sample and count the rest.
+    const shown = row.dirs.slice(0, MAX_ROUTING_DIRS_PER_ROW);
+    const overflow = row.dirs.length - shown.length;
+    const dirCell =
+      shown.map((d) => `\`${d}\``).join(", ") + (overflow > 0 ? `, +${overflow} more` : "");
     lines.push(`| ${dirCell} | ${row.refs} |`);
   }
 
@@ -1028,7 +1083,11 @@ function buildProfileRules(index: SourceIndex | null, profile: SkillProfile): st
             f.path.includes(".test.") || f.path.includes(".spec.") || f.path.includes("__tests__"),
         ).length;
         const testNote = testCount > 0 ? ` (${testCount} test files)` : "";
-        lines.push(`- \`${dir}/\` - ${files.length} source file(s)${testNote}`);
+        // `files` holds every indexed file in the module; the source count is
+        // what remains after tests, so the label matches codebase-map.md and
+        // the per-module references instead of double-counting tests.
+        const sourceCount = files.length - testCount;
+        lines.push(`- \`${dir}/\` - ${sourceCount} source file(s)${testNote}`);
       }
     }
   }

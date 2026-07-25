@@ -15,7 +15,12 @@ import type {
   SourceIndex,
 } from "../../types/index.js";
 import { resolveSafeMajor } from "./rule-packs/version-gate.js";
-import { PROJECT_RULES_END_MARKER, PROJECT_RULES_START_MARKER } from "./constants.js";
+import {
+  PROJECT_RULES_END_MARKER,
+  PROJECT_RULES_START_MARKER,
+  SKILL_OVERLAY_END_MARKER,
+  SKILL_OVERLAY_START_MARKER,
+} from "./constants.js";
 
 // ── Size limits ────────────────────────────────────────────────────────────
 
@@ -1099,30 +1104,42 @@ function checkVersionGatedLeakage(
  * legacy H2-boundary heuristic for older generated files that predate the
  * markers.
  */
-function stripProjectRulesSection(content: string): string {
-  // Marker-based stripping (current generator). Strip every marked region.
-  const startIdx = content.indexOf(PROJECT_RULES_START_MARKER);
-  if (startIdx !== -1) {
-    let out = content;
-    for (;;) {
-      const s = out.indexOf(PROJECT_RULES_START_MARKER);
-      if (s === -1) break;
-      const eMarker = out.indexOf(PROJECT_RULES_END_MARKER, s);
-      const end = eMarker === -1 ? out.length : eMarker + PROJECT_RULES_END_MARKER.length;
-      out = out.slice(0, s) + out.slice(end);
-    }
-    return out;
+/** Remove every region between a start/end marker pair. */
+function stripMarkedRegions(content: string, startMarker: string, endMarker: string): string {
+  let out = content;
+  for (;;) {
+    const start = out.indexOf(startMarker);
+    if (start === -1) return out;
+    const endMarkerIdx = out.indexOf(endMarker, start);
+    const end = endMarkerIdx === -1 ? out.length : endMarkerIdx + endMarker.length;
+    out = out.slice(0, start) + out.slice(end);
   }
+}
+
+function stripProjectRulesSection(content: string): string {
+  // The project overlay is authored, not generated — same reasoning as
+  // project rules, so it is stripped on both the marker and legacy paths.
+  const withoutOverlay = stripMarkedRegions(
+    content,
+    SKILL_OVERLAY_START_MARKER,
+    SKILL_OVERLAY_END_MARKER,
+  );
+
+  // Marker-based stripping (current generator). Strip every marked region.
+  if (withoutOverlay.includes(PROJECT_RULES_START_MARKER)) {
+    return stripMarkedRegions(withoutOverlay, PROJECT_RULES_START_MARKER, PROJECT_RULES_END_MARKER);
+  }
+  const content_ = withoutOverlay;
 
   // Legacy fallback: H2-boundary heuristic (pre-marker generated files).
   const startRe = /^## Project Rules \(authoritative\)\s*$/m;
-  const match = startRe.exec(content);
-  if (!match) return content;
+  const match = startRe.exec(content_);
+  if (!match) return content_;
   const start = match.index;
-  const rest = content.slice(start + match[0].length);
+  const rest = content_.slice(start + match[0].length);
   const nextH2 = rest.search(/^## /m);
-  const end = nextH2 === -1 ? content.length : start + match[0].length + nextH2;
-  return content.slice(0, start) + content.slice(end);
+  const end = nextH2 === -1 ? content_.length : start + match[0].length + nextH2;
+  return content_.slice(0, start) + content_.slice(end);
 }
 
 function checkStackConsistency(

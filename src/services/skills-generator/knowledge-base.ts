@@ -5,6 +5,8 @@
  * When index.insights is absent, returns a minimal KB with empty arrays.
  */
 
+import { MAX_TRACKED_DEPENDENCIES } from "./constants.js";
+import { collectAliasPrefixes } from "./insights.js";
 import { detectInstructionFiles } from "./instruction-files.js";
 import { isAppEntryFile, isNextRouteFile, moduleKeyForPath } from "./module-grouping.js";
 import type {
@@ -243,7 +245,16 @@ function buildDepMap(
   const allDeps = { ...index.project.dependencies, ...index.project.devDependencies };
   const result: DepMapEntry[] = [];
 
+  // `dependencyUsage` is read from the index cache, which may have been
+  // written by an older indexer that counted tsconfig path aliases (`@/app`)
+  // as npm packages. Filter here too, so a stale cache cannot resurrect
+  // phantom dependencies in the generated docs.
+  const aliasPrefixes = collectAliasPrefixes(index);
+  const isAliasSpecifier = (name: string): boolean =>
+    aliasPrefixes.some((prefix) => name.startsWith(prefix) || name === prefix.replace(/\/$/, ""));
+
   for (const [pkgName, files] of Object.entries(dependencyUsage)) {
+    if (isAliasSpecifier(pkgName)) continue;
     const version = allDeps[pkgName] ?? "unknown";
     let sourceCount = 0;
     let testCount = 0;
@@ -288,7 +299,7 @@ function buildDepMap(
         b.fileCount - a.fileCount ||
         a.packageName.localeCompare(b.packageName),
     )
-    .slice(0, 20);
+    .slice(0, MAX_TRACKED_DEPENDENCIES);
 }
 
 // ── Risk Map ───────────────────────────────────────────────────────────────

@@ -3,8 +3,8 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { log, setLogQuietMode } from "../utils/logger.js";
 import { loadProjectConfig } from "../utils/config.js";
 import { UserError } from "../utils/errors.js";
@@ -34,6 +34,7 @@ import type {
   SkillsGenerationContext,
   SkillsGenerationResult,
   SkillKnowledgeBase,
+  SkillOverlay,
   SourceIndex,
 } from "../types/index.js";
 import {
@@ -62,7 +63,11 @@ import {
   GENERATOR_VERSION,
   parseGeneratorMajor,
 } from "../services/skills-generator/metadata.js";
-import { METADATA_MARKER } from "../services/skills-generator/constants.js";
+import {
+  DEFAULT_SKILL_OVERLAY_PATH,
+  MAX_SKILL_OVERLAY_CHARS,
+  METADATA_MARKER,
+} from "../services/skills-generator/constants.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -128,6 +133,95 @@ function isUserAuthoredFile(path: string): boolean {
   } catch {
     return true;
   }
+}
+
+/**
+ * Read the project-authored skill overlay, if the project has one.
+ *
+ * Resolution order: `createSkills.overlayFile` when set, otherwise the
+ * conventional `.mp-sentinel/skill-overlay.md`. A configured path that cannot
+ * be read is an error (the user asked for it); the conventional path is
+ * simply absent when the project does not use an overlay.
+ *
+ * Cached per resolved path so a multi-adapter run reads the file once.
+ */
+const overlayCache = new Map<string, SkillOverlay | undefined>();
+
+async function loadSkillOverlay(
+  projectRoot: string,
+  createSkills: CreateSkillsConfig | undefined,
+): Promise<SkillOverlay | undefined> {
+  const configured = createSkills?.overlayFile?.trim();
+  const relPath = configured && configured.length > 0 ? configured : DEFAULT_SKILL_OVERLAY_PATH;
+
+  if (isAbsolute(relPath)) {
+    throw new UserError(`createSkills.overlayFile: "${relPath}" must be a relative path.`);
+  }
+  const absPath = resolve(projectRoot, relPath);
+  const normalizedRel = relative(projectRoot, absPath).replace(/\\/g, "/");
+  if (normalizedRel === ".." || normalizedRel.startsWith("../")) {
+    throw new UserError(`createSkills.overlayFile: "${relPath}" must be inside the project root.`);
+  }
+
+  const cached = overlayCache.get(absPath);
+  if (cached !== undefined || overlayCache.has(absPath)) return cached;
+
+  let raw: string;
+  try {
+    raw = await readFile(absPath, "utf-8");
+  } catch (error) {
+    if (configured) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new UserError(`createSkills.overlayFile: cannot read "${relPath}": ${msg}`);
+    }
+    overlayCache.set(absPath, undefined);
+    return undefined;
+  }
+
+  const content = raw.trim().slice(0, MAX_SKILL_OVERLAY_CHARS);
+  const overlay: SkillOverlay | undefined =
+    content.length > 0 ? { path: normalizedRel, content } : undefined;
+  overlayCache.set(absPath, overlay);
+  return overlay;
+}
+
+/**
+ * Delete generated per-module reference files that the current run no longer
+ * produces.
+ *
+ * `references/modules/<name>.md` files are selected from the live module
+ * ranking, so a codebase change can drop a module out of the set. Without a
+ * prune step the previous run's file survives forever: it keeps a stale
+ * `sourceIndexHash`, contradicts the counts in `modules.md` / `commands.md`,
+ * and is linked from nowhere. Only files carrying the generated marker are
+ * removed — a hand-written file in that directory is left alone.
+ */
+async function pruneStaleModuleReferences(writtenPaths: readonly string[]): Promise<string[]> {
+  const keep = new Set(writtenPaths);
+  const moduleDirs = new Set(
+    writtenPaths
+      .filter((candidate) => candidate.includes(join("references", "modules")))
+      .map((candidate) => dirname(candidate)),
+  );
+
+  const removed: string[] = [];
+  for (const dir of [...moduleDirs].sort()) {
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries.sort()) {
+      if (!entry.endsWith(".md")) continue;
+      const full = join(dir, entry);
+      if (keep.has(full)) continue;
+      if (isUserAuthoredFile(full)) continue;
+      await rm(full, { force: true });
+      removed.push(full);
+    }
+  }
+  return removed;
 }
 
 function resolveFormat(raw: string | undefined): "console" | "json" {
@@ -251,6 +345,7 @@ async function runAdapter(
     codeStyleProfile,
     policies: createSkills?.policies,
     disableRules: createSkills?.disableRules,
+    overlay: await loadSkillOverlay(projectRoot, createSkills),
   };
   const raw = await adapter.generate(index, context);
 
@@ -316,6 +411,13 @@ async function runAdapter(
     writtenPaths.push(file.outputPath);
   }
 
+  const prunedPaths = await pruneStaleModuleReferences(writtenPaths);
+  if (!isJson) {
+    for (const stale of prunedPaths) {
+      log.info(`[${adapter.id}] removed stale module reference ${stale}`);
+    }
+  }
+
   return {
     agent: adapter.id,
     label: adapter.label,
@@ -351,6 +453,7 @@ async function dryRunAdapter(
     codeStyleProfile,
     policies: createSkills?.policies,
     disableRules: createSkills?.disableRules,
+    overlay: await loadSkillOverlay(projectRoot, createSkills),
   };
   const raw = await adapter.generate(index, context);
 
@@ -396,10 +499,15 @@ async function checkAdapter(
   codeStyleProfile?: CodeStyleProfile | undefined,
   createSkills?: CreateSkillsConfig | undefined,
 ): Promise<SkillsCheckResult> {
-  const currentGenerationConfigHash = computeGenerationConfigHash(createSkills, {
-    rules: knowledgeBase?.projectRules,
-    ruleFiles: knowledgeBase?.projectRuleFiles,
-  });
+  const overlay = await loadSkillOverlay(projectRoot, createSkills);
+  const currentGenerationConfigHash = computeGenerationConfigHash(
+    createSkills,
+    {
+      rules: knowledgeBase?.projectRules,
+      ruleFiles: knowledgeBase?.projectRuleFiles,
+    },
+    overlay,
+  );
   const context: SkillsGenerationContext = {
     projectRoot,
     projectName,
@@ -409,6 +517,7 @@ async function checkAdapter(
     codeStyleProfile,
     policies: createSkills?.policies,
     disableRules: createSkills?.disableRules,
+    overlay,
   };
   const raw = await adapter.generate(index, context);
 
@@ -938,6 +1047,7 @@ async function runDoctor(
       knowledgeBase,
       policies: config.createSkills?.policies,
       disableRules: config.createSkills?.disableRules,
+      overlay: await loadSkillOverlay(projectRoot, config.createSkills),
     };
 
     for (const adapter of selectedAdapters) {
@@ -1545,10 +1655,14 @@ export async function runCreateSkillsCommand(
     // was built) so content, hash, and the next --check agree on disk state.
 
     const indexHash = computeIndexHash(index, projectRoot);
-    const generationConfigHash = computeGenerationConfigHash(config.createSkills, {
-      rules: config.rules,
-      ruleFiles: config.ruleFiles,
-    });
+    const generationConfigHash = computeGenerationConfigHash(
+      config.createSkills,
+      {
+        rules: config.rules,
+        ruleFiles: config.ruleFiles,
+      },
+      await loadSkillOverlay(projectRoot, config.createSkills),
+    );
     const results: SkillsGenerationResult[] = [];
 
     for (const adapter of adapters) {

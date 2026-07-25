@@ -10,6 +10,7 @@ export const supabaseRules: RulePack = {
   label: "Supabase",
   when: (ctx) =>
     ctx.deps["@supabase/supabase-js"] !== undefined || ctx.deps["@supabase/ssr"] !== undefined,
+  usageAnchors: ["@supabase/supabase-js", "@supabase/ssr"],
   rules: [
     {
       kind: "must",

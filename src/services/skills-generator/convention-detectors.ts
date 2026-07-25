@@ -12,6 +12,7 @@
 
 import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
 import { moduleKeyForPath } from "./module-grouping.js";
+import { MIN_FILES_FOR_USAGE_SIGNALS } from "./constants.js";
 
 export interface DetectedConvention {
   /** Stable id, e.g. "alias", "feature-structure", "http-client" */
@@ -312,17 +313,44 @@ const FORM_LIBS: ReadonlyArray<readonly [dep: string, label: string]> = [
   ["formik", "Formik"],
 ];
 
+/**
+ * Minimum number of importing files before a library counts as "the stack".
+ *
+ * A dependency listed in package.json proves nothing about how the codebase
+ * is written: a state library imported by a single helper is not a convention,
+ * and telling an agent "client state lives in X stores" would misdescribe the
+ * repository. Two independent importers is the smallest signal of a pattern.
+ */
+const MIN_CONVENTION_USAGE_FILES = 2;
+
+/** Number of indexed files that import a package (exact or subpath). */
+function countImportingFiles(index: SourceIndex, dep: string): number {
+  return index.files.filter((file) =>
+    file.imports.some((imp) => imp.source === dep || imp.source.startsWith(dep + "/")),
+  ).length;
+}
+
 function detectStateAndFormsConvention(index: SourceIndex): DetectedConvention | null {
   const allDeps = { ...index.project.dependencies, ...index.project.devDependencies };
-  const state = STATE_LIBS.find(([dep]) => allDeps[dep] !== undefined)?.[1];
-  const form = FORM_LIBS.find(([dep]) => allDeps[dep] !== undefined)?.[1];
+  // Same reasoning as rule-pack gating: only a codebase large enough (and
+  // actually indexed with imports) can make "used twice" mean "incidental".
+  const usageIsMeaningful =
+    index.files.length >= MIN_FILES_FOR_USAGE_SIGNALS &&
+    index.files.some((file) => file.imports.length > 0);
+  const isEstablished = (dep: string): boolean => {
+    if (allDeps[dep] === undefined) return false;
+    if (!usageIsMeaningful) return true;
+    return countImportingFiles(index, dep) >= MIN_CONVENTION_USAGE_FILES;
+  };
+  const state = STATE_LIBS.find(([dep]) => isEstablished(dep))?.[1];
+  const form = FORM_LIBS.find(([dep]) => isEstablished(dep))?.[1];
   if (!state && !form) return null;
 
   const parts: string[] = [];
   if (state)
     parts.push(`client state lives in ${state} stores - do not add a second state library`);
   if (form) {
-    const withZod = allDeps["zod"] !== undefined ? ` with zod schemas` : "";
+    const withZod = isEstablished("zod") ? ` with zod schemas` : "";
     parts.push(`forms use ${form}${withZod} - keep new forms on the same stack`);
   }
   return {

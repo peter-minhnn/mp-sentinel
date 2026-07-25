@@ -185,6 +185,7 @@ const CreateSkillsConfigSchema = z.object({
   disableRules: z
     .array(z.string().min(1, "createSkills.disableRules entries must be non-empty"))
     .optional(),
+  overlayFile: z.string().min(1, "createSkills.overlayFile must be non-empty").optional(),
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -465,6 +466,7 @@ const mergeConfig = (userConfig: Partial<ProjectConfig>): ProjectConfig => ({
       ...(userConfig.createSkills?.policies ?? {}),
     },
     disableRules: userConfig.createSkills?.disableRules ?? DEFAULT_CONFIG.createSkills.disableRules,
+    overlayFile: userConfig.createSkills?.overlayFile ?? DEFAULT_CONFIG.createSkills.overlayFile,
   },
   mcp: {
     ...DEFAULT_CONFIG.mcp,

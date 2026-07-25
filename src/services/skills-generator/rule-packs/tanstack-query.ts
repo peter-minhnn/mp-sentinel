@@ -11,6 +11,7 @@ export const tanstackQueryRules: RulePack = {
   label: "TanStack Query",
   when: (ctx) =>
     ctx.deps["@tanstack/react-query"] !== undefined || ctx.deps["react-query"] !== undefined,
+  usageAnchors: ["@tanstack/react-query", "react-query"],
   rules: [
     {
       kind: "must",

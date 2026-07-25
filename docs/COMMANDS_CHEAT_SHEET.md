@@ -121,6 +121,21 @@ Detects tech stack via `detectTechProfile`, picks a provider from env vars (`ANT
 }
 ```
 
+### createSkills.overlayFile
+
+```json
+{
+  "createSkills": {
+    "overlayFile": ".mp-sentinel/skill-overlay.md"
+  }
+}
+```
+
+Markdown copied verbatim into every generated skill and rule file, for every
+agent, as `## Project Overlay (authoritative)`. Optional — the default path is
+used automatically when the file exists. See
+[CREATE_SKILLS.md](./CREATE_SKILLS.md#configuration--createskillsoverlayfile-project-overlay).
+
 ### createSkills.ai
 
 ```json

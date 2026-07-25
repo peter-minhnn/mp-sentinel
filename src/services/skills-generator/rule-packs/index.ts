@@ -26,7 +26,25 @@ export interface RulePackContext {
    * `moduleResolution: "bundler"`.
    */
   tsConfig?: { compilerOptions: Record<string, unknown>; extends?: string } | undefined;
+  /**
+   * How far each dependency actually reaches into the codebase: package name
+   * -> number of files that import it directly or import a module that does.
+   *
+   * Optional. When absent (e.g. the review pipeline, which has no source
+   * index) usage gating is skipped and pack selection behaves as before.
+   */
+  depReach?: Record<string, number> | undefined;
 }
+
+/**
+ * Minimum dependency reach before a usage-gated pack is considered active.
+ *
+ * A library listed in package.json and wired into one provider file does not
+ * shape how the codebase is written; emitting a full rule pack for it buries
+ * the rules that do apply. Three reachable files is the smallest signal that
+ * a library is part of the working stack.
+ */
+export const MIN_PACK_REACH_FILES = 3;
 
 export type RuleKind = "must" | "should" | "avoid";
 
@@ -106,6 +124,14 @@ export interface RulePack {
   id: string;
   label: string;
   when: (ctx: RulePackContext) => boolean;
+  /**
+   * Packages whose real usage justifies this pack. When set and the context
+   * carries `depReach`, the pack is dropped unless at least one anchor
+   * reaches `MIN_PACK_REACH_FILES` files. Use only for packs activated by
+   * dependency presence whose rules are about writing code against that
+   * library — never for build tools, which legitimately have no imports.
+   */
+  usageAnchors?: readonly string[];
   rules: RulePackRule[];
   fileGlobs: string[];
   /**
@@ -184,6 +210,19 @@ export interface RulePackSelection {
 }
 
 /**
+ * True when a pack's usage gate is satisfied — always true for packs without
+ * `usageAnchors`, or when the context carries no reach data.
+ */
+function packMeetsUsageThreshold(pack: RulePack, ctx: RulePackContext): boolean {
+  if (!pack.usageAnchors || pack.usageAnchors.length === 0) return true;
+  const reach = ctx.depReach;
+  if (!reach) return true;
+  const declared = pack.usageAnchors.filter((dep) => ctx.deps[dep] !== undefined);
+  if (declared.length === 0) return true;
+  return declared.some((dep) => (reach[dep] ?? 0) >= MIN_PACK_REACH_FILES);
+}
+
+/**
  * Select active rule packs based on the codebase context.
  * Returns both the selected packs and the flattened rule list, with
  * `createSkills.disableRules` honored (Phase 4.3) when provided.
@@ -192,7 +231,7 @@ export function selectActiveRulePacks(
   ctx: RulePackContext,
   disableRules?: readonly string[],
 ): RulePackSelection {
-  const activePacks = ALL_PACKS.filter((p) => p.when(ctx));
+  const activePacks = ALL_PACKS.filter((p) => p.when(ctx) && packMeetsUsageThreshold(p, ctx));
   // Version gating: drop rules whose dependency-major constraints are not
   // safely satisfied by the manifest (conservative — unknown drops the rule).
   // Config gating: drop rules whose `enabled` predicate rejects the context

@@ -312,6 +312,42 @@ Configure clean-code limits in `.mp-sentinelrc.json`:
 
 These policies are rendered into `## Clean Code Policy` and `## File Size Policy` sections in the SKILL.md, including any current offenders (files exceeding `maxFileLines`) observed from the CodeStyleProfile.
 
+## Configuration — createSkills.overlayFile (Project Overlay)
+
+Generation is deterministic: it can only state what the source index proves. An
+overlay is where the project states what the index cannot show — security
+boundaries, deprecations, house conventions, corrections to a generated rule.
+
+Create `.mp-sentinel/skill-overlay.md` and it is picked up automatically; no
+config entry is needed. To read it from somewhere else:
+
+```json
+{
+  "createSkills": {
+    "overlayFile": "docs/agent-overlay.md"
+  }
+}
+```
+
+Behaviour:
+
+- The file is copied **verbatim** into every generated output — every skill
+  folder AND every single-file rule adapter. There is no per-agent overlay, so
+  Claude, Codex, Cursor and the rest cannot drift apart.
+- It renders as `## Project Overlay (authoritative)`, placed directly above the
+  generated rule sections, and states that it wins on conflict.
+- Content is wrapped in `<!-- mp-sentinel-skill-overlay:start/end -->` markers
+  so quality checks that scan only GENERATED guidance skip it.
+- Overlay content feeds the generation-config hash, so editing the overlay
+  makes `--check` report stale.
+- Capped at 12,000 characters; the path must stay inside the project root. A
+  configured path that cannot be read is an error, a missing conventional path
+  is not.
+
+This replaces hand-rolled post-processing scripts that patched `SKILL.md` after
+generation — those only ever fixed one agent's copy and were silently undone by
+the next `--force` run.
+
 ## Rule Packs (Deterministic, No AI Required)
 
 Built-in rule packs activate based on the detected language profile and dependencies. Each pack produces `must`/`should`/`avoid` rules in the `## Language & Framework Rules` SKILL.md section.
@@ -342,6 +378,22 @@ Built-in rule packs activate based on the detected language profile and dependen
 | **Laravel** | `laravel/framework` dependency | Eloquent vs raw SQL, Form Requests, route model binding, thin controllers |
 | **Ruby** | `.rb` files or `Gemfile` manifest | Frozen string literals, `snake_case` naming, keyword arguments, safe navigation `&.` |
 | **Rails** | `rails` gem dependency | Strong Parameters, scopes, `before_action` discipline, concerns vs modules |
+
+### Usage Gating (v3.2.7+)
+
+Dependency-activated packs (`tanstack-query`, `supabase`, `antd`) declare
+`usageAnchors`. A pack whose anchor is installed but barely reached is dropped:
+"in package.json" is not evidence that a library shapes the codebase, and a
+full rule pack for a library used once buries the rules that do apply.
+
+Reach counts the files importing the package plus the files importing those —
+one hop, so a client created in a single provider module and consumed
+everywhere still ranks high. The threshold is 3 reachable files.
+
+Gating only applies to indexes with at least 40 files and a non-empty import
+graph. Below that, "used twice" is not evidence of anything, so selection falls
+back to dependency presence. The same rule governs the state/form library
+conventions in `## Detected Conventions`.
 
 ### Rule Pack Evaluators
 
@@ -484,7 +536,7 @@ Skill-folder outputs additionally carry `## First Files To Read` (entrypoints, p
 
 ### Per-Module References
 
-Skill-folder adapters additionally generate `references/modules/<safe-module-name>.md` deep-dives for the top bounded contexts (modules with at least 5 source files, max 6 files). Each contains key files, entrypoints, dependency edges, tests, and relevant conventions. The Reference Routing table points agents at `modules/<safe-name>` entries when available.
+Skill-folder adapters additionally generate `references/modules/<safe-module-name>.md` deep-dives for the top bounded contexts (modules with at least 5 source files, max 6 files). Each contains key files, entrypoints, dependency edges, tests, and relevant conventions. The Reference Routing table points agents at `modules/<safe-name>` entries when available. Module files that a later run no longer selects are deleted, so the directory can never accumulate an orphan carrying an older `sourceIndexHash` and contradicting the counts in `modules.md`. Hand-written files there (no generated marker) are left alone.
 
 ### Index Fidelity (v1.0.16+)
 

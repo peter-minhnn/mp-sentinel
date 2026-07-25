@@ -9,6 +9,7 @@ export const antdRules: RulePack = {
   id: "antd",
   label: "Ant Design",
   when: (ctx) => ctx.deps["antd"] !== undefined,
+  usageAnchors: ["antd"],
   rules: [
     {
       kind: "should",

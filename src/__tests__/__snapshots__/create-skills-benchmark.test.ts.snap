@@ -51,7 +51,7 @@ When touching files, load only the relevant references:
 | Directory Pattern | Recommended References |
 |---|---|
 | \`apps/\`, \`packages/\` | architecture, codebase-map |
-| Other files | architecture, codebase-map |
+| Other files | codebase-map |
 
 ## Overview
 
@@ -179,7 +179,7 @@ When touching files, load only the relevant references:
 | Directory Pattern | Recommended References |
 |---|---|
 | \`src/db/\`, \`src/routes/\`, \`src/services/\`, \`tests/\` | architecture, codebase-map |
-| Other files | architecture, codebase-map |
+| Other files | codebase-map |
 
 ## Overview
 

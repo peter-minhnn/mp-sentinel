@@ -378,6 +378,14 @@ export interface CreateSkillsConfig {
    *   { "createSkills": { "disableRules": ["next/image-optimization"] } }
    */
   disableRules?: string[];
+  /**
+   * Project-relative path to a markdown overlay copied verbatim into every
+   * generated skill/rule file, for every agent.
+   *
+   * Defaults to `.mp-sentinel/skill-overlay.md` when that file exists. Set
+   * this to point somewhere else; the path must stay inside the project root.
+   */
+  overlayFile?: string;
 }
 
 export const DEFAULT_CREATE_SKILLS_POLICIES: CreateSkillsPolicies = {
@@ -804,6 +812,9 @@ export const DEFAULT_CONFIG: Required<
     // Phase 4.3: list of rule ids to omit from generated SKILL.md output.
     // Empty by default -- users opt in by listing `<packId>/<ruleId>`.
     disableRules: [],
+    // Empty means "use the conventional .mp-sentinel/skill-overlay.md when
+    // it exists"; set a path to read the overlay from somewhere else.
+    overlayFile: "",
   },
   mcp: {
     enabled: false,
@@ -1471,6 +1482,27 @@ export interface SkillsGenerationContext {
   policies?: CreateSkillsPolicies | undefined;
   /** Rule ids to omit from generated content (Phase 4.3 -- createSkills.disableRules). */
   disableRules?: readonly string[] | undefined;
+  /**
+   * Project-authored overlay copied verbatim into every generated skill and
+   * rule file, for every agent. Populated from `createSkills.overlayFile`
+   * (or the conventional `.mp-sentinel/skill-overlay.md`).
+   */
+  overlay?: SkillOverlay | undefined;
+}
+
+/**
+ * Project-authored markdown inserted into generated skill output.
+ *
+ * Generation is deterministic and can only describe what the index proves;
+ * an overlay is where a team states the things the index cannot show —
+ * security boundaries, deprecations, house rules. It is authoritative: it
+ * renders after the generated conventions and says so.
+ */
+export interface SkillOverlay {
+  /** Project-relative path the overlay was read from. */
+  path: string;
+  /** Overlay markdown, already trimmed to the size cap. */
+  content: string;
 }
 
 /**
