@@ -606,7 +606,12 @@ function checkUnknownPaths(
   const checks: QualityCheck[] = [];
   if (!index) return checks;
 
-  const tokens = extractPathTokens(file.content);
+  // The overlay is excluded: it legitimately backticks things that are not
+  // repository paths -- Tailwind utilities (`top-1/2`), ESLint rule names
+  // (`react-hooks/rules-of-hooks`), files the indexer never sees
+  // (`src/app/globals.css`) -- and flagging those as missing paths would
+  // train the reader to ignore this check. Config `rules` stay checked.
+  const tokens = extractPathTokens(stripOverlaySection(file.content));
   if (tokens.length === 0) return checks;
 
   // Build set of known paths from index + generated references
@@ -1114,6 +1119,19 @@ function stripMarkedRegions(content: string, startMarker: string, endMarker: str
     const end = endMarkerIdx === -1 ? out.length : endMarkerIdx + endMarker.length;
     out = out.slice(0, start) + out.slice(end);
   }
+}
+
+/**
+ * Strip only the project overlay region.
+ *
+ * Deliberately narrower than `stripProjectRulesSection`: a one-line entry in
+ * `rules` that names a path which does not exist is a typo worth reporting,
+ * and that check stays. An overlay is freeform documentation where backticks
+ * mark code far more often than paths, so the same check only produces noise
+ * there.
+ */
+function stripOverlaySection(content: string): string {
+  return stripMarkedRegions(content, SKILL_OVERLAY_START_MARKER, SKILL_OVERLAY_END_MARKER);
 }
 
 function stripProjectRulesSection(content: string): string {

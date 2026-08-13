@@ -397,7 +397,11 @@ export function buildSkillOverlaySection(overlay: SkillOverlay | undefined): str
     ``,
     `Authored by the project in \`${overlay.path}\`. Where it conflicts with any generated guidance below, the overlay wins.`,
     ``,
-    overlay.content.trim(),
+    // Normalised the same way as project rules: em dashes, curly quotes and
+    // arrows are replaced with ASCII. Generated files are held to an ASCII
+    // contract, and an overlay that violated it would fail the quality gate
+    // on content the author cannot see from inside their own markdown.
+    sanitizeProjectText(overlay.content.trim()),
     SKILL_OVERLAY_END_MARKER,
   ].join("\n");
 }

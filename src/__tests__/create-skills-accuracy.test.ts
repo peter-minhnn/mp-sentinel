@@ -31,6 +31,8 @@ import { selectActiveRulePacks } from "../services/skills-generator/rule-packs/i
 import { renderProgressiveSkill } from "../services/skills-generator/adapters/skill-renderer.js";
 import { renderConciseRules } from "../services/skills-generator/adapters/rule-renderer.js";
 import { computeGenerationConfigHash } from "../services/skills-generator/metadata.js";
+import { validateSkillQuality } from "../services/skills-generator/quality-gate.js";
+import { getAdapter } from "../services/skills-generator/registry.js";
 import { MAX_TRACKED_DEPENDENCIES } from "../services/skills-generator/constants.js";
 import type { LanguageProfile } from "../types/index.js";
 
@@ -359,6 +361,43 @@ describe("project overlay", () => {
       "fixture",
     );
     expect(skill!.content).not.toContain("Project Overlay");
+  });
+
+  it("does not let authored prose trip checks meant for generated guidance", () => {
+    // Backticked tokens that are not repository paths, plus typography the
+    // generated-file ASCII contract forbids -- both are normal in an overlay.
+    const messy: SkillOverlay = {
+      path: ".mp-sentinel/skill-overlay.md",
+      content: [
+        "## House Rules",
+        "",
+        "- Use `top-1/2`, never `top-[50%]` \u2014 brackets are a last resort.",
+        "- `react-hooks/rules-of-hooks` is an error.",
+        "- Tokens live in `src/app/globals.css`.",
+      ].join("\n"),
+    };
+    const files = renderProgressiveSkill(
+      index,
+      { ...baseContext, overlay: messy },
+      "/repo/.claude/skills/fixture",
+      "fixture",
+    );
+    const report = validateSkillQuality(
+      files,
+      "claude",
+      index,
+      getAdapter("claude")!.spec,
+      "fixture",
+    );
+    const offenders = report.checks.filter(
+      (c) => c.type === "unknown-path" || c.type === "risky-unicode",
+    );
+    expect(offenders).toEqual([]);
+    // Typography is normalised rather than rejected, so the overlay author
+    // never has to hand-write ASCII dashes.
+    const skill = files.find((f) => f.outputPath.endsWith("SKILL.md"))!;
+    expect(skill.content).toContain("brackets are a last resort");
+    expect(skill.content).not.toContain("\u2014");
   });
 
   it("changes the generation-config hash, so --check reports stale", () => {

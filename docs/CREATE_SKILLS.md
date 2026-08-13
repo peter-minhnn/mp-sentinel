@@ -331,9 +331,18 @@ config entry is needed. To read it from somewhere else:
 
 Behaviour:
 
-- The file is copied **verbatim** into every generated output — every skill
-  folder AND every single-file rule adapter. There is no per-agent overlay, so
-  Claude, Codex, Cursor and the rest cannot drift apart.
+- The file is copied into every generated output — every skill folder AND
+  every single-file rule adapter. There is no per-agent overlay, so Claude,
+  Codex, Cursor and the rest cannot drift apart.
+- Content is copied as written, with one exception: typography is normalised
+  to ASCII (em dash to `--`, curly quotes to straight, arrows to `->`), the
+  same treatment `rules` receives. Generated files are held to an ASCII
+  contract by the quality gate, and an overlay author should not have to hand-
+  write ASCII dashes to satisfy it.
+- The overlay is exempt from the unknown-path check. Freeform docs backtick
+  code far more often than paths (`top-1/2`, `react-hooks/rules-of-hooks`,
+  `src/app/globals.css`), and flagging those would drown the real signal.
+  One-line `rules` entries are still checked, where a bad path is a typo.
 - It renders as `## Project Overlay (authoritative)`, placed directly above the
   generated rule sections, and states that it wins on conflict.
 - Content is wrapped in `<!-- mp-sentinel-skill-overlay:start/end -->` markers

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.7] — 2026-07-25
 
 ### Added
-- **Project overlay for all agents.** `createSkills.overlayFile` (default `.mp-sentinel/skill-overlay.md`) is copied verbatim into every generated skill and rule file as `## Project Overlay (authoritative)`, wrapped in `mp-sentinel-skill-overlay` markers and included in the generation-config hash.
+- **Project overlay for all agents.** `createSkills.overlayFile` (default `.mp-sentinel/skill-overlay.md`) is copied verbatim into every generated skill and rule file as `## Project Overlay (authoritative)`, wrapped in `mp-sentinel-skill-overlay` markers and included in the generation-config hash. Overlay text is ASCII-normalised like `rules`, and the overlay region is excluded from the unknown-path quality check (config `rules` remain checked).
 - **Dependency reach + rule-pack usage gating.** `computeDependencyReach()` measures direct importers plus one hop; packs declaring `usageAnchors` are dropped below 3 reachable files. Skipped for indexes under 40 files.
 - **Stable ids for the React rule pack** (`react/rules-of-hooks`, `react/no-fetch-in-render`, `react/stable-list-keys`, ...), so every React rule can be targeted by `createSkills.disableRules`.
 - **Accuracy test suite.** `src/__tests__/create-skills-accuracy.test.ts` pins alias filtering, dependency-count agreement, module counts, routing informativeness, usage gating, and overlay propagation.
