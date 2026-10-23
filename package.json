@@ -99,14 +99,13 @@
   },
   "dependencies": {
     "@google/genai": "^2.0.1",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "commander": "14.0.3",
     "dotenv": "^17.4.2",
     "fast-glob": "3.3.3",
     "ignore": "7.0.5",
-    "mp-sentinel": "link:",
     "prompts": "^2.4.2",
-    "smol-toml": "^1.6.1",
+    "smol-toml": "^1.9.1",
     "tiktoken": "1.0.22",
     "tree-sitter": "^0.21.1",
     "tree-sitter-javascript": "^0.23.1",
@@ -128,7 +127,21 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "fast-uri": "3.1.9",
+    "ip-address": "10.7.4",
+    "proxy-addr": "2.0.8",
+    "hono": "4.13.13",
+    "@hono/node-server": "1.19.17",
+    "qs": "6.16.1",
+    "brace-expansion@1": "1.1.21",
+    "brace-expansion@2": "2.1.7",
+    "browserslist": "4.29.4",
+    "baseline-browser-mapping": "2.11.31",
+    "body-parser": "2.4.0",
+    "js-yaml@3": "3.15.2",
+    "handlebars": "4.7.10",
+    "protobufjs": "7.6.6"
   },
   "jest": {
     "preset": "ts-jest/presets/default-esm",
