@@ -2187,20 +2187,20 @@ describe("buildSkillKnowledgeBase", () => {
 // -- Agent Workflow v2 ------------------------------------------------------
 
 describe("agentWorkflow v2 content", () => {
-  it("enforces mandatory index-first diagnostics", () => {
-    const content = generateContent(null, "test", null);
-    expect(content.sections.agentWorkflow).toContain("Before editing");
-    expect(content.sections.agentWorkflow).toContain("--agent-context <file> --index-format json");
-    expect(content.sections.agentWorkflow).toContain("--explain-index <file> --index-format json");
-    expect(content.sections.agentWorkflow).toContain("--search <query> --index-format json");
-    expect(content.sections.agentWorkflow).toContain("--find-file <path> --index-format json");
-    expect(content.sections.agentWorkflow).not.toContain("--find-symbol");
-    expect(content.sections.agentWorkflow).not.toContain("--find-import");
-    expect(content.sections.agentWorkflow).not.toContain("--find-code");
-    expect(content.sections.agentWorkflow).toContain("codebase-map.md");
-    expect(content.sections.agentWorkflow).toContain("testing-map.md");
-    expect(content.sections.agentWorkflow).toContain("dependencies.md");
-    expect(content.sections.agentWorkflow).toContain("public-api.md");
+  it("offers adaptive retrieval and retains JSON diagnostics", () => {
+    const workflow = generateContent(null, "test", null).sections.agentWorkflow;
+    expect(workflow).toContain("known file/region tasks may read source directly");
+    expect(workflow).toContain("--agent-context <file> --token-budget 1200");
+    expect(workflow).toContain("--explain-index <file> --index-format json");
+    expect(workflow).toContain("--search <query> --limit 5 --index-format json");
+    expect(workflow).toContain("--find-file <path> --index-format json");
+    expect(workflow).not.toContain("--find-symbol");
+    expect(workflow).not.toContain("--find-import");
+    expect(workflow).not.toContain("--find-code");
+    expect(workflow).toContain("codebase-map.md");
+    expect(workflow).toContain("testing-map.md");
+    expect(workflow).toContain("dependencies.md");
+    expect(workflow).toContain("public-api.md");
   });
 
   it("includes codebase-specific search examples when KB is available", () => {

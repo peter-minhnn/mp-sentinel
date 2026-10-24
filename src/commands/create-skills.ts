@@ -59,7 +59,6 @@ import { computeManifestHash } from "../services/source-index/manifest.js";
 import { AIConfig } from "../services/ai/config.js";
 import {
   computeGenerationConfigHash,
-  EMPTY_GENERATION_CONFIG_HASH,
   GENERATOR_VERSION,
   parseGeneratorMajor,
 } from "../services/skills-generator/metadata.js";
@@ -561,9 +560,8 @@ async function checkAdapter(
 
       // Config-only changes (createSkills.policies / disableRules) don't move
       // the source index hash -- compare the generation config hash too.
-      // Files generated before this field existed carry no hash and are
-      // treated as "generated with default config".
-      const fileGenerationConfigHash = meta.generationConfigHash ?? EMPTY_GENERATION_CONFIG_HASH;
+      // Missing hashes predate template revision tracking and must refresh.
+      const fileGenerationConfigHash = meta.generationConfigHash;
       if (fileGenerationConfigHash !== currentGenerationConfigHash) {
         return { outputPath: file.outputPath, status: "stale" as CheckFileStatus };
       }

@@ -12,37 +12,26 @@ description: Best practices and architecture guide for mono-fixture (auto-genera
 
 ## Required Agent Workflow
 
-Before writing any code for **mono-fixture**, follow these steps in order:
+Read this skill for the project's constraints; load additional references only when relevant.
+Read local agent instructions for **mono-fixture**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`. Project-authored rules override generated guidance.
+- Choose the smallest useful retrieval step; known file/region tasks may read source directly. Do not call every tool before each read.
+- Check index health once when relying on the index: \`pnpm exec mp-sentinel indexing --health --index-format json\`. Recheck after source changes or evidence of staleness.
+- Known identifier: \`pnpm exec mp-sentinel indexing --search <query> --limit 5 --index-format json\`. Known path: \`pnpm exec mp-sentinel indexing --find-file <path> --index-format json\`.
+- Unclear task: \`pnpm exec mp-sentinel indexing --task-context "<original task>" --token-budget 800 --index-format json\`. Top files are suggestions, not an exhaustive set.
+- For symbols, dependencies or callers: \`pnpm exec mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\`. Omit focus when unnecessary; reuse still-current evidence in this task.
+- Read the relevant source before editing. Keep the original user request and constraints; capsules reduce retrieval output, not conversation memory.
+- Budgets/usedTokens use cl100k_base estimates, not the model provider's billed usage. Count additional source, skills and tool calls when measuring savings.
 
-1. **Read SKILL.md** - project profile, conventions, pitfalls.
-2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`.
-3. **Check parser health first**:
-   - \`pnpm exec mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown
-4. **Drilldown when health suggests issues**:
-   - \`pnpm exec mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries
-   - \`pnpm exec mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, search the index first (compact JSON, low token cost):
-   - \`pnpm exec mp-sentinel indexing --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
-   - \`pnpm exec mp-sentinel indexing --find-file <path> --index-format json\` - locate indexed files by path or basename
-   - \`pnpm exec mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
-   - \`pnpm exec mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
-   - \`pnpm exec mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`pnpm exec mp-sentinel indexing --stats --index-format json\` - index statistics
-   - \`pnpm exec mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
-6. **Load only the relevant references**:
-   - \`references/codebase-map.md\` - 3 mods, 0 entrypoints
-   - \`references/testing-map.md\` - 0 test associations
-   - \`references/dependencies.md\` - 0 dependencies
-   - \`references/public-api.md\` - 0 risk items
-   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs
-   - \`references/language-patterns.md\` - per-language rules and language distribution
-   - \`references/clean-code-checklist.md\` - code quality checklist with limits
-7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
+### Diagnostics (only when needed)
+- Parser recovery: \`pnpm exec mp-sentinel indexing --recovered --index-format json\`; errors: \`pnpm exec mp-sentinel indexing --parse-errors --index-format json\`.
+- File inclusion: \`pnpm exec mp-sentinel indexing --explain-index <file> --index-format json\`; statistics: \`pnpm exec mp-sentinel indexing --stats --index-format json\`.
+- Review context: \`pnpm exec mp-sentinel --explain-context --format json --files <file>\`.
+- Load references only for the changed surface: references/testing-map.md for tests; references/language-patterns.md for framework rules; references/clean-code-checklist.md for policies; references/codebase-map.md for modules; references/public-api.md for API changes; references/dependencies.md (0 dependencies) for package usage.
 
 **Quick-start search examples (from this codebase):**
    - \`pnpm exec mp-sentinel indexing --search sym_packages_core_src_index_ts --index-format json\` - locate \`sym_packages_core_src_index_ts\` (function) across the codebase
 
-> **Auto-generated.** Regenerate via \`pnpm exec mp-sentinel create-skills --all-agents --force\`. Do not edit.
+> Auto-generated. Regenerate via \`pnpm exec mp-sentinel create-skills --all-agents --force\`. Do not edit generated files.
 
 ## Reference Routing
 
@@ -63,36 +52,18 @@ When touching files, load only the relevant references:
 **Languages:** tsx (3), typescript (2)
 **Key Scripts:** \`pnpm run test\`, \`pnpm run build\`
 
+Example indexed path: \`packages/core/src/index.ts\` (read only when relevant to the task).
+
 ## Detected Conventions
 
 Conventions observed in this codebase (from config and the import graph). Follow them unless project-authored rules say otherwise:
 
 - Monorepo workspace root (\`packages/*\`, \`apps/*\`) - run package-local scripts with \`pnpm --filter <package> run <script>\` instead of cd'ing into packages.
-- Vitest tests live colocated next to the source files they cover (1 test file(s)) - follow the same placement for new tests.
-
-## Common Change Paths
-
-| Task | Where | Notes |
-|---|---|---|
-| UI work | \`packages/ui/\` | - |
-| Tests | \`(colocated *.test.* next to source)\` | run \`pnpm run test\` |
-
+- Tests live colocated next to the source files they cover (1 test file(s)). Runner not established from indexed imports.
 
 ## Language & Framework Rules
 
-Active packs: \`TypeScript (Strict)\`
-
-Summary: 1 must, 2 should, 2 avoid rules across 1 pack(s).
-
-
-### TypeScript (Strict) Rules
-
-- **AVOID**: Do NOT use \`any\` type. If unavoidable (e.g., untyped third-party types), isolate with a \`// eslint-disable-next-line\` and a comment explaining why.
-- **MUST**: Respect all strict \`tsconfig.json\` flags enabled in this project (see Code Conventions for the exact list).
-- **SHOULD**: Prefer \`interface\` over \`type\` for object shapes that may be extended. Use \`type\` for unions, intersections, and mapped types.
-- **SHOULD**: Use \`const\` assertions (\`as const\`) for literal types and tuple inference.
-- **AVOID**: Do NOT use \`namespace\` or \`module\` declarations -- use ES module imports/exports instead.
-
+Load [language patterns](./references/language-patterns.md) only for the surface being changed.
 
 
 ## Clean Code Policy
@@ -106,12 +77,9 @@ These rules are enforced by the agent when writing or reviewing code:
 - **Cyclomatic complexity hint:** 12. High-complexity functions should be refactored.
 
 
-
 ## File Size Policy
 
-Hard limit: **500 lines** per file.
-
-
+See [clean-code checklist](./references/clean-code-checklist.md) for limits and existing oversized files.
 
 ## References
 
@@ -139,38 +107,27 @@ description: Best practices and architecture guide for svc-fixture (auto-generat
 
 ## Required Agent Workflow
 
-Before writing any code for **svc-fixture**, follow these steps in order:
+Read this skill for the project's constraints; load additional references only when relevant.
+Read local agent instructions for **svc-fixture**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`. Project-authored rules override generated guidance.
+- Choose the smallest useful retrieval step; known file/region tasks may read source directly. Do not call every tool before each read.
+- Check index health once when relying on the index: \`npx mp-sentinel indexing --health --index-format json\`. Recheck after source changes or evidence of staleness.
+- Known identifier: \`npx mp-sentinel indexing --search <query> --limit 5 --index-format json\`. Known path: \`npx mp-sentinel indexing --find-file <path> --index-format json\`.
+- Unclear task: \`npx mp-sentinel indexing --task-context "<original task>" --token-budget 800 --index-format json\`. Top files are suggestions, not an exhaustive set.
+- For symbols, dependencies or callers: \`npx mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\`. Omit focus when unnecessary; reuse still-current evidence in this task.
+- Read the relevant source before editing. Keep the original user request and constraints; capsules reduce retrieval output, not conversation memory.
+- Budgets/usedTokens use cl100k_base estimates, not the model provider's billed usage. Count additional source, skills and tool calls when measuring savings.
 
-1. **Read SKILL.md** - project profile, conventions, pitfalls.
-2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`.
-3. **Check parser health first**:
-   - \`npx mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown
-4. **Drilldown when health suggests issues**:
-   - \`npx mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries
-   - \`npx mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, search the index first (compact JSON, low token cost):
-   - \`npx mp-sentinel indexing --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
-   - \`npx mp-sentinel indexing --find-file <path> --index-format json\` - locate indexed files by path or basename
-   - \`npx mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
-   - \`npx mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
-   - \`npx mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`npx mp-sentinel indexing --stats --index-format json\` - index statistics
-   - \`npx mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
-6. **Load only the relevant references**:
-   - \`references/codebase-map.md\` - 5 mods, 0 entrypoints
-   - \`references/testing-map.md\` - 0 test associations
-   - \`references/dependencies.md\` - 0 dependencies
-   - \`references/public-api.md\` - 1 risk items
-   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs
-   - \`references/language-patterns.md\` - per-language rules and language distribution
-   - \`references/clean-code-checklist.md\` - code quality checklist with limits
-7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
+### Diagnostics (only when needed)
+- Parser recovery: \`npx mp-sentinel indexing --recovered --index-format json\`; errors: \`npx mp-sentinel indexing --parse-errors --index-format json\`.
+- File inclusion: \`npx mp-sentinel indexing --explain-index <file> --index-format json\`; statistics: \`npx mp-sentinel indexing --stats --index-format json\`.
+- Review context: \`npx mp-sentinel --explain-context --format json --files <file>\`.
+- Load references only for the changed surface: references/testing-map.md for tests; references/language-patterns.md for framework rules; references/clean-code-checklist.md for policies; references/codebase-map.md for modules; references/public-api.md for API changes; references/dependencies.md (0 dependencies) for package usage.
 
 **Quick-start search examples (from this codebase):**
    - \`npx mp-sentinel indexing --agent-context src/db/prisma-client.ts --index-format json\` - top hub file (imported by 3 files)
    - \`npx mp-sentinel indexing --search sym_src_db_order_repository_ts --index-format json\` - locate \`sym_src_db_order_repository_ts\` (function) across the codebase
 
-> **Auto-generated.** Regenerate via \`npx mp-sentinel create-skills --all-agents --force\`. Do not edit.
+> Auto-generated. Regenerate via \`npx mp-sentinel create-skills --all-agents --force\`. Do not edit generated files.
 
 ## Reference Routing
 
@@ -192,44 +149,18 @@ When touching files, load only the relevant references:
 **Languages:** typescript (9)
 **Key Scripts:** \`npm test\`, \`npm run build\`, \`npm run start\`
 
-## First Files To Read
-
-Read these before changing anything - they anchor how the codebase fits together:
-
-- \`src/db/prisma-client.ts\` - hub file, imported by 3 files
+Example indexed path: \`src/server.ts\` (read only when relevant to the task).
 
 ## Detected Conventions
 
 Conventions observed in this codebase (from config and the import graph). Follow them unless project-authored rules say otherwise:
 
 - Prisma data access is concentrated in \`src/db/\` - go through that layer instead of querying from UI/route code directly.
-- Jest tests live in dedicated test directories (\`__tests__/\` / \`tests/\`) (2 test file(s)) - follow the same placement for new tests.
-
-## Common Change Paths
-
-| Task | Where | Notes |
-|---|---|---|
-| API / data work | \`src/routes/\`, \`src/services/\` | go through the detected data/HTTP layer |
-| Tests | \`tests/\` | run \`npm test\` |
-
+- Tests live in dedicated test directories (\`__tests__/\` / \`tests/\`) (2 test file(s)). Runner not established from indexed imports.
 
 ## Language & Framework Rules
 
-Active packs: \`TypeScript (Strict)\`
-
-Summary: 3 must, 2 should, 2 avoid rules across 1 pack(s).
-
-
-### TypeScript (Strict) Rules
-
-- **MUST**: Internal imports must include the \`.js\` extension (NodeNext / ESM resolution).
-- **MUST**: Use the \`node:\` prefix for all Node.js built-in module imports (\`node:fs\`, \`node:path\`, \`node:process\`, etc.).
-- **AVOID**: Do NOT use \`any\` type. If unavoidable (e.g., untyped third-party types), isolate with a \`// eslint-disable-next-line\` and a comment explaining why.
-- **MUST**: Respect all strict \`tsconfig.json\` flags enabled in this project (see Code Conventions for the exact list).
-- **SHOULD**: Prefer \`interface\` over \`type\` for object shapes that may be extended. Use \`type\` for unions, intersections, and mapped types.
-- **SHOULD**: Use \`const\` assertions (\`as const\`) for literal types and tuple inference.
-- **AVOID**: Do NOT use \`namespace\` or \`module\` declarations -- use ES module imports/exports instead.
-
+Load [language patterns](./references/language-patterns.md) only for the surface being changed.
 
 
 ## Clean Code Policy
@@ -243,12 +174,9 @@ These rules are enforced by the agent when writing or reviewing code:
 - **Cyclomatic complexity hint:** 12. High-complexity functions should be refactored.
 
 
-
 ## File Size Policy
 
-Hard limit: **500 lines** per file.
-
-
+See [clean-code checklist](./references/clean-code-checklist.md) for limits and existing oversized files.
 
 ## References
 

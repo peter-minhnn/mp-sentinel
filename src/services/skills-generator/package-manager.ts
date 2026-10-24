@@ -68,8 +68,7 @@ export function resolveProjectScript(
 
 /**
  * Render a package script invocation with extra CLI arguments.
- * npm/pnpm/yarn need a `--` separator before forwarded args; bun forwards
- * extra args directly.
+ * npm needs a `--` separator. pnpm, yarn and bun forward args directly.
  */
 export function renderScriptWithArgs(
   packageManager: string | undefined,
@@ -80,7 +79,7 @@ export function renderScriptWithArgs(
   const trimmed = args.trim();
   if (trimmed.length === 0) return base;
   const pm = normalizePackageManager(packageManager);
-  return pm === "bun" ? `${base} ${trimmed}` : `${base} -- ${trimmed}`;
+  return pm === "npm" ? `${base} -- ${trimmed}` : `${base} ${trimmed}`;
 }
 
 /** Known project script names that wrap specific mp-sentinel commands. */

@@ -2,6 +2,13 @@
 
 ## `create-skills` — Generate agent/IDE skill files
 
+Generated workflows choose retrieval by need: read known source regions directly,
+use compact search for identifiers, task-context for discovery, and agent-context
+for dependencies/callers. Reuse current evidence within a task. Framework detail
+lives in on-demand references; authored overlays remain intact. After a generator
+template update, refresh and check skills even if the package major is unchanged.
+Capsule `usedTokens` uses cl100k_base estimates, not provider-billed usage.
+
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--agent <ids>` | Comma-separated: claude,cursor,codex,windsurf,antigravity,cline,aider,continue,roo,copilot,zed,jetbrains,generic | Auto-detect |

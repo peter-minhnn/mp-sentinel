@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.8] — 2026-10-24
+
+### Fixed
+- **Agent bootstrap fidelity.** Mixed `node:test` / Playwright projects no longer label all tests from a manifest dependency. Workflows allow direct source reads for known regions and move framework detail to references without removing authored overlays. Template revision participates in generation hashes; pre-hash artifacts refresh. pnpm/yarn/bun forward script arguments directly, npm retains `--`. Task anchors preserve Unicode NFC text. Token estimates are not provider billing measurements.
+
 ## [3.2.7] — 2026-10-24
 
 ### Added

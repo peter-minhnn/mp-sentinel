@@ -211,7 +211,7 @@ describe("real-repo harness: gems (vite-react-bun-feature-first)", () => {
   });
 
   it("activates the SPA dependency packs", async () => {
-    const skill = await readFile(join(gemsSkillDir(), "SKILL.md"), "utf-8");
+    const skill = await readFile(join(gemsSkillDir(), "references/language-patterns.md"), "utf-8");
     for (const label of [
       "Vite Rules",
       "React Router Rules",
@@ -291,8 +291,9 @@ describe("real-repo harness: mvp (next-pnpm-bundler-supabase)", () => {
   it("keeps the Next profile with pnpm workflow commands", async () => {
     const skill = await readFile(join(mvpSkillDir(), "SKILL.md"), "utf-8");
     expect(skill).toContain("**Profile:** react-next");
-    expect(skill).toContain("Next.js Rules");
-    expect(skill).toContain("Supabase Rules");
+    const rules = await readFile(join(mvpSkillDir(), "references/language-patterns.md"), "utf-8");
+    expect(rules).toContain("Next.js Rules");
+    expect(rules).toContain("Supabase Rules");
     expect(skill).toContain("pnpm exec mp-sentinel indexing --health");
     expect(skill).not.toContain("npx mp-sentinel");
   });

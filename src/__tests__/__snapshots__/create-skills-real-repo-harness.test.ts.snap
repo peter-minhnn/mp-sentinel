@@ -12,38 +12,27 @@ description: Best practices and architecture guide for gems-approval-fixture (au
 
 ## Required Agent Workflow
 
-Before writing any code for **gems-approval-fixture**, follow these steps in order:
+Read this skill for the project's constraints; load additional references only when relevant.
+Read local agent instructions for **gems-approval-fixture**: \`.claude/skills\`. Project-authored rules override generated guidance.
+- Choose the smallest useful retrieval step; known file/region tasks may read source directly. Do not call every tool before each read.
+- Check index health once when relying on the index: \`bun run sentinel:index --health --index-format json\`. Recheck after source changes or evidence of staleness.
+- Known identifier: \`bun run sentinel:index --search <query> --limit 5 --index-format json\`. Known path: \`bun run sentinel:index --find-file <path> --index-format json\`.
+- Unclear task: \`bun run sentinel:index --task-context "<original task>" --token-budget 800 --index-format json\`. Top files are suggestions, not an exhaustive set.
+- For symbols, dependencies or callers: \`bun run sentinel:index --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\`. Omit focus when unnecessary; reuse still-current evidence in this task.
+- Read the relevant source before editing. Keep the original user request and constraints; capsules reduce retrieval output, not conversation memory.
+- Budgets/usedTokens use cl100k_base estimates, not the model provider's billed usage. Count additional source, skills and tool calls when measuring savings.
 
-1. **Read SKILL.md** - project profile, conventions, pitfalls.
-2. **Read local agent instructions**: \`.claude/skills\`. Project-authored instructions and rules OVERRIDE generated references when they conflict.
-3. **Check parser health first**:
-   - \`bun run sentinel:index --health --index-format json\` - health overview, parser breakdown
-4. **Drilldown when health suggests issues**:
-   - \`bun run sentinel:index --recovered --index-format json\` - list files parsed via fallback recoveries
-   - \`bun run sentinel:index --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, search the index first (compact JSON, low token cost):
-   - \`bun run sentinel:index --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
-   - \`bun run sentinel:index --find-file <path> --index-format json\` - locate indexed files by path or basename
-   - \`bun run sentinel:index --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
-   - \`bun run sentinel:index --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
-   - \`bun run sentinel:index --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`bun run sentinel:index --stats --index-format json\` - index statistics
-   - \`bunx --bun mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
-6. **Load only the relevant references**:
-   - \`references/codebase-map.md\` - 6 mods, 3 entrypoints
-   - \`references/testing-map.md\` - 0 test associations
-   - \`references/dependencies.md\` - 0 dependencies
-   - \`references/public-api.md\` - 0 risk items
-   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs
-   - \`references/language-patterns.md\` - per-language rules and language distribution
-   - \`references/clean-code-checklist.md\` - code quality checklist with limits
-7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
+### Diagnostics (only when needed)
+- Parser recovery: \`bun run sentinel:index --recovered --index-format json\`; errors: \`bun run sentinel:index --parse-errors --index-format json\`.
+- File inclusion: \`bun run sentinel:index --explain-index <file> --index-format json\`; statistics: \`bun run sentinel:index --stats --index-format json\`.
+- Review context: \`bunx --bun mp-sentinel --explain-context --format json --files <file>\`.
+- Load references only for the changed surface: references/testing-map.md for tests; references/language-patterns.md for framework rules; references/clean-code-checklist.md for policies; references/codebase-map.md for modules; references/public-api.md for API changes; references/dependencies.md (0 dependencies) for package usage.
 
 **Quick-start search examples (from this codebase):**
    - \`bun run sentinel:index --search App --index-format json\` - locate \`App\` (function) across the codebase
    - \`bun run sentinel:index --search getDetail --index-format json\` - locate \`getDetail\` (function) across the codebase
 
-> **Auto-generated.** Regenerate via \`bun run agent:skills:refresh\`. Do not edit.
+> Auto-generated. Regenerate via \`bun run agent:skills:refresh\`. Do not edit generated files.
 
 ## Reference Routing
 
@@ -67,13 +56,7 @@ When touching files, load only the relevant references:
 **Languages:** typescript (9), tsx (8)
 **Key Scripts:** \`bun run test\`, \`bun run build\`, \`bun run dev\`
 
-## First Files To Read
-
-Read these before changing anything - they anchor how the codebase fits together:
-
-- \`src/App.tsx\` - application entry
-- \`src/app/router.tsx\` - application entry
-- \`src/main.tsx\` - application entry
+Example indexed path: \`src/App.tsx\` (read only when relevant to the task).
 
 ## Detected Conventions
 
@@ -83,76 +66,9 @@ Conventions observed in this codebase (from config and the import graph). Follow
 - Feature-first layout: each \`features/<feature>/\` folder owns \`types.ts\`, \`constants.ts\`, feature hooks (\`hooks/\` or \`use*.ts\`), a feature-local \`api/\` layer - add new feature code inside its feature folder, not in shared dirs.
 - Reusable UI primitives live under \`src/shared/gems-ui/\` (built on Ant Design, Storybook) - extend the shared component there instead of duplicating one-off components.
 
-## Common Change Paths
-
-| Task | Where | Notes |
-|---|---|---|
-| New feature | \`src/features/approval-detail/\`, \`src/features/approval-inbox/\` | follow the feature-folder shape from Detected Conventions |
-| UI work | \`src/shared/gems-ui/\` | extend the shared UI system instead of one-off components |
-
-
 ## Language & Framework Rules
 
-Active packs: \`React\`, \`Vite\`, \`React Router\`, \`TanStack Query\`, \`Ant Design\`, \`Supabase\`, \`TypeScript (Strict)\`
-
-Summary: 10 must, 15 should, 9 avoid rules across 7 pack(s).
-
-
-### React Rules
-
-- **MUST**: Follow the Rules of Hooks: only call hooks at the top level of a component or custom hook, never inside conditions, loops, or callbacks.
-- **AVOID**: Do NOT fetch data directly in render. Use \`useEffect\`, React Query, SWR, or a framework data loader (Next.js, Remix).
-- **MUST**: Add a stable \`key\` prop to all elements inside \`.map()\` or \`.filter()\` render loops. Use a unique ID, not the array index.
-- **SHOULD**: Prefer function components with hooks over class components for new code.
-- **SHOULD**: Extract reusable logic into custom hooks rather than duplicating \`useEffect\` / \`useState\` patterns.
-- **AVOID**: Do NOT mutate state directly -- always use the setter from \`useState\` or produce new objects/arrays.
-- **SHOULD**: Use \`React.memo\` sparingly and only after profiling. Premature memoization can increase memory pressure.
-- **AVOID**: Do NOT declare components inside another component body -- they remount (state reset + full subtree re-render) on every parent render. Move them to module scope.
-- **SHOULD**: Memoize context Provider values (\`useMemo\`) and keep state as close to where it is used as possible, so one state change does not re-render an entire page.
-
-### Vite Rules
-
-- **MUST**: Client-exposed environment variables must use the \`VITE_\` prefix and be read via \`import.meta.env\`, never \`process.env\`.
-- **SHOULD**: Use dynamic \`import()\` for large or rarely used modules so Vite can split them into separate chunks.
-- **SHOULD**: Import static assets through the module graph (or Vite's public directory for verbatim files) instead of hardcoding paths, so hashing and bundling work.
-- **AVOID**: Do NOT import Node.js built-ins (\`fs\`, \`path\`, etc.) in client code -- Vite targets the browser; keep Node-only logic in config or server files.
-
-### React Router Rules
-
-- **SHOULD**: Lazy-load route components (\`React.lazy\` or the router's \`lazy\` option) so each route becomes its own chunk.
-- **MUST**: Navigate with \`<Link>\`/\`<NavLink>\` or \`useNavigate()\`, never \`window.location\` assignments, to preserve client-side routing.
-- **SHOULD**: Validate route params from \`useParams()\` before use -- they are always \`string | undefined\`, never trust them as well-formed IDs.
-- **AVOID**: Avoid imperative redirects inside \`useEffect\` when a declarative \`<Navigate>\` or route loader/guard can express the same logic.
-
-### TanStack Query Rules
-
-- **MUST**: Query keys must be stable, serializable arrays that include every variable the query function depends on.
-- **SHOULD**: After mutations, invalidate or update the affected queries (\`queryClient.invalidateQueries\` / \`setQueryData\`) instead of refetching manually.
-- **AVOID**: Do NOT copy query results into \`useState\` -- read from the query cache; mirrored state goes stale and double-renders.
-- **SHOULD**: Handle \`isPending\` / \`isError\` states explicitly in the UI rather than assuming data is always available.
-
-### Ant Design Rules
-
-- **SHOULD**: Let \`Form\` own field state via \`name\` + \`rules\`; do not mirror field values into \`useState\` alongside \`Form\` instances.
-- **SHOULD**: Customize styling through \`ConfigProvider\` theme tokens instead of overriding \`.ant-*\` class names with CSS.
-- **MUST**: Always provide a stable \`rowKey\` for \`Table\` (a unique record field, not the array index).
-- **AVOID**: Prefer the hook-based \`App\`/\`useApp()\` or \`message.useMessage()\` APIs over static \`message\`/\`notification\`/\`Modal\` calls so theme and context apply.
-
-### Supabase Rules
-
-- **MUST**: Never ship the \`service_role\` key to client code. Only the anon/publishable key may appear in browser bundles or client env vars.
-- **MUST**: Treat Row Level Security as the authorization boundary: every user-facing table needs RLS policies; do not rely on client-side filtering.
-- **MUST**: Supabase query builders return \`{ data, error }\` without throwing -- check \`error\` (and null \`data\`) on every call.
-- **SHOULD**: Create the Supabase client once (module-level or context) and reuse it; per-call \`createClient\` leaks connections and auth listeners.
-
-### TypeScript (Strict) Rules
-
-- **AVOID**: Do NOT use \`any\` type. If unavoidable (e.g., untyped third-party types), isolate with a \`// eslint-disable-next-line\` and a comment explaining why.
-- **MUST**: Respect all strict \`tsconfig.json\` flags enabled in this project (see Code Conventions for the exact list).
-- **SHOULD**: Prefer \`interface\` over \`type\` for object shapes that may be extended. Use \`type\` for unions, intersections, and mapped types.
-- **SHOULD**: Use \`const\` assertions (\`as const\`) for literal types and tuple inference.
-- **AVOID**: Do NOT use \`namespace\` or \`module\` declarations -- use ES module imports/exports instead.
-
+Load [language patterns](./references/language-patterns.md) only for the surface being changed.
 
 
 ## Clean Code Policy
@@ -166,17 +82,9 @@ These rules are enforced by the agent when writing or reviewing code:
 - **Cyclomatic complexity hint:** 12. High-complexity functions should be refactored.
 
 
-
 ## File Size Policy
 
-Hard limit: **500 lines** per file.
-
-- **Current codebase P50:** 1 lines
-- **Current codebase P95:** 1 lines
-- **Current max file:** 1 lines
-
-No files exceed the 500-line limit. Keep it this way.
-
+See [clean-code checklist](./references/clean-code-checklist.md) for limits and existing oversized files.
 
 ## References
 
@@ -268,7 +176,22 @@ Modules and their responsibilities:
 - **Server state separation** - keep server data in a data library (React Query/SWR); do not mirror it into local component state.
 - **Hooks discipline** - complete dependency arrays; stable keys (not array indices) in render loops.
 - **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.
-- **Bundle size vigilance** - audit new dependencies' impact on the client bundle; prefer dynamic imports for heavy libraries."
+- **Bundle size vigilance** - audit new dependencies' impact on the client bundle; prefer dynamic imports for heavy libraries.
+
+## First Files To Read
+
+Read these before changing anything - they anchor how the codebase fits together:
+
+- \`src/App.tsx\` - application entry
+- \`src/app/router.tsx\` - application entry
+- \`src/main.tsx\` - application entry
+
+## Common Change Paths
+
+| Task | Where | Notes |
+|---|---|---|
+| New feature | \`src/features/approval-detail/\`, \`src/features/approval-inbox/\` | follow the feature-folder shape from Detected Conventions |
+| UI work | \`src/shared/gems-ui/\` | extend the shared UI system instead of one-off components |"
 `;
 
 exports[`real-repo harness: gems (vite-react-bun-feature-first) matches golden snapshots (volatile metadata stripped): gems-module-approval-inbox.md 1`] = `
@@ -309,38 +232,27 @@ description: Best practices and architecture guide for mvp-listening-fixture (au
 
 ## Required Agent Workflow
 
-Before writing any code for **mvp-listening-fixture**, follow these steps in order:
+Read this skill for the project's constraints; load additional references only when relevant.
+Read local agent instructions for **mvp-listening-fixture**: \`.claude/skills\`. Project-authored rules override generated guidance.
+- Choose the smallest useful retrieval step; known file/region tasks may read source directly. Do not call every tool before each read.
+- Check index health once when relying on the index: \`pnpm exec mp-sentinel indexing --health --index-format json\`. Recheck after source changes or evidence of staleness.
+- Known identifier: \`pnpm exec mp-sentinel indexing --search <query> --limit 5 --index-format json\`. Known path: \`pnpm exec mp-sentinel indexing --find-file <path> --index-format json\`.
+- Unclear task: \`pnpm exec mp-sentinel indexing --task-context "<original task>" --token-budget 800 --index-format json\`. Top files are suggestions, not an exhaustive set.
+- For symbols, dependencies or callers: \`pnpm exec mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\`. Omit focus when unnecessary; reuse still-current evidence in this task.
+- Read the relevant source before editing. Keep the original user request and constraints; capsules reduce retrieval output, not conversation memory.
+- Budgets/usedTokens use cl100k_base estimates, not the model provider's billed usage. Count additional source, skills and tool calls when measuring savings.
 
-1. **Read SKILL.md** - project profile, conventions, pitfalls.
-2. **Read local agent instructions**: \`.claude/skills\`. Project-authored instructions and rules OVERRIDE generated references when they conflict.
-3. **Check parser health first**:
-   - \`pnpm exec mp-sentinel indexing --health --index-format json\` - health overview, parser breakdown
-4. **Drilldown when health suggests issues**:
-   - \`pnpm exec mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries
-   - \`pnpm exec mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, search the index first (compact JSON, low token cost):
-   - \`pnpm exec mp-sentinel indexing --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
-   - \`pnpm exec mp-sentinel indexing --find-file <path> --index-format json\` - locate indexed files by path or basename
-   - \`pnpm exec mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
-   - \`pnpm exec mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
-   - \`pnpm exec mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`pnpm exec mp-sentinel indexing --stats --index-format json\` - index statistics
-   - \`pnpm exec mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
-6. **Load only the relevant references**:
-   - \`references/codebase-map.md\` - 8 mods, 4 entrypoints
-   - \`references/testing-map.md\` - 0 test associations
-   - \`references/dependencies.md\` - 0 dependencies
-   - \`references/public-api.md\` - 0 risk items
-   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs
-   - \`references/language-patterns.md\` - per-language rules and language distribution
-   - \`references/clean-code-checklist.md\` - code quality checklist with limits
-7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
+### Diagnostics (only when needed)
+- Parser recovery: \`pnpm exec mp-sentinel indexing --recovered --index-format json\`; errors: \`pnpm exec mp-sentinel indexing --parse-errors --index-format json\`.
+- File inclusion: \`pnpm exec mp-sentinel indexing --explain-index <file> --index-format json\`; statistics: \`pnpm exec mp-sentinel indexing --stats --index-format json\`.
+- Review context: \`pnpm exec mp-sentinel --explain-context --format json --files <file>\`.
+- Load references only for the changed surface: references/testing-map.md for tests; references/language-patterns.md for framework rules; references/clean-code-checklist.md for policies; references/codebase-map.md for modules; references/public-api.md for API changes; references/dependencies.md (0 dependencies) for package usage.
 
 **Quick-start search examples (from this codebase):**
    - \`pnpm exec mp-sentinel indexing --search DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
    - \`pnpm exec mp-sentinel indexing --search DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
 
-> **Auto-generated.** Regenerate via \`pnpm exec mp-sentinel create-skills --all-agents --force\`. Do not edit.
+> Auto-generated. Regenerate via \`pnpm exec mp-sentinel create-skills --all-agents --force\`. Do not edit generated files.
 
 ## Reference Routing
 
@@ -362,11 +274,7 @@ When touching files, load only the relevant references:
 **Languages:** tsx (5), typescript (4)
 **Key Scripts:** \`pnpm run test\`, \`pnpm run build\`, \`pnpm run dev\`
 
-## First Files To Read
-
-Read these before changing anything - they anchor how the codebase fits together:
-
-- \`src/app/layout.tsx\` - root layout (App Router)
+Example indexed path: \`src/app/(dashboard)/layout.tsx\` (read only when relevant to the task).
 
 ## Detected Conventions
 
@@ -374,57 +282,9 @@ Conventions observed in this codebase (from config and the import graph). Follow
 
 - tsconfig defines path alias(es) \`@/*\`; prefer them over deep relative imports when touching import-heavy files.
 
-## Common Change Paths
-
-| Task | Where | Notes |
-|---|---|---|
-| API / data work | \`src/app/api/\` | - |
-| UI work | \`src/components/audio/\`, \`src/components/review/\` | - |
-
-
 ## Language & Framework Rules
 
-Active packs: \`React\`, \`Next.js\`, \`Supabase\`, \`TypeScript (Strict)\`
-
-Summary: 8 must, 10 should, 6 avoid rules across 4 pack(s).
-
-
-### React Rules
-
-- **MUST**: Follow the Rules of Hooks: only call hooks at the top level of a component or custom hook, never inside conditions, loops, or callbacks.
-- **AVOID**: Do NOT fetch data directly in render. Use \`useEffect\`, React Query, SWR, or a framework data loader (Next.js, Remix).
-- **MUST**: Add a stable \`key\` prop to all elements inside \`.map()\` or \`.filter()\` render loops. Use a unique ID, not the array index.
-- **SHOULD**: Prefer function components with hooks over class components for new code.
-- **SHOULD**: Extract reusable logic into custom hooks rather than duplicating \`useEffect\` / \`useState\` patterns.
-- **AVOID**: Do NOT mutate state directly -- always use the setter from \`useState\` or produce new objects/arrays.
-- **SHOULD**: Use \`React.memo\` sparingly and only after profiling. Premature memoization can increase memory pressure.
-- **AVOID**: Do NOT declare components inside another component body -- they remount (state reset + full subtree re-render) on every parent render. Move them to module scope.
-- **SHOULD**: Memoize context Provider values (\`useMemo\`) and keep state as close to where it is used as possible, so one state change does not re-render an entire page.
-
-### Next.js Rules
-
-- **MUST**: Use \`'use client'\` and \`'use server'\` directives correctly. Client components cannot import server-only modules (Node fs, direct DB access, etc.).
-- **SHOULD**: Prefer Server Components by default. Only add \`'use client'\` when interactivity (hooks, event handlers, browser APIs) is required.
-- **MUST**: Use route segment config (\`export const dynamic = 'force-static'\`, etc.) at the top of page/layout files for fine-grained caching control.
-- **SHOULD**: Use \`next/image\` for image optimization instead of \`<img>\` tags.
-- **SHOULD**: Colocate data fetching close to consuming components. Avoid prop-drilling data through more than 2 layers.
-- **AVOID**: Do NOT import large client-side libraries in Server Components that re-export them -- this can bloat the client bundle.
-
-### Supabase Rules
-
-- **MUST**: Never ship the \`service_role\` key to client code. Only the anon/publishable key may appear in browser bundles or client env vars.
-- **MUST**: Treat Row Level Security as the authorization boundary: every user-facing table needs RLS policies; do not rely on client-side filtering.
-- **MUST**: Supabase query builders return \`{ data, error }\` without throwing -- check \`error\` (and null \`data\`) on every call.
-- **SHOULD**: Create the Supabase client once (module-level or context) and reuse it; per-call \`createClient\` leaks connections and auth listeners.
-
-### TypeScript (Strict) Rules
-
-- **AVOID**: Do NOT use \`any\` type. If unavoidable (e.g., untyped third-party types), isolate with a \`// eslint-disable-next-line\` and a comment explaining why.
-- **MUST**: Respect all strict \`tsconfig.json\` flags enabled in this project (see Code Conventions for the exact list).
-- **SHOULD**: Prefer \`interface\` over \`type\` for object shapes that may be extended. Use \`type\` for unions, intersections, and mapped types.
-- **SHOULD**: Use \`const\` assertions (\`as const\`) for literal types and tuple inference.
-- **AVOID**: Do NOT use \`namespace\` or \`module\` declarations -- use ES module imports/exports instead.
-
+Load [language patterns](./references/language-patterns.md) only for the surface being changed.
 
 
 ## Clean Code Policy
@@ -438,17 +298,9 @@ These rules are enforced by the agent when writing or reviewing code:
 - **Cyclomatic complexity hint:** 12. High-complexity functions should be refactored.
 
 
-
 ## File Size Policy
 
-Hard limit: **500 lines** per file.
-
-- **Current codebase P50:** 1 lines
-- **Current codebase P95:** 1 lines
-- **Current max file:** 1 lines
-
-No files exceed the 500-line limit. Keep it this way.
-
+See [clean-code checklist](./references/clean-code-checklist.md) for limits and existing oversized files.
 
 ## References
 
@@ -548,5 +400,18 @@ Modules and their responsibilities:
 - **Data fetching colocation** - keep data fetching close to consuming component; avoid prop-drill across >2 layers.
 - **No direct DOM mutations** - use refs and effects, never \`document.querySelector\` outside isolated helpers.
 - **Image optimization** - prefer \`next/image\` over \`<img>\`.
-- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`."
+- **Bundle size vigilance** - new deps in page components can bloat route chunks; audit with \`next bundle-analyzer\`.
+
+## First Files To Read
+
+Read these before changing anything - they anchor how the codebase fits together:
+
+- \`src/app/layout.tsx\` - root layout (App Router)
+
+## Common Change Paths
+
+| Task | Where | Notes |
+|---|---|---|
+| API / data work | \`src/app/api/\` | - |
+| UI work | \`src/components/audio/\`, \`src/components/review/\` | - |"
 `;

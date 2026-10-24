@@ -2,6 +2,22 @@
 
 `mp-sentinel create-skills` generates structured best-practices files from your source index for AI agents and IDEs. Each supported agent gets its own adapter that places files exactly where that agent reads them.
 
+### Bootstrap fidelity
+
+The entrypoint keeps project rules, the authored overlay and task routing; framework
+rules and detailed size policies live in references loaded on demand. A known source
+region can be read directly: retrieval is not mandatory before every source read.
+Runner attribution uses indexed test imports and the test script, not merely an
+installed Playwright/Jest dependency. Mixed runners are reported separately.
+
+`generatorVersion` tracks the generator API independently of the npm package.
+A separate template revision participates in `generationConfigHash`; `--check`
+marks old templates (and pre-hash artifacts) stale even without source/config changes.
+An up-to-date check establishes freshness, not semantic correctness of every rule.
+
+Capsule budgets use cl100k_base estimates, not provider-billed token counts.
+For model-level evaluation, see [the controlled A/B protocol](plans/GROK_EVALUATION.md).
+
 ---
 
 ## Quick Start

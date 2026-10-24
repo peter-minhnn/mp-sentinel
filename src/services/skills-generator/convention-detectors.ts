@@ -13,6 +13,7 @@
 import type { SourceIndex, SourceIndexFile } from "../../types/index.js";
 import { moduleKeyForPath } from "./module-grouping.js";
 import { MIN_FILES_FOR_USAGE_SIGNALS } from "./constants.js";
+import { detectTestConvention } from "./test-conventions.js";
 
 export interface DetectedConvention {
   /** Stable id, e.g. "alias", "feature-structure", "http-client" */
@@ -230,37 +231,7 @@ function detectWorkspacesConvention(index: SourceIndex): DetectedConvention | nu
 
 // ── Test framework + placement ─────────────────────────────────────────────
 
-const TEST_FRAMEWORKS: ReadonlyArray<readonly [dep: string, label: string]> = [
-  ["vitest", "Vitest"],
-  ["jest", "Jest"],
-  ["mocha", "Mocha"],
-  ["@playwright/test", "Playwright"],
-  ["playwright", "Playwright"],
-];
-
-function detectTestConvention(index: SourceIndex): DetectedConvention | null {
-  const allDeps = { ...index.project.dependencies, ...index.project.devDependencies };
-  const framework = TEST_FRAMEWORKS.find(([dep]) => allDeps[dep] !== undefined)?.[1];
-
-  const testFiles = index.files.filter(
-    (f) => f.path.includes(".test.") || f.path.includes(".spec.") || f.path.includes("__tests__"),
-  );
-  if (testFiles.length === 0) return null;
-
-  const inTestsDirs = testFiles.filter(
-    (f) => f.path.includes("__tests__") || /^tests?\//.test(f.path),
-  ).length;
-  const placement =
-    inTestsDirs * 2 >= testFiles.length
-      ? "in dedicated test directories (`__tests__/` / `tests/`)"
-      : "colocated next to the source files they cover";
-
-  const fwPrefix = framework ? `${framework} tests` : "Tests";
-  return {
-    id: "test-placement",
-    text: `${fwPrefix} live ${placement} (${testFiles.length} test file(s)) - follow the same placement for new tests.`,
-  };
-}
+// Runner attribution lives separately from other project conventions.
 
 // ── Data layer beyond the HTTP client ───────────────────────────────────────
 

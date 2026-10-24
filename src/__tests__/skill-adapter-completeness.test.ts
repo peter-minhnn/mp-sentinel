@@ -149,7 +149,9 @@ describe("skill adapter completeness (progressive disclosure for all)", () => {
       force: false,
       knowledgeBase: kb,
     });
-    const skillMd = files.find((f) => f.outputPath.replace(/\\/g, "/").endsWith("/SKILL.md"))!;
+    const skillMd = files.find((f) =>
+      f.outputPath.replace(/\\/g, "/").endsWith("/references/language-patterns.md"),
+    )!;
 
     // Built-in Policies pack ships evaluators only -- its heading must not render
     expect(skillMd.content).not.toContain("### Built-in Policies Rules");

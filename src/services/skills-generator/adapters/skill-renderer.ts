@@ -140,6 +140,7 @@ export function renderProgressiveSkill(
   const kb = knowledgeBase ?? (index ? buildSkillKnowledgeBase(index) : null);
   const moduleRefs = buildModuleReferences(kb, index, detectProjectConventions(index));
   const overlaySection = buildSkillOverlaySection(context.overlay);
+  const exampleFile = index?.files.find((f) => f.path.startsWith("src/")) ?? index?.files[0];
   const moduleLinks = moduleRefs.map(
     (m) => `- [Module: ${m.directory}](./${m.relPath.replace(/\\/g, "/")})`,
   );
@@ -160,19 +161,20 @@ export function renderProgressiveSkill(
     content.sections.referenceRouting,
     ``,
     content.sections.overview,
-    ...(content.sections.firstFilesToRead ? [``, content.sections.firstFilesToRead] : []),
+    ...(exampleFile
+      ? [``, `Example indexed path: \`${exampleFile.path}\` (read only when relevant to the task).`]
+      : []),
     ...(content.sections.detectedConventions ? [``, content.sections.detectedConventions] : []),
-    ...(content.sections.commonChangePaths ? [``, content.sections.commonChangePaths] : []),
     // The project overlay sits directly above the generated rule sections:
     // an agent reading top-down meets the authoritative project statement
     // before any rule that overlay may contradict.
     ...(overlaySection ? [``, overlaySection] : []),
     ``,
-    content.sections.languageRules,
+    "## Language & Framework Rules\n\nLoad [language patterns](./references/language-patterns.md) only for the surface being changed.",
     ``,
     content.sections.cleanCodePolicy,
     ``,
-    content.sections.fileSizePolicy,
+    "## File Size Policy\n\nSee [clean-code checklist](./references/clean-code-checklist.md) for limits and existing oversized files.",
   ];
   if (content.sections.aiEnrichment) {
     skillMdParts.push(``, content.sections.aiEnrichment);
@@ -184,7 +186,13 @@ export function renderProgressiveSkill(
     .filter(Boolean)
     .join("\n\n");
 
-  const commandsMd = [content.sections.profileRules].filter(Boolean).join("\n\n");
+  const commandsMd = [
+    content.sections.profileRules,
+    content.sections.firstFilesToRead,
+    content.sections.commonChangePaths,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const moduleRefFiles = moduleRefs.map((m) => ({
     outputPath: join(skillDir, ...m.relPath.split("/")),
@@ -239,9 +247,11 @@ export function renderProgressiveSkill(
     },
     {
       outputPath: join(skillDir, "references", "clean-code-checklist.md"),
-      content:
+      content: [
         content.references.cleanCodeChecklist ||
-        "# Clean Code Checklist\n\nNo policy data available.",
+          "# Clean Code Checklist\n\nNo policy data available.",
+        content.sections.fileSizePolicy,
+      ].join("\n\n"),
     },
   ];
 }

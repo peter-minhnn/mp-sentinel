@@ -115,9 +115,9 @@ describe("script-aware command rendering", () => {
     expect(resolveProjectScript(undefined, ["x"])).toBeUndefined();
   });
 
-  it("forwards args with -- for npm/pnpm and directly for bun", () => {
+  it("forwards args directly for pnpm/bun and uses -- for npm", () => {
     expect(renderScriptWithArgs("pnpm", "sentinel:index", "--health --index-format json")).toBe(
-      "pnpm run sentinel:index -- --health --index-format json",
+      "pnpm run sentinel:index --health --index-format json",
     );
     expect(renderScriptWithArgs("bun", "sentinel:index", "--health")).toBe(
       "bun run sentinel:index --health",
@@ -132,7 +132,7 @@ describe("script-aware command rendering", () => {
     ).toBe("bun run sentinel:index --health --index-format json");
     expect(
       renderScriptAwareToolCommand("pnpm", scripts, "indexing --stats --index-format json"),
-    ).toBe("pnpm run sentinel:index -- --stats --index-format json");
+    ).toBe("pnpm run sentinel:index --stats --index-format json");
   });
 
   it("prefers sentinel:context for explain-context and falls back otherwise", () => {
@@ -143,7 +143,7 @@ describe("script-aware command rendering", () => {
         scripts,
         "--explain-context --format json --files <file>",
       ),
-    ).toBe("pnpm run sentinel:context -- --format json --files <file>");
+    ).toBe("pnpm run sentinel:context --format json --files <file>");
     expect(renderScriptAwareToolCommand("pnpm", {}, "indexing --health")).toBe(
       "pnpm exec mp-sentinel indexing --health",
     );

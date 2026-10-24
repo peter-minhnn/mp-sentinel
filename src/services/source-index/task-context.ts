@@ -186,12 +186,15 @@ function kindWeight(kind: KindHit["kind"]): number {
 }
 
 export function extractTaskAnchors(prompt: string): string[] {
-  const tokens = prompt.split(/[\s,;:!?()[\]{}"'`]+/).filter((t) => t.length > 0);
+  const tokens = prompt
+    .normalize("NFC")
+    .split(/[\s,;:!?()[\]{}"'`]+/)
+    .filter((t) => t.length > 0);
   const ranked: Array<{ token: string; pri: number }> = [];
   const seen = new Set<string>();
 
   for (const raw of tokens) {
-    const token = raw.replace(/^[^@A-Za-z0-9./_-]+|[^A-Za-z0-9./_-]+$/g, "");
+    const token = raw.replace(/^[^@\p{L}\p{M}\p{N}./_-]+|[^\p{L}\p{M}\p{N}./_-]+$/gu, "");
     if (token.length < 2) continue;
     const lower = token.toLowerCase();
     if (STOP.has(lower)) continue;

@@ -1,4 +1,8 @@
-# What's New in v3.2.7
+# What's New in v3.2.8
+
+- **Agent bootstrap fidelity:** test runners are attributed from imports and the test script, not an installed E2E dependency. Skills use adaptive retrieval and move framework detail to on-demand references, preserving authored overlays. Template revisions invalidate old skills; pnpm forwards script arguments without an npm-style separator. Task anchors preserve Unicode NFC text. Token estimates remain cl100k_base, not provider billing measurements.
+
+## Previous release: v3.2.7
 
 This release ships compact index lookup, hard-budget task/file context, stronger
 CommonJS coverage and atomic sidecar recovery. The experimental rarity,

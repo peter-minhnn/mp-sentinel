@@ -34,7 +34,7 @@ let encoderCache: { encode: (text: string) => Uint32Array } | null = null;
 const getEncoder = async (): Promise<{ encode: (text: string) => Uint32Array }> => {
   if (encoderCache) return encoderCache;
   try {
-    // tiktoken uses cl100k_base for GPT-4 / Claude / Gemini approximation
+    // Shared retrieval accounting convention, not provider-billed token usage.
     const { get_encoding } = await import("tiktoken");
     encoderCache = get_encoding("cl100k_base");
     return encoderCache;
@@ -48,7 +48,7 @@ const getEncoder = async (): Promise<{ encode: (text: string) => Uint32Array }> 
 
 /**
  * Estimate token count for a string.
- * Uses tiktoken cl100k_base (GPT-4 / Claude compatible).
+ * Uses tiktoken cl100k_base as a shared estimate, not a provider billing count.
  * Falls back to character-based estimate if tiktoken unavailable.
  */
 export const estimateTokens = async (text: string): Promise<number> => {

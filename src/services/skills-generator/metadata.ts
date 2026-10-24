@@ -47,6 +47,9 @@ export { METADATA_MARKER };
  */
 export const GENERATOR_VERSION = "3.1.0";
 
+/** Bump for template changes independently of package and generator API versions. */
+export const GENERATOR_TEMPLATE_REVISION = "2026-10-24.1";
+
 /**
  * Parse the major version from a generator version string.
  * Returns 0 for unparseable strings (treat as pre-2.0.0).
@@ -74,8 +77,8 @@ export interface SkillsMetadata {
    * Deterministic hash of generation-affecting `createSkills` config
    * (policies + disableRules). Lets `--check` flag files as stale when
    * only the config changed (the source index hash alone can't see that).
-   * Absent on files generated before this field existed -- treated as
-   * "generated with default config".
+   * Includes the template revision. Files generated before this field
+   * existed must refresh before they can pass --check.
    */
   generationConfigHash?: string;
   enrichment?: EnrichmentMetadata;
@@ -127,6 +130,7 @@ export function computeGenerationConfigHash(
       ? [...projectRules.ruleFiles]
       : undefined;
   const stable = {
+    templateRevision: GENERATOR_TEMPLATE_REVISION,
     policies: policies
       ? sortRecord(Object.fromEntries(Object.entries(policies).map(([k, v]) => [k, String(v)])))
       : undefined,

@@ -17,6 +17,7 @@ import type {
 } from "../../types/index.js";
 import { DEFAULT_CREATE_SKILLS_POLICIES } from "../../types/index.js";
 import { detectLanguageProfile } from "./language-profile.js";
+import { renderAdaptiveWorkflow } from "./agent-workflow.js";
 import { detectProfile, type SkillProfile } from "./profile.js";
 import { selectActiveRulePacks, resolveSafeMajor } from "./rule-packs/index.js";
 import { buildSkillKnowledgeBase } from "./knowledge-base.js";
@@ -36,7 +37,6 @@ import { computeDependencyReach } from "./insights.js";
 import { safeModuleName, selectModuleReferenceTargets } from "./module-references.js";
 import { buildCommonChangePathsSection, buildFirstFilesSection } from "./usability-sections.js";
 import {
-  renderRegenerateCommand,
   renderRunScript,
   renderScriptAwareToolCommand,
   renderToolCommand,
@@ -238,80 +238,7 @@ function buildAgentWorkflow(
   kb: SkillKnowledgeBase | null,
   options: { includeReferences?: boolean; scripts?: Record<string, string> | undefined } = {},
 ): string {
-  const includeReferences = options.includeReferences !== false;
-  const tool = (args: string): string =>
-    renderScriptAwareToolCommand(kb?.packageManager, options.scripts, args);
-  // Build instruction-files list from detected files or fallback to generic pattern
-  let instructionFilesLine: string;
-  const instructionFiles = kb?.instructionFiles;
-  if (instructionFiles && instructionFiles.length > 0) {
-    const fileList = instructionFiles.map((f) => `\`${f}\``).join(", ");
-    instructionFilesLine = `2. **Read local agent instructions**: ${fileList}. Project-authored instructions and rules OVERRIDE generated references when they conflict.`;
-  } else {
-    instructionFilesLine = `2. **Read local agent instructions**: \`AGENTS.md\`, \`CLAUDE.md\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.cursor/rules/\`, \`.windsurf/skills/\`, \`.roo/skills/\`, \`.cline/skills/\`.`;
-  }
-
-  // Reference file list from KB entrypoints or static
-  const refFiles = kb
-    ? [
-        `   - \`references/codebase-map.md\` - ${kb.modules.length} mods, ${kb.entrypoints.length} entrypoints`,
-        `   - \`references/testing-map.md\` - ${Object.keys(kb.testing.testAssociations).length} test associations`,
-        `   - \`references/dependencies.md\` - ${kb.dependencies.length} dependencies`,
-        `   - \`references/public-api.md\` - ${kb.risks.length} risk items`,
-        `   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs`,
-        `   - \`references/language-patterns.md\` - per-language rules and language distribution`,
-        `   - \`references/clean-code-checklist.md\` - code quality checklist with limits`,
-      ]
-    : [
-        `   - \`references/codebase-map.md\` - modules, entrypoints, key symbols`,
-        `   - \`references/testing-map.md\` - test associations and gaps`,
-        `   - \`references/dependencies.md\` - dependency versions and usage`,
-        `   - \`references/public-api.md\` - API surface and risks`,
-        `   - \`references/code-style.md\` - detected indent, quotes, semicolons, formatter configs`,
-        `   - \`references/language-patterns.md\` - per-language rules and language distribution`,
-        `   - \`references/clean-code-checklist.md\` - code quality checklist with limits`,
-      ];
-
-  // Build quick-start examples from real index data
-  const examples = buildSearchExamples(kb, options.scripts);
-
-  const lines = [
-    `## Required Agent Workflow`,
-    ``,
-    `Before writing any code for **${projectName}**, follow these steps in order:`,
-    ``,
-    includeReferences
-      ? `1. **Read SKILL.md** - project profile, conventions, pitfalls.`
-      : `1. **Read these rules first** - project profile, conventions, pitfalls.`,
-    instructionFilesLine,
-    `3. **Check parser health first**:`,
-    `   - \`${tool("indexing --health --index-format json")}\` - health overview, parser breakdown`,
-    `4. **Drilldown when health suggests issues**:`,
-    `   - \`${tool("indexing --recovered --index-format json")}\` - list files parsed via fallback recoveries`,
-    `   - \`${tool("indexing --parse-errors --index-format json")}\` - list files with hard parse errors`,
-    `5. **Before editing**, search the index first (compact JSON, low token cost):`,
-    `   - \`${tool("indexing --search <query> --index-format json")}\` - unified symbol/file/import search (add --kind code for snippets)`,
-    `   - \`${tool("indexing --find-file <path> --index-format json")}\` - locate indexed files by path or basename`,
-    `   - \`${tool("indexing --agent-context <file> --index-format json")}\` - symbols, imports, dependents, next commands`,
-    `   - \`${tool("indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json")}\` - same evidence under a token budget, task anchors ranked first`,
-    `   - \`${tool("indexing --explain-index <file> --index-format json")}\` - imports, dependents, symbols`,
-    `   - \`${tool("indexing --stats --index-format json")}\` - index statistics`,
-    `   - \`${tool("--explain-context --format json --files <file>")}\` - context enrichment preview`,
-    ...(includeReferences ? [`6. **Load only the relevant references**:`, ...refFiles] : []),
-    `${includeReferences ? "7" : "6"}. **Respect the profile rules** - each profile has specific review pitfalls listed below.`,
-  ];
-
-  if (examples.length > 0) {
-    lines.push(``, examples);
-  }
-
-  // Generated artifact note — development guardrails
-  lines.push(
-    ``,
-    `> **Auto-generated.** Regenerate via \`${renderRegenerateCommand(kb?.packageManager, options.scripts)}\`. Do not edit.`,
-  );
-
-  return lines.join("\n");
+  return renderAdaptiveWorkflow(projectName, kb, options, buildSearchExamples(kb, options.scripts));
 }
 
 // ── Project Rules (authoritative, project-authored) ───────────────────────
@@ -1855,23 +1782,7 @@ export function buildLanguagePatternsReference(
     lines.push(``);
   }
 
-  // Per-pack rules
-  if (rulePackSelection.packs.length > 0) {
-    lines.push("## Framework & Language Rules", ``);
-    for (const pack of rulePackSelection.packs) {
-      lines.push(`### ${pack.label}`, ``);
-      if (pack.fileGlobs.length > 0) {
-        lines.push(`Applies to: ${pack.fileGlobs.map((g) => `\`${g}\``).join(", ")}`);
-        lines.push(``);
-      }
-      for (const rule of pack.rules) {
-        const prefix =
-          rule.kind === "must" ? "**MUST**" : rule.kind === "should" ? "**SHOULD**" : "**AVOID**";
-        lines.push(`- ${prefix}: ${rule.text}`);
-      }
-      lines.push(``);
-    }
-  }
+  lines.push(buildLanguageRules(rulePackSelection));
   return lines.join("\n");
 }
 
