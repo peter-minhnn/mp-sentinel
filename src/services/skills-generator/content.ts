@@ -289,12 +289,12 @@ function buildAgentWorkflow(
     `4. **Drilldown when health suggests issues**:`,
     `   - \`${tool("indexing --recovered --index-format json")}\` - list files parsed via fallback recoveries`,
     `   - \`${tool("indexing --parse-errors --index-format json")}\` - list files with hard parse errors`,
-    `5. **Before editing**, use source index diagnostics:`,
+    `5. **Before editing**, search the index first (compact JSON, low token cost):`,
+    `   - \`${tool("indexing --search <query> --index-format json")}\` - unified symbol/file/import search (add --kind code for snippets)`,
+    `   - \`${tool("indexing --find-file <path> --index-format json")}\` - locate indexed files by path or basename`,
     `   - \`${tool("indexing --agent-context <file> --index-format json")}\` - symbols, imports, dependents, next commands`,
+    `   - \`${tool("indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json")}\` - same evidence under a token budget, task anchors ranked first`,
     `   - \`${tool("indexing --explain-index <file> --index-format json")}\` - imports, dependents, symbols`,
-    `   - \`${tool("indexing --find-symbol <name> --index-format json")}\` - search index for symbols`,
-    `   - \`${tool("indexing --find-import <package-or-path> --index-format json")}\` - search index for import usage`,
-    `   - \`${tool("indexing --find-code <query> --index-format json")}\` - search indexed code snippets`,
     `   - \`${tool("indexing --stats --index-format json")}\` - index statistics`,
     `   - \`${tool("--explain-context --format json --files <file>")}\` - context enrichment preview`,
     ...(includeReferences ? [`6. **Load only the relevant references**:`, ...refFiles] : []),
@@ -651,11 +651,11 @@ function buildSearchExamples(
     );
   }
 
-  // Top dependency — use --find-import to see usage
+  // Top dependency — use --search so agents stay on the compact lookup path
   const topDep = kb.dependencies[0];
   if (topDep) {
     exampleLines.push(
-      `   - \`${tool(`indexing --find-import ${topDep.packageName} --index-format json`)}\` - top dependency (used by ${topDep.fileCount} files)`,
+      `   - \`${tool(`indexing --search ${topDep.packageName} --index-format json`)}\` - top dependency (used by ${topDep.fileCount} files)`,
     );
   }
 
@@ -676,7 +676,7 @@ function buildSearchExamples(
     const keySym = mod?.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`${tool(`indexing --find-symbol ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`${tool(`indexing --search ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
       break;
     }
@@ -688,7 +688,7 @@ function buildSearchExamples(
     const keySym = largestModule.keySymbols[0];
     if (keySym) {
       exampleLines.push(
-        `   - \`${tool(`indexing --find-symbol ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
+        `   - \`${tool(`indexing --search ${keySym.name} --index-format json`)}\` - locate \`${keySym.name}\` (${keySym.type}) across the codebase`,
       );
     }
   }

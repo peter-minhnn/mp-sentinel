@@ -19,10 +19,10 @@ import {
   querySymbols,
   queryImports,
   queryCode,
-  queryAgentContext,
   quoteCliArg,
   getParserTelemetry,
 } from "../services/source-index/query.js";
+import { queryAgentContext } from "../services/source-index/agent-context-evidence.js";
 import { FileHandler } from "../services/file-handler/index.js";
 import {
   parseFile,
@@ -893,6 +893,8 @@ describe("manifest hash cache invalidation", () => {
     expect(idx2!.files.map((file) => file.path)).toEqual(["src/keep.ts"]);
     expect(idx2!.stats.indexedFiles).toBe(1);
     expect(idx2!.stats.skippedFiles).toBe(0);
+    expect(idx2!.stats.parsedFiles).toBe(0);
+    expect(idx2!.stats.cacheHitFiles).toBeGreaterThanOrEqual(1);
   });
 
   it("treats legacy index without manifestHash as manifest-stale", async () => {

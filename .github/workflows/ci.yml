@@ -23,3 +23,12 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run typecheck:tests
+      - run: npm run agent:skills:refresh
+      - run: npm test
+      - run: npm run golden:lock
+      - run: npm run allocation:test
+      - run: npm run repos:test
+      - run: npm run extension:core:typecheck
+      - run: npm run extension:core:test
+      - run: npm run release:check
+      - run: npm pack --dry-run

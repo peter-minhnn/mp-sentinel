@@ -6,15 +6,18 @@
 
 import { resolve } from "node:path";
 import type { SourceIndex } from "../../types/index.js";
-import { readIndex } from "../source-index/storage.js";
+import { hydrateIndex, readIndex } from "../source-index/storage.js";
 import {
-  queryAgentContext,
   querySymbols,
   queryImports,
   queryCode,
   queryCodeStream,
   getParserTelemetry,
 } from "../source-index/query.js";
+import {
+  buildCompactAgentContext,
+  DEFAULT_AGENT_CONTEXT_TOKEN_BUDGET,
+} from "../source-index/agent-context-pack.js";
 import { buildReviewContext } from "../source-index/context-builder.js";
 import { loadProjectConfig } from "../../utils/config.js";
 import { generateMCPDiagnostics } from "../mcp/diagnostics.js";
@@ -88,21 +91,42 @@ export async function getIndexHealth(projectRoot: string): Promise<IndexHealthRe
 
 /**
  * Agent context for a specific file.
- * Missing index → returns an error string for the caller to convert to an MCP error.
+ *
+ * MCP is always compact: the capsule is packed under a hard token budget
+ * (default 1200) and ranked by optional `focus` anchors. Missing index →
+ * returns an error string for the caller to convert to an MCP error;
+ * an unusable budget or invalid focus throws `UserError`.
  */
 export async function getAgentContext(
   projectRoot: string,
   file: string,
+  options: { focus?: string[]; tokenBudget?: number } = {},
 ): Promise<Record<string, unknown>> {
   const cachePath = await resolveCachePath(projectRoot);
   // Calls hydration: agent context reports outbound + incoming call edges.
-  const index = await readIndex(cachePath, { hydrate: "calls" });
+  const index = await readIndex(cachePath, { hydrate: "none" });
 
   if (!index) {
     return { error: "No source index found" };
   }
+  const hydrated = await hydrateIndex(index, cachePath, "calls");
+  if (!hydrated) {
+    return {
+      error:
+        "Calls sidecar is missing or corrupt; refusing a partial caller graph. Re-run indexing to rebuild.",
+    };
+  }
 
-  return queryAgentContext(index, file, projectRoot) as unknown as Record<string, unknown>;
+  const capsule = await buildCompactAgentContext(
+    index,
+    file,
+    {
+      tokenBudget: options.tokenBudget ?? DEFAULT_AGENT_CONTEXT_TOKEN_BUDGET,
+      ...(options.focus ? { focus: options.focus } : {}),
+    },
+    projectRoot,
+  );
+  return capsule as unknown as Record<string, unknown>;
 }
 
 /**
@@ -117,12 +141,21 @@ export async function getExplainContext(
   // Calls hydration: explain-context builds review context, and the
   // call-impact/caller intelligence tier reads call edges — match the CLI
   // explain-context behavior on light caches.
-  const index = await readIndex(cachePath, { hydrate: "calls" });
+  const index = await readIndex(cachePath, { hydrate: "none" });
 
   if (!index) {
     return {
       status: "unavailable",
       reason: "No source index found",
+      indexUsed: false,
+    };
+  }
+  const hydrated = await hydrateIndex(index, cachePath, "calls");
+  if (!hydrated) {
+    return {
+      status: "unavailable",
+      reason:
+        "Calls sidecar is missing or corrupt; refusing partial caller intelligence. Re-run indexing to rebuild.",
       indexUsed: false,
     };
   }
@@ -206,13 +239,20 @@ export async function getFindCode(
   const index = await readIndex(cachePath, { hydrate: "none" });
   if (!index) return { status: "error", message: "No source index found" };
 
-  const results = await queryCodeStream(index, cachePath, query);
-  return {
-    status: "ok",
-    query,
-    resultCount: results.length,
-    results,
-  };
+  try {
+    const results = await queryCodeStream(index, cachePath, query);
+    return {
+      status: "ok",
+      query,
+      resultCount: results.length,
+      results,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export async function getExplainFile(

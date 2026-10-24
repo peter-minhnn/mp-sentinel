@@ -25,6 +25,11 @@ import { existsSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { log } from "../../utils/logger.js";
 import { CURRENT_SOURCE_INDEX_SCHEMA } from "../../types/index.js";
+import {
+  carryPreviousSidecarPayloads,
+  collectValidSidecarRows,
+  sidecarUnusableReason,
+} from "./sidecar-carry.js";
 import type {
   CacheValidity,
   CallEdge,
@@ -157,7 +162,11 @@ export async function readIndex(
  * Attach sidecar payloads to a light-core index in place. No-op for legacy
  * or full-mode caches (payloads already inline) and for absent sidecars.
  * Returns false when a requested sidecar was present in metadata but could
- * not be read (the index stays usable without that payload).
+ * not be fully read. Payloads from a failed sidecar are never attached
+ * (parse the whole file, then apply — a corrupt mid-file row or a
+ * missing JSONL row must not leave a prefix of files hydrated).
+ * Commit requires on-disk size === meta.bytes and row count ===
+ * meta.entryCount.
  */
 export async function hydrateIndex(
   index: SourceIndex,
@@ -188,21 +197,37 @@ async function hydratePayload(
   if (!meta) return true;
 
   try {
-    const raw = await readFile(sidecarPath(cachePath, meta.file), "utf-8");
+    const filePath = sidecarPath(cachePath, meta.file);
+    const info = await stat(filePath);
+    if (info.size !== meta.bytes) return false;
+
+    const raw = await readFile(filePath, "utf-8");
     const byPath = new Map(index.files.map((f) => [f.path, f]));
+    const parsedRows: unknown[] = [];
     for (const line of raw.split("\n")) {
       if (!line) continue;
-      const row = JSON.parse(line) as CodeRow | CallsRow;
-      const file = byPath.get(row[0]);
-      if (!file) continue;
+      parsedRows.push(JSON.parse(line));
+    }
+    if (parsedRows.length !== meta.entryCount) return false;
+    const valid = collectValidSidecarRows(parsedRows, new Set(byPath.keys()));
+    if (!valid) return false;
+
+    const pendingCalls: Array<{ file: SourceIndexFile; calls: CallEdge[] }> = [];
+    const pendingCode: Array<{ file: SourceIndexFile; entries: CodeSearchEntry[] }> = [];
+    for (const item of valid) {
+      const file = byPath.get(item.path);
+      if (!file) return false;
       if (kind === "calls") {
-        const { calls } = unpackCallsRow(row as CallsRow);
-        if (calls.length > 0) file.calls = calls;
+        const { calls } = unpackCallsRow(item.row as CallsRow);
+        if (calls.length > 0) pendingCalls.push({ file, calls });
       } else {
-        const { entries } = unpackCodeRow(row as CodeRow);
-        if (entries.length > 0) file.codeSearch = entries;
+        const { entries } = unpackCodeRow(item.row as CodeRow);
+        if (entries.length > 0) pendingCode.push({ file, entries });
       }
     }
+
+    for (const item of pendingCalls) item.file.calls = item.calls;
+    for (const item of pendingCode) item.file.codeSearch = item.entries;
     return true;
   } catch {
     log.debug(`Sidecar ${meta.file} missing or unreadable — continuing with core index`);
@@ -214,7 +239,8 @@ async function hydratePayload(
  * Stream code-search entries without holding the whole payload in memory.
  * Visits inline payloads for legacy/full caches; streams the code sidecar
  * line-by-line for light caches. Returns false when a light cache's code
- * sidecar is missing/corrupt (visitor may have seen a partial stream).
+ * sidecar is missing/corrupt (visitor may have seen a partial stream —
+ * callers MUST discard visited rows when this returns false).
  */
 export async function streamCodeEntries(
   index: SourceIndex,
@@ -260,6 +286,8 @@ export interface SidecarStatus {
   sidecarsPresent: boolean;
   sidecarsValid: boolean;
   missing: string[];
+  /** Sidecar files whose on-disk size differs from `meta.bytes`. */
+  sizeMismatched: string[];
   coreBytes: number;
   sidecarBytes: number;
 }
@@ -285,6 +313,7 @@ export async function getSidecarStatus(
       sidecarsPresent: false,
       sidecarsValid: true,
       missing: [],
+      sizeMismatched: [],
       coreBytes,
       sidecarBytes: 0,
     };
@@ -294,10 +323,13 @@ export async function getSidecarStatus(
     (m): m is SidecarFileMeta => m !== undefined,
   );
   const missing: string[] = [];
+  const sizeMismatched: string[] = [];
   let sidecarBytes = 0;
   for (const meta of metas) {
     try {
-      sidecarBytes += (await stat(sidecarPath(cachePath, meta.file))).size;
+      const size = (await stat(sidecarPath(cachePath, meta.file))).size;
+      sidecarBytes += size;
+      if (size !== meta.bytes) sizeMismatched.push(meta.file);
     } catch {
       missing.push(meta.file);
     }
@@ -306,8 +338,9 @@ export async function getSidecarStatus(
   return {
     cacheMode: "light",
     sidecarsPresent: metas.length > 0,
-    sidecarsValid: missing.length === 0,
+    sidecarsValid: missing.length === 0 && sizeMismatched.length === 0,
     missing,
+    sizeMismatched,
     coreBytes,
     sidecarBytes,
   };
@@ -325,7 +358,7 @@ export async function getSidecarStatus(
 export async function writeIndex(
   index: SourceIndex,
   cachePath: string = DEFAULT_CACHE_PATH,
-  options: { cacheMode?: "light" | "full" } = {},
+  options: { cacheMode?: "light" | "full"; cacheHitPaths?: ReadonlySet<string> } = {},
 ): Promise<void> {
   const cacheMode = options.cacheMode ?? "light";
   try {
@@ -339,6 +372,8 @@ export async function writeIndex(
       log.info(`Source index written to ${cachePath}`);
       return;
     }
+
+    await carryPreviousSidecarPayloads(index, cachePath, options.cacheHitPaths ?? new Set());
 
     const { randomBytes } = await import("node:crypto");
     const storageId = randomBytes(4).toString("hex");
@@ -556,6 +591,11 @@ export async function getFilesToIndex(
     getFileSize?: (path: string) => Promise<number>;
     /** Pre-read core index (hydrate "none") to avoid a duplicate read. */
     index?: SourceIndex | null;
+    /**
+     * When false, skip sidecar existence/size checks. Compact --find-file
+     * and non-code --search only need the core index.
+     */
+    auditSidecars?: boolean;
   } = {},
 ): Promise<{
   toIndex: string[];
@@ -594,6 +634,22 @@ export async function getFilesToIndex(
     };
   }
 
+  // Sparse / missing / size-mismatched sidecars abort reuse even when
+  // every source hash still matches. Uses a cheap stat audit (no JSONL
+  // parse) so compact lookups that skip this function stay off the
+  // sidecar. Compact --find-file / non-code --search pass auditSidecars: false.
+  if (options.auditSidecars !== false) {
+    const sidecarReason = await sidecarUnusableReason(existingIndex, cachePath, "stat");
+    if (sidecarReason) {
+      log.warning(`${sidecarReason} — forcing full reindex`);
+      return {
+        toIndex: allFiles,
+        fromCache: [],
+        validity: { valid: false },
+      };
+    }
+  }
+
   if (validity.valid) {
     return {
       toIndex: [],
@@ -622,7 +678,15 @@ export async function getFilesToIndex(
 
   // Carried-over files keep their heavy payloads: hydrate before reuse so an
   // incremental rebuild never silently drops codeSearch/calls data.
-  await hydrateIndex(existingIndex, cachePath, "full");
+  const hydrated = await hydrateIndex(existingIndex, cachePath, "full");
+  if (!hydrated) {
+    log.warning("Light-cache sidecar unreadable during incremental reuse — forcing full reindex");
+    return {
+      toIndex: allFiles,
+      fromCache: [],
+      validity,
+    };
+  }
 
   return {
     toIndex: allFiles.filter((f) => needsReindex.has(f)),

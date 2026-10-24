@@ -43,7 +43,9 @@ export type IndexingOperation =
   | { kind: "parse-errors" }
   | { kind: "stats" }
   | { kind: "explain-index"; file: string }
-  | { kind: "agent-context"; file: string };
+  | { kind: "agent-context"; file: string }
+  | { kind: "search"; query: string; limit?: number; kinds?: string }
+  | { kind: "find-file"; query: string; limit?: number };
 
 export type CreateSkillsOperation =
   | { kind: "doctor" }
@@ -143,6 +145,17 @@ export function buildIndexingArgs(operation: IndexingOperation): string[] {
       return ["indexing", "--explain-index", operation.file, ...json];
     case "agent-context":
       return ["indexing", "--agent-context", operation.file, ...json];
+    case "search": {
+      const args = ["indexing", "--search", operation.query, ...json];
+      if (operation.limit !== undefined) args.push("--limit", String(operation.limit));
+      if (operation.kinds) args.push("--kind", operation.kinds);
+      return args;
+    }
+    case "find-file": {
+      const args = ["indexing", "--find-file", operation.query, ...json];
+      if (operation.limit !== undefined) args.push("--limit", String(operation.limit));
+      return args;
+    }
   }
 }
 

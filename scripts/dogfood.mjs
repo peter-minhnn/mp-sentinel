@@ -782,9 +782,31 @@ function stepIndexQuery() {
     return false;
   }
 
+  // --search (compact unified)
+  const searchOut = run(
+    "node dist/index.js indexing --search buildSourceIndex --index-format json --compact",
+    "indexing --search",
+  );
+  if (searchOut === null) return false;
+
+  const searchJson = parseJson(searchOut, "indexing --search");
+  if (!searchJson) return false;
+  if (!Array.isArray(searchJson.hits)) {
+    fail("indexing --search", "hits is not an array");
+    return false;
+  }
+  if (searchJson.hits.length === 0) {
+    fail("indexing --search", "expected hits for 'buildSourceIndex', got 0");
+    return false;
+  }
+  if (searchOut.includes("\n  ")) {
+    fail("indexing --search", "compact JSON still contains pretty-print indent");
+    return false;
+  }
+
   ok(
     "index queries",
-    `agent-context ${acSymbols} symbols, find-symbol ${fsJson.results.length} hits, find-import ${fiJson.results.length} hits, find-code ${fcJson.results.length} hits`,
+    `agent-context ${acSymbols} symbols, search ${searchJson.hits.length} hits, find-symbol ${fsJson.results.length} hits, find-import ${fiJson.results.length} hits, find-code ${fcJson.results.length} hits`,
   );
   return true;
 }

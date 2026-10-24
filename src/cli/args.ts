@@ -3,6 +3,9 @@ import { UserError } from "../utils/errors.js";
 import { getToolVersion } from "../utils/version.js";
 import { bannerText } from "../utils/display.js";
 
+/** Commander collector for the repeatable `--focus` flag. */
+const collectFocus = (value: string, previous: string[]): string[] => [...previous, value];
+
 export type CLICommand =
   | "review"
   | "indexing"
@@ -52,6 +55,16 @@ export interface CLIValues {
   fullIndex?: boolean;
   findImport?: string;
   findCode?: string;
+  search?: string;
+  findFile?: string;
+  taskContext?: string;
+  tokenBudget?: string;
+  explainRanking?: boolean;
+  focus?: string[];
+  limit?: string;
+  kind?: string;
+  pretty?: boolean;
+  compact?: boolean;
   agentContext?: string;
   recovered?: boolean;
   parseErrors?: boolean;
@@ -163,6 +176,37 @@ export const buildProgram = (): Command => {
     .option("--find-import <query>", "Search index for files importing a package or path")
     .option("--find-code <query>", "Search index for code snippets matching a text query")
     .option(
+      "--search <query>",
+      "Unified compact search (symbols + files + imports). Add --kind code for snippets",
+    )
+    .option("--find-file <query>", "Search index for file paths by path or basename")
+    .option(
+      "--task-context <prompt>",
+      "Ranked file capsule from a natural-language prompt (no snippets, no prompt echo)",
+    )
+    .option(
+      "--token-budget <n>",
+      "Token budget for --task-context (default 800) or compact --agent-context JSON (min 100, max 4000)",
+    )
+    .option(
+      "--explain-ranking",
+      "With --task-context: list the ranked candidates before packing (JSON or console)",
+      false,
+    )
+    .option(
+      "--focus <anchor>",
+      "Task anchor that ranks --agent-context evidence first (repeatable, max 6; requires --token-budget)",
+      collectFocus,
+      [] as string[],
+    )
+    .option("--limit <n>", "Max search hits (default: 10 for --search/--find-file, 20 otherwise)")
+    .option(
+      "--kind <kinds>",
+      "Comma-separated --search kinds: symbol,file,import,code (default: symbol,file,import)",
+    )
+    .option("--pretty", "Pretty-print JSON (default: pretty on TTY, compact otherwise)", false)
+    .option("--compact", "Force compact JSON (no whitespace)", false)
+    .option(
       "--agent-context <file>",
       "AI-agent-friendly context pack: symbols, imports, dependents, hub files, suggested next commands",
     )
@@ -263,6 +307,8 @@ Examples:
   $ npx mp-sentinel indexing                              # Build source index cache
   $ npx mp-sentinel indexing --index-format json          # Output index as JSON
   $ npx mp-sentinel indexing --health --index-format json  # Index health check (read-only)
+  $ npx mp-sentinel indexing --search buildSourceIndex --index-format json  # Compact agent search
+  $ npx mp-sentinel indexing --task-context "hydrate sidecar atomically" --index-format json
   $ npx mp-sentinel indexing --force                      # Force rebuild cache
   $ npx mp-sentinel create-skills                         # Interactive agent picker
   $ npx mp-sentinel create-skills --agent claude,cursor   # Generate for specific agents
@@ -418,6 +464,32 @@ export const parseCliArgs = (): {
       ...(typeof indexingOptions["findCode"] === "string" && {
         findCode: indexingOptions["findCode"] as string,
       }),
+      ...(typeof indexingOptions["search"] === "string" && {
+        search: indexingOptions["search"] as string,
+      }),
+      ...(typeof indexingOptions["findFile"] === "string" && {
+        findFile: indexingOptions["findFile"] as string,
+      }),
+      ...(typeof indexingOptions["taskContext"] === "string" && {
+        taskContext: indexingOptions["taskContext"] as string,
+      }),
+      ...(typeof indexingOptions["tokenBudget"] === "string" && {
+        tokenBudget: indexingOptions["tokenBudget"] as string,
+      }),
+      explainRanking:
+        command === "indexing" ? Boolean(indexingOptions["explainRanking"] ?? false) : false,
+      ...(Array.isArray(indexingOptions["focus"]) &&
+        (indexingOptions["focus"] as string[]).length > 0 && {
+          focus: indexingOptions["focus"] as string[],
+        }),
+      ...(typeof indexingOptions["limit"] === "string" && {
+        limit: indexingOptions["limit"] as string,
+      }),
+      ...(typeof indexingOptions["kind"] === "string" && {
+        kind: indexingOptions["kind"] as string,
+      }),
+      pretty: command === "indexing" ? Boolean(indexingOptions["pretty"] ?? false) : false,
+      compact: command === "indexing" ? Boolean(indexingOptions["compact"] ?? false) : false,
       ...(typeof indexingOptions["agentContext"] === "string" && {
         agentContext: indexingOptions["agentContext"] as string,
       }),

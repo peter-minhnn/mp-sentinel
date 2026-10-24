@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "../utils/logger.js";
 import type {
+  CodeSearchResult,
   FileRole,
   IndexingConfig,
   ParserMode,
@@ -21,11 +22,13 @@ import {
   queryImports,
   queryCode,
   queryCodeStream,
-  queryAgentContext,
   quoteCliArg,
   getParserTelemetry,
 } from "../services/source-index/query.js";
+import { queryAgentContext } from "../services/source-index/agent-context-evidence.js";
 import { getSidecarStatus } from "../services/source-index/storage.js";
+import { emitIndexJson } from "../services/source-index/json-output.js";
+import { SystemError } from "../utils/errors.js";
 import {
   getRecoveredFileCount,
   getParserModeBreakdown,
@@ -47,7 +50,7 @@ export async function loadReadOnlyIndex(
 
   if (!existsSync(cachePath)) {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "missing" }, null, 2));
+      emitIndexJson({ status: "missing" });
     }
     return null;
   }
@@ -57,7 +60,7 @@ export async function loadReadOnlyIndex(
     raw = await readFile(cachePath, "utf-8");
   } catch {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+      emitIndexJson({ status: "unreadable" });
     }
     return null;
   }
@@ -67,7 +70,7 @@ export async function loadReadOnlyIndex(
     index = JSON.parse(raw) as SourceIndex;
   } catch {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+      emitIndexJson({ status: "unreadable" });
     }
     return null;
   }
@@ -166,37 +169,25 @@ async function handleDrilldown(
   if (mode === "recovered") {
     const recoveredFiles = getRecoveredFileCount(index);
     const parserModeBreakdown = getParserModeBreakdown(index);
-    console.log(
-      JSON.stringify(
-        {
-          status: "ok",
-          totalFiles: index.files.length,
-          recoveredFiles,
-          parserModeBreakdown,
-          files,
-          truncated,
-        },
-        null,
-        2,
-      ),
-    );
+    emitIndexJson({
+      status: "ok",
+      totalFiles: index.files.length,
+      recoveredFiles,
+      parserModeBreakdown,
+      files,
+      truncated,
+    });
   } else {
     const parseErrorCount = index.files.filter(
       (f) => f.parseErrors && f.parseErrors.length > 0,
     ).length;
-    console.log(
-      JSON.stringify(
-        {
-          status: "ok",
-          totalFiles: index.files.length,
-          parseErrorCount,
-          files,
-          truncated,
-        },
-        null,
-        2,
-      ),
-    );
+    emitIndexJson({
+      status: "ok",
+      totalFiles: index.files.length,
+      parseErrorCount,
+      files,
+      truncated,
+    });
   }
 
   return 0;
@@ -213,7 +204,7 @@ export async function handleExplain(
 ): Promise<number> {
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+      emitIndexJson({ error: "No index available" });
     } else {
       console.log("No index available. Run 'mp-sentinel indexing' first.");
     }
@@ -229,11 +220,17 @@ export async function handleExplain(
 
   if (!file) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: `File not found in index: ${filePath}` }, null, 2));
+      emitIndexJson({
+        error: `File not found in index: ${filePath}`,
+        suggestedCommands: [
+          `mp-sentinel indexing --find-file ${quoteCliArg(filePath)} --index-format json`,
+        ],
+      });
     } else {
       console.log(`File not found in index: ${filePath}`);
-      console.log("\nIndexed files:");
-      index.files.forEach((f) => console.log(`  ${f.path}`));
+      console.log(
+        `  Indexed files: ${index.files.length}. Try: mp-sentinel indexing --find-file ${quoteCliArg(filePath)} --index-format json`,
+      );
     }
     return 1;
   }
@@ -296,7 +293,7 @@ export async function handleExplain(
   };
 
   if (format === "json") {
-    console.log(JSON.stringify(info, null, 2));
+    emitIndexJson(info);
   } else {
     console.log();
     log.header(`Dependency Info: ${file.path}`);
@@ -382,7 +379,7 @@ export async function handleStats(
 ): Promise<number> {
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+      emitIndexJson({ error: "No index available" });
     } else {
       console.log("No index available");
     }
@@ -428,7 +425,7 @@ export async function handleStats(
   };
 
   if (format === "json") {
-    console.log(JSON.stringify(stats, null, 2));
+    emitIndexJson(stats);
   } else {
     console.log();
     log.header("Index Statistics");
@@ -480,12 +477,13 @@ export function handleFindSymbol(
   query: string,
   index: SourceIndex | null,
   format: "console" | "json",
+  limit?: number,
 ): number {
-  const results = querySymbols(index, query);
+  const results = querySymbols(index, query, limit);
 
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ query, results: [] }));
+      emitIndexJson({ query, results: [] });
     } else {
       console.log(`No index available. Run 'mp-sentinel indexing' first.`);
     }
@@ -493,7 +491,7 @@ export function handleFindSymbol(
   }
 
   if (format === "json") {
-    console.log(JSON.stringify({ query, results }, null, 2));
+    emitIndexJson({ query, results });
   } else {
     console.log();
     if (results.length === 0) {
@@ -519,12 +517,13 @@ export function handleFindImport(
   query: string,
   index: SourceIndex | null,
   format: "console" | "json",
+  limit?: number,
 ): number {
-  const results = queryImports(index, query);
+  const results = queryImports(index, query, limit);
 
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ query, results: [] }));
+      emitIndexJson({ query, results: [] });
     } else {
       console.log(`No index available. Run 'mp-sentinel indexing' first.`);
     }
@@ -532,7 +531,7 @@ export function handleFindImport(
   }
 
   if (format === "json") {
-    console.log(JSON.stringify({ query, results }, null, 2));
+    emitIndexJson({ query, results });
   } else {
     console.log();
     if (results.length === 0) {
@@ -561,14 +560,28 @@ export async function handleFindCode(
   index: SourceIndex | null,
   format: "console" | "json",
   cachePath: string,
+  limit?: number,
 ): Promise<number> {
   // Streams the code sidecar for light caches (bounded memory); legacy and
   // full-mode caches score inline payloads. Same ranking either way.
-  const results = await queryCodeStream(index, cachePath, query);
+  let results: CodeSearchResult[];
+  try {
+    results = await queryCodeStream(index, cachePath, query, limit);
+  } catch (error) {
+    if (error instanceof SystemError) {
+      if (format === "json") {
+        emitIndexJson({ status: "ERROR", error: error.message });
+      } else {
+        log.critical(error.message);
+      }
+      return 2;
+    }
+    throw error;
+  }
 
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ query, results: [] }));
+      emitIndexJson({ query, results: [] });
     } else {
       console.log(`No index available. Run 'mp-sentinel indexing' first.`);
     }
@@ -576,7 +589,7 @@ export async function handleFindCode(
   }
 
   if (format === "json") {
-    console.log(JSON.stringify({ query, results }, null, 2));
+    emitIndexJson({ query, results });
   } else {
     console.log();
     if (results.length === 0) {
@@ -609,7 +622,7 @@ export function handleAgentContext(
 
   if (!index) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: "No index available" }, null, 2));
+      emitIndexJson({ error: "No index available" });
     } else {
       console.log("No index available. Run 'mp-sentinel indexing' first.");
     }
@@ -618,7 +631,7 @@ export function handleAgentContext(
 
   if (ctx.error) {
     if (format === "json") {
-      console.log(JSON.stringify({ error: ctx.error }, null, 2));
+      emitIndexJson({ error: ctx.error });
     } else {
       console.log(ctx.error);
     }
@@ -639,7 +652,7 @@ export function handleAgentContext(
   };
 
   if (format === "json") {
-    console.log(JSON.stringify(output, null, 2));
+    emitIndexJson(output);
   } else {
     const fileInfo = ctx.file!;
     console.log();

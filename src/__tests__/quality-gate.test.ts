@@ -1390,11 +1390,10 @@ describe("validateSkillQuality", () => {
       "   - `mp-sentinel indexing --recovered --index-format json` - fallback recoveries",
       "   - `mp-sentinel indexing --parse-errors --index-format json` - hard parse errors",
       "5. **Before editing**, use source index diagnostics:",
+      "   - `mp-sentinel indexing --search <query> --index-format json` - unified compact search",
+      "   - `mp-sentinel indexing --find-file <path> --index-format json` - locate indexed files",
       "   - `mp-sentinel indexing --agent-context <file> --index-format json` - symbols, imports, dependents",
       "   - `mp-sentinel indexing --explain-index <file> --index-format json` - imports, dependents, symbols",
-      "   - `mp-sentinel indexing --find-symbol <name> --index-format json` - search for symbols",
-      "   - `mp-sentinel indexing --find-import <pkg> --index-format json` - search for imports",
-      "   - `mp-sentinel indexing --find-code <query> --index-format json` - search code snippets",
       "   - `mp-sentinel indexing --stats --index-format json` - index summary",
       "   - `mp-sentinel --explain-context --format json --files <file>` - review context enrichment",
       "6. **Load only the relevant references**",
@@ -1441,9 +1440,9 @@ describe("validateSkillQuality", () => {
       expect(errors[0]!.message).toContain("explain-index");
     });
 
-    it("flags missing --find-symbol as error", () => {
+    it("flags missing --search as error", () => {
       const body = VALID_WORKFLOW.replace(
-        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
+        "`mp-sentinel indexing --search <query> --index-format json`",
         "`mp-sentinel indexing --some-other`",
       );
       const content = makeSingleFileSkillWithWorkflow(body);
@@ -1453,12 +1452,12 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "agent-workflow-contract" && c.severity === "error",
       );
       expect(errors.length).toBe(1);
-      expect(errors[0]!.message).toContain("find-symbol");
+      expect(errors[0]!.message).toContain("search");
     });
 
-    it("flags missing --find-import as error", () => {
+    it("flags missing --find-file as error", () => {
       const body = VALID_WORKFLOW.replace(
-        "`mp-sentinel indexing --find-import <pkg> --index-format json`",
+        "`mp-sentinel indexing --find-file <path> --index-format json`",
         "`mp-sentinel indexing --some-other`",
       );
       const content = makeSingleFileSkillWithWorkflow(body);
@@ -1468,22 +1467,25 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "agent-workflow-contract" && c.severity === "error",
       );
       expect(errors.length).toBe(1);
-      expect(errors[0]!.message).toContain("find-import");
+      expect(errors[0]!.message).toContain("find-file");
     });
 
-    it("flags missing --find-code as error", () => {
-      const body = VALID_WORKFLOW.replace(
-        "`mp-sentinel indexing --find-code <query> --index-format json`",
-        "`mp-sentinel indexing --some-other`",
-      );
-      const content = makeSingleFileSkillWithWorkflow(body);
+    it("does not require the legacy find-symbol/import/code flags", () => {
+      const content = makeSingleFileSkillWithWorkflow(VALID_WORKFLOW);
       const files = [makeFile(".cursor/rules/test.mdc", content)];
       const report = validateSkillQuality(files, "cursor", null);
       const errors = report.checks.filter(
-        (c) => c.type === "agent-workflow-contract" && c.severity === "error",
+        (c) =>
+          c.type === "agent-workflow-contract" &&
+          c.severity === "error" &&
+          (c.message.includes("find-symbol") ||
+            c.message.includes("find-import") ||
+            c.message.includes("find-code")),
       );
-      expect(errors.length).toBe(1);
-      expect(errors[0]!.message).toContain("find-code");
+      expect(errors).toHaveLength(0);
+      expect(VALID_WORKFLOW).not.toContain("--find-symbol");
+      expect(VALID_WORKFLOW).not.toContain("--find-import");
+      expect(VALID_WORKFLOW).not.toContain("--find-code");
     });
 
     it("flags missing --stats as error", () => {
@@ -1518,8 +1520,8 @@ describe("validateSkillQuality", () => {
 
     it("flags missing --index-format json on one indexing command as error", () => {
       const body = VALID_WORKFLOW.replace(
-        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
-        "`mp-sentinel indexing --find-symbol <name>`",
+        "`mp-sentinel indexing --search <query> --index-format json`",
+        "`mp-sentinel indexing --search <query>`",
       );
       const content = makeSingleFileSkillWithWorkflow(body);
       const files = [makeFile(".cursor/rules/test.mdc", content)];
@@ -1528,7 +1530,7 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "agent-workflow-contract" && c.severity === "error",
       );
       expect(errors.length).toBe(1);
-      expect(errors[0]!.message).toContain("find-symbol");
+      expect(errors[0]!.message).toContain("search");
       expect(errors[0]!.message).toContain("index-format json");
     });
 
@@ -1550,8 +1552,8 @@ describe("validateSkillQuality", () => {
 
     it("flags only the indexing command that lacks --index-format json (regression)", () => {
       const body = VALID_WORKFLOW.replace(
-        "`mp-sentinel indexing --find-symbol <name> --index-format json`",
-        "`mp-sentinel indexing --find-symbol <name>`",
+        "`mp-sentinel indexing --search <query> --index-format json`",
+        "`mp-sentinel indexing --search <query>`",
       );
       const content = makeSingleFileSkillWithWorkflow(body);
       const files = [makeFile(".cursor/rules/test.mdc", content)];
@@ -1560,10 +1562,9 @@ describe("validateSkillQuality", () => {
         (c) => c.type === "agent-workflow-contract" && c.severity === "error",
       );
       expect(errors.length).toBe(1);
-      expect(errors[0]!.message).toContain("find-symbol");
+      expect(errors[0]!.message).toContain("search");
       expect(errors[0]!.message).toContain("index-format json");
-      // Other commands still have --index-format json and should not error
-      const otherFailures = errors.filter((c) => !c.message.includes("find-symbol"));
+      const otherFailures = errors.filter((c) => !c.message.includes("search"));
       expect(otherFailures).toHaveLength(0);
     });
 

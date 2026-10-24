@@ -31,8 +31,11 @@ Generated skills are **local bootstrap** — never committed to the repo. Before
    - `mp-sentinel indexing --recovered --index-format json`
    - `mp-sentinel indexing --parse-errors --index-format json`
    - `mp-sentinel indexing --stats --index-format json`
+   - `mp-sentinel indexing --search <query> --index-format json`
+   - `mp-sentinel indexing --find-file <path> --index-format json`
    - `mp-sentinel indexing --explain-index <file> --index-format json`
    - `mp-sentinel indexing --agent-context <file> --index-format json`
+   - `mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json` (compact, task-anchored capsule)
    - `mp-sentinel --explain-context --format json --files <file>`
    - **Health → drilldown workflow:** Start with `--health` to check for parser issues. The health JSON includes `suggestedCommands` with `--recovered`/`--parse-errors` drilldown commands when `recoveredFiles > 0` or `parseErrorCount > 0`. Use those to inspect individual files. `--recovered` lists files parsed via `chunked-tree-sitter`, `ascii-fallback`, or `lexical-fallback`.
 5. **For skills work**, use the `skill-creator` skill (`mp-sentinel`'s own generated skill).

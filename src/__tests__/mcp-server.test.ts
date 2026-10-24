@@ -231,7 +231,7 @@ describe("mcp-server InMemoryTransport integration", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("lists exactly nine tools", async () => {
+  it("lists all registered tools", async () => {
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
@@ -245,7 +245,10 @@ describe("mcp-server InMemoryTransport integration", () => {
 
     const { tools } = await client.listTools();
     const names = tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toHaveLength(16);
+    expect(names).toHaveLength(19);
+    expect(names).toContain("mp_sentinel_index_search");
+    expect(names).toContain("mp_sentinel_index_find_file");
+    expect(names).toContain("mp_sentinel_task_context");
     expect(names).toContain("mp_sentinel_review_scope");
     expect(names).toContain("mp_sentinel_review_deterministic");
     expect(names).toContain("mp_sentinel_review_filter_files");
@@ -656,10 +659,12 @@ describe("mcp-server index query integration", () => {
   });
 
   afterEach(async () => {
+    const { clearMcpIndexCache } = await import("../services/mcp-server/index-cache.js");
+    clearMcpIndexCache();
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("listTools returns all 12 tools", async () => {
+  it("listTools returns all registered tools", async () => {
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
@@ -673,7 +678,10 @@ describe("mcp-server index query integration", () => {
 
     const { tools } = await client.listTools();
     const names = tools.map((t: { name: string }) => t.name).sort();
-    expect(names).toHaveLength(16);
+    expect(names).toHaveLength(19);
+    expect(names).toContain("mp_sentinel_index_search");
+    expect(names).toContain("mp_sentinel_index_find_file");
+    expect(names).toContain("mp_sentinel_task_context");
     expect(names).toContain("mp_sentinel_index_find_symbol");
     expect(names).toContain("mp_sentinel_index_find_import");
     expect(names).toContain("mp_sentinel_index_find_code");
@@ -687,6 +695,101 @@ describe("mcp-server index query integration", () => {
     expect(names).toContain("mp_sentinel_review_scope");
     expect(names).toContain("mp_sentinel_review_deterministic");
     expect(names).toContain("mp_sentinel_review_filter_files");
+
+    await client.close();
+  });
+
+  it("callTool: mp_sentinel_index_search returns compact hits", async () => {
+    await writeRichIndex(join(tempDir, DEFAULT_CACHE_REL));
+
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMPSentinelMCPServer(tempDir);
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: "test-client", version: "1.0" }, { capabilities: {} });
+    await client.connect(clientTransport);
+
+    const result = (await client.callTool({
+      name: "mp_sentinel_index_search",
+      arguments: { query: "run", limit: 5 },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0]!.text;
+    expect(text).not.toContain("\n  ");
+    const parsed = JSON.parse(text) as {
+      status: string;
+      hits: Array<{ kind: string; name?: string }>;
+    };
+    expect(parsed.status).toBe("ok");
+    expect(parsed.hits.some((h) => h.kind === "symbol" && h.name === "run")).toBe(true);
+
+    await client.close();
+  });
+
+  it("callTool: mp_sentinel_index_find_file locates indexed paths", async () => {
+    await writeRichIndex(join(tempDir, DEFAULT_CACHE_REL));
+
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMPSentinelMCPServer(tempDir);
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: "test-client", version: "1.0" }, { capabilities: {} });
+    await client.connect(clientTransport);
+
+    const result = (await client.callTool({
+      name: "mp_sentinel_index_find_file",
+      arguments: { query: "main.ts" },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(result.content[0]!.text) as {
+      status: string;
+      results: Array<{ file: string }>;
+    };
+    expect(parsed.status).toBe("ok");
+    expect(parsed.results[0]?.file).toBe("src/main.ts");
+
+    await client.close();
+  });
+
+  it("callTool: mp_sentinel_task_context returns a compact file capsule", async () => {
+    await writeRichIndex(join(tempDir, DEFAULT_CACHE_REL));
+
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { createMPSentinelMCPServer } = await import("../commands/mcp-server.js");
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMPSentinelMCPServer(tempDir);
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: "test-client", version: "1.0" }, { capabilities: {} });
+    await client.connect(clientTransport);
+
+    const result = (await client.callTool({
+      name: "mp_sentinel_task_context",
+      arguments: { prompt: "where is run implemented", maxFiles: 5 },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0]!.text;
+    expect(text).not.toContain("\n  ");
+    const parsed = JSON.parse(text) as {
+      status: string;
+      files: Array<{ file: string }>;
+      usedTokens: number;
+    };
+    expect(parsed.status).toBe("ok");
+    expect(parsed.files.length).toBeGreaterThan(0);
+    expect(parsed.usedTokens).toBeGreaterThan(0);
+    expect(parsed.usedTokens).toBeLessThanOrEqual(800);
+    expect(JSON.stringify(parsed)).not.toContain("where is run implemented");
 
     await client.close();
   });

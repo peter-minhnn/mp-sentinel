@@ -1,0 +1,383 @@
+[
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "parseFile",
+    "relevant": [
+      "src/services/source-index/parser.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "queryUnifiedSearch",
+    "relevant": [
+      "src/services/source-index/agent-search.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "carryPreviousSidecarPayloads",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "stringifyCompactJson",
+    "relevant": [
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "hydrateIndex",
+    "relevant": [
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "exact",
+    "query": "parseLimitFlag",
+    "relevant": [
+      "src/commands/indexing-search.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "ambiguous",
+    "query": "parse",
+    "relevant": [
+      "src/services/source-index/parser.ts"
+    ]
+  },
+  {
+    "kind": "symbol",
+    "shape": "ambiguous",
+    "query": "search",
+    "relevant": [
+      "src/services/source-index/agent-search.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "exact",
+    "query": "query.ts",
+    "relevant": [
+      "src/services/source-index/query.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "exact",
+    "query": "sidecar-carry.ts",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "exact",
+    "query": "indexing-search.ts",
+    "relevant": [
+      "src/commands/indexing-search.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "exact",
+    "query": "json-output.ts",
+    "relevant": [
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "ambiguous",
+    "query": "index.ts",
+    "relevant": [
+      "src/services/source-index/index.ts"
+    ]
+  },
+  {
+    "kind": "path",
+    "shape": "ambiguous",
+    "query": "search.ts",
+    "relevant": [
+      "src/services/mcp-server/search.ts"
+    ]
+  },
+  {
+    "kind": "import",
+    "shape": "exact",
+    "query": "fast-glob",
+    "relevant": [
+      "src/services/file-handler/index.ts",
+      "src/services/skills-generator/legacy-detection.ts"
+    ]
+  },
+  {
+    "kind": "import",
+    "shape": "multi",
+    "query": "zod",
+    "relevant": [
+      "scripts/gen-config-schema.ts",
+      "src/commands/mcp-review-tools.ts",
+      "src/commands/mcp-search-tools.ts",
+      "src/commands/mcp-server.ts",
+      "src/services/skills-generator/ai-enrichment.ts",
+      "src/services/skills-generator/rule-packs/loader.ts",
+      "src/utils/config.ts"
+    ]
+  },
+  {
+    "kind": "import",
+    "shape": "exact",
+    "query": "tree-sitter",
+    "relevant": [
+      "scripts/check-review-guardrails.mjs"
+    ]
+  },
+  {
+    "kind": "import",
+    "shape": "exact",
+    "query": "commander",
+    "relevant": [
+      "src/cli/args.ts"
+    ]
+  },
+  {
+    "kind": "import",
+    "shape": "exact",
+    "query": "@modelcontextprotocol/sdk",
+    "relevant": [
+      "src/commands/mcp-review-tools.ts",
+      "src/commands/mcp-search-tools.ts",
+      "src/commands/mcp-server.ts"
+    ]
+  },
+  {
+    "kind": "code",
+    "shape": "exact",
+    "query": "parseFile",
+    "relevant": [
+      "src/services/source-index/parser.ts"
+    ]
+  },
+  {
+    "kind": "code",
+    "shape": "exact",
+    "query": "collectValidSidecarRows",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "code",
+    "shape": "exact",
+    "query": "stringifyCompactJson",
+    "relevant": [
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "code",
+    "shape": "ambiguous",
+    "query": "hydrate",
+    "relevant": [
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "fuzzy",
+    "shape": "fuzzy",
+    "query": "sidecar",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "fuzzy",
+    "shape": "fuzzy",
+    "query": "hydrat",
+    "relevant": [
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "fuzzy",
+    "shape": "fuzzy",
+    "query": "compact json",
+    "relevant": [
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "fuzzy",
+    "shape": "fuzzy",
+    "query": "find-file",
+    "relevant": [
+      "src/commands/indexing-search.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "atomic sidecar hydration",
+    "relevant": [
+      "src/services/source-index/storage.ts",
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "compact index search for agents",
+    "relevant": [
+      "src/services/source-index/agent-search.ts",
+      "src/commands/indexing-search.ts",
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "MCP index search tools",
+    "relevant": [
+      "src/commands/mcp-search-tools.ts",
+      "src/services/mcp-server/search.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "copy-forward deleted sidecar rows",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts",
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "create-skills metadata hash",
+    "relevant": [
+      "src/commands/create-skills.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "light cache write JSONL sidecars",
+    "relevant": [
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "review context from source index",
+    "relevant": [
+      "src/services/source-index/context-builder.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "parse indexing --limit flag",
+    "relevant": [
+      "src/commands/indexing-search.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "process-local MCP index cache",
+    "relevant": [
+      "src/services/mcp-server/index-cache.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "hydrate sidecar nguy\u00ean t\u1eed",
+    "relevant": [
+      "src/services/source-index/storage.ts",
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "t\u00ecm compact search cho agent",
+    "relevant": [
+      "src/services/source-index/agent-search.ts",
+      "src/commands/indexing-search.ts",
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "c\u00f4ng c\u1ee5 MCP search index",
+    "relevant": [
+      "src/commands/mcp-search-tools.ts",
+      "src/services/mcp-server/search.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "sao ch\u00e9p sidecar khi x\u00f3a file ngu\u1ed3n",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts",
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "How should we copy sidecar JSONL rows forward after a source file is deleted?",
+    "relevant": [
+      "src/services/source-index/sidecar-carry.ts",
+      "src/services/source-index/storage.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "I need to understand atomic sidecar hydration: when a JSONL row is corrupt we must not attach a prefix of payloads. Which modules implement that invariant?",
+    "relevant": [
+      "src/services/source-index/storage.ts",
+      "src/services/source-index/sidecar-carry.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "where is compact JSON forced for MCP tool payloads",
+    "relevant": [
+      "src/services/source-index/json-output.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "index-cache skip disk on repeat MCP searches",
+    "relevant": [
+      "src/services/mcp-server/index-cache.ts"
+    ]
+  },
+  {
+    "kind": "task",
+    "shape": "task",
+    "query": "parseLimitFlag rejects prefix integer strings",
+    "relevant": [
+      "src/commands/indexing-search.ts"
+    ]
+  }
+]

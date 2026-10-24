@@ -1,0 +1,147 @@
+[
+  {
+    "file": "src/services/source-index/task-context.ts",
+    "focus": [
+      "buildTaskContext",
+      "packCapsule",
+      "extractTaskAnchors"
+    ],
+    "required": [
+      "buildTaskContext",
+      "extractTaskAnchors",
+      "./task-context-pack.js",
+      "src/services/mcp-server/task-context.ts"
+    ]
+  },
+  {
+    "file": "src/services/source-index/agent-context-pack.ts",
+    "focus": [
+      "buildCompactAgentContext",
+      "normalizeFocus"
+    ],
+    "required": [
+      "buildCompactAgentContext",
+      "normalizeFocus",
+      "./emit-policy.js",
+      "src/services/mcp-server/service.ts"
+    ]
+  },
+  {
+    "file": "src/services/source-index/agent-context-evidence.ts",
+    "focus": [
+      "queryAgentContext",
+      "collectIncomingCalls"
+    ],
+    "required": [
+      "queryAgentContext",
+      "collectIncomingCalls",
+      "./query.js"
+    ]
+  },
+  {
+    "file": "src/services/mcp-server/service.ts",
+    "focus": [
+      "getAgentContext",
+      "getExplainContext"
+    ],
+    "required": [
+      "getAgentContext",
+      "getExplainContext",
+      "../source-index/agent-context-pack.js",
+      "src/commands/mcp-server.ts"
+    ]
+  },
+  {
+    "file": "src/commands/indexing.ts",
+    "focus": [
+      "runIndexingCommand",
+      "buildSourceIndex"
+    ],
+    "required": [
+      "runIndexingCommand",
+      "buildSourceIndex",
+      "./indexing-agent-context.js"
+    ]
+  },
+  {
+    "file": "src/services/source-index/storage.ts",
+    "focus": [
+      "hydrateIndex",
+      "readIndex"
+    ],
+    "required": [
+      "hydrateIndex",
+      "readIndex",
+      "getSidecarStatus"
+    ]
+  },
+  {
+    "file": "src/commands/indexing-queries.ts",
+    "focus": [
+      "handleAgentContext",
+      "handleExplain"
+    ],
+    "required": [
+      "handleAgentContext",
+      "handleExplain",
+      "../services/source-index/query.js"
+    ]
+  },
+  {
+    "file": "src/services/source-index/task-context-pack.ts",
+    "focus": [
+      "packCapsule",
+      "makeCapsule"
+    ],
+    "required": [
+      "packCapsule",
+      "makeCapsule",
+      "./emit-policy.js"
+    ]
+  },
+  {
+    "file": "src/services/source-index/agent-search.ts",
+    "focus": [
+      "queryFiles",
+      "queryUnifiedSearch"
+    ],
+    "required": [
+      "queryFiles",
+      "queryUnifiedSearch"
+    ]
+  },
+  {
+    "file": "src/services/source-index/context-builder.ts",
+    "focus": [
+      "buildReviewContext",
+      "computeCallerMatches"
+    ],
+    "required": [
+      "buildReviewContext",
+      "computeCallerMatches",
+      "./query.js"
+    ]
+  },
+  {
+    "file": "src/services/source-index/parser.ts",
+    "focus": [
+      "buildCodeSearchEntries",
+      "extractSymbolInfo"
+    ],
+    "required": [
+      "buildCodeSearchEntries",
+      "extractSymbolInfo",
+      "./manifest.js"
+    ]
+  },
+  {
+    "file": "src/services/mcp-server/task-context.ts",
+    "focus": [
+      "getTaskContext"
+    ],
+    "required": [
+      "getTaskContext",
+      "../source-index/task-context.js"
+    ]
+  }
+]

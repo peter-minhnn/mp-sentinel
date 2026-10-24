@@ -670,9 +670,8 @@ Generated skill files and the `create-skills` quality gate enforce an agent work
 | `indexing --parse-errors` | List files with hard parse errors |
 | `indexing --agent-context <file>` | Per-file diagnostics: symbols, imports, dependents, parser mode, chunk telemetry, outbound calls + incoming call candidates (schema 1.4+) |
 | `indexing --explain-index <file>` | Full parser diagnostics for a single file |
-| `indexing --find-symbol <name>` | Locate a symbol across the index |
-| `indexing --find-import <package>` | Find files that import a given package |
-| `indexing --find-code <query>` | Search indexed code snippets for a query |
+| `indexing --search <query>` | Compact unified search (symbols + files + imports) |
+| `indexing --find-file <path>` | Locate indexed files by path or basename |
 | `indexing --stats` | Aggregate index statistics |
 | `--explain-context` | Review context diagnostics (available on the root CLI) |
 
@@ -681,9 +680,9 @@ Generated skill files and the `create-skills` quality gate enforce an agent work
 1. **Health first.** Always start with `--health` to assess index state and parser health before touching files. If the index is missing or corrupt, build it first with `indexing` or `indexing --force`.
 2. **Drill down when parser issues exist.** If `--health` reports `recoveredFiles > 0` or `parseErrorCount > 0`, inspect with `--recovered` or `--parse-errors` before making code changes. Parser recovery modes (`chunked-tree-sitter`, `ascii-fallback`, `lexical-fallback`) indicate files that may need attention.
 3. **Use per-file diagnostics before editing.** Before modifying any file, check its parser state with `--explain-index <file>` or `--agent-context <file>` to understand its parse health and dependency graph.
-4. **JSON mode for automation.** All indexing diagnostic commands support `--index-format json` for machine-readable output. Use it in CI and automated workflows.
+4. **JSON mode for automation.** All indexing diagnostic commands support `--index-format json` for machine-readable output. Piped/agent captures are compact (no pretty-print whitespace) unless `--pretty` is set. Look things up with `--search` / `--find-file`, then `--agent-context` on the chosen file. `--find-symbol`, `--find-import`, and `--find-code` remain on the CLI for compatibility; they are not part of the generated-skill workflow.
 
-The quality gate validates that generated skills include this workflow. Missing `--health`, `--recovered`, or `--parse-errors` commands in generated content are hard errors.
+The quality gate validates that generated skills include this workflow. Missing `--health`, `--recovered`, `--parse-errors`, `--search`, `--find-file`, or `--agent-context` commands in generated content are hard errors.
 
 ---
 

@@ -2192,10 +2192,11 @@ describe("agentWorkflow v2 content", () => {
     expect(content.sections.agentWorkflow).toContain("Before editing");
     expect(content.sections.agentWorkflow).toContain("--agent-context <file> --index-format json");
     expect(content.sections.agentWorkflow).toContain("--explain-index <file> --index-format json");
-    expect(content.sections.agentWorkflow).toContain("--find-symbol <name> --index-format json");
-    expect(content.sections.agentWorkflow).toContain(
-      "--find-import <package-or-path> --index-format json",
-    );
+    expect(content.sections.agentWorkflow).toContain("--search <query> --index-format json");
+    expect(content.sections.agentWorkflow).toContain("--find-file <path> --index-format json");
+    expect(content.sections.agentWorkflow).not.toContain("--find-symbol");
+    expect(content.sections.agentWorkflow).not.toContain("--find-import");
+    expect(content.sections.agentWorkflow).not.toContain("--find-code");
     expect(content.sections.agentWorkflow).toContain("codebase-map.md");
     expect(content.sections.agentWorkflow).toContain("testing-map.md");
     expect(content.sections.agentWorkflow).toContain("dependencies.md");

@@ -464,9 +464,20 @@ describe("agent-skills-check.mjs", () => {
   const agentCheck = scriptPath("agent-skills-check.mjs");
 
   it("exits 0 when only legacy advisories exist (current project state)", () => {
-    // Run for real -- generated skills are current, legacy advisories are non-blocking
+    // Runs against the live checkout: generated skills must be current for the
+    // source as it stands, and legacy advisories are non-blocking.
     const result = runScript(agentCheck, REPO_ROOT);
 
+    if (result.exitCode !== 0) {
+      // This is a checkout-state failure, not a random one: generated skills
+      // are local-only artifacts, so editing source without refreshing them
+      // fails here. Say so, instead of leaving an opaque exit code.
+      throw new Error(
+        "agent:skills:check reported stale/missing generated skills for the current source. " +
+          "Run `npm run agent:skills:refresh`, then re-run.\n" +
+          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("[agent:skills:check]");
     expect(result.stdout).toContain("-> ok");

@@ -119,6 +119,22 @@ test("indexing query modes request json; rebuild does not", () => {
     "--index-format",
     "json",
   ]);
+  assert.deepEqual(buildIndexingArgs({ kind: "search", query: "foo", limit: 5 }), [
+    "indexing",
+    "--search",
+    "foo",
+    "--index-format",
+    "json",
+    "--limit",
+    "5",
+  ]);
+  assert.deepEqual(buildIndexingArgs({ kind: "find-file", query: "query.ts" }), [
+    "indexing",
+    "--find-file",
+    "query.ts",
+    "--index-format",
+    "json",
+  ]);
 });
 
 test("create-skills: check with all-agents in json", () => {

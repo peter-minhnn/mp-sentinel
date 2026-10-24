@@ -18,7 +18,8 @@ import {
   streamCodeEntries,
   validateCache,
 } from "../services/source-index/storage.js";
-import { queryCode, queryCodeStream, queryAgentContext } from "../services/source-index/query.js";
+import { queryCode, queryCodeStream } from "../services/source-index/query.js";
+import { queryAgentContext } from "../services/source-index/agent-context-evidence.js";
 import type { SourceIndex, SourceIndexFile } from "../types/index.js";
 
 const tempDirs: string[] = [];
@@ -211,6 +212,27 @@ describe("streaming code search parity", () => {
     const ok = await streamCodeEntries(legacy, cachePath, (path) => seen.push(path));
     expect(ok).toBe(true);
     expect(seen).toEqual(["src/f0.ts", "src/f1.ts"]);
+  });
+
+  it("queryCodeStream throws instead of returning hits from rows before a corrupt line", async () => {
+    const dir = await makeTempDir();
+    const cachePath = join(dir, "source-index.json");
+    await writeIndex(makeIndex(4), cachePath);
+    const codeSidecar = (await readdir(dir)).find((e) => e.endsWith(".code.jsonl"))!;
+    const sidecarPath = join(dir, codeSidecar);
+    const raw = await readFile(sidecarPath, "utf-8");
+    const lines = raw.split("\n").filter((line) => line.length > 0);
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    const target = lines[1]!;
+    lines[1] = `x${target.slice(1)}`;
+    const corrupted = `${lines.join("\n")}\n`;
+    expect(Buffer.byteLength(corrupted)).toBe(Buffer.byteLength(raw));
+    await writeFile(sidecarPath, corrupted);
+
+    const core = await readIndex(cachePath, { hydrate: "none" });
+    await expect(queryCodeStream(core, cachePath, "fn_src/f0.ts")).rejects.toThrow(
+      /partial code-search/,
+    );
   });
 });
 

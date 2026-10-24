@@ -78,9 +78,7 @@ for (const agent of data.check) {
 
   // Check quality errors
   if (agent.quality) {
-    const errors = agent.quality.checks?.filter(
-      (c) => c.severity === "error",
-    );
+    const errors = agent.quality.checks?.filter((c) => c.severity === "error");
     if (errors && errors.length > 0) {
       hasIssues = true;
       for (const err of errors) {
@@ -88,9 +86,7 @@ for (const agent of data.check) {
       }
     }
     // Report warnings as info (not blocking)
-    const warnings = agent.quality.checks?.filter(
-      (c) => c.severity === "warning",
-    );
+    const warnings = agent.quality.checks?.filter((c) => c.severity === "warning");
     if (warnings && warnings.length > 0) {
       for (const w of warnings) {
         process.stderr.write(`WARN: ${w.file}: ${w.message} (agent: ${agent.agent})\n`);

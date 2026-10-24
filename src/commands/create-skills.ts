@@ -246,12 +246,19 @@ async function resolveIndex(projectRoot: string, skipRefresh: boolean): Promise<
           `Run "mp-sentinel indexing" first, or remove --skip-index-refresh.`,
       );
     }
-    const { readIndex } = await import("../services/source-index/storage.js");
-    const cached = await readIndex(cachePath, { hydrate: "calls" });
+    const { readIndex, hydrateIndex } = await import("../services/source-index/storage.js");
+    const cached = await readIndex(cachePath, { hydrate: "none" });
     if (!cached) {
       throw new UserError(
         `Source index cache at "${indexingConfig.cachePath}" is missing or corrupt. ` +
           `Run "mp-sentinel indexing" to rebuild it.`,
+      );
+    }
+    const hydrated = await hydrateIndex(cached, cachePath, "calls");
+    if (!hydrated) {
+      throw new UserError(
+        `Source index sidecar is missing or corrupt. ` +
+          `Run "mp-sentinel indexing" to rebuild it, or omit --skip-index-refresh.`,
       );
     }
     return cached;

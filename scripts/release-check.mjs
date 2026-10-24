@@ -201,7 +201,11 @@ function checkReadmeWhatsNew(expected) {
   if (!text) return;
   // The "What's New" pointer: "for the latest features in **vX.Y.Z**:"
   // Find the line containing both "What's New" and the version bold
-  const v = extractVersion(text, /What's New[\s\S]*?\*\*v(\d+\.\d+\.\d+)\*\*/, 'README "What\'s New"');
+  const v = extractVersion(
+    text,
+    /What's New[\s\S]*?\*\*v(\d+\.\d+\.\d+)\*\*/,
+    'README "What\'s New"',
+  );
   if (!v) {
     fail('README "What\'s New" version pointer not found');
     return;
@@ -374,7 +378,27 @@ function checkDistFreshness(expected) {
       timeout: 30000,
       stdio: "pipe",
     });
-    const requiredFlags = ["--health", "--agent-context", "--find-symbol", "--find-import", "--find-code", "--stats", "--explain-index", "--recovered", "--parse-errors"];
+    const requiredFlags = [
+      "--health",
+      "--agent-context",
+      "--search",
+      "--find-file",
+      "--task-context",
+      "--token-budget",
+      "--focus",
+      "--explain-ranking",
+      "--limit",
+      "--kind",
+      "--pretty",
+      "--compact",
+      "--find-symbol",
+      "--find-import",
+      "--find-code",
+      "--stats",
+      "--explain-index",
+      "--recovered",
+      "--parse-errors",
+    ];
     const missing = requiredFlags.filter((f) => !helpOut.includes(f));
     if (missing.length > 0) {
       for (const flag of missing) {
@@ -544,7 +568,9 @@ function checkWhatsNewSymbols() {
   }
 
   if (symbols.length > 0) {
-    ok(`WHATS_NEW.md symbol hygiene (${symbols.length} function ref${symbols.length === 1 ? "" : "s"})`);
+    ok(
+      `WHATS_NEW.md symbol hygiene (${symbols.length} function ref${symbols.length === 1 ? "" : "s"})`,
+    );
   }
 }
 

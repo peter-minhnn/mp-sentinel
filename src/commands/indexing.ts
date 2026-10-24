@@ -28,6 +28,7 @@ import {
   computeManifestHash,
 } from "../services/source-index/manifest.js";
 import { parseFile, parseNonIndexableFile } from "../services/source-index/parser.js";
+import { CURRENT_EXTRACTOR_VERSION } from "../services/source-index/extraction-version.js";
 import { defaultIndexingConcurrency, parallelMap } from "../services/source-index/parallel.js";
 import {
   readIndex,
@@ -38,6 +39,7 @@ import {
   calculateSHA256,
 } from "../services/source-index/storage.js";
 import type { IndexHydration } from "../services/source-index/storage.js";
+import { SidecarCarryError, isSparseCodeSidecar } from "../services/source-index/sidecar-carry.js";
 import { ImportResolver } from "../services/source-index/resolver.js";
 import { buildIndexInsights } from "../services/skills-generator/insights.js";
 import type { CLIValues } from "../cli/args.js";
@@ -53,8 +55,26 @@ import {
   handleFindSymbol,
   handleFindImport,
   handleFindCode,
-  handleAgentContext,
 } from "./indexing-queries.js";
+import {
+  handleSearch,
+  handleFindFile,
+  parseLimitFlag,
+  parseSearchKinds,
+  DEFAULT_FIND_LIMIT,
+  DEFAULT_SEARCH_LIMIT,
+} from "./indexing-search.js";
+import {
+  handleTaskContext,
+  handleTaskRanking,
+  parseTokenBudgetFlag,
+} from "./indexing-task-context.js";
+import { resolveFocusAnchors, routeAgentContext } from "./indexing-agent-context.js";
+import {
+  emitIndexJson,
+  resolvePrettyJson,
+  setIndexJsonPretty,
+} from "../services/source-index/json-output.js";
 
 const DEFAULT_INDEXING_CONFIG: Required<
   Pick<IndexingConfig, "enabled" | "languages" | "cachePath" | "maxFileSize">
@@ -176,6 +196,12 @@ export async function buildSourceIndex(
    * "none"/"calls" to skip loading megabytes they won't read.
    */
   cacheHydration: IndexHydration = "full",
+  /**
+   * When false, skip sidecar existence/size checks. Compact --find-file
+   * and non-code --search only need the core index and must not read the
+   * JSONL sidecars.
+   */
+  auditSidecars: boolean = true,
 ): Promise<SourceIndex | null> {
   const startTime = performance.now();
 
@@ -246,6 +272,7 @@ export async function buildSourceIndex(
           mode: indexingConfig.validationMode ?? "fast",
           getFileSize,
           index: existingIndex,
+          auditSidecars,
         },
       );
 
@@ -262,19 +289,32 @@ export async function buildSourceIndex(
 
       // Tool version check: if the cache was built by a different tool version, rebuild.
       const cacheToolVersion = existingIndex?.toolVersion;
-      if (cacheToolVersion && cacheToolVersion !== currentToolVersion) {
+      const extractorChanged = existingIndex?.extractorVersion !== CURRENT_EXTRACTOR_VERSION;
+      if ((cacheToolVersion && cacheToolVersion !== currentToolVersion) || extractorChanged) {
         log.info(
-          `Tool version changed (${cacheToolVersion} → ${currentToolVersion}) — rebuilding source index`,
+          extractorChanged
+            ? "Extraction rules changed — rebuilding source index"
+            : `Tool version changed (${cacheToolVersion} → ${currentToolVersion}) — rebuilding source index`,
         );
         // Force full rebuild by treating all files as needing re-indexing.
         filesToIndex = allCandidateFiles;
         cachedFiles = [];
         manifestChanged = true;
-      } else if (validity.valid && !manifestChanged) {
+      } else if (validity.valid && !manifestChanged && toIndex.length === 0) {
         log.info("Cache is up-to-date, skipping re-index");
-        await hydrateIndex(existingIndex!, cachePath, cacheHydration);
-        return existingIndex!;
+        const hydrated = await hydrateIndex(existingIndex!, cachePath, cacheHydration);
+        if (hydrated || cacheHydration === "none") {
+          return existingIndex!;
+        }
+        log.warning("Sidecar hydration failed — forcing full reindex");
+        filesToIndex = allCandidateFiles;
+        cachedFiles = [];
       } else {
+        if (validity.valid && toIndex.length > 0) {
+          log.warning(
+            "Source hashes are current but sidecar payloads are not reusable — rebuilding",
+          );
+        }
         filesToIndex = toIndex;
         cachedFiles = fromCache;
       }
@@ -285,9 +325,17 @@ export async function buildSourceIndex(
         log.info("Manifest-only change — reusing cached parsed files, rebuilding graph");
         filesToIndex = [];
         if (existingIndex) {
-          await hydrateIndex(existingIndex, cachePath, "full");
+          const hydrated = await hydrateIndex(existingIndex, cachePath, "full");
+          if (!hydrated) {
+            log.warning("Sidecar hydration failed on manifest-only change — forcing full reindex");
+            filesToIndex = allCandidateFiles;
+            cachedFiles = [];
+          } else {
+            cachedFiles = existingIndex.files;
+          }
+        } else {
+          cachedFiles = [];
         }
-        cachedFiles = existingIndex?.files ?? [];
       }
 
       if (filesToIndex.length === 0 && !manifestChanged) {
@@ -516,6 +564,7 @@ export async function buildSourceIndex(
 
   // Build preliminary index for insights computation
   const preIndex: SourceIndex = {
+    extractorVersion: CURRENT_EXTRACTOR_VERSION,
     schemaVersion: CURRENT_SOURCE_INDEX_SCHEMA,
     generatedAt: new Date().toISOString(),
     toolVersion: currentToolVersion,
@@ -549,6 +598,7 @@ export async function buildSourceIndex(
 
   // Build index
   const index: SourceIndex = {
+    extractorVersion: CURRENT_EXTRACTOR_VERSION,
     schemaVersion: CURRENT_SOURCE_INDEX_SCHEMA,
     generatedAt: new Date().toISOString(),
     toolVersion: currentToolVersion,
@@ -587,7 +637,18 @@ export async function buildSourceIndex(
 
   // Write cache
   log.info("Writing source index cache...");
-  await writeIndex(index, cachePath, { cacheMode: indexingConfig.cacheMode ?? "light" });
+  try {
+    await writeIndex(index, cachePath, {
+      cacheMode: indexingConfig.cacheMode ?? "light",
+      cacheHitPaths: new Set(cachedFiles.map((f) => f.path)),
+    });
+  } catch (error) {
+    if (error instanceof SidecarCarryError && !force) {
+      log.warning(`${error.message} — retrying with a full reindex`);
+      return buildSourceIndex(projectRoot, indexingConfig, true, cacheHydration, auditSidecars);
+    }
+    throw error;
+  }
 
   const duration = performance.now() - startTime;
   log.info(`Indexing complete in ${duration.toFixed(0)}ms`);
@@ -614,7 +675,7 @@ async function handleHealth(
   // ── Missing cache ──────────────────────────────────────────────────────────
   if (!existsSync(cachePath)) {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "missing" }, null, 2));
+      emitIndexJson({ status: "missing" });
     } else {
       console.log(`Index health: MISSING`);
       console.log(`  Cache not found at: ${cachePath}`);
@@ -628,7 +689,7 @@ async function handleHealth(
     raw = await readFile(cachePath, "utf-8");
   } catch {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+      emitIndexJson({ status: "unreadable" });
     } else {
       console.log(`Index health: UNREADABLE`);
       console.log(`  Cache exists but cannot be read at: ${cachePath}`);
@@ -642,7 +703,7 @@ async function handleHealth(
     index = JSON.parse(raw) as SourceIndex;
   } catch {
     if (format === "json") {
-      console.log(JSON.stringify({ status: "unreadable" }, null, 2));
+      emitIndexJson({ status: "unreadable" });
     } else {
       console.log(`Index health: UNREADABLE`);
       console.log(`  Cache exists but contains invalid JSON at: ${cachePath}`);
@@ -656,9 +717,7 @@ async function handleHealth(
     currentManifestHash = await computeManifestHash(projectRoot);
   } catch {
     if (format === "json") {
-      console.log(
-        JSON.stringify({ status: "ERROR", error: "Failed to compute manifest hash" }, null, 2),
-      );
+      emitIndexJson({ status: "ERROR", error: "Failed to compute manifest hash" });
     } else {
       console.log(`Index health check failed: could not compute manifest hash`);
     }
@@ -686,6 +745,8 @@ async function handleHealth(
   // ── Tool version staleness ─────────────────────────────────────────────────
   const currentToolVersion = getToolVersion();
   const cacheToolVersion = index.toolVersion;
+  if (index.extractorVersion !== CURRENT_EXTRACTOR_VERSION)
+    staleReasons.push("extraction rules changed");
   if (cacheToolVersion !== currentToolVersion) {
     staleReasons.push("tool version changed");
   }
@@ -720,8 +781,14 @@ async function handleHealth(
 
   // ── Sidecar integrity (schema 1.5 light cache) ─────────────────────────────
   const sidecarStatus = await getSidecarStatus(index, cachePath);
-  if (!sidecarStatus.sidecarsValid) {
+  if (sidecarStatus.missing.length > 0) {
     staleReasons.push("sidecar files missing");
+  }
+  if (sidecarStatus.sizeMismatched.length > 0) {
+    staleReasons.push("sidecar size mismatch");
+  }
+  if (isSparseCodeSidecar(index)) {
+    staleReasons.push("code sidecar coverage drop");
   }
 
   // Deduplicate stale reasons
@@ -779,7 +846,7 @@ async function handleHealth(
   };
 
   if (format === "json") {
-    console.log(JSON.stringify(output, null, 2));
+    emitIndexJson(output);
   } else {
     console.log();
     console.log(`Index health: ${status.toUpperCase()}`);
@@ -787,7 +854,7 @@ async function handleHealth(
     console.log(`  Total files:     ${index.files.length}`);
     console.log(`  Parse error rate: ${(parseErrorRate * 100).toFixed(1)}%`);
     console.log(
-      `  Cache layout:    ${sidecarStatus.cacheMode} (core ${sidecarStatus.coreBytes} B, sidecars ${sidecarStatus.sidecarBytes} B${sidecarStatus.sidecarsValid ? "" : ", MISSING SIDECARS"})`,
+      `  Cache layout:    ${sidecarStatus.cacheMode} (core ${sidecarStatus.coreBytes} B, sidecars ${sidecarStatus.sidecarBytes} B${sidecarStatus.sidecarsValid ? "" : ", SIDECAR INVALID"})`,
     );
     console.log(`  Recovered files:  ${recoveredFiles}`);
     if (
@@ -850,22 +917,43 @@ export async function runIndexingCommand(
     findSymbol?: string;
     findImport?: string;
     findCode?: string;
+    search?: string;
+    findFile?: string;
+    taskContext?: string;
+    tokenBudget?: string;
+    explainRanking?: boolean;
+    focus?: string[];
     agentContext?: string;
     recovered?: boolean;
     parseErrors?: boolean;
     fullIndex?: boolean;
+    pretty?: boolean;
+    compact?: boolean;
+    limit?: string;
+    kind?: string;
   },
   projectRoot: string = process.cwd(),
 ): Promise<number> {
   const startTime = performance.now();
   const format = resolveIndexFormat(values["index-format"]);
+  if (values.pretty && values.compact) {
+    throw new UserError("--pretty and --compact cannot be used together");
+  }
+  setIndexJsonPretty(
+    resolvePrettyJson({
+      ...(values.pretty ? { pretty: true } : {}),
+      ...(values.compact ? { compact: true } : {}),
+    }),
+  );
 
-  // --find-symbol, --find-import, --find-code, and --agent-context are read-only queries: they use the existing index only.
-  // Build/update the index if absent, but don't force rebuild.
+  // Read-only queries use the existing index only. Build if absent, don't force rebuild.
   const isReadOnlyQuery = !!(
     values.findSymbol ||
     values.findImport ||
     values.findCode ||
+    values.search ||
+    values.findFile ||
+    values.taskContext ||
     values.agentContext
   );
 
@@ -889,7 +977,7 @@ export async function runIndexingCommand(
       const message =
         error instanceof Error ? error.message : "Health check failed with unknown error";
       if (format === "json") {
-        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+        emitIndexJson({ status: "ERROR", error: message });
       } else {
         if (error instanceof Error) {
           log.critical(`Health check failed: ${error.message}`);
@@ -917,7 +1005,7 @@ export async function runIndexingCommand(
       const message =
         error instanceof Error ? error.message : "Recovered drilldown failed with unknown error";
       if (format === "json") {
-        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+        emitIndexJson({ status: "ERROR", error: message });
       } else {
         if (error instanceof Error) {
           log.critical(`Recovered drilldown failed: ${error.message}`);
@@ -945,7 +1033,7 @@ export async function runIndexingCommand(
       const message =
         error instanceof Error ? error.message : "Parse-errors drilldown failed with unknown error";
       if (format === "json") {
-        console.log(JSON.stringify({ status: "ERROR", error: message }, null, 2));
+        emitIndexJson({ status: "ERROR", error: message });
       } else {
         if (error instanceof Error) {
           log.critical(`Parse-errors drilldown failed: ${error.message}`);
@@ -969,9 +1057,31 @@ export async function runIndexingCommand(
   if (values.findCode !== undefined && values.findCode.trim() === "") {
     throw new UserError("--find-code query must not be empty");
   }
+  if (values.search !== undefined && values.search.trim() === "") {
+    throw new UserError("--search query must not be empty");
+  }
+  if (values.findFile !== undefined && values.findFile.trim() === "") {
+    throw new UserError("--find-file query must not be empty");
+  }
+  if (values.taskContext !== undefined && values.taskContext.trim() === "") {
+    throw new UserError("--task-context prompt must not be empty");
+  }
   if (values.agentContext !== undefined && values.agentContext.trim() === "") {
     throw new UserError("--agent-context file path must not be empty");
   }
+  // `--focus` only ranks compact agent-context evidence: refuse it anywhere
+  // else rather than silently ignoring it or mutating the legacy payload.
+  const focusAnchors = resolveFocusAnchors(values);
+  if (values.explainRanking && !values.taskContext) {
+    throw new UserError("--explain-ranking requires --task-context");
+  }
+
+  const searchKinds = parseSearchKinds(values.kind);
+  const isCompactSearch = !!(values.search || values.findFile);
+  const resultLimit = parseLimitFlag(
+    values.limit,
+    values.taskContext ? 5 : isCompactSearch ? DEFAULT_SEARCH_LIMIT : DEFAULT_FIND_LIMIT,
+  );
 
   // Suppress informational logs when emitting structured JSON so stdout contains only valid JSON.
   if (format === "json") setLogQuietMode(true);
@@ -996,31 +1106,62 @@ export async function runIndexingCommand(
           : "none";
 
     const cachePath = resolve(projectRoot, indexingConfig.cachePath);
+    const wantsCodeSidecar =
+      !!values.findCode ||
+      (values.search !== undefined && (searchKinds?.includes("code") ?? false));
+    // Compact --find-file / non-code --search only need the core index.
+    const auditSidecars = !isReadOnlyQuery || wantsCodeSidecar || !!values.agentContext;
     const index = await buildSourceIndex(
       projectRoot,
       indexingConfig,
       isReadOnlyQuery ? false : values.force,
       hydration,
+      auditSidecars,
     );
+
+    if (values.search) {
+      return await handleSearch(values.search, index, format, cachePath, resultLimit, searchKinds);
+    }
+
+    if (values.findFile) {
+      return handleFindFile(values.findFile, index, format, resultLimit);
+    }
+
+    if (values.taskContext) {
+      if (values.explainRanking) {
+        return await handleTaskRanking(values.taskContext, index, format, cachePath);
+      }
+      return await handleTaskContext(
+        values.taskContext,
+        index,
+        format,
+        cachePath,
+        resultLimit,
+        parseTokenBudgetFlag(values.tokenBudget),
+      );
+    }
 
     // Handle --find-symbol query
     if (values.findSymbol) {
-      return handleFindSymbol(values.findSymbol, index, format);
+      return handleFindSymbol(values.findSymbol, index, format, resultLimit);
     }
 
     // Handle --find-import query
     if (values.findImport) {
-      return handleFindImport(values.findImport, index, format);
+      return handleFindImport(values.findImport, index, format, resultLimit);
     }
 
     // Handle --find-code query
     if (values.findCode) {
-      return await handleFindCode(values.findCode, index, format, cachePath);
+      return await handleFindCode(values.findCode, index, format, cachePath, resultLimit);
     }
 
-    // Handle --agent-context query
+    // Handle --agent-context query (legacy payload, or compact with --token-budget).
     if (values.agentContext) {
-      return handleAgentContext(values.agentContext, index, format, projectRoot);
+      return await routeAgentContext(values.agentContext, index, format, projectRoot, {
+        ...(values.tokenBudget !== undefined ? { tokenBudget: values.tokenBudget } : {}),
+        focus: focusAnchors,
+      });
     }
 
     // Handle --explain-index option
@@ -1038,15 +1179,23 @@ export async function runIndexingCommand(
         // Light mode prints the compact core + sidecar metadata by default;
         // --full-index hydrates sidecar payloads into the JSON export.
         if (values.fullIndex) {
-          await hydrateIndex(index, cachePath, "full");
-          console.log(JSON.stringify(index, null, 2));
+          const hydrated = await hydrateIndex(index, cachePath, "full");
+          if (!hydrated) {
+            emitIndexJson({
+              status: "ERROR",
+              error:
+                "Sidecar hydration failed; refusing to export a partial index. Re-run `mp-sentinel indexing` to rebuild.",
+            });
+            return 2;
+          }
+          emitIndexJson(index);
         } else {
           const coreView = (await readIndex(cachePath, { hydrate: "none" })) ?? index;
-          console.log(JSON.stringify(coreView, null, 2));
+          emitIndexJson(coreView);
         }
       } else {
         // Indexing failed or returned null for other reasons (shouldn't happen with new semantics)
-        console.log(JSON.stringify({ status: "NO_INDEX" }, null, 2));
+        emitIndexJson({ status: "NO_INDEX" });
       }
     } else {
       // Console format
@@ -1081,16 +1230,10 @@ export async function runIndexingCommand(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Indexing failed with unknown error";
     if (format === "json") {
-      console.log(
-        JSON.stringify(
-          {
-            status: "ERROR",
-            error: message,
-          },
-          null,
-          2,
-        ),
-      );
+      emitIndexJson({
+        status: "ERROR",
+        error: message,
+      });
       return 2;
     }
     if (error instanceof Error) {

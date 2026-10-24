@@ -21,12 +21,12 @@ Before writing any code for **gems-approval-fixture**, follow these steps in ord
 4. **Drilldown when health suggests issues**:
    - \`bun run sentinel:index --recovered --index-format json\` - list files parsed via fallback recoveries
    - \`bun run sentinel:index --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, use source index diagnostics:
+5. **Before editing**, search the index first (compact JSON, low token cost):
+   - \`bun run sentinel:index --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
+   - \`bun run sentinel:index --find-file <path> --index-format json\` - locate indexed files by path or basename
    - \`bun run sentinel:index --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
+   - \`bun run sentinel:index --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
    - \`bun run sentinel:index --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`bun run sentinel:index --find-symbol <name> --index-format json\` - search index for symbols
-   - \`bun run sentinel:index --find-import <package-or-path> --index-format json\` - search index for import usage
-   - \`bun run sentinel:index --find-code <query> --index-format json\` - search indexed code snippets
    - \`bun run sentinel:index --stats --index-format json\` - index statistics
    - \`bunx --bun mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
 6. **Load only the relevant references**:
@@ -40,8 +40,8 @@ Before writing any code for **gems-approval-fixture**, follow these steps in ord
 7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
 
 **Quick-start search examples (from this codebase):**
-   - \`bun run sentinel:index --find-symbol App --index-format json\` - locate \`App\` (function) across the codebase
-   - \`bun run sentinel:index --find-symbol getDetail --index-format json\` - locate \`getDetail\` (function) across the codebase
+   - \`bun run sentinel:index --search App --index-format json\` - locate \`App\` (function) across the codebase
+   - \`bun run sentinel:index --search getDetail --index-format json\` - locate \`getDetail\` (function) across the codebase
 
 > **Auto-generated.** Regenerate via \`bun run agent:skills:refresh\`. Do not edit.
 
@@ -318,12 +318,12 @@ Before writing any code for **mvp-listening-fixture**, follow these steps in ord
 4. **Drilldown when health suggests issues**:
    - \`pnpm exec mp-sentinel indexing --recovered --index-format json\` - list files parsed via fallback recoveries
    - \`pnpm exec mp-sentinel indexing --parse-errors --index-format json\` - list files with hard parse errors
-5. **Before editing**, use source index diagnostics:
+5. **Before editing**, search the index first (compact JSON, low token cost):
+   - \`pnpm exec mp-sentinel indexing --search <query> --index-format json\` - unified symbol/file/import search (add --kind code for snippets)
+   - \`pnpm exec mp-sentinel indexing --find-file <path> --index-format json\` - locate indexed files by path or basename
    - \`pnpm exec mp-sentinel indexing --agent-context <file> --index-format json\` - symbols, imports, dependents, next commands
+   - \`pnpm exec mp-sentinel indexing --agent-context <file> --token-budget 1200 --focus <anchor> --index-format json\` - same evidence under a token budget, task anchors ranked first
    - \`pnpm exec mp-sentinel indexing --explain-index <file> --index-format json\` - imports, dependents, symbols
-   - \`pnpm exec mp-sentinel indexing --find-symbol <name> --index-format json\` - search index for symbols
-   - \`pnpm exec mp-sentinel indexing --find-import <package-or-path> --index-format json\` - search index for import usage
-   - \`pnpm exec mp-sentinel indexing --find-code <query> --index-format json\` - search indexed code snippets
    - \`pnpm exec mp-sentinel indexing --stats --index-format json\` - index statistics
    - \`pnpm exec mp-sentinel --explain-context --format json --files <file>\` - context enrichment preview
 6. **Load only the relevant references**:
@@ -337,8 +337,8 @@ Before writing any code for **mvp-listening-fixture**, follow these steps in ord
 7. **Respect the profile rules** - each profile has specific review pitfalls listed below.
 
 **Quick-start search examples (from this codebase):**
-   - \`pnpm exec mp-sentinel indexing --find-symbol DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
-   - \`pnpm exec mp-sentinel indexing --find-symbol DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
+   - \`pnpm exec mp-sentinel indexing --search DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
+   - \`pnpm exec mp-sentinel indexing --search DashboardLayout --index-format json\` - locate \`DashboardLayout\` (function) across the codebase
 
 > **Auto-generated.** Regenerate via \`pnpm exec mp-sentinel create-skills --all-agents --force\`. Do not edit.
 

@@ -156,7 +156,7 @@ try {
   } catch {
     // ignore cleanup errors
   }
-  const msg = e.stderr ? String(e.stderr).trim() : (e.message || String(e));
+  const msg = e.stderr ? String(e.stderr).trim() : e.message || String(e);
   process.stderr.write(`SMOKE ERROR: ${msg}\n`);
   process.exit(2);
 }

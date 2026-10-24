@@ -62,7 +62,8 @@ const FIXTURES = [
       );
     },
     badFile: "src/routes/Bad.svelte",
-    editTask: 'Move the `import { onMount }` statement inside the `<script lang="ts">` block in `src/routes/Bad.svelte`.',
+    editTask:
+      'Move the `import { onMount }` statement inside the `<script lang="ts">` block in `src/routes/Bad.svelte`.',
     evaluatorRuleId: "svelte/imports-inside-script",
   },
 ];
@@ -92,8 +93,10 @@ function generateReport(results) {
   for (const r of results) {
     const v1Pct = r.trials > 0 ? ((r.v1Passes / r.trials) * 100).toFixed(0) : "N/A";
     const v2Pct = r.trials > 0 ? ((r.v2Passes / r.trials) * 100).toFixed(0) : "N/A";
-    const delta = r.trials > 0 ? (r.v2Passes - r.v1Passes) : 0;
-    lines.push(`| ${r.fixture} | ${r.ruleId} | ${v1Pct}% | ${v2Pct}% | ${delta > 0 ? "+" : ""}${delta} | ${r.trials} |`);
+    const delta = r.trials > 0 ? r.v2Passes - r.v1Passes : 0;
+    lines.push(
+      `| ${r.fixture} | ${r.ruleId} | ${v1Pct}% | ${v2Pct}% | ${delta > 0 ? "+" : ""}${delta} | ${r.trials} |`,
+    );
     totalV1Wins += r.v1Passes;
     totalV2Wins += r.v2Passes;
     totalTrials += r.trials;
@@ -102,7 +105,9 @@ function generateReport(results) {
   if (totalTrials > 0) {
     const overallV1 = ((totalV1Wins / totalTrials) * 100).toFixed(0);
     const overallV2 = ((totalV2Wins / totalTrials) * 100).toFixed(0);
-    lines.push(`| **Overall** | | **${overallV1}%** | **${overallV2}%** | **+${totalV2Wins - totalV1Wins}** | ${totalTrials} |`);
+    lines.push(
+      `| **Overall** | | **${overallV1}%** | **${overallV2}%** | **+${totalV2Wins - totalV1Wins}** | ${totalTrials} |`,
+    );
   }
 
   lines.push(
@@ -141,7 +146,9 @@ function generateReport(results) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`[compliance] Mode: ${DRY_RUN ? "dry-run" : "live"}, Provider: ${PROVIDER}, Model: ${MODEL}`);
+  console.log(
+    `[compliance] Mode: ${DRY_RUN ? "dry-run" : "live"}, Provider: ${PROVIDER}, Model: ${MODEL}`,
+  );
 
   const results = [];
 
@@ -167,7 +174,11 @@ async function main() {
     }
 
     const skillPath = join(
-      tmpDir, ".claude", "skills", `${projectName}-best-practices`, "SKILL.md",
+      tmpDir,
+      ".claude",
+      "skills",
+      `${projectName}-best-practices`,
+      "SKILL.md",
     );
     const skillContent = existsSync(skillPath) ? readFileSync(skillPath, "utf-8") : "";
 
@@ -180,7 +191,9 @@ async function main() {
         v1Passes: 0,
         v2Passes: 1, // Simulate v2 improvement
       });
-      console.log(`[compliance]   Dry-run: SKILL.md generated (${skillContent.length} chars), reporting placeholder data.`);
+      console.log(
+        `[compliance]   Dry-run: SKILL.md generated (${skillContent.length} chars), reporting placeholder data.`,
+      );
     } else {
       // Live path would call the LLM here
       // Placeholder for real implementation
@@ -203,7 +216,9 @@ async function main() {
   console.log(`[compliance] Report written to ${REPORT_PATH}`);
 
   if (DRY_RUN) {
-    console.log("[compliance] Dry run complete. Set COMPLIANCE_PROVIDER + COMPLIANCE_MODEL + API key for live run.");
+    console.log(
+      "[compliance] Dry run complete. Set COMPLIANCE_PROVIDER + COMPLIANCE_MODEL + API key for live run.",
+    );
   }
 
   process.exit(0);

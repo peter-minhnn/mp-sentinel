@@ -26,17 +26,41 @@
 
 ## `indexing` — Build source index
 
+Developer measurement: `npm run allocation:bench -- --output <report.json>` selects a fixed-budget policy on tuning rows. Evaluation and external-repo commands are in [the allocation protocol](plans/RETRIEVAL_BASELINE.md#fixed-budget-allocation-experiment).
+
+Same-index diagnostics: `node scripts/fusion-ablation.mjs <repo> <locked-corpus.json> --specificity` compares benchmark-only anchor-selection/IDF variants. It does not change production policy; see [results and promotion limits](plans/COMMONJS_FOCUS_RESULTS.md#anchor-specificity-experiment-not-promoted).
+
+Seed-preservation experiment: use `--seed-preserve` instead of `--specificity` to compare the current policy, rarity selection and direct baseline seed protection. This remains benchmark-only; [results](plans/COMMONJS_FOCUS_RESULTS.md#seed-preservation-experiment-not-promoted).
+
+Partial-identifier experiment: `node scripts/fusion-ablation.mjs <repo> <locked-corpus.json> --identifier-evidence --chain` adds coherent callable evidence and measures real per-file agent-context outputs under unchanged budgets. See [definition, new cohort and decision](plans/IDENTIFIER_EVIDENCE_RESULTS.md).
+
+Final guard diagnostics: use `--coverage-guard --chain` instead; `node scripts/coverage-latency.mjs <private-manifest.json>` measures warm paired prototype timing. Neither enables a runtime policy. See [release decision and timing scope](plans/COVERAGE_GUARD_RESULTS.md).
+
+Multi-repo transfer: `npm run repos:bench -- --manifest <private-manifest.json> --freeze`, then repeat without `--freeze` and with `--output <private-results-dir>`. Manifest and failure semantics are documented in the same protocol.
+
+After implementation changes, allocation `--phase replay` or multi-repo `--replay` reuses the previously chosen allocation explicitly. Keep old reports and use a new output path; observed cases now serve as validation. A changed `extractorVersion` causes CLI indexing/query to rebuild once; refresh the index before using an existing MCP session to measure the new extraction.
+
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--force` | Rebuild from scratch | false |
 | `--health` | Index health diagnostics | false |
 | `--recovered` | List files parsed via fallback | false |
 | `--parse-errors` | List files with hard parse errors | false |
-| `--agent-context <file>` | Per-file diagnostics | - |
+| `--agent-context <file>` | Per-file diagnostics (legacy payload; add `--token-budget` for the compact capsule) | - |
 | `--explain-index <file>` | Full parser diagnostics | - |
+| `--search <query>` | Compact unified search (symbol + file + import). Add `--kind code` for snippets | - |
+| `--find-file <query>` | Locate indexed files by path or basename | - |
+| `--task-context <prompt>` | Ranked file capsule from a natural-language prompt (no snippets, no prompt echo) | - |
+| `--token-budget <n>` | Token budget for `--task-context` JSON, or opt into the compact `--agent-context` capsule (min 100, max 4000) | 800 / off |
+| `--focus <anchor>` | Task anchor ranked first in the compact `--agent-context` capsule (repeatable, max 6; requires `--token-budget`) | - |
+| `--explain-ranking` | With `--task-context`: list the ranked candidates before packing (why a file did or did not make the capsule) | off |
 | `--find-symbol <name>` | Locate symbol in index | - |
 | `--find-import <pkg>` | Find files importing a package | - |
 | `--find-code <query>` | Search indexed code snippets | - |
+| `--limit <n>` | Max hits (default 10 for `--search`/`--find-file`, 20 otherwise; max 50) | 10 / 20 |
+| `--kind <kinds>` | `--search` kinds: `symbol,file,import,code` | symbol,file,import |
+| `--pretty` | Pretty-print JSON (default: pretty on TTY) | TTY |
+| `--compact` | Force compact JSON (no whitespace) | off |
 | `--stats` | Aggregate index statistics | false |
 | `--index-format <fmt>` | Output: `console` or `json` | console |
 | `--full-index` | JSON export: hydrate sidecar payloads (codeSearch, calls) instead of printing the compact core | off |

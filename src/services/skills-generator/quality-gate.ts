@@ -795,11 +795,10 @@ const INDEX_COMMANDS = [
   { flag: "--health", label: "health" },
   { flag: "--recovered", label: "recovered" },
   { flag: "--parse-errors", label: "parse-errors" },
+  { flag: "--search", label: "search" },
+  { flag: "--find-file", label: "find-file" },
   { flag: "--agent-context", label: "agent-context" },
   { flag: "--explain-index", label: "explain-index" },
-  { flag: "--find-symbol", label: "find-symbol" },
-  { flag: "--find-import", label: "find-import" },
-  { flag: "--find-code", label: "find-code" },
   { flag: "--stats", label: "stats" },
 ] as const;
 

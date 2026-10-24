@@ -3,7 +3,7 @@
  *
  * Exports a factory for testability and a command wrapper for the CLI.
  * All tools are read-only: index health, agent context, explain context,
- * symbol/import search, explain-file, stats, and parser drilldowns.
+ * compact search / find-file / task-context, symbol/import search, explain-file, stats, and parser drilldowns.
  * No AI calls, no mutations, no outbound MCP spawning.
  */
 
@@ -22,13 +22,10 @@ import {
   getIndexStats,
   getRecoveredFiles,
   getParseErrors,
-  getAgentsExplain,
-  getSkillsDoctorHandler,
-  getSkillsCheckHandler,
-  getReviewScopeHandler,
-  getReviewDeterministicHandler,
-  getReviewFilterFilesHandler,
 } from "../services/mcp-server/service.js";
+import { stringifyCompactJson } from "../services/source-index/json-output.js";
+import { registerAgentSearchTools } from "./mcp-search-tools.js";
+import { registerReviewAndSkillsTools } from "./mcp-review-tools.js";
 
 /**
  * Create a configured McpServer with all read-only tools registered.
@@ -42,6 +39,8 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
     { capabilities: { tools: {} } },
   );
 
+  registerAgentSearchTools(server, projectRoot);
+
   // ── Tool 1: Index Health ─────────────────────────────────────────────
 
   server.tool(
@@ -51,13 +50,13 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
     async () => {
       try {
         const health = await getIndexHealth(projectRoot);
-        return { content: [{ type: "text" as const, text: JSON.stringify(health, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(health) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -73,31 +72,45 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
 
   server.tool(
     "mp_sentinel_agent_context",
-    "Get structured agent context for a specific file: symbols, imports, exports, dependents, hub files, and suggested commands.",
+    "Get compact agent context for a specific file: symbols, imports, exports, dependents, hub files, and call edges, packed under a hard token budget (default 1200). Pass `focus` anchors from the task to rank the evidence that matters first. No suggested commands, no code snippets.",
     {
       file: z.string().describe("Path to the file relative to project root"),
+      focus: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Up to 6 task anchors (symbol, import source, path) ranked into the capsule first",
+        ),
+      tokenBudget: z
+        .number()
+        .int()
+        .optional()
+        .describe("Hard token budget for the emitted JSON (default 1200, min 100, max 4000)"),
     },
-    async ({ file }) => {
+    async ({ file, focus, tokenBudget }) => {
       try {
-        const result = await getAgentContext(projectRoot, file);
+        const result = await getAgentContext(projectRoot, file, {
+          ...(focus !== undefined ? { focus } : {}),
+          ...(tokenBudget !== undefined ? { tokenBudget } : {}),
+        });
         if (result.error) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify(result, null, 2),
+                text: stringifyCompactJson(result),
               },
             ],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 error: err instanceof Error ? err.message : String(err),
               }),
             },
@@ -119,13 +132,13 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
     async ({ files }) => {
       try {
         const result = await getExplainContext(projectRoot, files);
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -150,17 +163,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getFindSymbol(projectRoot, query);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -185,17 +198,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getFindImport(projectRoot, query);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -220,17 +233,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getFindCode(projectRoot, query);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -255,17 +268,19 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getExplainFile(projectRoot, file);
         if (result.error) {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+              text: stringifyCompactJson({
+                error: err instanceof Error ? err.message : String(err),
+              }),
             },
           ],
           isError: true,
@@ -285,17 +300,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getIndexStats(projectRoot);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -326,17 +341,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getRecoveredFiles(projectRoot, limit);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -367,17 +382,17 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
         const result = await getParseErrors(projectRoot, limit);
         if (result.status === "error") {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text" as const, text: stringifyCompactJson(result) }],
             isError: true,
           };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return { content: [{ type: "text" as const, text: stringifyCompactJson(result) }] };
       } catch (err) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({
+              text: stringifyCompactJson({
                 status: "error",
                 message: err instanceof Error ? err.message : String(err),
               }),
@@ -389,275 +404,7 @@ export const createMPSentinelMCPServer = (projectRoot: string): McpServer => {
     },
   );
 
-  // ── Tool 10: Agents Explain ─────────────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_agents_explain",
-    "Show which agent/IDE adapters are detected and why (matching create-skills --explain-agents).",
-    {},
-    async () => {
-      try {
-        const result = await getAgentsExplain(projectRoot);
-        if (result.error) {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // ── Tool 11: Skills Doctor ──────────────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_skills_doctor",
-    "Comprehensive agent/skill health check (matching create-skills --doctor). Read-only, no file writes.",
-    {
-      agents: z
-        .array(z.enum(["claude", "cursor", "codex", "windsurf", "antigravity", "cline", "generic"]))
-        .optional()
-        .describe("Agent adapter ids"),
-      allAgents: z.boolean().optional().describe("Check all non-generic agents"),
-    },
-    async ({ agents, allAgents }) => {
-      if (agents && allAgents) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                status: "error",
-                message: "'agents' and 'allAgents' cannot be used together",
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-      try {
-        const result = await getSkillsDoctorHandler(projectRoot, {
-          ...(agents ? { agents } : {}),
-          ...(allAgents !== undefined ? { allAgents } : {}),
-        });
-        if (result.status === "error") {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                status: "error",
-                message: err instanceof Error ? err.message : String(err),
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // ── Tool 12: Skills Check ───────────────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_skills_check",
-    "Verify generated skill freshness and quality (matching create-skills --check). Missing index is an error.",
-    {
-      agents: z
-        .array(z.enum(["claude", "cursor", "codex", "windsurf", "antigravity", "cline", "generic"]))
-        .optional()
-        .describe("Agent adapter ids"),
-      allAgents: z.boolean().optional().describe("Check all non-generic agents"),
-    },
-    async ({ agents, allAgents }) => {
-      if (agents && allAgents) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: "'agents' and 'allAgents' cannot be used together" }),
-            },
-          ],
-          isError: true,
-        };
-      }
-      try {
-        const result = await getSkillsCheckHandler(projectRoot, {
-          ...(agents ? { agents } : {}),
-          ...(allAgents !== undefined ? { allAgents } : {}),
-        });
-        if (result.error) {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // ── Tool 13: Review Scope ──────────────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_review_scope",
-    "Resolve review target, filter files, and return diff metadata without raw patch content.",
-    {
-      target: z
-        .object({
-          mode: z.enum(["staged", "range", "commit", "files"]),
-          value: z.string().optional(),
-          files: z.array(z.string()).optional(),
-        })
-        .optional(),
-      guardrails: z
-        .object({
-          maxFiles: z.number().int().min(1).optional(),
-          maxDiffLines: z.number().int().min(100).optional(),
-          maxCharsPerFile: z.number().int().min(1000).optional(),
-          contextLines: z.number().int().min(0).optional(),
-          tokenLimit: z.number().int().min(1).optional(),
-        })
-        .optional(),
-    },
-    async ({ target, guardrails }) => {
-      try {
-        const result = await getReviewScopeHandler(
-          projectRoot,
-          target as Record<string, unknown> | undefined,
-          guardrails as Record<string, unknown> | undefined,
-        );
-        if (result.error) {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // ── Tool 14: Review Deterministic ──────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_review_deterministic",
-    "Run non-AI review: risk analysis, secret redaction, token estimation. No AI calls.",
-    {
-      target: z
-        .object({
-          mode: z.enum(["staged", "range", "commit", "files"]),
-          value: z.string().optional(),
-          files: z.array(z.string()).optional(),
-        })
-        .optional(),
-      guardrails: z
-        .object({
-          maxFiles: z.number().int().min(1).optional(),
-          maxDiffLines: z.number().int().min(100).optional(),
-          maxCharsPerFile: z.number().int().min(1000).optional(),
-          contextLines: z.number().int().min(0).optional(),
-          tokenLimit: z.number().int().min(1).optional(),
-        })
-        .optional(),
-    },
-    async ({ target, guardrails }) => {
-      try {
-        const result = await getReviewDeterministicHandler(
-          projectRoot,
-          target as Record<string, unknown> | undefined,
-          guardrails as Record<string, unknown> | undefined,
-        );
-        if (result.error) {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // ── Tool 15: Filter Files ──────────────────────────────────────────
-
-  server.tool(
-    "mp_sentinel_review_filter_files",
-    "Run explicit file paths through review file filtering. Returns accepted/rejected paths with reasons.",
-    {
-      files: z.array(z.string().min(1)).describe("File paths to filter"),
-    },
-    async ({ files }) => {
-      try {
-        const result = await getReviewFilterFilesHandler(projectRoot, files);
-        if (result.error) {
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            isError: true,
-          };
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+  registerReviewAndSkillsTools(server, projectRoot);
 
   return server;
 };
