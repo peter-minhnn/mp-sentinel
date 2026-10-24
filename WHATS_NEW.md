@@ -6,6 +6,8 @@ coherent-seed and coverage-guard policies below are **not active in runtime**.
 The [final validation report](docs/plans/COVERAGE_GUARD_RESULTS.md) records why
 the guard remains experimental rather than becoming a release default.
 
+- **Security:** Zod now requires >= 4.6.6, fixing [oversized-collection validation memory exhaustion](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+
 - **Identifier-coherent evidence evaluation:** generic fixtures, a separately locked new-task cohort and real agent-context chain measurements test a benchmark-only partial-match policy. A new-task regression prevents production adoption. [Report](docs/plans/IDENTIFIER_EVIDENCE_RESULTS.md).
 
 - **Seed-preserving validation:** a benchmark-only policy protects direct baseline seeds before rarity-based fill. It retains all protected seeds but still regresses partial-name evidence, so production remains unchanged. [Results](docs/plans/COMMONJS_FOCUS_RESULTS.md#seed-preservation-experiment-not-promoted).
